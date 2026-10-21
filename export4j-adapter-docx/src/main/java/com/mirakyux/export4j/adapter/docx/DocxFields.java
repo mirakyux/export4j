@@ -39,9 +39,18 @@ final class DocxFields {
 
         Writer(SectionedDocument document) throws IOException {
             List<Block> blocks = new ArrayList<>();
-            document.sections().forEach(section -> SemanticTree.walk(section.blocks(), visit -> blocks.add(visit.block())));
+            var bandBlocks = new java.util.HashSet<Block>();
+            var bands = new java.util.HashSet<com.mirakyux.export4j.model.PageRegion>();
+            document.sections().forEach(section -> {
+                SemanticTree.walk(section.blocks(), visit -> blocks.add(visit.block()));
+                for (var band : List.of(section.pageRegions().header(), section.pageRegions().footer())) {
+                    if (bands.add(band)) { SemanticTree.walk(band.blocks(), visit -> {
+                        blocks.add(visit.block()); bandBlocks.add(visit.block());
+                    }); }
+                }
+            });
             var byId = new HashMap<String, Block>();
-            blocks.forEach(b -> byId.put(b.id(), b));
+            blocks.stream().filter(block -> !bandBlocks.contains(block)).forEach(b -> byId.put(b.id(), b));
             int count = 0;
             for (var block : blocks) {
                 var fields = new ArrayList<Paragraph.FieldSpan>();
@@ -50,7 +59,7 @@ final class DocxFields {
                     for (int row = 0; row < t.rows().size(); row++) {
                         for (var cell : t.rows().get(row).cells()) {
                             if (cell.hasBlocks()) { continue; }
-                            if (row < t.headerRows() && cell.fields().stream().anyMatch(f -> f.field().kind() == InlineField.Kind.PAGE)) {
+                            if (!bandBlocks.contains(block) && row < t.headerRows() && cell.fields().stream().anyMatch(f -> f.field().kind() == InlineField.Kind.PAGE)) {
                                 throw new IOException("DOCX repeated table headers cannot preserve per-occurrence PAGE fields");
                             }
                             fields.addAll(cell.fields());

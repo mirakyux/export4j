@@ -13,9 +13,19 @@ dependencies {
     implementation(project(":export4j-adapter-docx"))
     implementation(project(":export4j-adapter-template"))
     implementation(project(":export4j-adapter-pdf"))
+    implementation(project(":export4j-adapter-web"))
 }
 application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
+}
+
+tasks.register<JavaExec>("webExports") {
+    group = "application"
+    description = "Generates semantic HTML and Markdown with explicit unsupported-content policies."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.WebExportsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
 }
 tasks.named<JavaExec>("run") {
     workingDir = rootProject.projectDir
@@ -455,6 +465,25 @@ tasks.register<JavaExec>("xmlTextDefaults") {
     description = "Generates XML default font roles, colors, resets, fields and nested cell scopes."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.mirakyux.export4j.examples.XmlTextDefaultsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("xmlPageRegions") {
+    group = "application"
+    description = "Generates themed XML headers/footers, reserved body space and final page fields."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.XmlPageRegionsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+
+tasks.register<JavaExec>("xmlSections") {
+    group = "application"
+    description = "Generates XML sections, repeated image/table bands and native DOCX page regions."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.XmlSectionsExample")
     workingDir = rootProject.projectDir
     systemProperty("java.awt.headless", "true")
 }

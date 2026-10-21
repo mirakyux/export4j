@@ -16,6 +16,7 @@ import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.layout.core.StreamingTableLayouter;
 import com.mirakyux.export4j.layout.core.StreamingTableLimits;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.PageDocument;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
@@ -79,18 +80,43 @@ public final class DocumentEngine {
                 List.of(SectionTemplate.uniform(pageTemplate)), navigation, notes);
     }
 
+    /** Uses the document's semantic header/footer declarations. A configured Java pageTemplate conflicts
+     * and is rejected; use PageRegionTemplates.from() with explicit renderer templates to combine them.
+     */
+    public ComponentDocumentLayout layout(PageDocument document) {
+        Objects.requireNonNull(document, "document");
+        if (!pageTemplate.equals(PageTemplate.EMPTY)) {
+            throw new IllegalStateException("page document conflicts with configured page template");
+        }
+        var body = document.document();
+        return layout(new SectionedDocument(body.metadata(), List.of(new Section("document", body.pageSettings(), body.blocks(), 0))),
+                List.of(SectionTemplate.uniform(PageRegionTemplates.from(document.pageRegions()))), navigation, notes);
+    }
+
     public ComponentDocumentLayout layout(SectionedDocument document, List<SectionTemplate> templates, Navigation navigation, List<Note> notes) {
         return new ComponentDocumentRenderer().layout(document, templates, navigation, fonts, roles, notes);
     }
 
-    /** Uses configured default page regions, navigation and notes for every section. */
+    /** Uses each section's model regions when present, otherwise the configured Java template.
+     * Model regions and a nonempty configured Java template conflict rather than silently overwriting.
+     */
     public ComponentDocumentLayout layout(SectionedDocument document) {
-        return layout(document, document.sections().stream().map(ignored -> SectionTemplate.uniform(pageTemplate)).toList(),
-                navigation, notes);
+        boolean hasRegions = document.sections().stream().anyMatch(section -> !section.pageRegions().equals(com.mirakyux.export4j.model.PageRegions.EMPTY));
+        if (hasRegions && !pageTemplate.equals(PageTemplate.EMPTY)) {
+            throw new IllegalStateException("section regions conflict with configured page template");
+        }
+        return layout(document, document.sections().stream().map(section -> SectionTemplate.uniform(hasRegions
+                ? PageRegionTemplates.from(section.pageRegions()) : pageTemplate)).toList(), navigation, notes);
     }
 
     /** Creates a task-confined export request; no layout or I/O occurs until to() is called. */
     public ExportRequest export(Document document) {
+        Objects.requireNonNull(document, "document");
+        return new ExportRequest(() -> layout(document));
+    }
+
+    /** Synchronous export of body and page regions; no layout or I/O until to() is called. */
+    public ExportRequest export(PageDocument document) {
         Objects.requireNonNull(document, "document");
         return new ExportRequest(() -> layout(document));
     }

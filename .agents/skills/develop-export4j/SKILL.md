@@ -33,6 +33,7 @@ description: '开发、修复或重构 Export4j 的 Java 模型、字体、布�
 | `export4j-backend-pdf`／`export4j-backend-svg`／`export4j-backend-raster` | 消费最终绘制结果，不重新布局 |
 | `export4j-adapter-docx` | 语义 DOCX 导入／导出，使用 JDK ZIP 与安全 XML |
 | `export4j-adapter-template` | 离线 XML／Markdown 到既有模板模型 |
+| `export4j-adapter-web` | 语义 HTML／Markdown 导出、逐功能损失策略及有界原子输出 |
 | `export4j-adapter-pdf` | 有界静态 PDF 处理，内部封装 PDFBox |
 | `export4j-bom`／`examples` | 制品版本对齐／可运行示例，核心不反向依赖它们 |
 
@@ -40,7 +41,7 @@ description: '开发、修复或重构 Export4j 的 Java 模型、字体、布�
 
 ## 实现与交付
 
-- 沿 `Document Model → Layout Engine → Layout IR → Display List → Backend` 定位职责；DOCX 直接映射语义模型。
+- 沿 `Document Model → Layout Engine → Layout IR → Display List → Backend` 定位职责；DOCX 与 HTML／Markdown 适配器直接映射语义模型。
 - 只建立真实需求所需的模块和实现。保持模型不可变、配置边界快照、显式错误、有限预算与清晰资源所有权。
 - 对公共 API 同时检查调用方、兼容性、诊断、取消、关闭顺序和失败时旧目标是否保留。不得以吞异常、静默丢弃或隐式字体回退完成扩展。
 - 修复根因，避免无关重构、全仓格式化和顺手升级依赖。新增依赖及资源须更新许可记录；不复制竞争项目实现、注释或测试。

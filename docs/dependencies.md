@@ -1,5 +1,9 @@
 # 依赖与资源管理
 
+2026-10-21 新增自研 `export4j-adapter-web`，工程共 17 个模块、15 个库及 BOM。生产仅依赖模型与 JDK，无新增第三方 Java 坐标；HTML／Markdown、合成样例、Java 生成蓝色 PNG 及验证脚本采用 Apache-2.0，不含外部素材。见[阶段四十三](verification/phase-43-web-exports.md)。
+
+2026-10-21 XML 固定页眉页脚、页区主题、合成报告及验证脚本由项目自主实现，采用 Apache-2.0。复用既有模型、JDK XML／文字路径和已登记的 Liberation Sans；没有新增模块、外部依赖、字体或第三方素材。见[阶段四十一](verification/phase-41-xml-page-regions.md)。
+
 2026-10-16 组件字体作用域／固定富文本、独立列表标记和 XML 角色／颜色默认值均自主实现。没有新增模块、直接／传递依赖、字体或第三方资源；复用既有 JDK、共享文字路径和已登记 Liberation Sans。源码、合成样例、测试及检查脚本采用 Apache-2.0。见[阶段三十八](verification/phase-38-component-text.md)、[三十九](verification/phase-39-list-markers.md)及[四十](verification/phase-40-xml-text-defaults.md)。
 
 2026-10-16 固定页区字体角色修复自主实现，无新增模块、直接／传递依赖、字体或第三方资源。样例、测试、隔离调用方及独立检查脚本采用 Apache-2.0，复用已登记的 Liberation Sans。见[阶段三十七](verification/phase-37-page-region-fonts.md)。
@@ -105,6 +109,8 @@ wrapper jar: 423cb469ccc0ecc31f0e4e1c309976198ccb734cdcbb7029d4bda0f18f57e8d9
 
 独立 PDF 验证使用 Python 3.11+、[pypdf 6.10.0](https://pypi.org/project/pypdf/6.10.0/)（BSD-3-Clause）、[pypdfium2 5.13.0](https://pypi.org/project/pypdfium2/5.13.0/)（Apache-2.0 / BSD-3-Clause，随 wheel 保留 PDFium 及第三方许可）和 [Pillow 12.3.0](https://pypi.org/project/Pillow/12.3.0/)（MIT-CMU，wheel 另带所含第三方库声明）。版本固定于 `scripts/requirements-verification.txt`。外部 Poppler 为 GPL-2.0-or-later 验证工具，由环境或系统包管理器安装。这些工具不进入 Java 依赖、JAR 或示例发行包；本地验证版本见[进阶验收](verification/phase-3-advanced.md)。如未来打包工具环境，须连同 wheel 和原生依赖逐项保留许可。
 
+独立 Markdown 验证使用 [markdown-it-py 4.0.0](https://pypi.org/project/markdown-it-py/4.0.0/) 及其依赖 [mdurl 0.1.2](https://pypi.org/project/mdurl/0.1.2/)，均为 MIT，版本固定于验证 requirements，原始许可随 wheel 保留在隔离环境。二者均支持当前 Python 3.11+ 验证基线，未进入 Java JAR、Maven POM 或运行 SBOM；若将验证环境打包分发须保留版权及许可全文。HTML 独立结构检查使用 Python 标准库 HTMLParser。
+
 独立 DOCX 验证另用 [python-docx 1.2.0](https://pypi.org/project/python-docx/1.2.0/)（MIT），其 lxml 及底层 XML 库许可保留在验证环境，未进入 Java 制品。版本同样固定于验证 requirements；独立解析不代表 Word 视觉兼容。
 
 AES-256 独立验证使用 [cryptography 50.0.2](https://pypi.org/project/cryptography/50.0.2/)（Apache-2.0 OR BSD-3-Clause，原生依赖声明随 wheel 保留），版本固定于验证 requirements。PDF/A-2b 使用 [veraPDF 1.30.3](https://software.verapdf.org/releases/1.30/verapdf-greenfield-1.30.3-installer.zip) 官方 Greenfield CLI，按 [安装说明](https://docs.verapdf.org/install/)仅安装至忽略的 `build/verification/verapdf`；许可为 GPL-3.0-or-later／MPL-2.0。两者均为验证工具，不进入 Java 制品。
@@ -160,3 +166,5 @@ Liberation Sans 粗体、斜体与粗斜体来自官方 2.1.5 发布包，未经
 长合并格语义续排复用核心表格测量与自主网格分配器。`GridSemanticFlowExample` 使用全虚构文字、已登记的 Liberation Sans 正常／真实粗体和代码生成的蓝色 PNG，适用 Apache-2.0；无新增外部图片、字体、依赖或竞争库代码。来源与缓存表头校验见 [ADR-0024](adr/0024-grid-semantic-cell-flow.md)。
 
 单向长表与语义列／行合并沿用既有 JDK、字体、PDFBox／FontBox 和验证工具，没有增加运行依赖。StreamingTableExample／CapacityExample 的数据源全为合成记录；ColumnSpanExample／RowSpanExample 的 PNG 由项目代码生成，适用 Apache-2.0。二维覆盖、分页、标准 OOXML 映射和测试自主编写。
+
+阶段四十二未增加依赖。综合页区样例的标志 PNG 由 XmlSectionsExample 内的自研 Java2D 几何即时生成，沿用代码 Apache-2.0，用于离线资源、媒体关系及重复页区验证，不使用外部图像或字体扫描。

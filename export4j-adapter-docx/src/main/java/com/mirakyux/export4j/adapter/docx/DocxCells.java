@@ -45,6 +45,10 @@ final class DocxCells {
     }
 
     static Map<Element, String> index(Element body, Budget budget) throws IOException {
+        return index(body, budget, new HashSet<>(), "");
+    }
+
+    static Map<Element, String> index(Element body, Budget budget, Set<String> used, String prefix) throws IOException {
         List<Element> elements = new ArrayList<>();
         for (var element : children(body)) {
             if (!W.equals(element.getNamespaceURI())) { continue; }
@@ -52,7 +56,6 @@ final class DocxCells {
                 budget.node(); elements.add(element);
             } else if (element.getLocalName().equals("tbl")) { indexTable(element, 1, elements, budget); }
         }
-        Set<String> used = new HashSet<>();
         for (var element : elements) {
             if (element.hasAttributeNS(OD, "id")) {
                 String id = element.getAttributeNS(OD, "id");
@@ -64,7 +67,7 @@ final class DocxCells {
         for (var element : elements) {
             String id = element.getAttributeNS(OD, "id");
             if (id.isEmpty()) {
-                do { id = (element.getLocalName().equals("p") ? "p-" : "table-") + next++; } while (!used.add(id));
+                do { id = prefix + (element.getLocalName().equals("p") ? "p-" : "table-") + next++; } while (!used.add(id));
             }
             ids.put(element, id);
         }

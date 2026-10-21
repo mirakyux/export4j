@@ -1,6 +1,6 @@
 # 架构设计
 
-本文将[立项文档](project-proposal.md)整理为实现约束。当前共 16 个模块，含原有 PDF 路径、SVG／Raster 后端、DOCX 语义适配器、离线 XML／Markdown 模板适配器、静态 PDF 处理适配器与 BOM。生产入口位于组件模块，不新增仅转发调用的 API 模块。公共复杂文本、模板与受控导出见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)。行内图片、共享行几何与 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)和[验收记录](verification/phase-6-inline-images.md)。原有范围及证据见[生产能力 API](production-api.md)与[验收记录](verification/phase-4-production.md)。
+本文将[立项文档](project-proposal.md)整理为实现约束。当前共 17 个模块，含原有 PDF 路径、SVG／Raster 后端、DOCX 语义适配器、离线 XML／Markdown 模板适配器、静态 PDF 处理适配器、HTML／Markdown 导出适配器与 BOM。生产入口位于组件模块，不新增仅转发调用的 API 模块。公共复杂文本、模板与受控导出见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)。行内图片、共享行几何与 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)和[验收记录](verification/phase-6-inline-images.md)。原有范围及证据见[生产能力 API](production-api.md)与[验收记录](verification/phase-4-production.md)。
 
 ## 分层与数据流
 
@@ -14,6 +14,7 @@ flowchart TD
     DL --> R[Raster Backend]
     DOCX[DOCX / OOXML] --> I[DOCX Importer]
     I --> M
+    M --> Web[HTML / Markdown Exporter]
     M --> E[DOCX Exporter]
     E --> DOCX
     XML[Offline XML / Markdown Template] --> T[Template Compiler]
@@ -59,6 +60,7 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-backend-raster` | 图像输出和预览 | 绘制层 |
 | `export4j-adapter-docx` | OOXML 导入与导出 | 文档模型与资源抽象 |
 | `export4j-adapter-template` | 离线 XML／Markdown 子集编译为 DocumentTemplate | 仅文档模型与 JDK |
+| `export4j-adapter-web` | 语义 HTML5／CommonMark-GFM 导出与逐功能损失策略 | 仅文档模型与 JDK |
 | `export4j-adapter-pdf` | 有界静态 PDF 检查、提取、有序选页与合并 | 模型执行控制；PDFBox 隔离在内部 |
 | `export4j-testing` | 测试样本、断言和比较工具 | 按测试需要依赖各层 |
 | `export4j-conformance-tests` | 格式与行为一致性测试 | 被测模块与测试工具 |
@@ -203,3 +205,7 @@ PDF 导入不能天然恢复原始段落、表格或 Word 结构。未来的 PDF
 组件扩展、页区、定位与 PDF 交互见 [ADR-0006](adr/0006-components-and-pdf-interactions.md)。进阶能力、字体组缺字策略和有界脚注预留见 [ADR-0007](adr/0007-advanced-layout-and-font-policy.md)及[进阶 API](advanced-api.md)。
 
 行内动态字段采用固定宽度原子盒，最终分页后替换轮廓及逻辑文字，保持原始来源与几何。语义单元格复用字段盒，重复表头按实际页面解析，拆行保留原始行列及 UTF-16 来源，见 [ADR-0015](adr/0015-semantic-table-fields.md)。显式脚注标记以实际所在行决定归属，使用原有单调预留和续页算法。模型、文本、布局和后端职责见 [ADR-0014](adr/0014-inline-semantic-fields.md)与[调用指南](inline-fields-api.md)。
+
+语义 PageRegion 保存有序段落／表格，Section 携带默认重复页区；XML 分节共享绑定预算，组件桥在最终页上测量固定区及解析字段。DOCX 直接映射标准页区 part 与局部媒体关系，模型不引用组件或后端。固定几何元数据与普通 Word 显式回填策略见 [ADR-0049](adr/0049-semantic-page-regions-and-sections.md)。
+
+HTML／Markdown 通过独立语义适配器导出，由目标阅读器重排；不反向消费 Display List。ERROR／WARN／IGNORE 按功能控制损失，非法输入与执行失败不受策略压制。共享源／输出预算与原子输出契约见 [ADR-0050](adr/0050-semantic-web-exports.md)。

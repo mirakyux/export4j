@@ -3,7 +3,7 @@
 这些条目用于定位既有能力，不代替当前源码、支持矩阵和对应验收记录。实现变化时同步相关条目；历史阶段编号仅标识证据，不表示未来任务状态。
 
 - 项目定位：Java 文档生产引擎，核心竞争力是语义模型、布局算法与可替换后端。
-- 能力概览：PDF 报告支持显式 OpenType 文字、多栏、矩形绕排、文本表格拆行、脚注续页、换行引用、Builder、样式继承及上下文诊断；另有 SVG／PNG 静态输出、DOCX 语义子集、BOM／SBOM 和隔离 Maven 调用方。工程含 16 个模块；具体边界与证据以[支持矩阵](../../../../docs/capabilities-api.md)、下列 API 和对应验收为准。
+- 能力概览：PDF 报告支持显式 OpenType 文字、多栏、矩形绕排、文本表格拆行、脚注续页、换行引用、Builder、样式继承及上下文诊断；另有 SVG／PNG 静态输出、DOCX 语义子集、BOM／SBOM 和隔离 Maven 调用方。工程含 17 个模块；具体边界与证据以[支持矩阵](../../../../docs/capabilities-api.md)、下列 API 和对应验收为准。
 - 项目名为 Export4j；Java 根包名与 Gradle 项目 group 为 `com.mirakyux.export4j`，模块及制品使用 `export4j-*`。
 - 后续已补齐行内 PNG／JPEG、共享图文换行／分页、表格图片续页、图片外链与标准 DOCX 媒体，最新范围见[图像 API](../../../../docs/inline-images-api.md)和[验收](../../../../docs/verification/phase-6-inline-images.md)。
 - 多矩形绕排已补齐首片段左右并存、错位／堆叠、封闭行带跳过和整体移页，续页恢复全宽，见[多浮动 API](../../../../docs/multi-floats-api.md)和[验收](../../../../docs/verification/phase-7-multi-floats.md)。
@@ -39,3 +39,5 @@
 ## 字体、列表与 XML 默认值
 
 当前已补齐[组件字体作用域与固定富文本](../../../../docs/component-text-api.md)、[独立列表标记样式](../../../../docs/list-markers-api.md)及[XML 默认字体／颜色](../../../../docs/xml-text-defaults-api.md)，证据见阶段三十八至四十。FontRoleScope 选择完整 FontGroup；RichTextComponent 的运行样式为完整显式值，段落继承只影响几何且整体原子。列表 markerStyle 不从首个正文运行推导，toBuilder 保留完整值，显式 defaultMarkerStyle 才重新派生。XML TextDefaults 与主题几何独立，body／heading／cell 分域，role="" 和黑色按存在性覆盖；命名 span 完整替换、内表重起全局 cell 默认。报告／静态表单试用判断见[就绪评估](../../../../docs/readiness-assessment.md)，开放项继续如实登记。
+
+- [HTML／Markdown 导出](../../../../docs/web-export-api.md)直接消费语义模型；全局／逐功能 ERROR、WARN、IGNORE 不压制非法输入、预算、取消与 I/O。HTML/CSS 输入保持独立，证据见[阶段四十三](../../../../docs/verification/phase-43-web-exports.md)。

@@ -13,6 +13,7 @@ import com.mirakyux.export4j.layout.DocumentLayout;
 import com.mirakyux.export4j.layout.LayoutFragment;
 import com.mirakyux.export4j.layout.LayoutPage;
 import com.mirakyux.export4j.layout.core.DocumentLayoutException;
+import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.model.CellLocation;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.Note;
@@ -38,9 +39,22 @@ final class InlineFields {
     static Result resolve(DocumentLayout body, int offset, IntUnaryOperator numbers,
             Map<String, ResolvedAnchor> anchors, Map<String, String> labels, List<Note> notes,
             FontGroup fonts, Map<String, FontGroup> roles, long maxLinks, long maxGeneratedCodePoints) {
+        return resolve(body, offset, Math.addExact(offset, body.pages().size()), numbers, anchors, labels, notes,
+                fonts, roles, maxLinks, maxGeneratedCodePoints);
+    }
+
+    /** Fixed page regions reuse the same reserved-slot resolver with final physical/displayed numbering. */
+    static Result resolveRegion(DocumentLayout body, ComponentContext context) {
+        return resolve(body, context.pageIndex(), context.pageCount(), ignored -> context.displayPageNumber(),
+                Map.of(), Map.of(), List.of(), context.fontGroup(), context.fontRoles(), 1, 100_000);
+    }
+
+    private static Result resolve(DocumentLayout body, int offset, int totalPages, IntUnaryOperator numbers,
+            Map<String, ResolvedAnchor> anchors, Map<String, String> labels, List<Note> notes,
+            FontGroup fonts, Map<String, FontGroup> roles, long maxLinks, long maxGeneratedCodePoints) {
         boolean present = body.pages().stream().flatMap(page -> page.elements().stream()).anyMatch(InlineFields::hasFields);
         if (!present) { return new Result(body, List.of(), List.of()); }
-        var resolver = new Resolver(body, offset, numbers, anchors, labels, notes, maxLinks, maxGeneratedCodePoints);
+        var resolver = new Resolver(totalPages, offset, numbers, anchors, labels, notes, maxLinks, maxGeneratedCodePoints);
         var pages = new ArrayList<LayoutPage>();
         for (var page : body.pages()) {
             var fragments = new ArrayList<LayoutFragment>();
@@ -80,11 +94,11 @@ final class InlineFields {
         private int count;
         private long generatedCodePoints;
 
-        Resolver(DocumentLayout body, int offset, IntUnaryOperator numbers, Map<String, ResolvedAnchor> anchors,
+        Resolver(int totalPages, int offset, IntUnaryOperator numbers, Map<String, ResolvedAnchor> anchors,
                 Map<String, String> labels, List<Note> notes,
                 long maxLinks, long maxGeneratedCodePoints) {
             this.offset = offset;
-            totalPages = Math.addExact(offset, body.pages().size());
+            this.totalPages = totalPages;
             this.numbers = numbers;
             this.anchors = anchors;
             this.labels = labels;

@@ -1,5 +1,7 @@
 # 声明式 XML 模板
 
+主源支持固定 header/footer 与独立主题，放在可选 page 后、正文前。使用 `DocumentTemplate.renderWithPageRegions` 和 `DocumentEngine.export(PageDocument)` 保留页区及最终页码；旧 render 遇到页区会明确拒绝。图片／语义表格和最终字段均保留；分节使用 renderSections，包含各节纸张／页码、页区继承／覆盖和清空。语法、限制及完整调用见[页区指南](xml-page-regions-api.md)和[分节指南](xml-sections-api.md)。
+
 正文／列表、六级标题和单元格可分别设置默认字体角色与颜色，局部 `role`／`color` 按存在性覆盖，链接与四类字段继承所在范围。使用 `.bodyText(...)`／`.headingText(...)`／`.cellText(...)`，完整规则见[文字默认值指南](xml-text-defaults-api.md)。字体资源仍由 Java 显式注册，模板不加载系统或网络字体。
 
 主源首个可选 `<page>` 可声明 A4／LETTER、自定义宽高、横竖方向和四边边距；页面长度支持 pt／mm／cm／in，未声明项沿用 Java `pageSettings`。位置、覆盖顺序及 DOCX twip 边界见[纸张与边距指南](xml-page-settings-api.md)。

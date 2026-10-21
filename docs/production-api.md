@@ -99,15 +99,15 @@ SVG 自包含，文字为已确定的轮廓，图片以内嵌 PNG 保存。多�
 
 ## DOCX 语义子集
 
-`DocxAdapter` 位于 `com.mirakyux.export4j.adapter.docx`。`write(Document/SectionedDocument, OutputStream)` 导出 OOXML，`read(InputStream, Policy)` 返回 `ReadResult`，含 `SectionedDocument` 和损失诊断。
+`DocxAdapter` 位于 `com.mirakyux.export4j.adapter.docx`。`write(Document/PageDocument/SectionedDocument, OutputStream)` 导出 OOXML，`read(InputStream, Policy)` 返回 `ReadResult`，含 `SectionedDocument` 和损失诊断。
 
 | 结构 | 当前范围 |
 | --- | --- |
 | 段落与行内 | 文本、字号、RGB、角色、单线下划线、删除线、基线偏移、换行、tab、嵌入 PNG／JPEG 与 HTTP／HTTPS／mailto 超链接 |
 | 标题 | 1～6 级，导入 Heading 样式；不支持继承 Word 默认样式格式 |
 | 列表 | 自有多级十进制／符号列表往返；外部自定义十进制标签、起始值及覆盖明确报损或拒绝 |
-| 表格 | 矩形文本／富文本／行内图片单元格、固定／比例／自动列宽、统一内边距、表头、拆行设置；不支持合并／嵌套与任意块图文格 |
-| 分页与分节 | 显式分页、nextPage 分节、不同纸张与页边距、起始页码 |
+| 表格 | 矩形文本／富文本／行内图片单元格、固定／比例／自动列宽、统一内边距、表头、拆行设置；支持矩形列／跨行合并及两层原子 Paragraph／Table 块格；递归续排仍独立 |
+| 分页与分节 | 显式分页、nextPage 分节、不同纸张与页边距、起始页码，以及[默认页眉页脚](docx-page-regions-api.md)的图文／表格／原生字段 |
 | 元数据 | 标题和作者 |
 | 行内字段 | PAGE／NUMPAGES／PAGEREF／编号 REF，含正文与普通单元格；显式宽度导入，重复表头 PAGE 拒绝导出 |
 

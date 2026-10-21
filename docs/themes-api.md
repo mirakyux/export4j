@@ -1,6 +1,6 @@
 # 文档主题与命名样式 API
 
-XML 的角色／颜色现在使用独立的 [TextDefaults](xml-text-defaults-api.md)，与主题几何配置顺序独立；这没有给 DocumentTheme 加入全局外观级联。固定页区可通过[字体作用域和固定富文本](component-text-api.md)显式配置，完整页区主题继续开放。
+XML 正文／标题／单元格的角色／颜色使用独立的 [TextDefaults](xml-text-defaults-api.md)，与主题几何配置顺序独立。DocumentTheme 另有独立的 headerStyle/footerStyle，供 [XML 固定页区](xml-page-regions-api.md)解析完整段落格式、默认字体角色和 RGB；默认值不向正文或彼此级联。Java 自定义页区仍可使用[字体作用域和固定富文本](component-text-api.md)。完整品牌级联继续开放。
 
 `DocumentTheme` 将反复使用的正文、六级标题和语义表格格式放进一个不可变值，也可保存具名段落、行内完整样式。编写文档时解析这些值，生成的 `Document` 不保留主题名称或后续查询。决策见 [ADR-0037](adr/0037-authoring-theme-snapshots.md)，本地证据见[阶段三十验收](verification/phase-30-authoring-themes.md)。
 

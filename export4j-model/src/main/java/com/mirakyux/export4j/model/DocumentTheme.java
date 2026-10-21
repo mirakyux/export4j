@@ -27,6 +27,8 @@ public final class DocumentTheme {
     private final TableFormat tableFormat;
     private final Map<String, ParagraphFormat> paragraphStyles;
     private final Map<String, InlineStyle> inlineStyles;
+    private final PageRegionStyle headerStyle;
+    private final PageRegionStyle footerStyle;
 
     private DocumentTheme(Builder builder) {
         bodyFormat = builder.bodyFormat;
@@ -36,6 +38,8 @@ public final class DocumentTheme {
         tableFormat = builder.tableFormat;
         paragraphStyles = Collections.unmodifiableMap(new LinkedHashMap<>(builder.paragraphStyles));
         inlineStyles = Collections.unmodifiableMap(new LinkedHashMap<>(builder.inlineStyles));
+        headerStyle = builder.headerStyle;
+        footerStyle = builder.footerStyle;
     }
 
     /** Starts with the existing 12-point body, six heading formats and convenience-table defaults. */
@@ -56,6 +60,11 @@ public final class DocumentTheme {
     public CellFormat cellFormat() { return cellFormat; }
 
     public TableFormat tableFormat() { return tableFormat; }
+
+    /** Independent complete text defaults for fixed page headers; never derived from body/cell defaults. */
+    public PageRegionStyle headerStyle() { return headerStyle; }
+    /** Independent complete text defaults for fixed page footers. */
+    public PageRegionStyle footerStyle() { return footerStyle; }
 
     /** Looks up a case-sensitive complete style; null, invalid and unknown names are rejected. */
     public ParagraphFormat paragraphStyle(String name) {
@@ -109,13 +118,14 @@ public final class DocumentTheme {
         return cellFormatExplicit == value.cellFormatExplicit && bodyFormat.equals(value.bodyFormat)
                 && headingFormats.equals(value.headingFormats) && cellFormat.equals(value.cellFormat)
                 && tableFormat.equals(value.tableFormat) && paragraphStyles.equals(value.paragraphStyles)
-                && inlineStyles.equals(value.inlineStyles);
+                && inlineStyles.equals(value.inlineStyles) && headerStyle.equals(value.headerStyle)
+                && footerStyle.equals(value.footerStyle);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(bodyFormat, headingFormats, cellFormat, cellFormatExplicit,
-                tableFormat, paragraphStyles, inlineStyles);
+                tableFormat, paragraphStyles, inlineStyles, headerStyle, footerStyle);
     }
 
     /**
@@ -130,6 +140,8 @@ public final class DocumentTheme {
         private TableFormat tableFormat = TableFormat.DEFAULT;
         private final Map<String, ParagraphFormat> paragraphStyles = new LinkedHashMap<>();
         private final Map<String, InlineStyle> inlineStyles = new LinkedHashMap<>();
+        private PageRegionStyle headerStyle = PageRegionStyle.DEFAULT;
+        private PageRegionStyle footerStyle = PageRegionStyle.DEFAULT;
 
         private Builder() {
             for (int level = 1; level <= 6; level++) { headingFormats.add(Heading.defaultFormat(level)); }
@@ -143,6 +155,17 @@ public final class DocumentTheme {
             tableFormat = theme.tableFormat;
             paragraphStyles.putAll(theme.paragraphStyles);
             inlineStyles.putAll(theme.inlineStyles);
+            headerStyle = theme.headerStyle;
+            footerStyle = theme.footerStyle;
+        }
+
+        public Builder headerStyle(PageRegionStyle value) { headerStyle = Objects.requireNonNull(value, "headerStyle"); return this; }
+        public Builder footerStyle(PageRegionStyle value) { footerStyle = Objects.requireNonNull(value, "footerStyle"); return this; }
+        public Builder headerStyle(Consumer<PageRegionStyle.Builder> configure) {
+            var value = headerStyle.toBuilder(); Objects.requireNonNull(configure, "configure").accept(value); return headerStyle(value.build());
+        }
+        public Builder footerStyle(Consumer<PageRegionStyle.Builder> configure) {
+            var value = footerStyle.toBuilder(); Objects.requireNonNull(configure, "configure").accept(value); return footerStyle(value.build());
         }
 
         /** Replaces the complete body value; previously defined named styles remain unchanged. */

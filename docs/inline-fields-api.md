@@ -75,7 +75,7 @@ var body = Paragraph.mixed("body", List.of(
 
 正文缺字诊断始终指向原文 UTF-16 范围。动态字段的诊断指向生成值的局部 UTF-16 范围，`contextualDiagnostics()` 用 `INLINE_FIELD:<原始标记位置>` 标明所属字段，同时保留最终物理页和块 ID；语义单元格另保留零基原始行、列索引。`diagnostics()` 汇总这些诊断，由调用方决定如何输出警告。
 
-支持正文段落与简单语义表格单元格中的字段。标题、页区、组件内部或连续分栏中的行内字段尚未支持。单元格拒绝 `NOTE_MARKER`，表格脚注归属尚未定义。DOCX 已映射四类页码／引用字段，但拒绝注释标记、非编号目标的编号引用和重复表头 PAGE，见[DOCX 字段 API](docx-fields-api.md)。已有块级引用和页眉页脚页码组件继续可用。
+支持正文段落与语义表格单元格中的字段；语义表格组合与连续区域见[语义组合指南](semantic-components-api.md)。[语义页眉页脚](xml-page-regions-api.md)支持固定宽度 PAGE/PAGES，包含区域内表格；标题、普通组件及连续富文本组件未因此获得任意行内字段。单元格拒绝 `NOTE_MARKER`，表格脚注归属尚未定义。DOCX 已映射四类页码／引用字段，但拒绝注释标记、非编号目标的编号引用和普通正文重复表头 PAGE；固定页区内表头可使用 PAGE，见[DOCX 字段 API](docx-fields-api.md)及[页区指南](docx-page-regions-api.md)。已有块级引用和页眉页脚页码组件继续可用。
 
 SVG／PNG 可以绘制已经解析的静态字段，但仍拒绝非空交互数据。示例显式构造无交互的预览，PDF 保留目录和引用链接。复杂文字的搜索／选择依赖阅读器对 ActualText 的支持，本批不提供 PDF/UA 标签。
 

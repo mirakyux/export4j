@@ -506,6 +506,9 @@ public final class Consumer {
         ComponentTextConsumer.verify(font, output);
         ListMarkerConsumer.verify(font, output);
         XmlTextDefaultsConsumer.verify(font, output);
+        XmlPageRegionsConsumer.verify(font, output);
+        XmlSectionsConsumer.verify(font, output);
+        WebExportConsumer.verify(output);
         System.out.println("Consumer outputs: " + output.toAbsolutePath());
     }
 }

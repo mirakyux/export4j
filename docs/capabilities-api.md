@@ -1,12 +1,16 @@
 # 模板、复杂文本与受控导出
 
-XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-settings.md)验收：主根首个可选 `page` 支持纸张／成对宽高／方向／四边边距，页面长度支持 pt／mm／cm／in。未声明项保留 Java 默认；分节、页区及 XML 内完整主题仍开放，详见[页面指南](xml-page-settings-api.md)。
+XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-settings.md)验收：主根首个可选 `page` 支持纸张／成对宽高／方向／四边边距，页面长度支持 pt／mm／cm／in。未声明项保留 Java 默认，详见[页面指南](xml-page-settings-api.md)。[阶段四十一](verification/phase-41-xml-page-regions.md)补齐[固定页眉页脚](xml-page-regions-api.md)、独立主题及最终页码；[阶段四十二](verification/phase-42-sections-and-docx-regions.md)补齐页区图片／表格、XML 分节与 DOCX 默认页区。XML 背景／前景和完整级联仍开放。
 
-[固定页区字体角色](page-region-fonts-api.md)保留引擎注册角色、缺字策略及最终页上下文。标准组件现在可用 [FontRoleScope／RichTextComponent](component-text-api.md) 直接选择字体组和编写固定富文本，无需自定义委托；延迟 SemanticTable 仍不能进入固定页区。完整主题及 XML 页区保持开放。
+[固定页区字体角色](page-region-fonts-api.md)保留引擎注册角色、缺字策略及最终页上下文。标准组件现在可用 [FontRoleScope／RichTextComponent](component-text-api.md) 直接选择字体组和编写固定富文本，无需自定义委托；延迟 SemanticTable 仍不能进入固定页区。XML 页区通过 PageDocument 和 PageRegionTemplates 接入相同预留／最终组合路径，主题不向正文级联。
 
 [列表标记](list-markers-api.md)独立保存完整 InlineStyle，标准 DOCX 使用所选 level 的运行属性；[XML 文字默认值](xml-text-defaults-api.md)按正文／标题／单元格独立配置角色和颜色，显式局部覆盖、命名完整样式及嵌套格范围保持。验收分别见[阶段三十八](verification/phase-38-component-text.md)、[三十九](verification/phase-39-list-markers.md)及[四十](verification/phase-40-xml-text-defaults.md)。整体试用边界见[就绪评估](readiness-assessment.md)。
 
-当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 16 个模块。最初能力扩展的可编译样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)，其范围见[阶段五验收](verification/phase-5-capabilities.md)；后续扩展按各节所列验收判断。
+当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 17 个模块。最初能力扩展的可编译样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)，其范围见[阶段五验收](verification/phase-5-capabilities.md)；后续扩展按各节所列验收判断。
+
+## HTML 与 Markdown 输出
+
+[Web 适配器](web-export-api.md)直接映射语义文档，支持 HTML5 和 CommonMark/GFM 内容；可全局及逐功能指定 ERROR／WARN／IGNORE。HTML 保留合并／嵌套表格、样式和嵌入图片；Markdown 对格式损失显式降级并保留锚点内容。默认严格，非法输入／超限／取消不能忽略，证据见[阶段四十三](verification/phase-43-web-exports.md)。这不包含 HTML/CSS 输入或 PDF 布局往返。
 
 ## 公共文本和字体
 
@@ -106,11 +110,15 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 | --- | --- |
 | 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、组件内字段、自动字段宽度重排和可访问的结构化阅读顺序 |
 | 高级布局 | 连续栏自动平衡／变栏宽、任意轮廓／跨页浮动锚点、任意递归网格续页、竖排、可变字体轴；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
-| DOCX | 浮动／裁剪等复杂图像、页眉页脚、更深或递归续排内表、外部样式继承、目录、评论和表单的完整模型映射；两层原子内表见[块格指南](block-cells-api.md)，Word 保存兼容单独登记 |
+| DOCX | 浮动／裁剪等复杂图像、首页／奇偶等更多页区变体、更深或递归续排内表、外部样式继承、目录、评论和表单的完整模型映射；默认页眉页脚见[页区指南](docx-page-regions-api.md)，两层原子内表见[块格指南](block-cells-api.md)，Word 保存兼容单独登记 |
 | PDF | PDF/UA 标签树、更多注释／表单属性、认证签名和 PAdES 长期验证 |
 | 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。一般 Word／LibreOffice 外观、其他系统／JDK、多阅读器、持续容量与长期资源释放仍未验收 |
 
 
-[编写时主题](themes-api.md)已接入 Java Document／Documents，集中管理正文、六级标题、便利语义表格和有界命名完整样式。加入时快照、显式完整值优先、组件六项继承及默认输出兼容见[阶段三十验收](verification/phase-30-authoring-themes.md)。XML 静态名称与四类可编辑字段显式外观分别见[XML 主题](xml-themes-api.md)和[FormStyle](form-styles-api.md)。全局颜色／字体角色级联与页区默认仍开放。
+[编写时主题](themes-api.md)已接入 Java Document／Documents，集中管理正文、六级标题、便利语义表格和有界命名完整样式。加入时快照、显式完整值优先、组件六项继承及默认输出兼容见[阶段三十验收](verification/phase-30-authoring-themes.md)。XML 静态名称与四类可编辑字段显式外观分别见[XML 主题](xml-themes-api.md)和[FormStyle](form-styles-api.md)。页眉页脚独立默认值见[页区主题](xml-page-regions-api.md)；全局颜色／字体角色级联及背景／前景主题仍开放。
 
 [目录独立样式](contents-styles-api.md)支持标题／页码完整排版及三处颜色，保留显式意图、旧默认和固定 48 pt 标签列。较大页码行框先参与目录分页，最终物理偏移与分节字段统一解析；真实标签放不下一行则失败。[阶段三十四](verification/phase-34-contents-styles.md)完成 873 项测试、4 页双渲染／逐页复查、新调用方及历史回归。
+
+## 语义页区与 XML 分节
+
+[图片／表格页区](xml-page-regions-api.md)复用现有 Paragraph／Table 与最终字段路径；[XML 分节](xml-sections-api.md)支持独立页面设置、显示页码和根页区继承／覆盖／清空；[DOCX 页区](docx-page-regions-api.md)使用标准 part、各自媒体关系及 PAGE／NUMPAGES。阶段四十二统一验收，模型、XML 与 DOCX 之间不经由显示列表传递语义。普通 Word 区域缺少固定几何时须显式配置；不提供一般 Word 无损互转或相同分页保证。

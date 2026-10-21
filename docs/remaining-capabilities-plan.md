@@ -1,17 +1,19 @@
 # 剩余能力执行计划
 
-更新日期：2026-10-16。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
+更新日期：2026-10-21。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
 
 阶段三十八至四十完成组件角色作用域／固定富文本、独立列表标记及 XML 分域默认外观。最终评估认为当前 PDF 报告／静态密集表单已可进入本地业务试用，证据和 API 选择见[首版就绪评估](readiness-assessment.md)。以下更广任务继续保留开放状态，后续按具体业务或复现缺陷选取独立单元，不据本次结论宣称全部 GAP 关闭。
 
 ## 范围与执行顺序
+
+[阶段四十一](verification/phase-41-xml-page-regions.md)已完成固定 XML 页眉页脚、独立主题及最终页码：共享绑定／预留／组合路径、1,041 项测试、5 页独立双渲染与新调用方通过。[阶段四十二](verification/phase-42-sections-and-docx-regions.md)进一步完成页区图片／表格、XML 分节及 DOCX 默认页眉页脚的完整模型和导入导出闭环。更广主题及 XML 背景／前景仍按各自契约评估。
 
 OCR 不在当前范围内。下表为能力补齐顺序，不表示各项已经完成。
 
 | 顺序 | 单元 | 实际验收目标 | 当前状态 |
 | --- | --- | --- | --- |
 | 1 | XML 主题与静态名称 | 同一结构切换完整主题；p／span 静态名称、全部分支编译校验、旧默认兼容；独立 PDF／SVG／DOCX 及调用方 | 已完成[阶段三十一](verification/phase-31-xml-themes.md)：780项测试、4新页、12组独立检查与新调用方 |
-| 2 | 可编辑字段与页区样式 | 字段默认外观与自动保存回读一致；页区／目录复用样式；显式覆盖与旧调用兼容 | 字段显式 FormStyle 已完成[阶段三十二](verification/phase-32-editable-form-styles.md)：807 项测试、8 页及新调用方；[目录独立样式](verification/phase-34-contents-styles.md)及[固定页区字体角色](verification/phase-37-page-region-fonts.md)已验收；[标准角色作用域与固定富文本](verification/phase-38-component-text.md)已验收；完整页区主题及人工阅读器继续独立 |
+| 2 | 可编辑字段与页区样式 | 字段默认外观与自动保存回读一致；页区／目录复用样式；显式覆盖与旧调用兼容 | 字段显式 FormStyle 已完成[阶段三十二](verification/phase-32-editable-form-styles.md)：807 项测试、8 页及新调用方；[目录独立样式](verification/phase-34-contents-styles.md)及[固定页区字体角色](verification/phase-37-page-region-fonts.md)已验收；[标准角色作用域与固定富文本](verification/phase-38-component-text.md)已验收；[XML 固定页眉页脚主题](verification/phase-41-xml-page-regions.md)已验收；更广主题及人工阅读器继续独立 |
 | 3 | 复杂表格与长表内容 | 逐项扩大递归续排、纵向拆组、自动列合并及单向图片／链接等；保持唯一来源和有界推进 | 部分支持；各切面单独验收 |
 | 4 | 模板与编写体验 | 显式离线 include、多级编号、明确定义的 HTML/CSS 子集及设计器编辑／预览／重载闭环 | 平面离线 include 已完成[阶段三十三](verification/phase-33-offline-xml-includes.md)；[多级编号](verification/phase-35-xml-numbering.md)已验收；[XML 默认字体／颜色](verification/phase-40-xml-text-defaults.md)和[独立列表标记](verification/phase-39-list-markers.md)已验收；HTML/CSS／设计器仍开放 |
 | 5 | 文字与 DOCX 兼容 | 实际搜索／选择语料、Word 保存回读、复杂页区及交互语义映射；逐应用记录结果 | 部分支持；不能用本机结果代替跨平台证据 |
@@ -123,3 +125,5 @@ DOCX 使用标准 vMerge restart／continue，精确验证整个覆盖列区间�
 [阶段三十四](verification/phase-34-contents-styles.md)已验收目录标题／页码完整排版及标题／条目／页码颜色，旧默认、声明意图、最终引用、缺字／预算和取消保持。下一独立单元按[XML 编号设计](adr/0042-xml-multilevel-numbering.md)把 XML numbered 扩为已有模型的 1..9 级，复用现有计数与 DOCX 路径；动态父完整性在实际展开后的布局／导出阶段验证，不另造计数器。
 
 [阶段三十五](verification/phase-35-xml-numbering.md)已验收XML 1～9级十进制编号、祖先重置、各列表隔离、循环片段完整引用与原生DOCX九级规则；899项测试、4页双渲染／逐页复查、12组独立检查和新调用方通过。下一优先切面为GAP-04页区默认／完整主题：先区分固定页区的组件样式继承与模型编写默认，继续保留页区预留、最终字段与诊断；复杂递归续排和流式更多语义仍按前置条件另行验收。
+
+HTML／Markdown 输出已完成[阶段四十三](verification/phase-43-web-exports.md)：模型直出、自包含资源、逐功能动作、共享预算与隔离调用方；[API](web-export-api.md)逐项登记损失。HTML/CSS 输入、设计器、更广主题与递归续排保持各自开放范围。

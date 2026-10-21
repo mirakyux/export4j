@@ -11,7 +11,8 @@ import java.util.Objects;
  * Values are non-null strings, booleans, exact standard numeric classes, lists or string-keyed maps.
  * Input is snapshotted per render; caller-supplied collection implementations remain trusted Java code.
  */
-public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits) {
+public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
+        PageRegions pageRegions, List<SectionNode> sections) {
     private static final double LOG10_2 = 0.3010299956639812;
 
     public DocumentTemplate {
@@ -19,6 +20,28 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         Objects.requireNonNull(pageSettings, "pageSettings");
         nodes = List.copyOf(nodes);
         Objects.requireNonNull(limits, "limits");
+        Objects.requireNonNull(pageRegions, "pageRegions");
+        sections = List.copyOf(sections);
+        if (!sections.isEmpty() && !nodes.isEmpty()) { throw new IllegalArgumentException("sections cannot mix with root body nodes"); }
+    }
+
+    /** Compatibility constructor for body-only templates. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits) {
+        this(metadata, pageSettings, nodes, limits, PageRegions.EMPTY, List.of());
+    }
+
+    /** Compatibility constructor for uniform page regions. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits, PageRegions pageRegions) {
+        this(metadata, pageSettings, nodes, limits, pageRegions, List.of());
+    }
+
+    /** One static next-page section; child data binding shares the complete render budget. */
+    public record SectionNode(String id, PageSettings pageSettings, List<Node> nodes, int firstPageNumber, PageRegions pageRegions) {
+        public SectionNode {
+            Objects.requireNonNull(id, "id"); Objects.requireNonNull(pageSettings, "pageSettings");
+            Objects.requireNonNull(pageRegions, "pageRegions"); nodes = List.copyOf(nodes);
+            if (id.isBlank() || firstPageNumber < 0) { throw new IllegalArgumentException("invalid template section"); }
+        }
     }
 
     public sealed interface Node permits ValueBlock, When, Each, Rows { }
@@ -120,12 +143,52 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
 
     /** Strict render: any missing value, invalid type or expansion limit prevents returning a document. */
     public Document render(Map<String, ?> data) {
+        if (!sections.isEmpty() || !pageRegions.equals(PageRegions.EMPTY)) {
+            throw error(BindingException.Code.UNSUPPORTED_BLOCK, "pageRegions");
+        }
+        return renderWithPageRegions(data).document();
+    }
+
+    /** Binds body and repeating regions against one data snapshot and shared expansion/text budgets.
+     * PAGE/PAGES remain fixed-width fields until final pagination by DocumentEngine.
+     * Use this entry for templates declaring page regions; render() rejects those declarations.
+     */
+    public PageDocument renderWithPageRegions(Map<String, ?> data) {
+        if (!sections.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "sections"); }
         var state = new Binding();
         Object frozen = state.freeze(Objects.requireNonNull(data, "data"), 0);
         if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
         var root = new Scope(map, null);
         state.expand(nodes, root, "", 0, Map.of());
-        return new Document(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), pageSettings, state.blocks);
+        var header = state.band(pageRegions.header(), root);
+        var footer = state.band(pageRegions.footer(), root);
+        return new PageDocument(new Document(new DocumentMetadata(state.text(metadata.title(), root),
+                state.text(metadata.author(), root)), pageSettings, state.blocks), new PageRegions(header, footer));
+    }
+
+    /** Binds static sections and their regions using one input snapshot and shared counters.
+     * Root regions are inherited by XML sections; equal immutable bands remain linked sources.
+     * Templates without section declarations produce a single document section.
+     */
+    public SectionedDocument renderSections(Map<String, ?> data) {
+        var state = new Binding();
+        Object frozen = state.freeze(Objects.requireNonNull(data, "data"), 0);
+        if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
+        var root = new Scope(map, null);
+        var values = new ArrayList<Section>();
+        var declarations = sections.isEmpty() ? List.of(new SectionNode("document", pageSettings, nodes, 0, pageRegions)) : sections;
+        var bands = new HashMap<PageRegion, PageRegion>();
+        for (var declaration : declarations) {
+            state.visit("sections");
+            state.blocks.clear();
+            state.expand(declaration.nodes(), root, "", 0, Map.of());
+            var regions = declaration.pageRegions();
+            var header = bands.computeIfAbsent(regions.header(), value -> state.band(value, root));
+            var footer = bands.computeIfAbsent(regions.footer(), value -> state.band(value, root));
+            values.add(new Section(declaration.id(), declaration.pageSettings(), state.blocks,
+                    declaration.firstPageNumber(), new PageRegions(header, footer)));
+        }
+        return new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values);
     }
 
     /** One immutable lexical declaration; iteration does not copy the entire outer data snapshot. */
@@ -146,6 +209,14 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private int dataNodes;
         private int blockCount;
         private final List<Block> blocks = new ArrayList<>();
+
+        private PageRegion band(PageRegion prototype, Scope scope) {
+            var values = new ArrayList<Block>();
+            for (var block : prototype.blocks()) {
+                values.add(bind(block, scope, "", blockIds(block, "", Map.of()), 0));
+            }
+            return new PageRegion(prototype.height(), prototype.gap(), values);
+        }
 
         private Object freeze(Object value, int depth) {
             ExecutionContext.checkpoint();
@@ -486,7 +557,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }
     /** Starts an independent builder from this value; referenced resources remain borrowed. */
-    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()); }
+    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections); }
 
     /** Mutable, task-confined construction state; built values do not retain this builder. */
     public static final class Builder {
@@ -494,12 +565,16 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private PageSettings pageSettings = PageSettings.A4;
         private List<Node> nodes = new java.util.ArrayList<>();
         private Limits limits = Limits.DEFAULT;
+        private PageRegions pageRegions = PageRegions.EMPTY;
+        private List<SectionNode> sections = List.of();
 
         private Builder() { }
         public Builder metadata(DocumentMetadata value) { metadata = java.util.Objects.requireNonNull(value, "metadata"); return this; }
         public Builder pageSettings(PageSettings value) { pageSettings = java.util.Objects.requireNonNull(value, "pageSettings"); return this; }
         public Builder nodes(List<Node> value) { nodes = new java.util.ArrayList<>(java.util.List.copyOf(value)); return this; }
         public Builder limits(Limits value) { limits = java.util.Objects.requireNonNull(value, "limits"); return this; }
+        public Builder pageRegions(PageRegions value) { pageRegions = Objects.requireNonNull(value, "pageRegions"); return this; }
+        public Builder sections(List<SectionNode> values) { sections = List.copyOf(values); return this; }
         public Builder node(Node value) { nodes.add(Objects.requireNonNull(value, "node")); return this; }
         public Builder block(Block value) { return node(new ValueBlock(value)); }
         public Builder when(String path, java.util.function.Consumer<Nodes> yes, java.util.function.Consumer<Nodes> no) {
@@ -509,6 +584,6 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder each(String path, String variable, java.util.function.Consumer<Nodes> configure) {
             var value = new Nodes(); configure.accept(value); return node(new Each(path, variable, value.snapshot()));
         }
-        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits); }
+        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections); }
     }
 }

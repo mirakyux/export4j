@@ -68,3 +68,5 @@
 - XML多级编号变更运行 `build sbom publishLocalBundle :examples:xmlNumbering :examples:xmlReferences :examples:xmlIncludes` 与隔离调用方，执行 `scripts/verify_xml_numbering.py`；核对最终完整点分值、真实字段／XYZ、循环与prefix列表身份、标准ilvl／九级lvlText／有效祖先startOverride和实际书签位置。九级DOCX结构验证不冒充新增PDF或Word阅读器验证；全部新PDF页双渲染并逐页查看。
 
 - 组件富文本／列表标记／XML 默认外观变更分别运行 `:examples:componentText :examples:listMarkers :examples:xmlTextDefaults` 及对应 `verify_component_text.py`／`verify_list_markers.py`／`verify_xml_text_defaults.py`，使用隔离调用方。检查真实物理字体、标记与正文独立推进和装饰、四类最终字段及链接框／XYZ、标准 DOCX 所选级别／marker-only 角色，保持全编号树有界验证和严格损失。全部新页双渲染并逐页查看；有限 Latin 样例不推广为一般塑形／Word 兼容。
+
+- HTML／Markdown 导出变更运行 `build sbom publishLocalBundle :examples:webExports`、新隔离调用方及 `scripts/verify_web_exports.py`。核对真实锚点／覆盖槽、嵌套顺序、编号重启、强调边界、链接、原图字节、源码诊断及 ERROR／WARN／IGNORE 差异，并检查浏览器宽／窄屏输出；HTML/CSS 输入不在该验收内。

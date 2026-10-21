@@ -41,6 +41,9 @@ import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.PageBreak;
+import com.mirakyux.export4j.model.PageDocument;
+import com.mirakyux.export4j.model.PageRegion;
+import com.mirakyux.export4j.model.PageRegions;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
@@ -76,23 +79,48 @@ public final class DocxAdapter {
     private static final Set<String> MARKUP = Set.of("document", "body", "p", "pPr", "pStyle", "r", "rPr", "rStyle", "t", "br", "tab", "b", "i", "u", "strike", "sz", "color", "position",
             "jc", "kinsoku", "spacing", "ind", "keepLines", "keepNext", "pageBreakBefore", "numPr", "ilvl", "numId", "sectPr", "type", "pgSz", "pgMar", "pgNumType",
             "tbl", "tblPr", "tblCellMar", "tblGrid", "gridCol", "tr", "trPr", "tblHeader", "cantSplit", "tc", "tcPr", "gridSpan", "vMerge", "top", "right", "bottom", "left", "proofErr", "hyperlink", "drawing",
-            "fldSimple", "fldChar", "instrText", "bookmarkStart", "bookmarkEnd");
+            "fldSimple", "fldChar", "instrText", "bookmarkStart", "bookmarkEnd", "hdr", "ftr", "headerReference", "footerReference");
     private static final Set<String> EMPTY_CONTINUATION_MARKUP = Set.of("p", "pPr", "pStyle", "r", "rPr", "rStyle", "t",
             "b", "i", "u", "strike", "sz", "color", "position", "jc", "kinsoku", "spacing", "ind",
             "keepLines", "keepNext", "pageBreakBefore", "proofErr");
+    private record RegionKey(PageRegion region, double tableWidth) { }
+    private static RegionKey regionKey(PageRegion region, double width) {
+        return new RegionKey(region, region.blocks().stream().anyMatch(Table.class::isInstance) ? width : 0);
+    }
     private final DocxLimits limits;
+    private final RegionGeometry regionGeometry;
+
+    /** Explicit fallback geometry in points for standard Word bands without Export4j fixed-height metadata.
+     * Word does not encode fixed band heights; no content-based height guessing occurs. */
+    public record RegionGeometry(double headerHeight, double headerGap, double footerHeight, double footerGap) {
+        public RegionGeometry {
+            new PageRegion(headerHeight, headerGap, List.of());
+            new PageRegion(footerHeight, footerGap, List.of());
+        }
+    }
 
     /** Task-confined configuration builder. Adapter remains offline and borrows caller streams. */
     public static Builder builder() { return new Builder(); }
     public static final class Builder {
         private DocxLimits limits = DocxLimits.DEFAULT;
+        private RegionGeometry regionGeometry;
         private Builder() { }
         public Builder limits(DocxLimits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
-        public DocxAdapter build() { return new DocxAdapter(limits); }
+        public Builder regionGeometry(RegionGeometry value) { regionGeometry = Objects.requireNonNull(value, "regionGeometry"); return this; }
+        public DocxAdapter build() { return new DocxAdapter(limits, regionGeometry); }
     }
 
     public DocxAdapter() { this(DocxLimits.DEFAULT); }
-    public DocxAdapter(DocxLimits limits) { this.limits = Objects.requireNonNull(limits, "limits"); }
+    public DocxAdapter(DocxLimits limits) { this(limits, null); }
+    private DocxAdapter(DocxLimits limits, RegionGeometry regionGeometry) {
+        this.limits = Objects.requireNonNull(limits, "limits"); this.regionGeometry = regionGeometry;
+    }
+
+    /** Exports body and fixed repeating bands using standard OOXML parts and section references. */
+    public void write(PageDocument document, OutputStream output) throws IOException {
+        var body = document.document();
+        write(new SectionedDocument(body.metadata(), List.of(new Section("document", body.pageSettings(), body.blocks(), 0, document.pageRegions()))), output);
+    }
 
     public void write(Document document, OutputStream output) throws IOException {
         write(new SectionedDocument(document.metadata(), List.of(new Section("document", document.pageSettings(), document.blocks(), 0))), output);
@@ -103,7 +131,13 @@ public final class DocxAdapter {
         Objects.requireNonNull(output, "output");
         var semanticBudget = new DocxCells.Budget(limits);
         List<SemanticTree.Visit> visits = new ArrayList<>();
-        for (var section : document.sections()) { SemanticTree.walk(section.blocks(), visits::add); }
+        var uniqueBands = new HashSet<PageRegion>();
+        for (var section : document.sections()) {
+            SemanticTree.walk(section.blocks(), visits::add);
+            for (var band : List.of(section.pageRegions().header(), section.pageRegions().footer())) {
+                if (uniqueBands.add(band)) { SemanticTree.walk(band.blocks(), visits::add); }
+            }
+        }
         long textBytes = 0;
         for (var visit : visits) {
             semanticBudget.node();
@@ -129,6 +163,45 @@ public final class DocxAdapter {
         var counters = new HashMap<String, int[]>();
         Map<String, String> hyperlinks = new LinkedHashMap<>();
         var images = new DocxImages.Writer(limits.maxEntryBytes());
+        var regionParts = new LinkedHashMap<String, String>();
+        var headerNames = new LinkedHashMap<RegionKey, String>();
+        var footerNames = new LinkedHashMap<RegionKey, String>();
+        boolean hasRegions = document.sections().stream().anyMatch(section -> !section.pageRegions().equals(PageRegions.EMPTY));
+        if (hasRegions) {
+            for (var section : document.sections()) {
+                for (boolean header : List.of(true, false)) {
+                    var band = header ? section.pageRegions().header() : section.pageRegions().footer();
+                    var names = header ? headerNames : footerNames;
+                    var key = regionKey(band, section.pageSettings().contentWidth());
+                    if (!names.containsKey(key)) {
+                        String name = (header ? "header" : "footer") + (names.size() + 1);
+                        names.put(key, name);
+                        var bandLinks = new LinkedHashMap<String, String>();
+                        var xml = new StringBuilder(XML + "<w:" + (header ? "hdr" : "ftr") + NS
+                                + " od:height=\"" + band.height() + "\" od:gap=\"" + band.gap() + "\">");
+                        for (var block : band.blocks()) {
+                            if (block instanceof Table table) {
+                                table(xml, table, section.pageSettings().contentWidth(), bandLinks, images, fields, roles, List.of());
+                            } else {
+                                var paragraph = (Paragraph) block;
+                                paragraph.inlines().forEach(run -> { if (!run.style().fontRole().isEmpty()) { roles.add(run.style().fontRole()); } });
+                                xml.append("<w:p od:id=\"").append(escape(paragraph.id())).append("\">");
+                                properties(xml, paragraph.format(), 0, 0, 1);
+                                runs(xml, paragraph, bandLinks, images, fields);
+                                xml.append("</w:p>");
+                            }
+                            if (xml.length() > limits.maxEntryBytes()) { throw new IOException("DOCX region markup budget exceeded"); }
+                        }
+                        if (band.blocks().isEmpty()) { xml.append("<w:p od:emptyBand=\"true\"/>"); }
+                        xml.append("</w:").append(header ? "hdr" : "ftr").append('>');
+                        regionParts.put("word/" + name + ".xml", xml.toString());
+                        regionParts.put("word/_rels/" + name + ".xml.rels", XML
+                                + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                                + images.relationships() + "</Relationships>");
+                    }
+                }
+            }
+        }
         int numberId = 1;
         for (int sectionIndex = 0; sectionIndex < document.sections().size(); sectionIndex++) {
             var section = document.sections().get(sectionIndex);
@@ -172,7 +245,8 @@ public final class DocxAdapter {
                 }
             }
             if (sectionIndex + 1 < document.sections().size()) { main.append("<w:p od:boundary=\"true\"><w:pPr>"); }
-            section(main, section);
+            section(main, section, hasRegions ? headerNames.get(regionKey(section.pageRegions().header(), section.pageSettings().contentWidth())) : "",
+                    hasRegions ? footerNames.get(regionKey(section.pageRegions().footer(), section.pageSettings().contentWidth())) : "");
             if (sectionIndex + 1 < document.sections().size()) { main.append("</w:pPr></w:p>"); }
         }
         main.append("</w:body></w:document>");
@@ -192,12 +266,20 @@ public final class DocxAdapter {
                 + "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>"
                 + "<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>"
                 + "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/></Types>";
+        if (hasRegions) {
+            for (var name : headerNames.values()) { contentTypes = contentTypes.replace("</Types>", regionContentType(name, "header") + "</Types>"); }
+            for (var name : footerNames.values()) { contentTypes = contentTypes.replace("</Types>", regionContentType(name, "footer") + "</Types>"); }
+        }
         String relns = "http://schemas.openxmlformats.org/package/2006/relationships";
         String reltype = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
         String rootRels = XML + "<Relationships xmlns=\"" + relns + "\"><Relationship Id=\"rId1\" Type=\"" + reltype + "officeDocument\" Target=\"word/document.xml\"/>"
                 + "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/></Relationships>";
         String wordRels = XML + "<Relationships xmlns=\"" + relns + "\"><Relationship Id=\"rId1\" Type=\"" + reltype + "styles\" Target=\"styles.xml\"/>"
                 + "<Relationship Id=\"rId2\" Type=\"" + reltype + "numbering\" Target=\"numbering.xml\"/></Relationships>";
+        if (hasRegions) {
+            for (var name : headerNames.values()) { wordRels = wordRels.replace("</Relationships>", regionRelationship(name, "header") + "</Relationships>"); }
+            for (var name : footerNames.values()) { wordRels = wordRels.replace("</Relationships>", regionRelationship(name, "footer") + "</Relationships>"); }
+        }
         StringBuilder linkRels = new StringBuilder();
         hyperlinks.forEach((target, id) -> linkRels.append("<Relationship Id=\"").append(id).append("\" Type=\"").append(R)
                 .append("/hyperlink\" Target=\"").append(escape(target)).append("\" TargetMode=\"External\"/>"));
@@ -213,6 +295,7 @@ public final class DocxAdapter {
             parts.put("[Content_Types].xml", contentTypes.replace("</Types>", "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/></Types>"));
             parts.put("word/_rels/document.xml.rels", wordRels.replace("</Relationships>", "<Relationship Id=\"rSettings\" Type=\"" + reltype + "settings\" Target=\"settings.xml\"/></Relationships>"));
         }
+        parts.putAll(regionParts);
         Map<String, byte[]> bytes = new LinkedHashMap<>();
         for (var entry : parts.entrySet()) {
             bytes.put(entry.getKey(), entry.getValue().getBytes(StandardCharsets.UTF_8));
@@ -331,11 +414,26 @@ public final class DocxAdapter {
         xml.append("</w:num>");
     }
 
-    private static void section(StringBuilder xml, Section section) {
+    private static String regionContentType(String name, String kind) {
+        return "<Override PartName=\"/word/" + name + ".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml." + kind + "+xml\"/>";
+    }
+    private static String regionRelationship(String name, String kind) {
+        return "<Relationship Id=\"" + name + "\" Type=\"" + R + "/" + kind + "\" Target=\"" + name + ".xml\"/>";
+    }
+    private static void section(StringBuilder xml, Section section, String header, String footer) {
         var s = section.pageSettings(); var m = s.margins();
-        xml.append("<w:sectPr od:id=\"").append(escape(section.id())).append("\"><w:type w:val=\"nextPage\"/><w:pgSz w:w=\"").append(twips(s.size().width()))
-                .append("\" w:h=\"").append(twips(s.size().height())).append("\"/><w:pgMar w:top=\"").append(twips(m.top())).append("\" w:right=\"")
-                .append(twips(m.right())).append("\" w:bottom=\"").append(twips(m.bottom())).append("\" w:left=\"").append(twips(m.left())).append("\"/>");
+        var h = section.pageRegions().header(); var f = section.pageRegions().footer();
+        xml.append("<w:sectPr od:id=\"").append(escape(section.id())).append("\">");
+        if (!header.isEmpty()) {
+            xml.append("<w:headerReference w:type=\"default\" r:id=\"").append(header).append("\"/>")
+                    .append("<w:footerReference w:type=\"default\" r:id=\"").append(footer).append("\"/>");
+        }
+        xml.append("<w:type w:val=\"nextPage\"/><w:pgSz w:w=\"").append(twips(s.size().width()))
+                .append("\" w:h=\"").append(twips(s.size().height())).append("\"/><w:pgMar w:top=\"")
+                .append(twips(m.top() + h.height() + h.gap())).append("\" w:right=\"").append(twips(m.right()))
+                .append("\" w:bottom=\"").append(twips(m.bottom() + f.height() + f.gap())).append("\" w:left=\"").append(twips(m.left()));
+        if (!header.isEmpty()) { xml.append("\" w:header=\"").append(twips(m.top())).append("\" w:footer=\"").append(twips(m.bottom())); }
+        xml.append("\"/>");
         if (section.firstPageNumber() > 0) { xml.append("<w:pgNumType w:start=\"").append(section.firstPageNumber()).append("\"/>"); }
         xml.append("</w:sectPr>");
     }
@@ -481,7 +579,10 @@ public final class DocxAdapter {
         if (!parts.containsKey("[Content_Types].xml") || !parts.containsKey("word/document.xml")) { throw new IOException("DOCX document parts are missing"); }
         List<Diagnostic> diagnostics = new ArrayList<>();
         Element relations = parts.containsKey("word/_rels/document.xml.rels") ? parse(parts.get("word/_rels/document.xml.rels")) : null;
-        var images = new DocxImages.Reader(parts, relations);
+        var decoded = new HashMap<String, com.mirakyux.export4j.model.ImageResource>();
+        var images = new DocxImages.Reader(parts, relations, decoded);
+        var semanticBudget = new DocxCells.Budget(limits);
+        var regionReader = new DocxPageRegions(parts, relations, regionGeometry, policy, diagnostics, semanticBudget, decoded, defaultFieldWidth);
         for (var entry : parts.entrySet()) {
             String part = entry.getKey();
             if (part.toLowerCase(Locale.ROOT).contains("vbaproject")) { throw new IOException("macro parts are unsupported"); }
@@ -490,7 +591,7 @@ public final class DocxAdapter {
                 if (part.endsWith(".rels")) {
                     for (var relation : children(root)) {
                         if ("External".equals(relation.getAttribute("TargetMode"))) {
-                            if (part.equals("word/_rels/document.xml.rels") && relation.getAttribute("Type").equals(R + "/hyperlink")) {
+                            if ((part.equals("word/_rels/document.xml.rels") || regionReader.contains(part)) && relation.getAttribute("Type").equals(R + "/hyperlink")) {
                                 new com.mirakyux.export4j.model.ExternalDestination(relation.getAttribute("Target"));
                             } else { loss(policy, diagnostics, part, "Relationship", "external relationship is not loaded"); }
                         }
@@ -504,7 +605,12 @@ public final class DocxAdapter {
                 }
                 if (part.equals("word/styles.xml")) { validateStyles(root, policy, diagnostics); }
             }
-            if (part.startsWith("word/") && !images.contains(part) && !Set.of("word/document.xml", "word/styles.xml", "word/numbering.xml", "word/settings.xml", "word/fontTable.xml", "word/webSettings.xml", "word/_rels/document.xml.rels").contains(part)) {
+            if (part.equals("word/settings.xml")) {
+                var settingsRoot = parse(entry.getValue());
+                var even = child(settingsRoot, "evenAndOddHeaders");
+                if (enabled(even)) { loss(policy, diagnostics, part, "evenAndOddHeaders", "alternating page regions are unsupported"); }
+            }
+            if (part.startsWith("word/") && !images.contains(part) && !regionReader.contains(part) && !Set.of("word/document.xml", "word/styles.xml", "word/numbering.xml", "word/settings.xml", "word/fontTable.xml", "word/webSettings.xml", "word/_rels/document.xml.rels").contains(part)) {
                 loss(policy, diagnostics, part, "part", "unsupported document part");
             }
         }
@@ -513,8 +619,7 @@ public final class DocxAdapter {
         validateMarkup(root, policy, diagnostics);
         var main = child(root, "body");
         if (main == null) { throw new IOException("DOCX body is missing"); }
-        var semanticBudget = new DocxCells.Budget(limits);
-        var ids = DocxCells.index(main, semanticBudget);
+        var ids = DocxCells.index(main, semanticBudget, regionReader.usedIds(), "");
         DocxNumbering.Index numbers = parts.containsKey("word/numbering.xml")
                 ? DocxNumbering.read(parse(parts.get("word/numbering.xml")), limits, policy, diagnostics) : new DocxNumbering.Index(Map.of(), Set.of());
         var fields = new DocxFields.Reader(main, ids, policy, diagnostics, defaultFieldWidth, numbers.levels());
@@ -532,14 +637,14 @@ public final class DocxAdapter {
         for (var element : children(main)) {
             if (!W.equals(element.getNamespaceURI())) { continue; }
             if (element.getLocalName().equals("sectPr")) {
-                sections.add(readSection(element, sections.size(), blocks)); blocks = new ArrayList<>();
+                sections.add(regionReader.attach(readSection(element, sections.size(), blocks), element)); blocks = new ArrayList<>();
             } else if (element.getLocalName().equals("p")) {
                 String id = ids.get(element);
                 if (!element.getAttributeNS(OD, "boundary").equals("true")) {
                     blocks.add(readParagraph(element, id, numbers, hyperlinks, images, fields, policy, diagnostics, semanticBudget));
                 }
                 var sect = child(child(element, "pPr"), "sectPr");
-                if (sect != null) { sections.add(readSection(sect, sections.size(), blocks)); blocks = new ArrayList<>(); }
+                if (sect != null) { sections.add(regionReader.attach(readSection(sect, sections.size(), blocks), sect)); blocks = new ArrayList<>(); }
             } else if (element.getLocalName().equals("tbl")) {
                 blocks.add(readTable(element, ids, numbers, hyperlinks, images, fields, policy, diagnostics, semanticBudget, 1));
             }
@@ -554,7 +659,7 @@ public final class DocxAdapter {
         catch (IllegalArgumentException failure) { throw new IOException("invalid imported DOCX semantics", failure); }
     }
 
-    private static Block readParagraph(Element p, String id, DocxNumbering.Index numbers, Map<String, String> hyperlinks, DocxImages.Reader images, DocxFields.Reader fields, Policy policy, List<Diagnostic> diagnostics, DocxCells.Budget budget) throws IOException {
+    static Block readParagraph(Element p, String id, DocxNumbering.Index numbers, Map<String, String> hyperlinks, DocxImages.Reader images, DocxFields.Reader fields, Policy policy, List<Diagnostic> diagnostics, DocxCells.Budget budget) throws IOException {
         fields.normalize(p);
         var pr = child(p, "pPr");
         var f = format(pr);
@@ -682,7 +787,7 @@ public final class DocxAdapter {
                 position == 0 ? 0 : -position / 2, child(pr, "u") != null && !value(child(pr, "u"), "single").equals("none"), enabled(child(pr, "strike")));
     }
 
-    private static Table readTable(Element table, Map<Element, String> ids, DocxNumbering.Index numbers,
+    static Table readTable(Element table, Map<Element, String> ids, DocxNumbering.Index numbers,
             Map<String, String> hyperlinks, DocxImages.Reader images, DocxFields.Reader fields,
             Policy policy, List<Diagnostic> diagnostics, DocxCells.Budget budget, int depth) throws IOException {
         if (depth > 2) { throw new IOException("DOCX semantic table nesting exceeds two levels"); }
@@ -989,7 +1094,7 @@ public final class DocxAdapter {
         return result;
     }
 
-    private static Element parse(byte[] bytes) throws IOException {
+    static Element parse(byte[] bytes) throws IOException {
         try {
             var factory = DocumentBuilderFactory.newInstance(); factory.setNamespaceAware(true); factory.setXIncludeAware(false); factory.setExpandEntityReferences(false);
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true); factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -1005,7 +1110,7 @@ public final class DocxAdapter {
         } catch (javax.xml.parsers.ParserConfigurationException | SAXException failure) { throw new IOException("invalid or unsafe DOCX XML", failure); }
     }
 
-    private static void validateMarkup(Element element, Policy policy, List<Diagnostic> diagnostics) throws IOException {
+    static void validateMarkup(Element element, Policy policy, List<Diagnostic> diagnostics) throws IOException {
         String name = element.getLocalName();
         if (W.equals(element.getNamespaceURI())) { validateStructure(element, policy, diagnostics); }
         // DrawingML is validated while reading the image so ALLOW_LOSS can omit it with a diagnostic.
@@ -1015,7 +1120,8 @@ public final class DocxAdapter {
             case "spacing" -> Set.of("line", "lineRule", "before", "after");
             case "ind" -> Set.of("left", "firstLine", "hanging");
             case "pgSz" -> Set.of("w", "h", "orient");
-            case "pgMar" -> Set.of("top", "right", "bottom", "left");
+            case "pgMar" -> Set.of("top", "right", "bottom", "left", "header", "footer");
+            case "headerReference", "footerReference" -> Set.of("type");
             case "pgNumType" -> Set.of("start");
             case "br", "proofErr" -> Set.of("type");
             case "gridCol" -> Set.of("w");
@@ -1058,8 +1164,10 @@ public final class DocxAdapter {
         boolean supported = switch (element.getLocalName()) {
             case "document" -> element.getParentNode() instanceof org.w3c.dom.Document;
             case "body" -> parent.equals("document");
-            case "tbl" -> parent.equals("body") || parent.equals("tc");
-            case "p" -> parent.equals("body") || parent.equals("tc");
+            case "hdr", "ftr" -> element.getParentNode() instanceof org.w3c.dom.Document;
+            case "headerReference", "footerReference" -> parent.equals("sectPr");
+            case "tbl" -> Set.of("body", "tc", "hdr", "ftr").contains(parent);
+            case "p" -> Set.of("body", "tc", "hdr", "ftr").contains(parent);
             case "tr", "tblPr", "tblGrid" -> parent.equals("tbl");
             case "tc", "trPr" -> parent.equals("tr");
             case "tcPr" -> parent.equals("tc");

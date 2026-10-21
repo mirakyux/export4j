@@ -68,4 +68,4 @@ build/verification/python-phase13/Scripts/python.exe scripts/verify_xml_page_set
 
 独立检查覆盖 PDF MediaBox、实际文字／表格的非对称正文边界、表头重复和源行唯一性、SVG 逐页尺寸与堆叠、标准 OOXML `pgSz`／`pgMar`，并双渲染全部样例与隔离调用方页面。DOCX 原生尺寸为整数 twip（1/20 pt），读回按该精度量化，不承诺与原始浮点值完全相等或与 PDF 同分页。
 
-首批仅一个全局页面配置；XML 分节纸张、页眉页脚、默认文字角色／颜色、完整主题定义、相对单位及 CSS `@page` 仍开放。A3／A5 等可用显式宽高，不增加未定义的纸张名称。字体文件继续由调用方显式注册。
+根页面配置可由各节局部覆盖，见[XML 分节](xml-sections-api.md)；[固定页眉页脚](xml-page-regions-api.md)及[分域默认角色／颜色](xml-text-defaults-api.md)已有独立入口。完整主题定义、相对单位及 CSS `@page` 仍开放。A3／A5 等可用显式宽高，不增加未定义的纸张名称。字体文件继续由调用方显式注册。

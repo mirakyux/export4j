@@ -11,6 +11,7 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-docx")
     implementation("com.mirakyux.export4j:export4j-adapter-template")
     implementation("com.mirakyux.export4j:export4j-adapter-pdf")
+    implementation("com.mirakyux.export4j:export4j-adapter-web")
 }
 application { mainClass.set("consumer.Consumer") }
 dependencyLocking { lockAllConfigurations() }

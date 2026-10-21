@@ -5,7 +5,7 @@ Java 文档排版与生成引擎
 
 **English** | [简体中文](README.zh-CN.md)
 
-Export4j is an open-source Java engine for generating reports and structured documents. Write documents with a fluent Java API or offline XML templates, then use a shared layout engine to produce PDF, SVG and PNG. A separate DOCX adapter maps the semantic document model to a supported OOXML subset.
+Export4j is an open-source Java engine for generating reports and structured documents. Write documents with a fluent Java API or offline XML templates, then use a shared layout engine to produce PDF, SVG and PNG. Separate adapters map the semantic model to a DOCX subset, self-contained HTML and CommonMark/GFM Markdown.
 
 **Early development:** no stable artifacts have been published, and APIs may change. Supported PDF reports and dense static forms are ready for scoped trials; see the [readiness assessment](docs/readiness-assessment.md) and [capability matrix](docs/capabilities-api.md) for the evidence and limits.
 
@@ -19,6 +19,7 @@ Export4j is an open-source Java engine for generating reports and structured doc
 - [Getting started](#getting-started)
 - [Java example](#java-example)
 - [XML templates](#xml-templates)
+- [HTML and Markdown export](#html-and-markdown-export)
 - [Formats and limitations](#formats-and-limitations)
 - [Roadmap](#roadmap)
 - [Architecture and modules](#architecture-and-modules)
@@ -38,8 +39,8 @@ Export4j is an open-source Java engine for generating reports and structured doc
 | Tables | Repeated headers, supported automatic column widths, row/column spans, explicit row splitting, multi-paragraph cells and two-level atomic nested tables |
 | Images and graphics | Inline PNG/JPEG, vector paths, shapes, watermarks and a restricted offline SVG input subset |
 | Navigation and forms | Contents, bookmarks, links, comments, page/reference fields, continued footnotes, static form components and four basic editable PDF field types |
-| Templates | Offline XML with variables, conditions, loops, dynamic rows, themes, static page settings, flat includes and fields; strict lightweight Markdown |
-| Output | PDF, self-contained SVG, PNG pages/ZIP and a semantic DOCX subset |
+| Templates | Offline XML with variables, conditions, loops, dynamic rows, themes, static page settings, image/table headers/footers, sections, flat includes and fields; strict lightweight Markdown |
+| Output | PDF, self-contained SVG, PNG pages/ZIP, a semantic DOCX subset, HTML and Markdown |
 | PDF processing | Bounded static-page inspection, text extraction, page selection and merge; AES-256 output, a PDF/A-2b subset and an external detached CMS signing callback |
 | Large tables and execution | Single-pass text/rich-text table sources, synchronous page output, resource budgets, cancellation, timeouts, structured diagnostics and atomic path writes |
 
@@ -72,6 +73,9 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java authoring, typography and semantic DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML report templates and data binding |
+| `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | Themed XML headers/footers and final page numbers, including contents |
+| `:examples:xmlSections` | `examples/build/xml-sections/` | Image/table page bands, section paper/numbering and strict native DOCX round trip |
+| `:examples:webExports` | `examples/build/web-exports/` | HTML/Markdown, embedded images and per-feature error/warn/ignore policies |
 | `:examples:production` | `examples/build/production/` | Pagination, columns, wrapping, tables and multiple formats |
 | `:examples:staticForms` | `examples/build/static-forms/` | Dense static forms and vector controls |
 | `:examples:streamingTable` | `examples/build/streaming-table/` | Single-pass large-table output |
@@ -144,7 +148,27 @@ Keep report structure in XML and supply data, fonts, images and output configura
 
 Templates compile to the existing document model. Resources are explicitly registered, all branches are checked at compile time, and the compiler does not fetch files or network resources. Unknown syntax and unsafe XML are rejected.
 
+XML supports image/table headers and footers with independent themes and final page fields. Use `template.renderWithPageRegions(data)` for a uniform document, or `template.renderSections(data)` for per-section paper, numbering and inherited or overridden bands. Both work with `engine.export(document)` and native DOCX header/footer export. See [page regions](docs/xml-page-regions-api.md), [sections](docs/xml-sections-api.md) and [DOCX page regions](docs/docx-page-regions-api.md).
+
 See the [XML guide](docs/xml-template-api.md), [page settings](docs/xml-page-settings-api.md), [report template](examples/src/main/resources/templates/report.xml) and [complete Java call](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java).
+
+## HTML and Markdown export
+
+Add `com.mirakyux.export4j:export4j-adapter-web` with the project BOM. These adapters use the semantic model directly and need no browser to generate files:
+
+```java
+new HtmlAdapter().export(document).to(Path.of("build/report.html"));
+var policy = ExportPolicy.builder()
+        .defaultAction(UnsupportedAction.WARN)
+        .on(ExportFeature.CUSTOM_BLOCK, UnsupportedAction.ERROR)
+        .build();
+var result = MarkdownAdapter.builder().policy(policy).build()
+        .export(document).to(Path.of("build/report.md"));
+```
+
+Import these adapter types from `com.mirakyux.export4j.adapter.web`; `Path` is `java.nio.file.Path`. The default action is `ERROR`. Choose `WARN` for documented fallbacks with structured diagnostics, or `IGNORE` for the same fallback without a warning; override individual features as needed. Invalid input, limits, cancellation and I/O still fail. See the [complete support/fallback matrix](docs/web-export-api.md).
+
+HTML preserves semantic styles, embedded images and merged/nested tables. Markdown exports CommonMark/GFM content, with explicit policies for unsupported geometry and table structure. Reader layout determines wrapping and pagination; some readers disable embedded data images or generated inline HTML. This output is separate from the strict Markdown template input grammar. Run `:examples:webExports` for both targets.
 
 ## Formats and limitations
 
@@ -152,8 +176,10 @@ See the [XML guide](docs/xml-template-api.md), [page settings](docs/xml-page-set
 | --- | --- |
 | PDF | Primary report output, supported navigation/forms/security features, and a separate restricted static-page adapter |
 | SVG / PNG | Static output from the shared display list; nonempty interactive data is rejected |
-| DOCX | Explicit semantic subset, including supported text, tables, images, numbering and fields; unsupported content is rejected or reported according to policy |
-| XML / Markdown | Offline authoring inputs with defined grammars and budgets; XML is not HTML/CSS |
+| DOCX | Explicit semantic subset, including supported text, tables, images, numbering, fields and default section headers/footers; unsupported content is rejected or reported according to policy |
+| HTML | Semantic HTML5 with inline CSS, embedded images, merged/nested tables and explicit loss policies |
+| Markdown output | CommonMark/GFM content; unsupported geometry/structure follows error/warn/ignore policies |
+| XML / Markdown input | Offline authoring inputs with defined grammars and budgets; XML is not HTML/CSS |
 
 - General Word documents are not guaranteed to round-trip without loss or paginate identically to PDF.
 - Complex-text coverage, text extraction, search and selection depend on the tested scripts and readers. Full OpenType, Unicode segmentation and PDF/UA compliance are not claimed.
@@ -166,7 +192,7 @@ See the [XML guide](docs/xml-template-api.md), [page settings](docs/xml-page-set
 
 The following areas remain open; they are not current features:
 
-- Complete font-role/color cascading, page-region themes and XML headers/footers.
+- Complete font-role/color cascading, additional page-region variants and XML background/foreground declarations.
 - Continuous rich-text components and broader recursive table-cell pagination.
 - Broader complex-script and reader interoperability, including search and text selection.
 - A defined HTML/CSS input subset and a visual template designer.
@@ -179,6 +205,7 @@ Priorities, partial implementations and acceptance criteria are maintained in th
 ```text
 Document Model → Layout Engine → Layout IR → Display List → PDF / SVG / Raster
 DOCX / OOXML  ↔ DOCX Adapter   ↔ Document Model
+Document Model → Web Adapter → HTML / Markdown
 ```
 
 The layout engine owns line breaking and pagination. Backends consume the final drawing instructions; the DOCX adapter works directly with document semantics.
@@ -191,7 +218,7 @@ The layout engine owns line breaking and pagination. Backends consume the final 
 | `export4j-layout-model`, `export4j-layout-core` | Layout IR, measurement, regions and pagination |
 | `export4j-components` | Fluent authoring, composed components and `DocumentEngine` |
 | `export4j-backend-pdf`, `export4j-backend-svg`, `export4j-backend-raster` | Output backends |
-| `export4j-adapter-docx`, `export4j-adapter-template`, `export4j-adapter-pdf` | Format and template adapters |
+| `export4j-adapter-docx`, `export4j-adapter-template`, `export4j-adapter-pdf`, `export4j-adapter-web` | Format and template adapters |
 | `export4j-bom`, `examples` | Version alignment and executable examples |
 
 The Java root package and Gradle group are `com.mirakyux.export4j`. See the [architecture](docs/architecture.md) and [ADRs](docs/adr/README.md) for dependency boundaries and design decisions.
@@ -208,7 +235,7 @@ Most detailed guides are currently written in Chinese.
 | Tables | [Semantic tables](docs/table-api.md) · [Block cells](docs/block-cells-api.md) · [Streaming tables](docs/streaming-table-api.md) |
 | Forms and navigation | [Static forms](docs/static-forms-api.md) · [Editable forms](docs/form-styles-api.md) · [Fields](docs/inline-fields-api.md) |
 | Templates | [XML](docs/xml-template-api.md) · [Markdown](docs/markdown-template-api.md) · [XML themes](docs/xml-themes-api.md) |
-| Adapters | [DOCX fields](docs/docx-fields-api.md) · [Static PDF](docs/pdf-adapter-api.md) |
+| Adapters | [HTML/Markdown export](docs/web-export-api.md) · [DOCX page regions](docs/docx-page-regions-api.md) · [DOCX fields](docs/docx-fields-api.md) · [Static PDF](docs/pdf-adapter-api.md) |
 | Engineering | [Development](docs/development.md) · [Verification records](docs/verification) · [Release process](docs/releasing.md) |
 
 ## Build and verification

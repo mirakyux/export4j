@@ -68,9 +68,11 @@ final class DocxImages {
         private final Map<String, byte[]> parts;
         private final Map<String, String> targets = new HashMap<>();
         private final Map<String, String> hyperlinks = new HashMap<>();
-        private final Map<String, ImageResource> decoded = new HashMap<>();
-        Reader(Map<String, byte[]> parts, Element relationships) throws IOException {
+        private final Map<String, ImageResource> decoded;
+        Reader(Map<String, byte[]> parts, Element relationships) throws IOException { this(parts, relationships, new HashMap<>()); }
+        Reader(Map<String, byte[]> parts, Element relationships, Map<String, ImageResource> decoded) throws IOException {
             this.parts = parts;
+            this.decoded = decoded;
             if (relationships == null) { return; }
             Set<String> ids = new java.util.HashSet<>();
             for (var relation : elements(relationships)) {

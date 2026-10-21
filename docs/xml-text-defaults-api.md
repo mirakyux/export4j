@@ -43,4 +43,4 @@ var compiler = XmlTemplate.builder().theme(theme)
 
 `theme`、`bodyFormat` 和 `cellFormat` 不重置 `TextDefaults`，这两类配置顺序独立。局部 `size` 和 `line-height` 仍按既有规则解析，外观不会自动扩大行框。全部分支及引用片段在编译时检查，绑定数据仅作文字；原有输入／展开／绑定预算和取消契约保持。
 
-本单元没有给 XML 增加页眉页脚或完整 CSS 级联，也没有把默认外观加入 `DocumentTheme`。静态页区可通过 Java 的[组件文字 API](component-text-api.md)配置。设计见 [ADR-0047](adr/0047-xml-text-defaults.md)，证据见[阶段四十](verification/phase-40-xml-text-defaults.md)。
+本单元的默认外观只作用于正文／标题／单元格，不提供完整 CSS 级联。后续[页区指南](xml-page-regions-api.md)提供 XML 页眉页脚及 `DocumentTheme.headerStyle/footerStyle`，两套默认值范围独立。Java 自定义页区也可通过[组件文字 API](component-text-api.md)配置。TextDefaults 设计见 [ADR-0047](adr/0047-xml-text-defaults.md)，证据见[阶段四十](verification/phase-40-xml-text-defaults.md)。

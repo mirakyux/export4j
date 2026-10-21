@@ -4,6 +4,7 @@
 com.mirakyux.export4j:export4j-adapter-docx:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
 com.mirakyux.export4j:export4j-adapter-pdf:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
 com.mirakyux.export4j:export4j-adapter-template:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-adapter-web:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
 com.mirakyux.export4j:export4j-backend-pdf:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
 com.mirakyux.export4j:export4j-backend-raster:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
 com.mirakyux.export4j:export4j-backend-svg:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath

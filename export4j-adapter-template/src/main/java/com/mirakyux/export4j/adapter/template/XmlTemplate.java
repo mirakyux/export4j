@@ -39,6 +39,9 @@ import com.mirakyux.export4j.model.PageBreak;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
+import com.mirakyux.export4j.model.PageRegion;
+import com.mirakyux.export4j.model.PageRegions;
+import com.mirakyux.export4j.model.PageRegionStyle;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
 import com.mirakyux.export4j.model.ParagraphFormat;
@@ -58,6 +61,11 @@ import com.mirakyux.export4j.adapter.template.TemplateException.Code;
  * Themes resolve complete defaults and static p/span style names during compilation, before data binding.
  * One optional first, empty page element overrides caller page settings with static point/pt/mm/cm/in lengths.
  * It is restricted to the main source; fragments, branches and repeated content cannot declare page settings.
+ * Optional main-source header/footer declarations follow page and precede body content. They contain fixed
+ * paragraphs/tables with explicit images and PAGE/PAGES fields; paragraphs use independent region defaults.
+ * Static root sections inherit root settings/regions, start on new pages and may override/clear bands.
+ * Use DocumentTemplate.renderSections for section declarations; body-only render never drops them.
+ * Templates with bands require DocumentTemplate.renderWithPageRegions(); render() refuses to discard them.
  * Numbered levels are static integers from 1 through 9, defaulting to 1; all branches are checked.
  * Parent-level completeness is validated after binding by component layout or DOCX export, not by this compiler.
  * Compilation throws {@link TemplateException}; rendering uses {@link DocumentTemplate.BindingException}.
@@ -326,7 +334,7 @@ public final class XmlTemplate {
                         if (!blockList || !namespace.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         content.addAll(include(child, depth + 1));
                     } else {
-                        boolean childList = blockList && child.name().equals("each")
+                        boolean childList = blockList && Set.of("each", "section", "header", "footer").contains(child.name())
                                 || conditional && (child.name().equals("then") || child.name().equals("else"));
                         boolean childConditional = blockList && child.name().equals("if");
                         content.add(element(child, depth + 1, childList, childConditional, namespace, localIds, include));
@@ -459,10 +467,81 @@ public final class XmlTemplate {
                 settings = page(content.getFirst());
                 content = content.subList(1, content.size());
             }
-            return new DocumentTemplate(metadata, settings, nodes(content), bindingLimits);
+            var header = PageRegion.EMPTY;
+            var footer = PageRegion.EMPTY;
+            boolean hasHeader = false, hasFooter = false;
+            int start = 0;
+            while (start < content.size()) {
+                var element = content.get(start);
+                if (element.name().equals("header") && !hasHeader) {
+                    header = region(element, theme.headerStyle()); hasHeader = true;
+                } else if (element.name().equals("footer") && !hasFooter) {
+                    footer = region(element, theme.footerStyle()); hasFooter = true;
+                } else { break; }
+                start++;
+            }
+            var regions = new PageRegions(header, footer);
+            var body = content.subList(start, content.size());
+            if (body.stream().anyMatch(element -> element.name().equals("section"))) {
+                var sections = new ArrayList<DocumentTemplate.SectionNode>();
+                var sectionIds = new HashSet<String>();
+                for (var element : body) {
+                    requireName(element, "section");
+                    if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
+                    attributes(element, Set.of("id", "first-page-number"));
+                    String sectionId = literalId(element, "id");
+                    if (!sectionIds.add(sectionId)) { throw error(element, Code.INVALID_VALUE); }
+                    int first = element.attributes().containsKey("first-page-number") ? integer(element, "first-page-number") : 0;
+                    if (first < 0) { throw error(element, Code.INVALID_VALUE); }
+                    var children = children(element);
+                    var sectionSettings = settings;
+                    int index = 0;
+                    if (!children.isEmpty() && children.getFirst().name().equals("page")) {
+                        sectionSettings = page(children.getFirst(), settings); index++;
+                    }
+                    var sectionHeader = header;
+                    var sectionFooter = footer;
+                    boolean foundHeader = false, foundFooter = false;
+                    while (index < children.size()) {
+                        var child = children.get(index);
+                        if (child.name().equals("header") && !foundHeader) {
+                            sectionHeader = region(child, theme.headerStyle()); foundHeader = true;
+                        } else if (child.name().equals("footer") && !foundFooter) {
+                            sectionFooter = region(child, theme.footerStyle()); foundFooter = true;
+                        } else { break; }
+                        index++;
+                    }
+                    sections.add(new DocumentTemplate.SectionNode(sectionId, sectionSettings,
+                            nodes(children.subList(index, children.size())), first, new PageRegions(sectionHeader, sectionFooter)));
+                }
+                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections);
+            }
+            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions);
         }
 
-        private PageSettings page(Element element) {
+        private PageRegion region(Element element, PageRegionStyle defaults) {
+            if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
+            attributes(element, Set.of("height", "gap"));
+            required(element, "height");
+            for (var value : element.attributes().values()) {
+                if (value.contains("${")) { throw error(element, Code.INVALID_EXPRESSION); }
+            }
+            var blocks = new ArrayList<Block>();
+            for (var child : children(element)) {
+                if (child.name().equals("p")) {
+                    blocks.add(validated(child, () -> block(child, defaults.format(),
+                            new TextDefaults(defaults.fontRole(), defaults.rgb()))));
+                } else if (child.name().equals("table")) {
+                    blocks.add(validated(child, Code.INVALID_STRUCTURE, () -> tableParts(child, 1).value()));
+                } else { throw error(child, Code.UNSUPPORTED_ELEMENT); }
+            }
+            return validated(element, () -> new PageRegion(length(element, "height", 0), length(element, "gap", 0), blocks));
+        }
+
+        private PageSettings page(Element element) { return page(element, pageSettings); }
+
+        private PageSettings page(Element element, PageSettings inherited) {
+            if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
             attributes(element, Set.of("size", "width", "height", "orientation", "margin",
                     "margin-top", "margin-right", "margin-bottom", "margin-left"));
             empty(element);
@@ -475,7 +554,7 @@ public final class XmlTemplate {
                 throw error(element, Code.INVALID_STRUCTURE);
             }
             return validated(element, () -> {
-                var size = pageSettings.size();
+                var size = inherited.size();
                 if (element.attributes().containsKey("size")) {
                     size = switch (element.attributes().get("size")) {
                         case "A4" -> PageSize.A4;
@@ -494,7 +573,7 @@ public final class XmlTemplate {
                         default -> throw error(element, Code.INVALID_VALUE);
                     };
                 }
-                var margins = pageSettings.margins();
+                var margins = inherited.margins();
                 if (element.attributes().containsKey("margin")) {
                     margins = PageMargins.uniform(length(element, "margin", 0));
                 }
@@ -818,12 +897,23 @@ public final class XmlTemplate {
         for (var part : root.content()) {
             if (part instanceof Element element) { first = element; break; }
         }
+        var allowedPages = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Element, Boolean>());
+        if (main && first != null) { allowedPages.add(first); }
+        if (main) {
+            for (var part : root.content()) {
+                if (part instanceof Element section && section.name().equals("section")) {
+                    for (var child : section.content()) {
+                        if (child instanceof Element element) { allowedPages.add(element); break; }
+                    }
+                }
+            }
+        }
         var pending = new ArrayDeque<Element>();
         pending.push(root);
         while (!pending.isEmpty()) {
             ExecutionContext.checkpoint();
             var element = pending.pop();
-            if (element.name().equals("page") && (!main || element != first)) {
+            if (element.name().equals("page") && !allowedPages.contains(element)) {
                 throw error(element, Code.INVALID_STRUCTURE);
             }
             for (int i = element.content().size() - 1; i >= 0; i--) {

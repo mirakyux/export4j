@@ -3,7 +3,7 @@
 - 保持 `Document Model → Layout Engine → Layout IR → Display List → Backend` 的职责分离。
 - 文档模型只表达语义和项目自有值类型，不包含 PDF 对象编号、PDFBox 类型或后端句柄。
 - 测量与布局阶段不写入目标文件；后端不得再次决定换行和分页。
-- DOCX 导入、导出直接使用文档模型，不强制经过 Display List。
+- DOCX 导入、导出及 HTML／Markdown 导出直接使用文档模型，不强制经过 Display List。
 - PDFBox 文档与绘制库只进入 PDF 后端与 PDF 适配器；FontBox 及其 I/O 基础库可封装在字体模块内部，公共签名不得暴露它们的类型。DOCX 专用实现依赖只进入 DOCX 适配器。专用测试可依赖它们验证结果。
 - 公共 API、公共异常、SPI 和传递暴露的返回类型不得泄漏第三方实现类型。
 - 模块依赖保持单向、无环。核心模块不反向依赖后端、适配器、示例或测试工具。

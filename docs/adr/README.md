@@ -64,3 +64,6 @@
 | 0033 | [语义跨行合并与标准 vMerge](0033-semantic-row-spans.md) | 已采纳；连通行组原子分页，纵向拆组及递归格独立 |
 | 0034 | [有界块格与原子内表](0034-atomic-block-cells.md) | 已采纳；两层表深、共享全树预算、原子父组及标准尾段 |
 | 0035 | [XML 有界块级格内容](0035-xml-block-cells.md) | 已采纳；直接段／内表顺序、全分支检查及复制引用 |
+| 0048 | [XML 固定页眉页脚与独立主题](0048-xml-page-regions.md) | 已采纳；模型声明、共享绑定和最终页区组合 |
+| 0049 | [语义页区、XML 分节与 DOCX 映射](0049-semantic-page-regions-and-sections.md) | 已采纳；有序图文／表格、共享绑定、固定几何与标准页区关系 |
+| 0050 | [语义 HTML／Markdown 导出与动作策略](0050-semantic-web-exports.md) | 已采纳；模型直出、逐功能损失、共享预算及原子输出 |

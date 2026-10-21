@@ -27,6 +27,14 @@ public record SectionedDocument(DocumentMetadata metadata, List<Section> section
         if (sections.isEmpty() || sections.stream().anyMatch(section -> !ids.add(section.id()))) {
             throw new IllegalArgumentException("sections must be nonempty and uniquely named");
         }
-        new Document(metadata, sections.getFirst().pageSettings(), sections.stream().flatMap(section -> section.blocks().stream()).toList());
+        var blocks = new java.util.ArrayList<Block>();
+        var headers = new HashSet<PageRegion>();
+        var footers = new HashSet<PageRegion>();
+        for (var section : sections) {
+            blocks.addAll(section.blocks());
+            if (headers.add(section.pageRegions().header())) { blocks.addAll(section.pageRegions().header().blocks()); }
+            if (footers.add(section.pageRegions().footer())) { blocks.addAll(section.pageRegions().footer().blocks()); }
+        }
+        SemanticTree.validateUniqueIds(blocks);
     }
 }

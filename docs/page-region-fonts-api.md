@@ -156,3 +156,5 @@ ComponentDocumentLayout layout(
 ~~~
 
 行为回归见 [PageRegionFontRolesTest](../export4j-components/src/test/java/com/mirakyux/export4j/components/PageRegionFontRolesTest.java)，设计范围见 [ADR-0044](adr/0044-page-region-font-roles.md)。独立输出、隔离调用方、逐页渲染及未验证范围见[阶段三十七验收](verification/phase-37-page-region-fonts.md)。
+
+后续语义页区的 XML 分节及 DOCX 映射见[页区指南](xml-page-regions-api.md)、[分节指南](xml-sections-api.md)和[阶段四十二](verification/phase-42-sections-and-docx-regions.md)。本文原有 Java PageTemplate 字体角色契约保持。
