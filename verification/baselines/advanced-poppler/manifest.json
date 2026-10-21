@@ -1,0 +1,14 @@
+{
+  "pages": 7,
+  "dpi": 96,
+  "tools": {
+    "python": "3.12.14",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "poppler": "pdftoppm version 26.07.0",
+    "pdfium": "153.0.7999.0",
+    "pypdf": "6.10.0",
+    "pypdfium2": "5.13.0",
+    "Pillow": "12.3.0"
+  },
+  "sourceSha256": "be5703a0223126d9c76c49a778aeefd5f7ed5397b77103cb96bf194e964e3ed0"
+}

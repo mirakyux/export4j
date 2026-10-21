@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "language": "zh-CN",
+  "root": ".agents/notes",
+  "lifecycles": ["implemented", "proposed", "rejected", "archived"],
+  "classes": ["architecture", "bug-fix", "feature", "process", "simplification", "testing"],
+  "noteFilePattern": "yyyy-mm-dd-topic.md",
+  "verification": {
+    "script": ".agents/scripts/verify_rules.py"
+  }
+}

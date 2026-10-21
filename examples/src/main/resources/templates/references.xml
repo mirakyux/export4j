@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored fictional data fixture. -->
+<document version="1" title="XML fields and links" author="Export4j example">
+  <heading id="opening" level="1" size="14" line-height="24">XML 字段与外链</heading>
+  <p id="overview" line-height="24">OPEN current=<page-number width="24"/> total=<page-count width="24"/> target=<page-reference target="closing" width="24"/> number=<number-reference target="review-step" width="24"/></p>
+  <p id="passive-links" line-height="24"><link href="https://example.com/report"><span color="#224488" underline="true">资料 ${title}</span></link> <link href="https://example.com/image"><image ref="mark" width="14" height="14" alt="Explicit linked marker"/></link></p>
+  <numbered id="review-step" list-id="steps" restart="3" line-height="24">核查记录 ${title}</numbered>
+  <rows id="records" items="records" as="record" row-split="true">
+    <columns><column width="84"/><column weight="1"/></columns>
+    <header><cell>HEADER page=<page-number width="24"/></cell><cell>total=<page-count width="24"/> target=<page-reference target="closing" width="24"/></cell></header>
+    <row><cell>${record.code}</cell><cell>${record.notes} <link href="https://example.com/cell">CELL-LINK</link></cell></row>
+  </rows>
+  <page-break/>
+  <p id="closing" line-height="24">TARGET-END current=<page-number width="24"/> total=<page-count width="24"/></p>
+</document>

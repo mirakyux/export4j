@@ -1,0 +1,23 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+com.mirakyux.export4j:export4j-adapter-docx:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-adapter-pdf:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-adapter-template:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-backend-pdf:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-backend-raster:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-backend-svg:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-bom:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-components:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-font-core:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-graphics-api:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-graphics-core:0.1.0-SNAPSHOT=runtimeClasspath
+com.mirakyux.export4j:export4j-layout-core:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-layout-model:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-model:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-text-core:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+commons-logging:commons-logging:1.4.0=runtimeClasspath
+org.apache.pdfbox:fontbox:3.0.8=runtimeClasspath
+org.apache.pdfbox:pdfbox-io:3.0.8=runtimeClasspath
+org.apache.pdfbox:pdfbox:3.0.8=runtimeClasspath
+empty=annotationProcessor

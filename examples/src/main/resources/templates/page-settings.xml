@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored synthetic report. -->
+<document version="1" title="${title}" author="Export4j synthetic example">
+  <page size="A4" margin="15mm" margin-top="20mm" margin-bottom="18mm" margin-left="22mm"/>
+  <heading level="1" size="16" line-height="24" space-before="0" space-after="8">${title}</heading>
+  <p space-after="8">Explicit paper and margins. <span role="bold" color="#224488">REGISTERED-BOLD</span></p>
+  <rows items="records" as="record">
+    <columns><column width="72"/><column weight="1"/></columns>
+    <header><cell>CODE</cell><cell>DESCRIPTION</cell></header>
+    <row><cell>${record.code}</cell><cell>${record.description}</cell></row>
+  </rows>
+  <p space-before="8">PAGE-SETTINGS-END</p>
+</document>

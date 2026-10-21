@@ -1,0 +1,33 @@
+.gradle/
+**/build/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+**/__pycache__/
+
+# Local editor, agent and verification state
+.vscode/
+.codex/
+.codegraph/
+.local/
+.cache/
+.venv/
+venv/
+*.py[cod]
+*.log
+*.hprof
+*.jfr
+
+# Local configuration and signing credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+gradle-local.properties
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore

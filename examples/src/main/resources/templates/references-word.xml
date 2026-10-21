@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; standard DOCX field and passive relationship fixture. -->
+<document version="1" title="XML native fields" author="Export4j example">
+  <p id="opening" line-height="24">WORD current=<page-number width="24"/> total=<page-count width="24"/> target=<page-reference target="closing" width="24"/> number=<number-reference target="review-step" width="24"/></p>
+  <p line-height="24"><link href="https://example.com/report">资料 ${title}</link> <link href="https://example.com/image"><image ref="mark" width="14" height="14" alt="Explicit linked marker"/></link></p>
+  <numbered id="review-step" list-id="steps" restart="3" line-height="24">核查记录 ${title}</numbered>
+  <page-break/>
+  <p id="closing" line-height="24">WORD-END current=<page-number width="24"/> total=<page-count width="24"/></p>
+</document>

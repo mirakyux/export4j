@@ -1,0 +1,90 @@
+Export4j
+
+This project uses the following third-party components. Their original license
+terms are preserved under third-party/licenses and inside dependency artifacts.
+
+The example distribution additionally bundles the following unmodified fonts
+under the SIL Open Font License 1.1. Original copyright and license texts are
+included alongside the fonts in assets/fonts (fonts/ in the example JAR).
+
+Liberation Sans:
+Digitized data copyright (c) 2010 Google Corporation
+with Reserved Font Names Arimo, Tinos and Cousine.
+Copyright (c) 2012 Red Hat, Inc. with Reserved Font Name Liberation.
+Regular from PDFBox: see LiberationSans-OFL.txt.
+Bold, Italic and BoldItalic from Liberation Fonts 2.1.5:
+see LiberationSans-2.1.5-OFL.txt.
+
+ZCOOL XiaoWei:
+Copyright 2018 The ZCOOL XiaoWei Project Authors
+(https://github.com/googlefonts/zcool-xiaowei/).
+See ZCOOLXiaoWei-OFL.txt.
+
+LXGW WenKai TC:
+Copyright 2024 The LXGW WenKai Project Authors
+(https://github.com/lxgw/LxgwWenkaiTC).
+See LXGWWenKaiTC-OFL.txt.
+
+Noto Naskh Arabic, Noto Sans Devanagari and Noto Sans Thai:
+Copyright 2018 The Noto Project Authors
+(https://github.com/notofonts/noto-fonts).
+See NotoNaskhArabic-OFL.txt.
+
+Source Sans 3:
+Copyright 2010-2022 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+Unmodified Source Sans 3.052R; see SourceSans3-OFL.txt.
+
+===== commons-logging:commons-logging:1.4.0 =====
+Apache Commons Logging
+Copyright 2001-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+===== org.apache.pdfbox:fontbox:3.0.8 =====
+Apache FontBox
+Copyright 2008-2026 The Apache Software Foundation
+
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+Based on source code contributed to the original FontBox project.
+Copyright (c) 2006-2007, www.fontbox.org
+
+Includes the Script Property (Scripts-10.0.0.txt)
+Copyright 2017 Unicode, Inc.
+
+===== org.apache.pdfbox:pdfbox-io:3.0.8 =====
+Apache PDFBox io
+Copyright 2002-2026 The Apache Software Foundation
+
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+===== org.apache.pdfbox:pdfbox:3.0.8 =====
+Apache PDFBox
+Copyright 2002-2026 The Apache Software Foundation
+
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+Based on source code contributed to the original PDFBox project.
+Copyright (c) 2002-2007, www.pdfbox.org
+
+Includes the Adobe Glyph List
+Copyright 1997, 1998, 2002, 2007, 2010 Adobe Systems Incorporated.
+
+Includes the Zapf Dingbats Glyph List
+Copyright 2002, 2010 Adobe Systems Incorporated.
+
+Includes the Bidi Mirroring Glyph Property (BidiMirroring-8.0.0.txt)
+Copyright 1991-2015 Unicode, Inc.
+
+Includes parts of TwelveMonkeys ImageIO
+Copyright 2008-2016 Harald Kuhr
+
+Includes the CMYK ICC-profile (CGATS001Compat-v2-micro.icc) 
+https://github.com/saucecontrol/Compact-ICC-Profiles
+Released to the public domain under the Creative Commons CC0 license by Clinton Ingram, saucecontrol
+   

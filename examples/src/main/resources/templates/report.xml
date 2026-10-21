@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored fixture with fictional report data. -->
+<document version="1" title="${report.title}" author="${report.author}">
+  <heading id="report-title" level="1" size="16" line-height="26" space-after="8">${report.title}</heading>
+  <p id="report-meta" space-after="6">报告期间：${report.period}；编制单位：${report.unit}。</p>
+  <p id="report-summary" line-height="22" space-after="6">${report.summary} <image ref="reviewMark" width="12" height="12" alt="蓝色巡检标记"/></p>
+  <if test="needsFollowUp">
+    <then>
+      <p id="follow-up" space-after="8"><span color="#224488" underline="true">处理结论：需按计划复查。</span> 发现事项已落实到责任人。</p>
+    </then>
+    <else>
+      <p id="no-follow-up" space-after="8">处理结论：本期无需追加复查。</p>
+    </else>
+  </if>
+  <heading level="2" size="12" line-height="22" space-after="4">本期重点事项</heading>
+  <each items="actions" as="action">
+    <bullet space-after="2">${action.text}</bullet>
+  </each>
+  <heading level="2" size="12" line-height="22" space-before="6" space-after="4">巡检记录与处理建议</heading>
+  <rows id="inspection-records" items="records" as="record" row-split="true">
+    <columns><column width="72"/><column weight="1"/></columns>
+    <header><cell>编号</cell><cell>巡检记录</cell></header>
+    <row><cell>${record.code}</cell><cell>${record.notes}</cell></row>
+  </rows>
+  <p id="report-close" line-height="22" space-before="8">复核说明：以上内容均为虚构演示，不作为实际业务结论。 <image ref="reviewMark" width="12" height="12" alt="蓝色巡检标记"/></p>
+</document>

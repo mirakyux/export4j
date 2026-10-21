@@ -1,0 +1,116 @@
+# 模板、复杂文本与受控导出
+
+XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-settings.md)验收：主根首个可选 `page` 支持纸张／成对宽高／方向／四边边距，页面长度支持 pt／mm／cm／in。未声明项保留 Java 默认；分节、页区及 XML 内完整主题仍开放，详见[页面指南](xml-page-settings-api.md)。
+
+[固定页区字体角色](page-region-fonts-api.md)保留引擎注册角色、缺字策略及最终页上下文。标准组件现在可用 [FontRoleScope／RichTextComponent](component-text-api.md) 直接选择字体组和编写固定富文本，无需自定义委托；延迟 SemanticTable 仍不能进入固定页区。完整主题及 XML 页区保持开放。
+
+[列表标记](list-markers-api.md)独立保存完整 InlineStyle，标准 DOCX 使用所选 level 的运行属性；[XML 文字默认值](xml-text-defaults-api.md)按正文／标题／单元格独立配置角色和颜色，显式局部覆盖、命名完整样式及嵌套格范围保持。验收分别见[阶段三十八](verification/phase-38-component-text.md)、[三十九](verification/phase-39-list-markers.md)及[四十](verification/phase-40-xml-text-defaults.md)。整体试用边界见[就绪评估](readiness-assessment.md)。
+
+当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 16 个模块。最初能力扩展的可编译样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)，其范围见[阶段五验收](verification/phase-5-capabilities.md)；后续扩展按各节所列验收判断。
+
+## 公共文本和字体
+
+默认 `ParagraphLayouter` 对组合字符、阿拉伯语、希伯来语等需要塑形的文本，以及静态 CFF 字体，使用显式物理字体的 JDK OpenType 布局。语义段落、富文本单元格、`FlowText`、页眉页脚、脚注和目录文本因此共享该能力。简单文字仍保持原有度量；需要对纯拉丁文字显式启用 kerning／连字时继续使用 `OpenTypeText`。
+
+塑形结果保存在 `TextLine.outlines()`，简单路径保存在 `runs()`，两者互斥。分页或自定义布局调整基线时使用 `atBaseline()`，不能只复制旧的六个字段。`minimumLineHeight(group, size)` 可查询兼容两种路径的行高下限。固定行距不足明确失败，不自动缩小字号。字形簇跨越不同富文本样式边界目前拒绝，调用方应让同一组合字符位于同一行内节点。
+
+字体组仍默认缺字报错；占位模式保留原字符范围并返回警告。一个字形簇必须由同一物理字体完整覆盖，不扫描系统字体。
+
+`JUSTIFY` 在布局阶段分配软换行内的空隙；`CJK_STRICT` 可选启用原文标点和不换行组合检查。标题与列表支持富文本和外链，模板与 DOCX 保留运行；常用 Builder、自动 ID、等宽文本表格和原子路径输出见[编写指南](authoring-api.md)。
+
+~~~java
+var member = FontCollectionLoader.load(collectionBytes, 1); // TTC/OTC，明确选择第二个成员
+var cff = TrueTypeFontLoader.load(otfBytes);                 // 静态 OTF/CFF 或 TTF
+~~~
+
+集合和提取成员分别受字节预算控制。可变字体、CFF2、竖排和彩色字体尚未支持。CFF 正文以轮廓绘制；PDF 可编辑字段需要显式 TrueType 字体。
+
+`TableCell.rich(inlines, cellFormat)` 保留真实字体角色、颜色、上下标、下划线和删除线。`InlineText(text, style, uri)` 增加被动外链，允许 HTTP、HTTPS、mailto，禁止脚本、文件链接和带用户信息的 HTTP URL。外链按最终行片段解析，包括跨页段落与表格；不获取链接内容。SVG／PNG 仍拒绝交互对象，调用方须显式提供无交互版本。
+
+## 业务模板
+
+外部文本入口提供[安全 XML 模板子集](xml-template-api.md)和[严格 Markdown](markdown-template-api.md)，由独立适配器编译到下列既有节点。XML 可声明固定宽字段、1～9 级十进制编号及被动图文外链；Markdown 面向标题／段落／一级条目和强调。未知内容明确拒绝，资源仅由调用方显式注册。它们不支持任意 HTML/CSS。
+
+[XML 多级编号](xml-numbering-api.md)复用既有父计数、重启与完整编号引用，each／include 保留列表身份及当前副本目标；全部分支检查静态层级，实际父完整性在布局／导出验证。[阶段三十五](verification/phase-35-xml-numbering.md)完成九级边界、原生 DOCX 规则及最终 PDF 检查；不扩展编号内字段／link／图片。
+
+XML 的[多段格／内表](xml-block-cells-api.md)直接映射既有两层原子块模型，Each／Rows 保留后代格式、来源及同副本引用；所有分支在编译阶段检查几何、深度和内容互斥，见[阶段二十八](verification/phase-28-xml-block-cells.md)。
+
+XML 可用[主题与静态名称](xml-themes-api.md)复用完整正文、六级标题及语义表默认值；`p`／`span` 显式属性最后覆盖，所有分支编译校验。主题不改变 XML body／cell 的独立配置范围，不提供 CSS，验收见[阶段三十一](verification/phase-31-xml-themes.md)。
+
+`DocumentTemplate(metadata, pageSettings, nodes, limits).render(data)` 返回完整语义文档，失败时不返回部分结果：
+
+| 节点 | 行为 |
+| --- | --- |
+| `ValueBlock(prototype)` | 替换段落、富文本、标题、列表和语义表格中的 `${customer.name}` 等变量 |
+| `When(path, yes, no)` | 路径必须是布尔值，只展开选中分支 |
+| `Each(path, variable, children)` | 遍历列表，变量具有嵌套作用域，块 ID 增加确定性循环后缀 |
+| `Rows(id, path, variable, columns, headers, row, format)` | 固定表头加集合驱动的正文行；空集合明确失败，可由 `When` 控制是否显示表格 |
+
+数据只接受非空值的字符串键 Map、List、字符串、布尔值及标准有限数值；不反射任意对象。BigInteger／BigDecimal 须为精确标准类。快照与展开均有深度、访问次数和文字预算，展开另有块及表格行预算。文字预算包括 Map 键、数据字符串与生成字符串；访问次数也计循环、单元格与行内工作项。追加和大数转换前检查预算，未引用的超限大数也拒绝。缺路径、类型错误、非法表达式、未知块和预算超限具有稳定 `BindingException.Code` 与安全路径；超长或非法表达式定位为 `expression`。
+
+模板不提供代码执行或隐式格式化。日期、金额、国际化格式由调用方先准备。XML 的引用目标使用静态 ID，同一循环复制作用域内声明的目标按 Java 模板规则重定位到当前副本，外部静态目标保持原 ID；循环外不推测某次迭代。平面[离线 include](xml-includes-api.md)只选择显式登记字符串；局部 ID／列表限定和循环副本引用已通过[阶段三十三](verification/phase-33-offline-xml-includes.md)验收。组件、注释、动态 URL 和递归 include 仍拒绝。
+
+## 布局扩展
+
+PDF 四类可编辑字段可通过[FormStyle](form-styles-api.md)设置文字／标记色、底色、固定／自适应边框、字号和对齐。显式属性保持设置意图，旧默认逐类兼容，全部 AP 状态同步；字号与对齐仅适用于文字／选择框。验收见[阶段三十二](verification/phase-32-editable-form-styles.md)，不保证过长字段文字完整显示或任意阅读器重建外观一致。
+
+`ColumnWidth.Auto(minPoints, maxPoints)` 按实际单元格文本估算首选宽度，受显式上下限约束；页面不足时向最小值收缩，比例列分享余量。宽度包括内边距，无法留下正文字宽时失败。最终换行与警告仍由正常单元格布局产生。
+
+`MultiColumn(child, columns, gap, true)` 在不增加原有页数的前提下，以最多 24 次测量搜索较短栏高，末片段只保留实际高度，使后续正文可以继续。自定义子组件必须确定、可重复测量。旧三参数构造器保持原有顺序分栏及整页高度。
+
+`ContinuousColumns(regionFlow, columns, gap)` 从当前页剩余高度开始，续页使用完整栏高；支持 `FlowText`／`OpenTypeText`、`FlowColumn` 混合流与 `GridTable` 表格。文字只换行一次，图片整块移动，表头逐占用栏重复，默认合并行组保持完整；末片段按最高栏实际高度接续正文。不会自动平衡；显式合并格续排见[续页指南](grid-continuation-api.md)，基础几何见[连续分栏 API](continuous-columns-api.md)和[混合分栏 API](mixed-columns-api.md)。
+
+`MultiFloatText(text, floats)` 已补齐首片段内多个左右矩形同时避让、错位／堆叠、封闭行带跳过与整组移页；浮动组件仅输出一次，正文续页恢复全宽。最多 64 个实际不相交的矩形，完整契约见[多浮动组件绕排](multi-floats-api.md)。
+
+## 取消、超时与文件写入
+
+~~~java
+var cancel = new AtomicBoolean();
+var options = new ExecutionOptions(Duration.ofSeconds(30), cancel::get,
+        progress -> showProgress(progress.stage(), progress.completed(), progress.total()),
+        50L * 1024 * 1024);
+engine.writeAtomically(document, backend, targetPath, options);
+~~~
+
+一个同步范围覆盖布局和写出；总输出预算单位为字节。`Progress` 是阶段内计数，不能当作整体百分比。`total=-1` 显式表示未知总量，先判断 `hasKnownTotal()` 再显示比例。`ExecutionException` 提供 `CANCELLED`／`TIMEOUT`／`OUTPUT_LIMIT` 及最后阶段、块、页上下文；线程中断作为取消处理并保留中断标记。库不创建后台执行线程，自定义组件、回调、原生调用须在返回或主动检查后才能观察取消。
+
+输出流入口 `engine.write(document, backend, stream, options)` 保留流所有权，失败可能已写入部分字节。`writeAtomically` 要求目标父目录已存在及文件系统支持原子移动：临时文件写入成功后才替换目标，失败删除临时文件并保留原文件。PDF 使用 `PdfOptions.storage(TEMP_FILE)` 可把后端流缓冲放到临时文件；Layout IR、Display List 和资源仍驻留内存，不能称为完整流式大文档引擎。
+
+固定列普通／纯富文本长表可采用独立的 [单向源 API](streaming-table-api.md)，同步逐页测量和输出，返回扁平计数。[阶段二十四](verification/phase-24-streaming-tables.md)已验收 7 组独立 JVM：布局丢弃页和真实 PDF 各 1k／10k／100k 行，另有 64 MiB 堆的 100k 行布局控制；退出临时文件数／字节均为 0。[阶段二十九](verification/phase-29-streaming-rich-text.md)进一步验收纯富文本／真实字体角色和空运行额度，9 组普通／富文本独立 JVM 包含 64 MiB 布局控制；[指南](streaming-rich-text-api.md)说明明确拒绝的语义。单向路径不保留完整 IR／Display List，但 PDFBox 页树仍随页数增长；不支持未来引用或交互，也不代表一般文档恒内存。
+
+直接输出 Display List 可使用 `backend.write(display, stream, options)`。直接布局自定义流程可由 `ExecutionContext.execute(options, operation)` 包围，内部检查点共享该范围。
+
+## PDF 场景能力
+
+| 能力 | 调用与约束 |
+| --- | --- |
+| AES-256 | `PdfOptions.withEncryption(new PdfEncryption(owner, user, permissions))`；读者密码和所有者密码分离；权限依赖阅读器遵守，不是 DRM |
+| PDF/A-2b | `PdfOptions.withArchival(new PdfArchival(rgbIccBytes, anchorTrueTypeFont))`；静态 RGB 文档，嵌入字体与 XMP／OutputIntent；拒绝加密、交互 extras 和未嵌入标准字体命令 |
+| detached CMS 签名 | `PdfSigner.sign(sourcePath, borrowedOutput, options, signer)`；增量追加，源文件不变；回调消费准确 ByteRange，返回完整 DER CMS；失败输出须丢弃 |
+
+签名器不捆绑私钥、证书或网络服务。本地验证使用自签测试证书，证明签名完整性与篡改拒绝，不证明证书受信任、PAdES 长期验证或可信时间戳。PDF/A 必须对最终文件独立验证；元数据中的合规标识不能替代验证结果。PDF/UA 和完整标签阅读顺序尚未实现。
+
+## DOCX 与剩余范围
+
+既有 PDF 的离线处理使用独立 [PdfAdapter](pdf-adapter-api.md)：检查几何及普通字形文字、零基有序选页、复制／拆分及合并。静态内容资源直接保存，第三方类型不进入公共签名。交互、签名、标签、图层及未知滤镜明确拒绝；ActualText 提取限制、显式 owner 解密复制和预算边界均返回或记录，不能扩大为通用编辑器。
+
+DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关系；外链只保存语义，不访问目标。PNG／JPEG 媒体、替代文字与标准 DrawingML 的范围见[行内图像 API](inline-images-api.md)。自动列宽以项目扩展属性往返保存，目标 Word 视觉列宽不等于本引擎 PDF 结果。
+
+语义 Table 支持[列合并](column-spans-api.md)、[跨行合并](row-spans-api.md)及[两层原子块格／内表](block-cells-api.md)，DOCX 读写标准 gridSpan／vMerge 和 p/tbl/p，Java 深绑定保留后代 ID 与层级来源。纵向连通组整体分页，覆盖行没有重复内容。合并跨度、完整父链、覆盖及续接区间非法时拒绝，允许损失也不猜测几何或丢弃非空续格；空续格仍校验样式及隐藏语义。多段格保持独立 Paragraph，真实空尾段保留；自有结构尾段／书签 owner 必须验证。其他不支持结构在 STRICT 下失败，在 ALLOW_LOSS 下返回诊断。不等于完整 OOXML Schema 校验；纵向拆组、递归续排及一般 Word 保存回读仍开放。
+
+原生 PAGE／NUMPAGES／PAGEREF／编号 REF 已接入正文及普通单元格，支持显式宽度和扁平复杂字段导入；本地 Word 16.0 已实测更新并导出样例 PDF。重复表头 PAGE、非块起点页码书签、注释标记和题注编号仍有限制，见[DOCX 字段 API](docx-fields-api.md)与[阶段十二验收](verification/phase-12-docx-fields.md)。
+
+以下内容仍未完成，不能据本批结果宣称全部缺口关闭：
+
+| 范围 | 后续验收目标 |
+| --- | --- |
+| 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、组件内字段、自动字段宽度重排和可访问的结构化阅读顺序 |
+| 高级布局 | 连续栏自动平衡／变栏宽、任意轮廓／跨页浮动锚点、任意递归网格续页、竖排、可变字体轴；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
+| DOCX | 浮动／裁剪等复杂图像、页眉页脚、更深或递归续排内表、外部样式继承、目录、评论和表单的完整模型映射；两层原子内表见[块格指南](block-cells-api.md)，Word 保存兼容单独登记 |
+| PDF | PDF/UA 标签树、更多注释／表单属性、认证签名和 PAdES 长期验证 |
+| 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。一般 Word／LibreOffice 外观、其他系统／JDK、多阅读器、持续容量与长期资源释放仍未验收 |
+
+
+[编写时主题](themes-api.md)已接入 Java Document／Documents，集中管理正文、六级标题、便利语义表格和有界命名完整样式。加入时快照、显式完整值优先、组件六项继承及默认输出兼容见[阶段三十验收](verification/phase-30-authoring-themes.md)。XML 静态名称与四类可编辑字段显式外观分别见[XML 主题](xml-themes-api.md)和[FormStyle](form-styles-api.md)。全局颜色／字体角色级联与页区默认仍开放。
+
+[目录独立样式](contents-styles-api.md)支持标题／页码完整排版及三处颜色，保留显式意图、旧默认和固定 48 pt 标签列。较大页码行框先参与目录分页，最终物理偏移与分节字段统一解析；真实标签放不下一行则失败。[阶段三十四](verification/phase-34-contents-styles.md)完成 873 项测试、4 页双渲染／逐页复查、新调用方及历史回归。

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Independent verification only; never included in Java runtime dependencies.
+pypdf==6.10.0
+pypdfium2==5.13.0
+Pillow==12.3.0
+python-docx==1.2.0
+cryptography==50.0.2
