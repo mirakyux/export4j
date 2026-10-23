@@ -1,6 +1,6 @@
 # 单向长表富文本 API
 
-单向长表复用 `TableCell` 的纯文字富文本，逐行读取，整行分页，逐页交付。可在固定列中使用真实粗体／斜体、颜色、字号、基线偏移和装饰线，无须先构造完整 `Table`。决策见 [ADR-0036](adr/0036-streaming-rich-text.md)，本地证据见[阶段二十九验收](verification/phase-29-streaming-rich-text.md)。源所有权、原子输出和进度契约沿用[单向长表 API](streaming-table-api.md)。
+单向长表复用 `TableCell` 的纯文字富文本，逐行读取，默认整行分页，逐页交付；显式完整行续排见[拆行 API](streaming-row-split-api.md)。可在固定列中使用真实粗体／斜体、颜色、字号、基线偏移和装饰线，无须先构造完整 `Table`。决策见 [ADR-0036](adr/0036-streaming-rich-text.md)，本地证据见[阶段二十九验收](verification/phase-29-streaming-rich-text.md)。源所有权、原子输出和进度契约沿用[单向长表 API](streaming-table-api.md)。
 
 ## 定义样式与字体角色
 
@@ -69,7 +69,7 @@ var summary = engine.export(spec, () -> openOrderRows(cellFormat, ordinary, stro
 
 ## 支持边界
 
-本入口接受普通格和仅含 `InlineText` 的富文本格。非空外链（包括空文字的外链）、图片、字段、块格、合并、自动列宽及拆行明确拒绝。配置的页模板、导航和注释也会在打开源之前拒绝。总页数、目录、未来引用、脚注、分栏、DOCX 及 PDF 归档／加密／签名尚未接入；需要这些能力时使用既有完整文档 API。
+本入口接受普通格和仅含 `InlineText` 的富文本格，支持[固定列横向合并](streaming-table-api.md#固定列横向合并)。显式图片／被动外链见[图文 API](streaming-media-api.md)，正文完整行续排见[拆行 API](streaming-row-split-api.md)；PAGE 与准确声明总数的 PAGES 见[单向字段](streaming-fields-api.md)；块格、纵向合并和自动列宽仍明确拒绝。配置的页模板、导航和注释也会在打开源之前拒绝。未知总页数推断、目录、未来引用、脚注、分栏、DOCX 及自动签名尚未接入；需要这些能力时使用既有完整文档 API。
 
 布局和 Display List 可逐页释放，PDFBox 仍保留累计页树和 COS 对象；`TEMP_FILE` 只改变流存储方式。有限容量实测必须分别报告布局丢弃页与真实 PDF，不代表完整 PDF 恒定内存、长期无泄漏或任意工作负载容量。
 
@@ -88,3 +88,5 @@ build/verification/python-phase13/Scripts/python.exe scripts/verify_streaming_ri
 ~~~
 
 Python 使用项目锁定的[验证依赖](../scripts/requirements-verification.txt)，隔离调用方目录默认读取本次成功指针，也可显式传 `--consumer-build-directory`。采样默认仍为 1,000／10,000／100,000 行；小堆对照默认 100,000 行、64 MiB，以上命令显式限制为本批比较规模。采样器同时核对实际运行字体的 SHA-256、显式运行数、退出码和临时文件清理，不复用普通文字结果冒充富文本结果。
+
+AES-256 与静态 PDF/A-2b 已接入逐页后端，见[单向安全输出](streaming-protection-api.md)；归档仍拒绝链接，签名在最终文件上显式处理。

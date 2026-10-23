@@ -99,7 +99,8 @@ final class OpenTypeParagraphLayouter {
             NavigableSet<Integer> boundaries) { }
 
     ParagraphLayout layout(List<StyledSpan> spans, double width, ParagraphStyle style, double ascent,
-            Map<Integer, InlineImage> images, Map<Integer, InlineField> fields, Map<Integer, InlineGraphic> graphics) {
+            Map<Integer, InlineImage> images, Map<Integer, InlineField> fields, Map<Integer, InlineGraphic> graphics,
+            java.util.function.IntToDoubleFunction lineWidths) {
         String source = spans.stream().map(StyledSpan::text).collect(java.util.stream.Collectors.joining());
         List<TextDiagnostic> diagnostics = new ArrayList<>();
         Map<String, Font> fonts = new HashMap<>();
@@ -160,7 +161,7 @@ final class OpenTypeParagraphLayouter {
                     com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                     if (lines.size() >= limits.maxLines()) { throw failure(TextLayoutException.Code.BUDGET_EXCEEDED, prepared.source().get(position)); }
                     double indent = lines.isEmpty() ? style.firstLineIndent() : style.subsequentLineIndent();
-                    double available = width - indent;
+                    double available = lineWidths.applyAsDouble(lines.size()) - indent;
                     if (available > Float.MAX_VALUE) { throw new IllegalArgumentException("line width exceeds shaping range"); }
                     // Verify TextMeasurer's estimate against its actual line advance. Atomic graphics can
                     // make the estimate reject a line at its own previously measured auto-column width.

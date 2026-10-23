@@ -10,6 +10,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -97,22 +98,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 renderPage(pdf, document.pages().get(pageIndex), pageIndex, fonts, embedded);
             }
             PdfExtrasWriter.write(pdf, document.extras());
-            if (options.encryption().isPresent()) {
-                var encryption = options.encryption().orElseThrow();
-                var permissions = new org.apache.pdfbox.pdmodel.encryption.AccessPermission();
-                var requested = encryption.permissions();
-                permissions.setCanPrint(requested.print());
-                permissions.setCanPrintFaithful(requested.print());
-                permissions.setCanModify(requested.modify());
-                permissions.setCanExtractContent(requested.extract());
-                permissions.setCanModifyAnnotations(requested.annotations());
-                permissions.setCanFillInForm(requested.forms());
-                permissions.setCanAssembleDocument(requested.assemble());
-                var policy = new org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy(encryption.ownerPassword(), encryption.userPassword(), permissions);
-                policy.setEncryptionKeyLength(256);
-                policy.setPreferAES(true);
-                pdf.protect(policy);
-            }
+            protect(pdf);
             // Explicitly shield borrowed streams from implementation-specific close behavior.
             pdf.save(new BorrowedOutputStream(output));
         } catch (PdfRenderException failure) {
@@ -124,22 +110,35 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     /**
-     * Opens a caller-thread PDF session without interactions. Encryption and archival
-     * options are currently rejected before allocating PDF resources. Pages are converted
-     * synchronously; PDF bytes are saved only by explicit finish. Output remains borrowed.
-     *
-     * @throws IllegalArgumentException if encryption or archival options are configured
+     * Opens a caller-thread PDF session. Encryption uses the configured AES-256 permissions;
+     * archival output keeps the static PDF/A-2b subset and rejects passive links and standard-font text.
+     * Pages are converted synchronously; PDF bytes are saved only by explicit finish. Output remains borrowed.
      */
     @Override
     public PageWriter open(DocumentMetadata metadata, OutputStream output) throws IOException {
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(output, "output");
-        if (options.encryption().isPresent() || options.archival().isPresent()) {
-            throw new IllegalArgumentException("page-at-a-time PDF output does not support encryption or archival options");
-        }
         ExecutionContext.checkpoint();
         var budget = new BudgetState(DocumentExtras.EMPTY);
-        return new PdfPageWriter(createDocument(metadata), output, budget);
+        return new PdfPageWriter(createDocument(metadata), metadata, output, budget);
+    }
+
+    private void protect(PDDocument pdf) throws IOException {
+        if (options.encryption().isEmpty()) { return; }
+        var encryption = options.encryption().orElseThrow();
+        var permissions = new org.apache.pdfbox.pdmodel.encryption.AccessPermission();
+        var requested = encryption.permissions();
+        permissions.setCanPrint(requested.print());
+        permissions.setCanPrintFaithful(requested.print());
+        permissions.setCanModify(requested.modify());
+        permissions.setCanExtractContent(requested.extract());
+        permissions.setCanModifyAnnotations(requested.annotations());
+        permissions.setCanFillInForm(requested.forms());
+        permissions.setCanAssembleDocument(requested.assemble());
+        var policy = new org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy(encryption.ownerPassword(), encryption.userPassword(), permissions);
+        policy.setEncryptionKeyLength(256);
+        policy.setPreferAES(true);
+        pdf.protect(policy);
     }
 
     private PDDocument createDocument(DocumentMetadata metadata) {
@@ -207,13 +206,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                         throw budget(pageIndex, index, "text code point budget exceeded");
                     }
                     textCodePoints += count;
-                    FontData data = text.run().font();
-                    if (fontIds.add(data.id())) {
-                        if (data.byteSize() > limits.maxFontBytes() - fontBytes) {
-                            throw budget(pageIndex, index, "font byte budget exceeded");
-                        }
-                        fontBytes += data.byteSize();
-                    }
+                    acceptFont(text.run().font(), pageIndex, index);
                 } else if (command instanceof DrawCommand.Text text) {
                     int count = text.text().codePointCount(0, text.text().length());
                     if (count > limits.maxTextCodePoints() - textCodePoints) {
@@ -225,6 +218,9 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 } else if (command instanceof DrawCommand.StrokePath stroke) {
                     pathSegments = countSegments(stroke.path(), pathSegments, pageIndex, index);
                 } else if (command instanceof DrawCommand.OutlineText text) {
+                    if (options.archival().isPresent() && !text.logicalText().isEmpty()) {
+                        acceptFont(options.archival().orElseThrow().anchor(), pageIndex, index);
+                    }
                     int count = text.logicalText().codePointCount(0, text.logicalText().length());
                     if (count > limits.maxTextCodePoints() - textCodePoints) { throw budget(pageIndex, index, "text code point budget exceeded"); }
                     textCodePoints += count;
@@ -236,6 +232,15 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             }
             pages++;
         }
+
+        private void acceptFont(FontData data, int page, int command) throws PdfRenderException {
+            if (fontIds.add(data.id())) {
+                if (data.byteSize() > limits.maxFontBytes() - fontBytes) {
+                    throw budget(page, command, "font byte budget exceeded");
+                }
+                fontBytes += data.byteSize();
+            }
+        }
     }
 
     private enum WriterState { OPEN, FINISHED, FAILED, CLOSED }
@@ -243,28 +248,61 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     private final class PdfPageWriter implements PageWriter {
         private final Thread owner = Thread.currentThread();
         private final PDDocument pdf;
+        private final DocumentMetadata metadata;
         private final OutputStream output;
         private final BudgetState budget;
         private final Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
         private final Map<String, PDType0Font> embedded = new HashMap<>();
         private WriterState state = WriterState.OPEN;
+        private long interactionCount;
+        private long interactionCodePoints;
 
-        private PdfPageWriter(PDDocument pdf, OutputStream output, BudgetState budget) {
+        private PdfPageWriter(PDDocument pdf, DocumentMetadata metadata, OutputStream output, BudgetState budget) {
             this.pdf = pdf;
+            this.metadata = metadata;
             this.output = output;
             this.budget = budget;
         }
 
         @Override
         public void accept(DisplayPage page) throws IOException {
+            accept(page, List.of());
+        }
+
+        @Override
+        public void accept(DisplayPage page, List<DocumentExtras.ExternalLink> links) throws IOException {
             try {
                 requireOpen();
                 Objects.requireNonNull(page, "page");
+                var snapshot = List.copyOf(links);
+                if (options.archival().isPresent() && !snapshot.isEmpty()) {
+                    throw new IOException("static PDF/A output does not support page links");
+                }
                 ExecutionContext.checkpoint();
                 int pageIndex = budget.pages;
+                if (snapshot.size() > limits.maxInteractions() - interactionCount) {
+                    throw budget(pageIndex, -1, "PDF interaction budget exceeded");
+                }
+                for (var link : snapshot) {
+                    ExecutionContext.checkpoint();
+                    var rect = link.bounds();
+                    if (link.pageIndex() != pageIndex || rect.width() <= 0 || rect.height() <= 0
+                            || rect.x() < 0 || rect.y() < 0 || rect.x() + rect.width() > Math.nextUp(page.size().width())
+                            || rect.y() + rect.height() > Math.nextUp(page.size().height())) {
+                        throw new PdfRenderException(PdfErrorCode.INVALID_GEOMETRY, pageIndex, -1,
+                                "page link must belong to the current page and fit its bounds");
+                    }
+                    long points = link.destination().uri().codePointCount(0, link.destination().uri().length());
+                    if (points > limits.maxInteractionCodePoints() - interactionCodePoints) {
+                        throw budget(pageIndex, -1, "PDF interaction text budget exceeded");
+                    }
+                    interactionCodePoints += points;
+                }
+                interactionCount += snapshot.size();
                 budget.accept(page);
                 ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, -1);
                 renderPage(pdf, page, pageIndex, fonts, embedded);
+                PdfExtrasWriter.write(pdf, new DocumentExtras(List.of(), List.of(), List.of(), List.of(), snapshot));
                 ExecutionContext.checkpoint();
             } catch (IOException failure) {
                 fail();
@@ -283,6 +321,8 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 requireOpen();
                 if (budget.pages == 0) { throw new IllegalStateException("PDF output requires at least one page"); }
                 ExecutionContext.checkpoint();
+                if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, metadata, DocumentExtras.EMPTY); }
+                protect(pdf);
                 pdf.save(new BorrowedOutputStream(output));
                 ExecutionContext.checkpoint();
                 state = WriterState.FINISHED;

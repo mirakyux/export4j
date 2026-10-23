@@ -1,5 +1,11 @@
 # 依赖与资源管理
 
+PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans。PDF 适配器显式声明 FontBox，用于读取嵌入权限及禁止子集标志；没有新增运行坐标、字体或第三方样本。样例图像由 Java 自行生成，源码和检查脚本采用 Apache-2.0。见[阶段四十九](verification/phase-49-pdf-page-editing.md)。
+
+离线 HTML 导入在 Web 适配器内部采用 jsoup 1.21.2。仅调用 String 解析与有限选择器，不调用连接／加载接口；公共 API 不暴露其类型。无传递运行依赖，实际 class major 52，与 Java 21 兼容。MIT 原文来自实际 JAR，JAR／POM 与上游 SHA-1 及 Gradle SHA-256 对照；原始许可、归属和运行 SBOM 同步保留。
+
+通用 Markdown 导入使用 commonmark-java 0.24.0 及同版本 GFM tables／strikethrough 扩展，作为 Web 适配器内部实现依赖，公共签名不暴露解析器类型。三者采用 BSD-2-Clause，原始许可从实际 JAR 提取并随分发保留；源码目标 Java 11、实际 class major 55，与 Java 21 基线兼容。Maven Central 的 7 个 POM／JAR 与上游 SHA-1 对照，并将实际 SHA-256 写入依赖验证元数据和制品清单。没有新增字体或第三方样本。
+
 2026-10-21 新增自研 `export4j-adapter-web`，工程共 17 个模块、15 个库及 BOM。生产仅依赖模型与 JDK，无新增第三方 Java 坐标；HTML／Markdown、合成样例、Java 生成蓝色 PNG 及验证脚本采用 Apache-2.0，不含外部素材。见[阶段四十三](verification/phase-43-web-exports.md)。
 
 2026-10-21 XML 固定页眉页脚、页区主题、合成报告及验证脚本由项目自主实现，采用 Apache-2.0。复用既有模型、JDK XML／文字路径和已登记的 Liberation Sans；没有新增模块、外部依赖、字体或第三方素材。见[阶段四十一](verification/phase-41-xml-page-regions.md)。
@@ -47,7 +53,7 @@
 
 ## 正式依赖记录
 
-完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 15 个 Maven 坐标，包含 BOM 与测试依赖。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
+完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 19 个 Maven 坐标，包含 BOM 与测试依赖。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
 
 | 依赖 | 版本 | 范围 | 许可依据与处理 |
 | --- | --- | --- | --- |
@@ -55,6 +61,10 @@
 | `org.apache.pdfbox:fontbox` | 3.0.8 | 字体模块直接运行、PDF 后端／适配器传递运行 | Apache-2.0 及内嵌资源许可；保留完整 LICENSE / NOTICE |
 | `org.apache.pdfbox:pdfbox-io` | 3.0.8 | 字体模块直接运行、PDF 后端／适配器传递运行 | Apache-2.0；保留 LICENSE / NOTICE |
 | `commons-logging:commons-logging` | 1.4.0 | 传递运行 | Apache-2.0；保留 LICENSE / NOTICE |
+| `org.jsoup:jsoup` | 1.21.2 | Web 适配器内部运行 | MIT；保留实际 JAR 原始许可 |
+| `org.commonmark:commonmark` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
+| `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
+| `org.commonmark:commonmark-ext-gfm-strikethrough` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
 | `org.junit:junit-bom` | 6.1.3 | 测试版本约束 | EPL-2.0；POM 与同版本 JUnit 许可文件 |
 | `org.junit.jupiter:junit-jupiter` | 6.1.3 | 测试 | EPL-2.0；保留 LICENSE.md |
 | `org.junit.jupiter:junit-jupiter-api` | 6.1.3 | 传递测试 | EPL-2.0；保留 LICENSE.md |

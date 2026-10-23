@@ -66,7 +66,7 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
 
         public Builder table(java.util.function.Consumer<Table.Builder> configure) {
             return block(id -> {
-                var value = Table.builder(id).cellFormat(cellFormat).format(tableFormat);
+                var value = Table.builder(id).cellFormat(cellFormat).textAppearance(theme.cellText()).format(tableFormat);
                 configure.accept(value);
                 return value.build();
             });
@@ -107,28 +107,28 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
 
         public Builder heading(String text, int level) { return heading(nextId(), text, level); }
 
-        public Builder heading(String id, String text, int level) { return add(new Heading(id, text, level, theme.headingFormat(level))); }
+        public Builder heading(String id, String text, int level) { return add(new Heading(id, text, level, theme.headingFormat(level), runs(text, theme.headingText(level), theme.headingFormat(level).fontSize()))); }
 
         public Builder heading(List<InlineText> runs, int level) {
             return add(Heading.rich(nextId(), runs, level, theme.headingFormat(level)));
         }
 
-        public Builder bullet(String text) { return add(new BulletItem(nextId(), text, "•", 1, bodyFormat)); }
+        public Builder bullet(String text) { return add(new BulletItem(nextId(), text, "•", 1, bodyFormat, runs(text, theme.bodyText(), bodyFormat.fontSize()), theme.bodyText().style(bodyFormat.fontSize()))); }
 
-        public Builder bullet(List<InlineText> runs) { return add(BulletItem.rich(nextId(), runs, "•", 1, bodyFormat)); }
+        public Builder bullet(List<InlineText> runs) { return add(BulletItem.rich(nextId(), runs, "•", 1, bodyFormat, theme.bodyText().style(bodyFormat.fontSize()))); }
 
         /** Continues a level-one list; use NumberedItem for restart or nesting control. */
         public Builder numbered(String listId, String text) {
-            return add(new NumberedItem(nextId(), listId, text, 0, bodyFormat));
+            return add(new NumberedItem(nextId(), listId, text, 0, bodyFormat, 1, runs(text, theme.bodyText(), bodyFormat.fontSize()), theme.bodyText().style(bodyFormat.fontSize())));
         }
 
         public Builder numbered(String listId, List<InlineText> runs) {
-            return add(NumberedItem.rich(nextId(), listId, runs, 0, bodyFormat, 1));
+            return add(NumberedItem.rich(nextId(), listId, runs, 0, bodyFormat, 1, theme.bodyText().style(bodyFormat.fontSize())));
         }
 
         /** Repeating header, equal-width columns and current convenience-table defaults; requires a body row. */
         public Builder table(List<String> headers, List<List<String>> rows) {
-            var value = Table.text(nextId(), headers, rows, cellFormat);
+            var value = Table.text(nextId(), headers, rows, cellFormat, theme.cellText());
             return add(value.format().equals(tableFormat) ? value
                     : new Table(value.id(), value.columns(), value.rows(), value.headerRows(), tableFormat));
         }
@@ -142,11 +142,16 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
         }
 
         public Builder paragraph(String id, String text, ParagraphFormat format) {
-            return add(new Paragraph(id, text, format));
+            return add(new Paragraph(id, text, format, runs(text, theme.bodyText(), format.fontSize())));
         }
 
         public Builder heading(String id, String text, int level, ParagraphFormat format) {
-            return add(new Heading(id, text, level, format));
+            return add(new Heading(id, text, level, format, runs(text, theme.headingText(level), format.fontSize())));
+        }
+
+        private static List<InlineText> runs(String text, TextAppearance appearance, double size) {
+            Objects.requireNonNull(text, "text");
+            return appearance.equals(TextAppearance.DEFAULT) ? List.of() : List.of(new InlineText(text, appearance.style(size)));
         }
 
         public Builder pageBreak(String id) {

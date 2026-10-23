@@ -3,6 +3,11 @@ Export4j
 This project uses the following third-party components. Their original license
 terms are preserved under third-party/licenses and inside dependency artifacts.
 
+commonmark-java 0.24.0, including its GFM tables and strikethrough extensions:
+Copyright (c) 2015, Atlassian Pty Ltd. All rights reserved.
+Distributed under BSD-2-Clause; original texts are preserved under
+third-party/licenses/commonmark*-0.24.0-LICENSE.txt.
+
 The example distribution additionally bundles the following unmodified fonts
 under the SIL Open Font License 1.1. Original copyright and license texts are
 included alongside the fonts in assets/fonts (fonts/ in the example JAR).
@@ -88,3 +93,7 @@ Includes the CMYK ICC-profile (CGATS001Compat-v2-micro.icc)
 https://github.com/saucecontrol/Compact-ICC-Profiles
 Released to the public domain under the Creative Commons CC0 license by Clinton Ingram, saucecontrol
    
+
+Includes jsoup 1.21.2, licensed under the MIT License.
+Copyright (c) 2009-2025 Jonathan Hedley <https://jsoup.org/>
+Original license: third-party/licenses/jsoup-1.21.2-LICENSE.txt

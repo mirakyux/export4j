@@ -4,6 +4,7 @@ package com.mirakyux.export4j.components;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Objects;
@@ -24,6 +25,12 @@ import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.StreamingTable;
 import com.mirakyux.export4j.model.TableRowSource;
+import com.mirakyux.export4j.model.processing.DocumentConversion;
+import com.mirakyux.export4j.model.processing.ProcessingException;
+import com.mirakyux.export4j.model.processing.ProcessingIssue;
+import com.mirakyux.export4j.model.processing.ProcessingPolicy;
+import com.mirakyux.export4j.model.processing.ProcessingReport;
+import com.mirakyux.export4j.text.TextDiagnostic;
 import java.util.function.Consumer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -90,7 +97,7 @@ public final class DocumentEngine {
         }
         var body = document.document();
         return layout(new SectionedDocument(body.metadata(), List.of(new Section("document", body.pageSettings(), body.blocks(), 0))),
-                List.of(SectionTemplate.uniform(PageRegionTemplates.from(document.pageRegions()))), navigation, notes);
+                List.of(PageRegionTemplates.sectionFrom(document.pageRegions())), navigation, notes);
     }
 
     public ComponentDocumentLayout layout(SectionedDocument document, List<SectionTemplate> templates, Navigation navigation, List<Note> notes) {
@@ -105,8 +112,8 @@ public final class DocumentEngine {
         if (hasRegions && !pageTemplate.equals(PageTemplate.EMPTY)) {
             throw new IllegalStateException("section regions conflict with configured page template");
         }
-        return layout(document, document.sections().stream().map(section -> SectionTemplate.uniform(hasRegions
-                ? PageRegionTemplates.from(section.pageRegions()) : pageTemplate)).toList(), navigation, notes);
+        return layout(document, document.sections().stream().map(section -> hasRegions
+                ? PageRegionTemplates.sectionFrom(section.pageRegions()) : SectionTemplate.uniform(pageTemplate)).toList(), navigation, notes);
     }
 
     /** Creates a task-confined export request; no layout or I/O occurs until to() is called. */
@@ -126,7 +133,42 @@ public final class DocumentEngine {
         return new ExportRequest(() -> layout(document));
     }
 
-    /** Creates a single-pass plain or pure rich-text table export using this engine's font-role snapshot.
+    /** Explicit layout/backend conversion target. format is the caller's actual target key (e.g. PDF),
+     * used for shared loss policy resolution. Backend/thread-safety ownership remains with the caller.
+     * Notes come from conversion input; preconfigured notes are rejected to avoid hidden source data.
+     * Encoding and missing-glyph loss checks finish before conversion publishes a final destination.
+     */
+    public DocumentConversion.Target conversionTarget(String format, DocumentBackend backend) {
+        Objects.requireNonNull(backend, "backend");
+        if (!notes.isEmpty()) { throw new IllegalStateException("conversion notes must be supplied in conversion input"); }
+        return new DocumentConversion.Target(format, (document, sourceNotes, policy, output) -> {
+            var builder = DocumentEngine.builder(fonts).pageTemplate(pageTemplate).navigation(navigation).notes(sourceNotes);
+            roles.forEach(builder::fontRole);
+            var rendered = builder.build().export(document).backend(backend).to(output);
+            var issues = new ArrayList<ProcessingIssue>();
+            for (var diagnostic : rendered.contextualDiagnostics()) {
+                var text = diagnostic.diagnostic();
+                if (text.code() != TextDiagnostic.Code.MISSING_GLYPH_REPLACED) { continue; }
+                var rule = policy.resolve(format, "MISSING_GLYPH_REPLACED", "EXPORT");
+                var issue = new ProcessingIssue("EXPORT", "MODEL", format, "MISSING_GLYPH_REPLACED", "EXPORT",
+                        new ProcessingIssue.Location("", diagnostic.region(), diagnostic.blockId(),
+                                diagnostic.sourcePath(), text.sourceStart(), text.sourceEnd()),
+                        "source glyph replaced by explicitly configured placeholder", rule.action(), rule.treatment(), List.of("SOURCE_GLYPH_REPLACED"));
+                if (rule.action() == ProcessingPolicy.Action.ERROR) {
+                    throw new ProcessingException(issue);
+                }
+                if (rule.treatment() != ProcessingPolicy.Treatment.DEGRADE) {
+                    throw new IllegalArgumentException("glyph replacement only supports DEGRADE");
+                }
+                if (issues.size() >= 10_000) { throw new IllegalArgumentException("layout conversion report budget exceeded"); }
+                issues.add(issue);
+            }
+            return new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues);
+        });
+    }
+
+    /** Creates a single-pass table export with supported rich text, images, passive links and page fields,
+     * using this engine's explicit font-role snapshot.
      * Body rows are opened only by to(), on the caller thread.
      * Configured page regions, navigation and notes are unsupported and rejected here.
      * The factory transfers ownership of its newly opened source to this export; borrowed external
@@ -188,14 +230,20 @@ public final class DocumentEngine {
                     ExecutionContext.checkpoint();
                     try (var rows = Objects.requireNonNull(source.open(), "row source")) {
                         ExecutionContext.checkpoint();
-                        result = new StreamingTableLayouter().layout(table, rows, fonts, roles, page -> {
-                            ExecutionContext.checkpoint();
-                            var display = DocumentPainter.paintPage(page);
-                            commands[0] = Math.addExact(commands[0], display.commands().size());
-                            writer.accept(display);
-                            ExecutionContext.checkpoint();
+                        result = new StreamingTableLayouter().layout(table, rows, fonts, roles, new StreamingTableLayouter.PageConsumer() {
+                            @Override public void accept(com.mirakyux.export4j.layout.LayoutPage page) throws IOException {
+                                accept(page, List.of());
+                            }
+                            @Override public void accept(com.mirakyux.export4j.layout.LayoutPage page,
+                                    List<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink> links) throws IOException {
+                                ExecutionContext.checkpoint();
+                                var display = DocumentPainter.paintPage(page);
+                                commands[0] = Math.addExact(commands[0], display.commands().size());
+                                writer.accept(display, links);
+                                ExecutionContext.checkpoint();
+                            }
                         }, diagnostic -> selectedDiagnostics.accept(new ContextualDiagnostic(diagnostic.blockId(),
-                                diagnostic.pageIndex(), "STREAMING_TABLE", diagnostic.rowIndex(),
+                                diagnostic.pageIndex(), diagnostic.region(), diagnostic.rowIndex(),
                                 diagnostic.columnIndex(), diagnostic.diagnostic())), selectedLimits);
                     }
                     ExecutionContext.progress("OUTPUT", table.id(), result.pages() - 1, 0, 1);

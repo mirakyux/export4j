@@ -83,11 +83,12 @@ final class SemanticFragments {
                             if (cell.hasBlocks()) {
                                 var children = mapper == null ? null : new ArrayList<LayoutFragment>();
                                 for (int index = 0; index < cell.blocks().size(); index++) {
-                                    var childPath = append(path, new CellLocation(table.blockId(), row.rowIndex(), cell.columnIndex(), index));
+                                    var childPath = append(path, new CellLocation(table.blockId(), row.rowIndex(), cell.columnIndex(), cell.sourceBlockIndices().get(index)));
                                     var child = visit(cell.blocks().get(index), contentOrigin, rootBlockIndex, childPath, fonts, roles, depth + 1);
                                     if (children != null) { children.add(child); }
                                 }
-                                if (cells != null) { cells.add(CellFragment.blocks(cell.columnIndex(), cell.bounds(), cell.textOrigin(), children)); }
+                                if (cells != null) { cells.add(new CellFragment(cell.columnIndex(), cell.bounds(), cell.textOrigin(),
+                                        new CellFragment.Blocks(children, cell.sourceBlockIndices()))); }
                             } else {
                                 var sourcePath = append(path, new CellLocation(table.blockId(), row.rowIndex(), cell.columnIndex(), -1));
                                 var leaf = new Text(table.blockId(), rootBlockIndex, row.rowIndex(), cell.columnIndex(),

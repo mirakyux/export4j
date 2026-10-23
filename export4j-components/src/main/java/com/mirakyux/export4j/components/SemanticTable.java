@@ -12,6 +12,7 @@ import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
 import com.mirakyux.export4j.layout.core.DocumentLayouter;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.text.ParagraphLayouter;
 
@@ -23,7 +24,7 @@ import com.mirakyux.export4j.text.ParagraphLayouter;
  * Direct {@link #layout(ComponentContext)} still requires one fixed viewport. Outer spacing belongs to the parent.
  * Its ID must be unique among all document blocks and nested semantic tables. Immutable; owns no resources.
  */
-public record SemanticTable(Table table) implements RegionFlow {
+public record SemanticTable(Table table) implements WidthAwareRegionFlow {
     public SemanticTable { Objects.requireNonNull(table, "table"); }
 
     @Override
@@ -49,6 +50,23 @@ public record SemanticTable(Table table) implements RegionFlow {
     private List<RegionFlow.Fragment> layoutRegions(ComponentContext context, FlowRegions regions,
             DocumentLayoutLimits limits) {
         var measured = new DocumentLayouter(new ParagraphLayouter(), limits).layoutTableRegions(table, context, regions);
+        return fragments(context, measured);
+    }
+
+    /**
+     * Reflows complete rows and merged-row groups at their actual cyclic region widths.
+     * Unequal widths require atomic rows; equal widths also support explicit complete-line splitting.
+     * Preparation is bounded to 16 widths and 4,000,000 cumulative source UTF-16 units.
+     * Source identity, fields, links and font policy are retained for final pagination.
+     */
+    @Override
+    public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        widths = ComponentSupport.variableWidths(context, regions, widths);
+        var measured = new DocumentLayouter().layoutTableRegions(table, context, regions, widths);
+        return fragments(context, measured);
+    }
+
+    private List<RegionFlow.Fragment> fragments(ComponentContext context, List<DocumentLayouter.TableRegion> measured) {
         List<RegionFlow.Fragment> result = new ArrayList<>();
         for (int index = 0; index < measured.size(); index++) {
             com.mirakyux.export4j.model.ExecutionContext.checkpoint();

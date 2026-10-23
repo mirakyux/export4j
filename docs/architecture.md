@@ -1,6 +1,6 @@
 # 架构设计
 
-本文将[立项文档](project-proposal.md)整理为实现约束。当前共 17 个模块，含原有 PDF 路径、SVG／Raster 后端、DOCX 语义适配器、离线 XML／Markdown 模板适配器、静态 PDF 处理适配器、HTML／Markdown 导出适配器与 BOM。生产入口位于组件模块，不新增仅转发调用的 API 模块。公共复杂文本、模板与受控导出见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)。行内图片、共享行几何与 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)和[验收记录](verification/phase-6-inline-images.md)。原有范围及证据见[生产能力 API](production-api.md)与[验收记录](verification/phase-4-production.md)。
+本文将[立项文档](project-proposal.md)整理为实现约束。当前共 17 个模块，含原有 PDF 路径、SVG／Raster 后端、DOCX 语义适配器、离线 XML／Markdown 模板适配器、PDF 处理／恢复适配器、HTML／Markdown 导入导出适配器与 BOM。生产入口位于组件模块，不新增仅转发调用的 API 模块。公共复杂文本、模板与受控导出见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)。行内图片、共享行几何与 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)和[验收记录](verification/phase-6-inline-images.md)。原有范围及证据见[生产能力 API](production-api.md)与[验收记录](verification/phase-4-production.md)。
 
 ## 分层与数据流
 
@@ -14,7 +14,7 @@ flowchart TD
     DL --> R[Raster Backend]
     DOCX[DOCX / OOXML] --> I[DOCX Importer]
     I --> M
-    M --> Web[HTML / Markdown Exporter]
+    M <--> Web[HTML / Markdown Adapter]
     M --> E[DOCX Exporter]
     E --> DOCX
     XML[Offline XML / Markdown Template] --> T[Template Compiler]
@@ -22,6 +22,8 @@ flowchart TD
     B --> M
     Existing[Existing static PDF] --> PA[PDF Adapter]
     PA --> Combined[Checked extraction / selected PDF pages]
+    PA --> Recovery[Explicit-loss semantic recovery]
+    Recovery --> M
 ~~~
 
 文档模型表达内容的含义；布局结果表达内容的位置；绘制指令表达具体绘制操作；后端负责把指令映射到目标格式。DOCX 使用独立的模型映射路径。
@@ -60,8 +62,8 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-backend-raster` | 图像输出和预览 | 绘制层 |
 | `export4j-adapter-docx` | OOXML 导入与导出 | 文档模型与资源抽象 |
 | `export4j-adapter-template` | 离线 XML／Markdown 子集编译为 DocumentTemplate | 仅文档模型与 JDK |
-| `export4j-adapter-web` | 语义 HTML5／CommonMark-GFM 导出与逐功能损失策略 | 仅文档模型与 JDK |
-| `export4j-adapter-pdf` | 有界静态 PDF 检查、提取、有序选页与合并 | 模型执行控制；PDFBox 隔离在内部 |
+| `export4j-adapter-web` | 语义 HTML5／CommonMark-GFM 导入／导出与逐功能损失策略 | 文档模型；CommonMark／jsoup 解析封装在内部 |
+| `export4j-adapter-pdf` | 有界 PDF 读取、页／被动对象编辑和组合、渲染提取、优化、脱敏及语义恢复 | 模型及执行控制；PDFBox 隔离在内部 |
 | `export4j-testing` | 测试样本、断言和比较工具 | 按测试需要依赖各层 |
 | `export4j-conformance-tests` | 格式与行为一致性测试 | 被测模块与测试工具 |
 | `export4j-bom` | 对外发布模块的版本约束 | 发布模块的制品坐标 |
@@ -69,7 +71,7 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 
 PDFBox 文档及绘制 API 限定在 PDF 实现模块。FontBox 和 pdfbox-io 可封装在字体层内部，公共签名不暴露其类型。DOCX 专用实现依赖限定在 DOCX 实现模块。专用测试可以使用它们，但不能以此替代独立工具验证。
 
-静态 PDF 适配器处理原始内容／资源，不恢复语义文档、不调用布局引擎。输入快照、完整预检、显式权限、损失诊断与原子路径输出见 [ADR-0027](adr/0027-pdf-operations-adapter.md)。PDFBox 的内部对象解析仍不是进程资源沙箱。XML／Markdown 共用模型绑定，不新增平行排版器；XML 字段与被动链接见 [ADR-0029](adr/0029-xml-fields-and-links.md)。
+PDF 原对象处理不调用布局引擎；[语义恢复](adr/0064-bounded-pdf-semantic-recovery.md)使用独立显式损失通道生成模型，随后由调用方选择 DOCX／Web 或布局后端。原严格复制入口的输入快照、预检、权限与原子输出边界继续保持，见 [ADR-0027](adr/0027-pdf-operations-adapter.md)。PDFBox 的对象解析不等于进程资源沙箱。XML／Markdown 模板共用模型绑定；通用 Markdown／HTML 导入与模板语法独立，不建立平行排版器。
 
 布局核心定义组件扩展接口，由组件模块实现，避免相互依赖。公共入口通过接口接受后端；示例或调用方选择具体实现。
 

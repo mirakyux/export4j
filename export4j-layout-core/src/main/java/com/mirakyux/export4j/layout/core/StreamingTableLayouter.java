@@ -10,14 +10,18 @@ import java.util.function.Consumer;
 import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.graphics.Point;
 import com.mirakyux.export4j.graphics.Rect;
+import com.mirakyux.export4j.graphics.DocumentExtras;
 import com.mirakyux.export4j.layout.CellFragment;
 import com.mirakyux.export4j.layout.LayoutPage;
 import com.mirakyux.export4j.layout.TableFragment;
 import com.mirakyux.export4j.layout.TableRowFragment;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.StreamingTable;
+import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableRow;
 import com.mirakyux.export4j.model.TableRowSource;
+import com.mirakyux.export4j.model.InlineField;
+import com.mirakyux.export4j.text.InlineFieldInk;
 import com.mirakyux.export4j.text.ParagraphLayout;
 import com.mirakyux.export4j.text.ParagraphLayouter;
 import com.mirakyux.export4j.text.ParagraphStyle;
@@ -29,15 +33,25 @@ import com.mirakyux.export4j.text.TextLayoutException;
  * the current page and one pending measured row. Consumers may retain pages explicitly, but this
  * layouter does not. Calls source and callbacks synchronously, with cooperative execution checkpoints.
  * Immutable and reusable across threads; each invocation owns its layout state, and borrows its source.
- * Plain and pure rich-text cells share text layout. No hyperlinks, images, fields, block cells,
- * merges, row splitting, global references, page templates or automatic widths.
+ * Text, inline images and passive links share the ordinary measured-ink geometry. PAGE resolves at
+ * actual presentation; PAGES requires an exact caller-declared total. Complete-line body continuation
+ * is opt-in. No block cells, vertical spans, global references, page templates or automatic widths.
+ * Horizontal spans cover consecutive fixed columns; source counters count real anchors once.
  */
 public final class StreamingTableLayouter {
     /** Receives one immutable page at a time, exactly once in increasing physical page order.
      * A failure stops consumption immediately; the layouter does not retry or close this consumer.
      */
     @FunctionalInterface
-    public interface PageConsumer { void accept(LayoutPage page) throws IOException; }
+    public interface PageConsumer {
+        void accept(LayoutPage page) throws IOException;
+        /** Receives this page's resolved passive links. Existing consumers explicitly reject
+         * nonempty interactions until they implement this overload; none are silently discarded. */
+        default void accept(LayoutPage page, List<DocumentExtras.ExternalLink> links) throws IOException {
+            if (!links.isEmpty()) { throw new IOException("page consumer does not support external links"); }
+            accept(page);
+        }
+    }
 
     /** Bounded successful result; source counts include headers once, bodyRows excludes headers.
      * Output lines and diagnostics include repeated headers. No IR, text or diagnostics list is retained.
@@ -56,7 +70,7 @@ public final class StreamingTableLayouter {
         return layout(table, source, fonts, Map.of(), pages, diagnostics, limits);
     }
 
-    /** Lays out plain or pure rich-text cells with explicit default fonts and named font groups.
+    /** Lays out supported mixed cells with explicit default fonts and named font groups.
      * The role map is snapshotted before reading the borrowed source; names must be nonblank and
      * keys and values nonnull. Each run retains its group's missing-glyph policy. Unregistered roles
      * fail at their run's cell-local UTF-16 start. No synthetic fonts or implicit fallback are used.
@@ -80,7 +94,10 @@ public final class StreamingTableLayouter {
                 Objects.requireNonNull(diagnostics, "diagnostics"), Objects.requireNonNull(limits, "limits")).layout();
     }
 
-    private record MeasuredRow(int index, double height, List<ParagraphLayout> cells) { }
+    private record MeasuredCell(int column, double width, ParagraphLayout layout, TableCell source, double step, int firstLine) { }
+    private record MeasuredRow(int index, double height, List<MeasuredCell> cells, boolean continued) {
+        private MeasuredRow(int index, double height, List<MeasuredCell> cells) { this(index, height, cells, false); }
+    }
 
     private static final class Run {
         private final StreamingTable table;
@@ -93,6 +110,7 @@ public final class StreamingTableLayouter {
         private final ParagraphLayouter text = new ParagraphLayouter();
         private final List<MeasuredRow> headers = new ArrayList<>();
         private final List<TableRowFragment> current = new ArrayList<>();
+        private final List<DocumentExtras.ExternalLink> currentLinks = new ArrayList<>();
         private final Rect bounds;
         private final double width;
         private double headerHeight;
@@ -100,9 +118,13 @@ public final class StreamingTableLayouter {
         private long bodyRows;
         private int pageIndex;
         private long sourceCells;
+        private long sourceSlots;
         private long sourceCodePoints;
         private long outputLines;
         private long diagnosticCount;
+        private long outputLinks;
+        private long outputFields;
+        private long generatedCodePoints;
 
         Run(StreamingTable table, TableRowSource source, FontGroup fonts, Map<String, FontGroup> roles, PageConsumer pages,
                 Consumer<StreamingTableDiagnostic> diagnostics, StreamingTableLimits limits) {
@@ -121,6 +143,10 @@ public final class StreamingTableLayouter {
             }
             if (table.headerRows().size() > limits.document().maxTableRows()) {
                 throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, -1, -1, -1, "streaming row budget exceeded", null);
+            }
+            if (table.expectedPages() > limits.document().maxPages()) {
+                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, -1, -1, -1,
+                        "declared page total exceeds streaming page budget", null);
             }
             for (int row = 0; row < table.headerRows().size(); row++) {
                 var measured = measure(table.headerRows().get(row), row);
@@ -141,6 +167,10 @@ public final class StreamingTableLayouter {
                 if (next.isEmpty()) { break; }
                 var measured = measure(next.orElseThrow(), nextRowIndex());
                 bodyRows++;
+                if (table.allowRowSplit()) {
+                    splitBody(measured);
+                    continue;
+                }
                 if (!fits(measured.height(), bounds.height() - headerHeight)) {
                     throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, measured.index(), -1, -1,
                             "streaming row cannot fit with repeated headers", null);
@@ -153,6 +183,10 @@ public final class StreamingTableLayouter {
                 current.add(place(measured, used, false));
                 used += measured.height();
                 ExecutionContext.checkpoint();
+            }
+            if (table.expectedPages() > 0 && table.expectedPages() != pageIndex + 1) {
+                throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, -1, -1, -1,
+                        "actual streaming page count differs from declared total", null);
             }
             emit();
             ExecutionContext.progress("STREAMING_TABLE_DONE", table.id(), pageIndex, bodyRows, bodyRows);
@@ -168,25 +202,30 @@ public final class StreamingTableLayouter {
             if (rowIndex >= limits.document().maxTableRows()) {
                 throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, -1, -1, "streaming source row budget exceeded", null);
             }
-            if (row.cells().size() != table.columnWidths().size()) {
-                throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, rowIndex, -1, -1, "streaming row does not match column count", null);
-            }
             long rowPoints = 0;
             int rowInlines = 0;
-            for (int column = 0; column < row.cells().size(); column++) {
+            int column = 0;
+            for (var cell : row.cells()) {
                 ExecutionContext.checkpoint();
-                var cell = row.cells().get(column);
+                if (cell.columnSpan() > table.columnWidths().size() - column) {
+                    throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, rowIndex, column, -1,
+                            "streaming row spans exceed column count", null);
+                }
                 if (cell.hasBlocks()) {
                     throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, rowIndex, column, -1,
                             "streaming tables do not support semantic block cells", null);
                 }
-                if (cell.columnSpan() != 1 || cell.rowSpan() != 1) {
+                if (cell.rowSpan() != 1) {
                     throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, rowIndex, column, -1,
-                            "streaming tables require unmerged cells", null);
+                            "streaming tables do not support row spans", null);
                 }
-                if (!cell.images().isEmpty() || !cell.fields().isEmpty()) {
-                    throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, rowIndex, column, -1,
-                            "streaming tables do not support images or fields", null);
+                for (var span : cell.fields()) {
+                    var field = span.field();
+                    if (field.kind() != InlineField.Kind.PAGE && field.kind() != InlineField.Kind.PAGES
+                            || field.kind() == InlineField.Kind.PAGES && table.expectedPages() == 0) {
+                        throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, rowIndex, column, span.sourceIndex(),
+                                "streaming fields require PAGE or an explicitly declared PAGES total", null);
+                    }
                 }
                 if (cell.inlines().isEmpty()) {
                     if (rowInlines == limits.maxRowInlines()) {
@@ -204,10 +243,6 @@ public final class StreamingTableLayouter {
                                     "streaming source inline run budget exceeded", null);
                         }
                         cellInlines++; rowInlines++;
-                        if (!inline.hyperlink().isEmpty()) {
-                            throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, rowIndex, column, offset,
-                                    "streaming tables do not support text hyperlinks", null);
-                        }
                         String role = inline.style().fontRole();
                         if (!role.isEmpty() && !roles.containsKey(role)) {
                             throw failure(DocumentLayoutException.Code.TEXT_LAYOUT_FAILED, rowIndex, column, offset,
@@ -216,9 +251,10 @@ public final class StreamingTableLayouter {
                         offset += inline.text().length();
                     }
                 }
-                if (sourceCells == limits.document().maxCells()) {
+                if (cell.columnSpan() > limits.document().maxCells() - sourceSlots) {
                     throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, -1, "streaming source cell budget exceeded", null);
                 }
+                sourceSlots += cell.columnSpan();
                 sourceCells++;
                 int cellPoints = 0;
                 for (int offset = 0; offset < cell.text().length();) {
@@ -231,22 +267,35 @@ public final class StreamingTableLayouter {
                     offset += Character.charCount(cell.text().codePointAt(offset));
                     cellPoints++; rowPoints++; sourceCodePoints++;
                 }
+                column += cell.columnSpan();
             }
-            var cells = new ArrayList<ParagraphLayout>();
+            if (column != table.columnWidths().size()) {
+                throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, rowIndex, column, -1,
+                        "streaming row must cover every column", null);
+            }
+            var cells = new ArrayList<MeasuredCell>();
             double height = 0;
-            for (int column = 0; column < row.cells().size(); column++) {
+            column = 0;
+            for (var cell : row.cells()) {
                 ExecutionContext.checkpoint();
-                var cell = row.cells().get(column);
+                double columnWidth = 0;
+                for (int offset = 0; offset < cell.columnSpan(); offset++) {
+                    ExecutionContext.checkpoint();
+                    columnWidth += table.columnWidths().get(column + offset);
+                }
                 var format = cell.format();
                 var style = new ParagraphStyle(format.fontSize(), format.lineHeight(), 0, 0,
                         TextAlignment.valueOf(format.alignment().name()), format.lineBreakPolicy());
                 ParagraphLayout measured;
                 try {
-                    double cellWidth = table.columnWidths().get(column) - table.padding().left() - table.padding().right();
-                    if (cell.inlines().isEmpty()) {
+                    double cellWidth = columnWidth - table.padding().left() - table.padding().right();
+                    if (cell.inlines().isEmpty() && cell.images().isEmpty() && cell.fields().isEmpty()) {
                         measured = text.layout(cell.text(), fonts, cellWidth, style);
                     } else {
                         var spans = new ArrayList<StyledSpan>(cell.inlines().size());
+                        if (cell.inlines().isEmpty()) {
+                            spans.add(new StyledSpan(cell.text(), fonts, format.fontSize(), -1, 0, false, false));
+                        }
                         for (var inline : cell.inlines()) {
                             ExecutionContext.checkpoint();
                             var ink = inline.style();
@@ -254,7 +303,11 @@ public final class StreamingTableLayouter {
                             spans.add(new StyledSpan(inline.text(), group, ink.fontSize(), ink.rgb(),
                                     ink.baselineShift(), ink.underline(), ink.strikeThrough()));
                         }
-                        measured = text.layout(spans, cellWidth, style);
+                        measured = text.layout(spans, cellWidth, style, cell.images().stream().collect(
+                                java.util.stream.Collectors.toMap(com.mirakyux.export4j.model.Paragraph.ImageSpan::sourceIndex,
+                                        com.mirakyux.export4j.model.Paragraph.ImageSpan::image)), cell.fields().stream().collect(
+                                java.util.stream.Collectors.toMap(com.mirakyux.export4j.model.Paragraph.FieldSpan::sourceIndex,
+                                        com.mirakyux.export4j.model.Paragraph.FieldSpan::field)));
                     }
                 } catch (TextLayoutException cause) {
                     var code = cause.code() == TextLayoutException.Code.BUDGET_EXCEEDED
@@ -266,7 +319,10 @@ public final class StreamingTableLayouter {
                 }
                 ExecutionContext.checkpoint();
                 height = Math.max(height, measured.height());
-                cells.add(measured);
+                boolean linked = cell.inlines().stream().anyMatch(inline -> !inline.hyperlink().isEmpty())
+                        || cell.images().stream().anyMatch(image -> !image.image().hyperlink().isEmpty());
+                cells.add(new MeasuredCell(column, columnWidth, measured, linked ? cell : null, format.lineHeight(), 0));
+                column += cell.columnSpan();
             }
             height += table.padding().top() + table.padding().bottom();
             if (!Double.isFinite(height) || height <= 0) {
@@ -275,12 +331,63 @@ public final class StreamingTableLayouter {
             return new MeasuredRow(rowIndex, height, List.copyOf(cells));
         }
 
+        private void splitBody(MeasuredRow row) throws IOException {
+            int[] consumed = new int[row.cells().size()];
+            boolean continued = false;
+            while (true) {
+                ExecutionContext.checkpoint();
+                double available = bounds.height() - used;
+                double content = available - table.padding().top() - table.padding().bottom();
+                var cells = new ArrayList<MeasuredCell>();
+                int[] taken = new int[consumed.length];
+                boolean complete = true;
+                double height = 0;
+                for (int index = 0; index < consumed.length; index++) {
+                    var cell = row.cells().get(index);
+                    int remaining = cell.layout().lines().size() - consumed[index];
+                    if (!fits(cell.step(), content)) { cells.clear(); break; }
+                    int count = (int) Math.min(remaining, Math.floor(Math.nextUp(content / cell.step())));
+                    ParagraphLayout layout;
+                    if (count == 0) {
+                        int end = cell.layout().lines().getLast().sourceEnd();
+                        layout = new ParagraphLayout(cell.layout().width(), cell.step(), List.of(
+                                new com.mirakyux.export4j.text.TextLine(end, end, 0,
+                                        cell.layout().lines().getFirst().baselineY(), 0, List.of())), List.of());
+                    } else {
+                        layout = DocumentLayouter.fragment(cell.layout(), consumed[index], count, cell.step());
+                    }
+                    height = Math.max(height, layout.height());
+                    taken[index] = count;
+                    complete &= count == remaining;
+                    cells.add(new MeasuredCell(cell.column(), cell.width(), layout, cell.source(), cell.step(), consumed[index]));
+                }
+                height += table.padding().top() + table.padding().bottom();
+                if (cells.isEmpty() || !fits(height, available)) {
+                    if (used == headerHeight) {
+                        throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, row.index(), -1, -1,
+                                "streaming headers and next complete cell line cannot fit", null);
+                    }
+                } else {
+                    current.add(place(new MeasuredRow(row.index(), height, List.copyOf(cells), continued), used, false));
+                    used += height;
+                    for (int index = 0; index < consumed.length; index++) { consumed[index] += taken[index]; }
+                    if (complete) { return; }
+                    continued = true;
+                }
+                emit(); pageIndex++; beginPage();
+            }
+        }
+
         private void beginPage() {
             ExecutionContext.checkpoint();
             if (pageIndex >= limits.document().maxPages()) {
                 throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, -1, -1, -1, "streaming page budget exceeded", null);
             }
-            current.clear(); used = 0;
+            if (table.expectedPages() > 0 && pageIndex >= table.expectedPages()) {
+                throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, -1, -1, -1,
+                        "actual streaming page count exceeds declared total", null);
+            }
+            current.clear(); currentLinks.clear(); used = 0;
             for (var header : headers) {
                 current.add(place(header, used, pageIndex > 0));
                 used += header.height();
@@ -290,13 +397,86 @@ public final class StreamingTableLayouter {
         private TableRowFragment place(MeasuredRow row, double y, boolean repeated) {
             var cells = new ArrayList<CellFragment>();
             double x = 0;
-            for (int column = 0; column < row.cells().size(); column++) {
-                double columnWidth = table.columnWidths().get(column);
-                cells.add(new CellFragment(column, new Rect(x, y, columnWidth, row.height()),
-                        new Point(x + table.padding().left(), y + table.padding().top()), row.cells().get(column)));
-                x += columnWidth;
+            for (var cell : row.cells()) {
+                var layout = resolveFields(cell.layout(), cell.step(), row.index(), cell.column());
+                if (cell.source() != null) {
+                    var owner = cell.source();
+                    InlineLinkGeometry.collect(owner.text(), owner.inlines(), owner.format().lineHeight(),
+                            new Point(bounds.x() + x + table.padding().left(), bounds.y() + y + table.padding().top()),
+                            layout, pageIndex, table.pageSettings().size().width(),
+                            (link, offset) -> appendLink(link, row.index(), cell.column(), offset));
+                }
+                cells.add(new CellFragment(cell.column(), new Rect(x, y, cell.width(), row.height()),
+                        new Point(x + table.padding().left(), y + table.padding().top()), layout, cell.firstLine()));
+                x += cell.width();
             }
-            return new TableRowFragment(row.index(), row.index() < headers.size(), repeated, cells);
+            return new TableRowFragment(row.index(), row.index() < headers.size(), repeated, cells, row.continued());
+        }
+
+        private ParagraphLayout resolveFields(ParagraphLayout source, double step, int row, int column) {
+            if (source.lines().stream().allMatch(line -> line.fields().isEmpty())) { return source; }
+            var lines = new ArrayList<com.mirakyux.export4j.text.TextLine>();
+            for (var line : source.lines()) {
+                if (line.fields().isEmpty()) { lines.add(line); continue; }
+                var ink = new ArrayList<>(line.outlines());
+                for (var box : line.fields()) {
+                    ExecutionContext.checkpoint();
+                    if (outputFields == limits.maxFields()) {
+                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, box.sourceIndex(),
+                                "streaming field presentation budget exceeded", null);
+                    }
+                    outputFields++;
+                    String value = Integer.toString(box.field().kind() == InlineField.Kind.PAGE ? pageIndex + 1 : table.expectedPages());
+                    if (value.length() > limits.maxGeneratedCodePoints() - generatedCodePoints) {
+                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, box.sourceIndex(),
+                                "streaming generated field value budget exceeded", null);
+                    }
+                    generatedCodePoints += value.length();
+                    var style = box.field().style();
+                    var group = style.fontRole().isEmpty() ? fonts : roles.get(style.fontRole());
+                    InlineFieldInk.Resolved resolved;
+                    try {
+                        if (group == null) { throw new IllegalArgumentException("unregistered field font role"); }
+                        resolved = InlineFieldInk.resolve(box, value, step, group, text);
+                    } catch (IllegalArgumentException cause) {
+                        throw failure(DocumentLayoutException.Code.TEXT_LAYOUT_FAILED, row, column, box.sourceIndex(),
+                                "streaming field resolution failed", cause);
+                    }
+                    ink.set(box.outlineIndex(), resolved.outline());
+                    for (var diagnostic : resolved.diagnostics()) {
+                        if (diagnosticCount == limits.maxDiagnostics()) {
+                            throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, box.sourceIndex(),
+                                    "streaming diagnostic budget exceeded", null);
+                        }
+                        diagnosticCount++;
+                        diagnostics.accept(new StreamingTableDiagnostic(table.id(), pageIndex, row, column, diagnostic,
+                                "INLINE_FIELD:" + box.sourceIndex()));
+                        ExecutionContext.checkpoint();
+                    }
+                }
+                lines.add(new com.mirakyux.export4j.text.TextLine(line.sourceStart(), line.sourceEnd(), line.offsetX(),
+                        line.baselineY(), line.width(), line.runs(), ink, line.images()));
+            }
+            return new ParagraphLayout(source.width(), source.height(), lines, source.diagnostics());
+        }
+
+        private void appendLink(DocumentExtras.ExternalLink link, int row, int column, int offset) {
+            if (!currentLinks.isEmpty()) {
+                var previous = currentLinks.getLast();
+                var a = previous.bounds(); var b = link.bounds();
+                if (previous.destination().equals(link.destination()) && a.y() == b.y() && a.height() == b.height()
+                        && Math.abs(a.x() + a.width() - b.x()) < 1e-8) {
+                    currentLinks.set(currentLinks.size() - 1, new DocumentExtras.ExternalLink(pageIndex,
+                            new Rect(a.x(), a.y(), b.x() + b.width() - a.x(), a.height()), link.destination()));
+                    return;
+                }
+            }
+            if (outputLinks == limits.maxLinks()) {
+                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, offset,
+                        "streaming output link budget exceeded, including repeated headers", null);
+            }
+            outputLinks++;
+            currentLinks.add(link);
         }
 
         private void emit() throws IOException {
@@ -324,7 +504,7 @@ public final class StreamingTableLayouter {
                     new Point(bounds.x(), bounds.y()), width, used, current));
             var page = new LayoutPage(pageIndex, table.pageSettings().size(), bounds, elements);
             ExecutionContext.progress("STREAMING_PAGE", table.id(), pageIndex, pageIndex, -1);
-            pages.accept(page);
+            pages.accept(page, List.copyOf(currentLinks));
             ExecutionContext.checkpoint();
         }
 

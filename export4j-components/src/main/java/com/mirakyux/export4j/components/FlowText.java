@@ -12,6 +12,7 @@ import com.mirakyux.export4j.layout.ComponentLayout;
 import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.layout.core.TextInheritance;
 import com.mirakyux.export4j.model.PageSize;
 import com.mirakyux.export4j.model.PaginationPolicy;
@@ -21,11 +22,14 @@ import com.mirakyux.export4j.model.LineBreakPolicy;
 import com.mirakyux.export4j.text.ParagraphStyle;
 import com.mirakyux.export4j.text.TextAlignment;
 import com.mirakyux.export4j.text.TextLine;
+import com.mirakyux.export4j.text.StyledSpan;
+import java.util.function.IntToDoubleFunction;
 
-/** Text for nested flow; wraps once and splits complete lines with explicit orphan/widow counts.
+/** Text for nested flow; splits complete lines with explicit orphan/widow counts.
+ * Unequal widths may require bounded reflow of the complete original source before allocation.
  * Builders inherit unset style and color from the layout context; constructors keep explicit values. */
 public record FlowText(String text, ParagraphStyle style, RgbColor color, PaginationPolicy pagination,
-        TextInheritance inheritance) implements RegionFlow {
+        TextInheritance inheritance) implements WidthAwareRegionFlow {
     public FlowText(String text, ParagraphStyle style, RgbColor color, PaginationPolicy pagination) {
         this(text, style, color, pagination, TextInheritance.NONE);
     }
@@ -43,12 +47,12 @@ public record FlowText(String text, ParagraphStyle style, RgbColor color, Pagina
 
     @Override
     public List<ComponentLayout> layoutParts(ComponentContext context) {
-        return RegionFlow.super.layoutParts(context);
+        return WidthAwareRegionFlow.super.layoutParts(context);
     }
 
     @Override
     public List<ComponentLayout> layoutParts(ComponentContext context, double firstPageHeight) {
-        return RegionFlow.super.layoutParts(context, firstPageHeight);
+        return WidthAwareRegionFlow.super.layoutParts(context, firstPageHeight);
     }
 
     @Override
@@ -56,19 +60,43 @@ public record FlowText(String text, ParagraphStyle style, RgbColor color, Pagina
         if (!inheritance.equals(TextInheritance.NONE)) { return resolved(context).layoutRegions(context, regions); }
         ComponentSupport.fits(context.width(), regions.continuationHeight(), context);
         var shaped = new ParagraphLayouter().layout(text, context.fontGroup(), context.width(), style);
+        return layoutShaped(shaped, style.lineHeight(), color, pagination, regions);
+    }
+
+    static List<RegionFlow.Fragment> layoutShaped(ParagraphLayout shaped, double lineHeight, RgbColor color,
+            PaginationPolicy pagination, FlowRegions regions) {
+        return layoutShaped(shaped, lineHeight, color, pagination, regions, region -> shaped.width());
+    }
+
+    @Override
+    public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        if (!inheritance.equals(TextInheritance.NONE)) { return resolved(context).layoutVariableRegions(context, regions, widths); }
+        var slots = new TextRegionWidths(context, regions, widths, style.lineHeight(), pagination);
+        var span = new StyledSpan(text, context.fontGroup(), style.fontSize(), -1, 0, false, false);
+        var shaped = slots.shape(text.length(), lineWidths -> new ParagraphLayouter().layout(List.of(span), context.width(), style, lineWidths));
+        return layoutShaped(shaped, style.lineHeight(), color, slots.slices(shaped.lines().size()), slots::width);
+    }
+
+    static List<RegionFlow.Fragment> layoutShaped(ParagraphLayout shaped, double lineHeight, RgbColor color,
+            PaginationPolicy pagination, FlowRegions regions, IntToDoubleFunction widths) {
+        return layoutShaped(shaped, lineHeight, color, LineFlowSlices.split(shaped.lines().size(), lineHeight, regions, pagination), widths);
+    }
+
+    static List<RegionFlow.Fragment> layoutShaped(ParagraphLayout shaped, double lineHeight, RgbColor color,
+            List<LineFlowSlices.Slice> slices, IntToDoubleFunction widths) {
         List<RegionFlow.Fragment> parts = new ArrayList<>();
-        for (var slice : LineFlowSlices.split(shaped.lines().size(), style.lineHeight(), regions, pagination)) {
+        for (var slice : slices) {
             int first = slice.first();
             int take = slice.count();
             List<TextLine> lines = new ArrayList<>();
             for (int offset = 0; offset < take; offset++) {
                 var line = shaped.lines().get(first + offset);
-                lines.add(line.atBaseline(line.baselineY() - first * style.lineHeight()));
+                lines.add(line.atBaseline(line.baselineY() - first * lineHeight));
             }
             int start = lines.getFirst().sourceStart();
             int end = lines.getLast().sourceEnd();
             var diagnostics = shaped.diagnostics().stream().filter(d -> d.sourceStart() >= start && d.sourceStart() < end).toList();
-            var layout = new ParagraphLayout(context.width(), take * style.lineHeight(), lines, diagnostics);
+            var layout = new ParagraphLayout(widths.applyAsDouble(slice.region()), take * lineHeight, lines, diagnostics);
             var builder = new DisplayListBuilder(new PageSize(layout.width(), layout.height()));
             TextLayoutPainter.draw(builder, layout, new Point(0, 0), color);
             parts.add(new RegionFlow.Fragment(slice.region(), new ComponentLayout(layout.width(), layout.height(), take, builder.build().commands(), diagnostics)));

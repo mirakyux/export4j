@@ -153,6 +153,30 @@ class StreamingExportTest {
         try (var entries = Files.list(directory)) { assertEquals(1, entries.count()); }
     }
 
+    @Test void invalidMergedCoverageAfterPageDeliveryKeepsOldTargetAndClosesOnce() throws IOException {
+        var target = directory.resolve("merged.bin"); Files.writeString(target, "old");
+        var events = new ArrayList<String>();
+        var spec = table().toBuilder().columns(40, 40, 40).headerRows(List.of()).build();
+        var reads = new int[1];
+        var closes = new int[1];
+        var source = new TableRowSource() {
+            @Override public Optional<TableRow> next() {
+                int index = ++reads[0];
+                return Optional.of(new TableRow(List.of(TableCell.builder().text("ROW" + index).format(format())
+                        .columnSpan(index == 6 ? 4 : 3).build())));
+            }
+            @Override public void close() { closes[0]++; }
+        };
+        var sink = new Sink(events, new ByteArrayOutputStream());
+        var failure = assertThrows(DocumentLayoutException.class, () -> DocumentEngine.builder(fonts()).build()
+                .export(spec, () -> source).backend((metadata, output) -> sink).to(target));
+        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, failure.code());
+        assertEquals(5, failure.rowIndex()); assertEquals(6, reads[0]); assertEquals(1, closes[0]);
+        assertEquals(1, sink.pages); assertFalse(events.contains("finish"));
+        assertEquals("old", Files.readString(target));
+        try (var entries = Files.list(directory)) { assertEquals(1, entries.count()); }
+    }
+
     @Test void openFailuresReleaseOnlyAcquiredResources() throws IOException {
         var events = new ArrayList<String>();
         var openFailure = new IOException("open");
@@ -166,6 +190,39 @@ class StreamingExportTest {
             throw openFailure;
         }).backend((metadata, output) -> sink).to(new ByteArrayOutputStream())));
         assertEquals(List.of("writer-close"), events);
+    }
+
+    @Test void failureOrCancellationInsideOneSplitRowDoesNotReadTheFollowingSourceRow() throws IOException {
+        var engine = DocumentEngine.builder(fonts()).build();
+        var spec = table().toBuilder().allowRowSplit(true).build();
+        var target = directory.resolve("split.pdf"); Files.writeString(target, "old");
+        for (boolean cancellation : List.of(false, true)) {
+            var events = new ArrayList<String>();
+            var reads = new int[1]; var closes = new int[1];
+            var cancelled = new AtomicBoolean();
+            var source = new TableRowSource() {
+                @Override public Optional<TableRow> next() {
+                    reads[0]++;
+                    return Optional.of(new TableRow(List.of(new TableCell("LONG\n".repeat(20), format()))));
+                }
+                @Override public void close() { closes[0]++; }
+            };
+            var sink = new Sink(events, new ByteArrayOutputStream());
+            var rejected = new IOException("page rejected");
+            if (!cancellation) { sink.acceptFailure = rejected; }
+            var request = engine.export(spec, () -> source).options(options -> options.cancelled(cancelled::get))
+                    .backend((metadata, output) -> new PageWriter() {
+                        @Override public void accept(DisplayPage page) throws IOException { sink.accept(page); cancelled.set(true); }
+                        @Override public void finish() throws IOException { sink.finish(); }
+                        @Override public void close() throws IOException { sink.close(); }
+                    });
+            if (cancellation) {
+                assertEquals(ExecutionException.Code.CANCELLED, assertThrows(ExecutionException.class, () -> request.to(target)).code());
+            } else { assertSame(rejected, assertThrows(IOException.class, () -> request.to(target))); }
+            assertEquals(1, reads[0]); assertEquals(1, closes[0]); assertEquals(1, sink.pages);
+            assertFalse(events.contains("finish")); assertEquals("old", Files.readString(target));
+            try (var files = Files.list(directory)) { assertEquals(1, files.count()); }
+        }
     }
 
     @Test void finishCloseAndByteBudgetFailuresKeepOldTargetAndPermitNextExport() throws IOException {

@@ -1,6 +1,6 @@
 # 声明式 XML 模板
 
-主源支持固定 header/footer 与独立主题，放在可选 page 后、正文前。使用 `DocumentTemplate.renderWithPageRegions` 和 `DocumentEngine.export(PageDocument)` 保留页区及最终页码；旧 render 遇到页区会明确拒绝。图片／语义表格和最终字段均保留；分节使用 renderSections，包含各节纸张／页码、页区继承／覆盖和清空。语法、限制及完整调用见[页区指南](xml-page-regions-api.md)和[分节指南](xml-sections-api.md)。
+主源支持固定 header/footer、[首页／奇偶变体](page-variants-api.md)与独立主题，放在可选 page 后、正文前。使用 `DocumentTemplate.renderWithPageRegions` 和 `DocumentEngine.export(PageDocument)` 保留页区及最终页码；旧 render 遇到页区会明确拒绝。图片／语义表格和最终字段均保留；分节使用 renderSections，包含各节纸张／页码、页区继承／覆盖和清空。语法、限制及完整调用见[页区指南](xml-page-regions-api.md)、[分节指南](xml-sections-api.md)和[固定页面图层](page-overlays-api.md)。
 
 正文／列表、六级标题和单元格可分别设置默认字体角色与颜色，局部 `role`／`color` 按存在性覆盖，链接与四类字段继承所在范围。使用 `.bodyText(...)`／`.headingText(...)`／`.cellText(...)`，完整规则见[文字默认值指南](xml-text-defaults-api.md)。字体资源仍由 Java 显式注册，模板不加载系统或网络字体。
 
@@ -8,7 +8,7 @@
 
 正文、六级标题、格／表格式及静态命名样式可通过 `XmlTemplate.Builder.theme(DocumentTheme)` 配置；`p`／`span` 的 `style` 规则及显式覆盖见 [XML 主题指南](xml-themes-api.md)，已完成[阶段三十一验收](verification/phase-31-xml-themes.md)。
 
-重复报告区块可通过 `.fragment(name, source)` 显式登记，再用静态 `<include ref="panel" prefix="first"/>` 复用。仅支持主模板块列表的平面复用，片段内部不再 include；名称空间、来源和预算见[离线片段指南](xml-includes-api.md)。
+重复报告区块可通过 `.fragment(name, source)` 显式登记，再用静态 `<include ref="panel" prefix="first"/>` 复用。支持最多 16 层非循环片段引用，父子前缀组合；名称空间、来源和预算见[离线片段指南](xml-includes-api.md)。
 
 版本 1 模板把报告结构写在 XML 中，Java 负责数据、资源与输出。解析器属于 `export4j-adapter-template`，使用根包 `com.mirakyux.export4j.adapter.template`。它编译为现有 DocumentTemplate，不另行决定换行和分页。完整例子见[模板文件](../examples/src/main/resources/templates/report.xml)、[调用代码](../examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java)及[验收](verification/phase-21-xml-templates.md)。
 
@@ -44,7 +44,7 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 | `page-break` | 空元素；显式换页 |
 | `if` | 必填 `test="flag"`；先且仅一个 then，随后可选一个 else；分支内为块 |
 | `each` | 必填 `items="items"`、`as="item"`；内部为块，可嵌套 |
-| `include` | 必填静态 ref／prefix；只在主模板合法块列表选择已登记片段，片段内部、格内及递归复用拒绝 |
+| `include` | 必填静态 ref／prefix；主模板及片段合法块列表选择已登记片段，拒绝循环、行内和格内位置 |
 | `table` | columns、零至多个 header、一个以上 row，顺序固定 |
 | `rows` | 同 table，但恰好一个模板 row；必填 items、as；展开为空集合时失败 |
 
@@ -96,7 +96,7 @@ column 恰好指定 width（固定 point）或 weight（正比例），均须正
 
 直接出现任一 `p`／`table` 即进入块模式，只允许这两类节点及结构空白。行内文字、span、图片、字段和 link 须放进 `p`，不能与块平级混用。格内不接受 if／each／rows、标题、列表或换页；外层已有 each／rows 可以深复制完整子树，并重定位同一词法复制范围内的静态字段目标。
 
-块格及父连通行组整体移页／移区。含块格表和任意内表的 `row-split="true"`、重复表头中的块格在编译时拒绝，普通行内父表头保持。所有条件分支均验证几何、深度和内容分支。递归续排、纵向合并组拆分及 Markdown 嵌套不属于该子集。
+默认块格及父连通行组整体移页／移区；显式 `row-split="true"` 支持递归段落／内表及纵向 owner 续排，各层开关独立。重复父表头中的块格仍拒绝，普通行内父表头保持。所有条件分支均验证几何、深度和内容分支。语义表深最多 16 层，见[块格 API](block-cells-api.md)。
 
 ## 最终字段、编号与外链
 
@@ -106,10 +106,10 @@ column 恰好指定 width（固定 point）或 weight（正比例），均须正
 | --- | --- |
 | `page-number` | 本次呈现的显示页码；不接受 target |
 | `page-count` | 最终物理总页数，含目录前置页；不接受 target |
-| `page-reference` | 必填静态 target，解析目标块所在的显示页码 |
-| `number-reference` | 必填静态 target，解析目标 NumberedItem／Caption 的编号标签 |
+| `page-reference` | 必填 target，解析目标块所在的显示页码；支持数据表达式 |
+| `number-reference` | 必填 target，解析目标 NumberedItem／Caption 的编号标签；支持数据表达式 |
 
-target 使用与显式 ID 相同的语法，不接受变量。编译检查语法、宽度和样式，包括未选中的 if 分支；目标是否存在、是否有编号在绑定后的最终文档布局时检查。循环内字段引用同一词法复制作用域声明的目标时，沿用 Java 模板规则重定位到当前副本，例如 `loop` 对应 `loop@0`；内层循环可引用当前外层副本，循环外的实际静态目标保持原 ID。条件分支也参与声明收集，但未选中的目标仍不存在，最终布局明确失败；循环外引用循环原型 ID 不会猜测某次迭代。此规则扩展了原先保留全部字面目标的行为。值放不进预留框时由既有布局诊断明确失败。
+静态 target 使用与显式 ID 相同的语法；`${record.target}` 等动态 target 在编译时检查表达式，绑定后视为最终完整 ID，不自动添加 include 前缀或 each 后缀。编译检查语法、宽度和样式，包括未选中的 if 分支；目标是否存在、是否有编号在最终文档布局时检查。循环内静态字段引用同一词法复制作用域声明的目标时，重定位到当前副本，例如 `loop` 对应 `loop@0`；内层循环可引用当前外层副本，循环外的静态目标保持原 ID。条件分支也参与声明收集，但未选中的目标仍不存在，最终布局明确失败；循环外引用循环原型 ID 不会猜测某次迭代。值放不进预留框时由既有布局诊断明确失败。
 
 `numbered` 映射到现有 NumberedItem。list-id 必填，采用静态 ID 语法；同 list-id 的项目在全文档顺序中继续编号。level 为静态整数1～9，省略为1。restart 默认为0（继续），正值重设当前级，更新后清空全部更深级；只接受非负int。实际展开后的编号必须有完整父级，缺级和递增溢出在既有语义布局／DOCX导出阶段失败，编译或render不提前推测动态父计数。完整点分引用、循环／片段列表身份及九级边界见[多级编号指南](xml-numbering-api.md)。字段、图片及 link 包装不用于 numbered／heading／bullet；它们的 span 仍保留真实文字样式。
 
@@ -119,7 +119,7 @@ target 使用与显式 ID 相同的语法，不接受变量。编译检查语法
 <p><link href="https://example.com/report?a=1&amp;b=2">${label}<span role="bold" underline="true">详情</span><image ref="logo" width="12" height="12" alt="详情入口"/></link></p>
 ~~~
 
-`link` 仅用于 p／cell，必填 href，内容为普通文字、span 或已注册 image。链接内图片仍通过资源白名单选取；href 从不成为图片来源。href 作为静态字符串复用 ExternalDestination：只接受 HTTP、HTTPS、mailto，沿用该模型的长度、控制字符、主机及用户信息检查。XML 中的 `&` 写为 `&amp;`。链接文字和 alt 可插值，href 不接受 `${...}`；不支持嵌套链接、链接内字段、空 link 或点击脚本。
+`link` 仅用于 p／cell，必填 href，内容为普通文字、span 或已注册 image。链接内图片仍通过资源白名单选取；href 从不成为图片来源。href 可为静态地址或 `${record.url}` 等纯数据表达式，在当前词法范围绑定，每个副本独立解析。最终地址复用 ExternalDestination：只接受 HTTP、HTTPS、mailto，检查长度、控制字符、主机及用户信息。非法动态地址以脱敏 `BindingException.Code.INVALID_VALUE` 失败，不携带含原地址的 cause；缺值、类型、预算和取消仍按各自错误处理。没有隐式 URL 编码或外联。XML 中的 `&` 写为 `&amp;`。不支持嵌套链接、链接内字段、空 link 或点击脚本。
 
 编译与数据绑定只保存被动链接，不访问目的地址。字体、UTF-16 原文位置、最终链接矩形和字段值仍由既有模型及布局处理。字段替换不会改变行宽、换行或分页；表头逐次呈现的页码仍遵守语义表格契约。DOCX 重复表头 PAGE 不能保留逐次呈现语义，仍须明确拒绝；静态 SVG／PNG 后端仍拒绝非空交互数据，不能无提示丢弃链接。
 
@@ -141,7 +141,7 @@ target 使用与显式 ID 相同的语法，不接受变量。编译检查语法
 
 ## 支持边界
 
-cell 可用固定正整数 column-span／row-span 声明语义矩形合并；静态表格按二维网格验证，空 header／row 仅在被上行完全覆盖时合法。动态单行原型支持列合并，首批拒绝纵向跨度，避免循环实例跨数据行占用。见[列合并指南](column-spans-api.md)与[跨行指南](row-spans-api.md)。这是一种自主定义的声明式子集。Markdown 使用独立入口，HTML/CSS、动态 URL、注释、组件网格及递归 include 不属于 XML 子集。不承诺任意 XML／Word 输入无损、PDF 与 Word 同分页、流式布局或可访问性标准合规。DOCX／SVG 输出依旧遵守各自支持矩阵。
+cell 可用固定正整数 column-span／row-span 声明语义矩形合并；静态表格按二维网格验证，空 header／row 仅在被上行完全覆盖时合法。动态单行原型支持列合并，首批拒绝纵向跨度，避免循环实例跨数据行占用。见[列合并指南](column-spans-api.md)与[跨行指南](row-spans-api.md)。这是一种自主定义的声明式子集。Markdown 使用独立入口，HTML/CSS、注释及组件网格不属于 XML 子集。不承诺任意 XML／Word 输入无损、PDF 与 Word 同分页、流式布局或可访问性标准合规。DOCX／SVG 输出依旧遵守各自支持矩阵。
 
 运行 `:examples:xmlTemplates` 生成原有 PDF、DOCX 和 SVG；独立检查使用 `scripts/verify_xml_templates.py`。新字段／外链按上述后端边界另外验收，不能由旧样例推断通过。本模块与自研样例采用 Apache-2.0，仅使用 JDK XML 和既有模型，不新增第三方运行依赖。设计依据见 [ADR-0025](adr/0025-safe-declarative-templates.md)及 [ADR-0029](adr/0029-xml-fields-and-links.md)。
 

@@ -33,12 +33,12 @@ try (var stream = Files.newOutputStream(docxPath)) {
 
 - document 在可选 page/header/footer 后只含 section，不能与普通正文混写。section 只在主源根的这一层出现，不能放在循环、条件或片段声明中。
 - id 必填、静态且节间唯一；正文、表格及后代 ID 仍全文档唯一。first-page-number 默认 0 表示继续，正整数重置，物理页索引与显示页码保持分离。
-- 每节先放可选 page，再放各至多一次的 header/footer，最后放普通正文节点。page 必须是该节原始源中的首个元素，不能通过 include 调整位置。
-- 每节未声明的纸张／边距继承根配置；未声明的页眉／页脚继承根页区。继承来自根，不能因前一节的局部覆盖意外改变后一节。height="0" 的空页区显式清空；正高度空区只预留空间。
-- 节内正文继续支持原有变量、条件、循环、动态行和离线平面 include；页区可包含展开后合法的段落／表格片段。片段不能声明 page、section 或页区。
+- 每节先放可选 page，再放 header/footer，最后放普通正文节点。同类同 variant 最多一次；静态 variant 为 default／first／even，省略为 default。page 必须是该节原始源中的首个元素，不能通过 include 调整位置。
+- 每节未声明的纸张／边距继承根配置；未声明的页眉／页脚及变体继承根页区。同一变体只覆盖一边时保留根的另一边，新建变体的另一边为空。继承来自根，不能因前一节的局部覆盖意外改变后一节。height="0" 的空页区显式清空；正高度空区只预留空间。
+- 节内正文继续支持原有变量、条件、循环、动态行和有界递归 include；页区可包含展开后合法的段落／表格片段。片段不能声明 page、section 或页区。
 - 主题在编译时取快照。所有分支先检查语法；实际绑定共用同一数据快照、访问／块／行／文字预算和同步取消，不为每节重置额度。继承的相等不可变页区只绑定一次。
 - 页区先预留正文空间，内容必须完整放进固定区域。PAGE 使用该节最终显示页码，PAGES 使用包含目录的最终物理总页数；区域不会因数字长度重新分页。
 
 Java 可直接使用 `Section.builder(id).pageSettings(...).firstPageNumber(...).pageRegions(...).blocks(...).build()`，再加入 SectionedDocument。便利引擎自动选择各节的模型页区；同时配置非空 Java pageTemplate 会报冲突。显式模板重载继续由调用方选择模板，用于已有 Java 首页／奇偶组合。
 
-当前 XML section 是静态 next-page 子集，不包含连续分节、首页／奇偶页区、XML 背景／前景或任意 CSS。DOCX 的对应范围见[页区映射](docx-page-regions-api.md)。
+当前 XML section 是静态 next-page 子集；[首页／奇偶页区](page-variants-api.md)按显示页码选择。[XML 背景／前景](page-overlays-api.md)支持整层根继承／局部替换／清空；连续分节和任意 CSS 仍不支持。DOCX 的对应范围见[页区映射](docx-page-regions-api.md)。

@@ -25,12 +25,23 @@ public record CellFragment(int columnIndex, Rect bounds, Point textOrigin, Conte
         }
     }
     /** Ordered atomic child IR; coordinates are relative to the enclosing cell textOrigin. */
-    public record Blocks(List<LayoutFragment> fragments) implements Content {
+    public record Blocks(List<LayoutFragment> fragments, List<Integer> sourceBlockIndices) implements Content {
+        /** Compatibility constructor for a complete, ordered source block list. */
+        public Blocks(List<LayoutFragment> fragments) {
+            this(fragments, java.util.stream.IntStream.range(0, fragments.size()).boxed().toList());
+        }
         public Blocks {
             fragments = List.copyOf(fragments);
-            if (fragments.isEmpty() || fragments.stream().anyMatch(fragment ->
+            sourceBlockIndices = List.copyOf(sourceBlockIndices);
+            if (sourceBlockIndices.size() != fragments.size() || sourceBlockIndices.stream().anyMatch(index -> index < 0)
+                    || fragments.stream().anyMatch(fragment ->
                     !(fragment instanceof ParagraphFragment || fragment instanceof TableFragment))) {
                 throw new IllegalArgumentException("block cell requires paragraph or table fragments");
+            }
+            for (int index = 1; index < sourceBlockIndices.size(); index++) {
+                if (sourceBlockIndices.get(index) <= sourceBlockIndices.get(index - 1)) {
+                    throw new IllegalArgumentException("cell source block indices must increase");
+                }
             }
         }
     }
@@ -53,9 +64,14 @@ public record CellFragment(int columnIndex, Rect bounds, Point textOrigin, Conte
         this(columnIndex, bounds, textOrigin, layout, 0);
     }
 
-    /** Creates atomic block content with a defensive structural snapshot. */
+    /** Creates block content with a defensive structural snapshot and consecutive source ordinals. */
     public static CellFragment blocks(int columnIndex, Rect bounds, Point textOrigin, List<LayoutFragment> fragments) {
         return new CellFragment(columnIndex, bounds, textOrigin, new Blocks(fragments));
+    }
+
+    /** Original cell block ordinals for this presentation, including continuation slices. */
+    public List<Integer> sourceBlockIndices() {
+        return content instanceof Blocks value ? value.sourceBlockIndices() : List.of();
     }
 
     public boolean hasBlocks() { return content instanceof Blocks; }
@@ -75,7 +91,7 @@ public record CellFragment(int columnIndex, Rect bounds, Point textOrigin, Conte
         throw new IllegalStateException("block cell has no single paragraph line offset");
     }
 
-    /** Actual leaf text line count, including nested table headers in this atomic presentation. */
+    /** Actual leaf text line count, including nested table headers in this presentation. */
     public long lineCount() {
         if (content instanceof Inline value) { return value.layout().lines().size(); }
         return blocks().stream().mapToLong(fragment -> switch (fragment) {

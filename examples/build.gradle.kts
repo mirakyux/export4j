@@ -19,6 +19,117 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+tasks.register<JavaExec>("semanticEditing") {
+    group = "application"
+    description = "Edits semantic content and exports PDF, DOCX, HTML and Markdown with a reconciled loss report."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.SemanticEditingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pdfPageEditing") {
+    group = "application"
+    description = "Edits existing PDF page geometry and explicit text/image layers without reflow."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfPageEditingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pdfObjectEditing") {
+    group = "application"
+    description = "Edits passive PDF fields, comments, links, outlines, attachments and metadata."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfObjectEditingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pdfRaster") {
+    group = "application"
+    description = "Renders existing PDF pages and extracts unique embedded image resources."
+    dependsOn("pdfPageEditing", "pdfObjectEditing")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfRasterExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pdfOptimization") {
+    group = "application"
+    description = "Optimizes PDF streams/resources and explicitly resamples images with measured losses."
+    dependsOn("pdfPageEditing", "pdfObjectEditing")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfOptimizationExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pdfContentEditing") {
+    group = "application"
+    description = "Replaces real page text and redacts explicit regions into a fresh image-only PDF."
+    dependsOn("pdfPageEditing")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfContentEditingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pdfSemanticImport") {
+    group = "application"
+    description = "Recovers editable PDF semantic blocks and converts to DOCX, HTML, Markdown and PDF."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfSemanticImportExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("markdownImport") {
+    group = "application"
+    description = "Imports CommonMark/GFM, edits its semantic model, and exports four formats."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.MarkdownImportExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("htmlImport") {
+    group = "application"
+    description = "Imports offline HTML/CSS, edits semantic content and exports with reconciled loss reports."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.HtmlImportExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("documentConversion") {
+    group = "application"
+    description = "Prepares real import/edit/export chains with exact encodings and complete actual loss reports."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.DocumentConversionExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("docxPackageEdit") {
+    group = "application"
+    description = "Edits generated DOCX text while preserving untouched package structures and parts."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.DocxPackageEditExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("docxStyleImport") {
+    group = "application"
+    description = "Resolves DOCX style inheritance to explicit semantic formatting with a real loss report."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.DocxStyleImportExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 tasks.register<JavaExec>("webExports") {
     group = "application"
     description = "Generates semantic HTML and Markdown with explicit unsupported-content policies."
@@ -484,6 +595,154 @@ tasks.register<JavaExec>("xmlSections") {
     description = "Generates XML sections, repeated image/table bands and native DOCX page regions."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.mirakyux.export4j.examples.XmlSectionsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("recursiveTables") {
+    group = "application"
+    description = "Generates recursive semantic tables and vertical continuations in pages and columns."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.RecursiveTablesExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("recursiveIncludes") {
+    group = "application"
+    description = "Generates recursive offline fragments, scoped references and data-bound links."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.RecursiveIncludesExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("variableColumns") {
+    group = "application"
+    description = "Generates unequal continuous columns with rich, complex and mixed text flow."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.VariableColumnsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("themeAppearance") {
+    group = "application"
+    description = "Generates resolved global, domain and local font/color theme defaults."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.ThemeAppearanceExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pageVariants") {
+    group = "application"
+    description = "Generates semantic first/even page bands and a native DOCX round trip."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PageVariantsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pageOverlays") {
+    group = "application"
+    description = "Generates semantic XML page overlays, final fields and explicit target losses."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PageOverlaysExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("minimumLines") {
+    group = "application"
+    description = "Generates unequal columns with bounded orphan/widow reflow and short-region skips."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.MinimumLinesExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("streamingColumnSpans") {
+    group = "application"
+    description = "Generates single-pass horizontal spans with physical anchor columns and repeating headers."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.StreamingColumnSpansExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("streamingMedia") {
+    group = "application"
+    description = "Generates single-pass PNG/JPEG cells and passive text/image hyperlinks."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.StreamingMediaExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("advancedTables") {
+    group = "application"
+    description = "Generates automatic-width merged owners and single-pass complete-line continuations."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.AdvancedTablesExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("pdfCertification") {
+    group = "application"
+    description = "Generates DocMDP certification fixtures using explicitly supplied offline signing material."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfCertificationExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+    args(providers.gradleProperty("signingOpenSsl").orElse("openssl").get(),
+         providers.gradleProperty("signingCertificate").orElse("build/verification/signing/dev-cert.pem").get(),
+         providers.gradleProperty("signingKey").orElse("build/verification/signing/dev-key.pem").get())
+}
+
+tasks.register<JavaExec>("streamingProtection") {
+    group = "application"
+    description = "Generates single-pass AES-256 and static PDF/A-2b table fixtures."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.StreamingProtectionExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("variableTables") {
+    group = "application"
+    description = "Generates semantic tables reflowed across unequal-width columns."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.VariableTablesExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("verifyPdfSignatures") {
+    group = "verification"
+    description = "Verifies exact signed revisions through an explicitly supplied offline CMS verifier."
+    dependsOn("pdfCertification")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.PdfSignatureVerificationExample")
+    workingDir = rootProject.projectDir
+    args(providers.gradleProperty("signingOpenSsl").orElse("openssl").get())
+}
+
+tasks.register<JavaExec>("streamingFields") {
+    group = "application"
+    description = "Generates actual presentation PAGE fields and verified caller-declared total fields."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.StreamingFieldsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("nestedAutomaticTables") {
+    group = "application"
+    description = "Generates nested inline tables with bounded automatic columns at actual parent widths."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.NestedAutomaticTablesExample")
     workingDir = rootProject.projectDir
     systemProperty("java.awt.headless", "true")
 }

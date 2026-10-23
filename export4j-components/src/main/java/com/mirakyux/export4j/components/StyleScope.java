@@ -9,6 +9,7 @@ import com.mirakyux.export4j.layout.core.Component;
 import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.layout.core.PageableComponent;
 import com.mirakyux.export4j.layout.core.TextInheritance;
 import com.mirakyux.export4j.model.LineBreakPolicy;
@@ -21,7 +22,7 @@ import com.mirakyux.export4j.text.TextAlignment;
  * Point units; immutable structure, child thread-safety applies, owns no resources.
  */
 public record StyleScope(Component content, ParagraphStyle style, RgbColor color,
-        TextInheritance inheritance) implements RegionFlow {
+        TextInheritance inheritance) implements WidthAwareRegionFlow {
     public StyleScope {
         Objects.requireNonNull(content, "content");
         Objects.requireNonNull(style, "style");
@@ -42,6 +43,10 @@ public record StyleScope(Component content, ParagraphStyle style, RgbColor color
         var scoped = scoped(context);
         return content instanceof RegionFlow flow ? flow.layoutRegions(scoped, regions)
                 : ComponentSupport.atomicRegions(content, scoped, regions);
+    }
+
+    @Override public List<Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        return ComponentSupport.variableRegions(content, scoped(context), regions, widths);
     }
 
     @Override public ComponentLayout layout(ComponentContext context) { return content.layout(scoped(context)); }

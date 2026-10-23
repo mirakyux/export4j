@@ -8,10 +8,12 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /** Shared synchronous semantic preorder traversal. Visits every occurrence, including repeated instances;
- * only real cell anchors own descendants. Supports at most two table levels and retains no mutable state.
+ * only real cell anchors own descendants. Supports at most 16 table levels and retains no mutable state.
  * Custom top-level blocks are leaves. Cell descendants must be supported Paragraph/Table values.
  */
 public final class SemanticTree {
+    /** Maximum nested table count, including the root, across all semantic adapters. */
+    public static final int MAX_TABLE_DEPTH = 16;
     private SemanticTree() { }
 
     /** Immutable source visit. rootBlockIndex belongs to the original supplied root list; cellPath is an
@@ -27,7 +29,7 @@ public final class SemanticTree {
 
     /** Visits roots and descendants in source preorder, without identity deduplication. The visitor runs
      * inline and is not retained; cancellation checkpoints apply throughout traversal. Invalid cell types,
-     * cell pagination flags or a third table level throw IllegalArgumentException.
+     * cell pagination flags or an excessive table depth throw IllegalArgumentException.
      */
     public static void walk(List<? extends Block> roots, Consumer<Visit> visitor) {
         var values = List.copyOf(roots);
@@ -47,7 +49,7 @@ public final class SemanticTree {
         ExecutionContext.checkpoint();
         if (!path.isEmpty()) { validateCellBlock(block); }
         int depth = tableDepth + (block instanceof Table ? 1 : 0);
-        if (depth > 2) { throw new IllegalArgumentException("semantic cells support at most two table levels"); }
+        if (depth > MAX_TABLE_DEPTH) { throw new IllegalArgumentException("semantic table nesting budget exceeded"); }
         visitor.accept(new Visit(block, rootIndex, path));
         if (block instanceof Table table && table.hasBlockCells()) {
             var grid = table.grid();
@@ -74,7 +76,7 @@ public final class SemanticTree {
         ExecutionContext.checkpoint();
         validateCellBlock(block);
         if (block instanceof Table table) {
-            if (ownerDepth >= 2) { throw new IllegalArgumentException("semantic cells support at most two table levels"); }
+            if (ownerDepth >= MAX_TABLE_DEPTH) { throw new IllegalArgumentException("semantic table nesting budget exceeded"); }
             for (var row : table.rows()) {
                 ExecutionContext.checkpoint();
                 for (var cell : row.cells()) {

@@ -26,6 +26,10 @@ import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableFormat;
+import com.mirakyux.export4j.model.processing.ProcessingException;
+import com.mirakyux.export4j.model.processing.ProcessingIssue;
+import com.mirakyux.export4j.model.processing.ProcessingPolicy;
+import com.mirakyux.export4j.model.processing.ProcessingReport;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -39,14 +43,16 @@ import java.util.Map;
 
 /** Task-local semantic traversal, shared source budgets and target-specific emission. */
 final class WebRenderer {
-    record Rendered(byte[] bytes, ExportResult result) { }
+    record Rendered(byte[] bytes, ExportResult result, ProcessingReport report) { }
     private static final ExportLocation DOCUMENT = new ExportLocation(-1, "DOCUMENT", -1, "", List.of(), -1);
     private final SectionedDocument document;
     private final boolean html;
     private final ExportPolicy policy;
+    private final ProcessingPolicy processing;
     private final ExportLimits limits;
     private final Map<String, FontStyle> fonts;
     private final List<ExportDiagnostic> diagnostics = new ArrayList<>();
+    private final List<ProcessingIssue> issues = new ArrayList<>();
     private final Map<String, String> images = new HashMap<>();
     private final Map<String, int[]> lists = new HashMap<>();
     private final Sink out;
@@ -57,7 +63,11 @@ final class WebRenderer {
     private int previousMarkdownNumber;
 
     WebRenderer(SectionedDocument document, boolean html, ExportPolicy policy, ExportLimits limits, Map<String, FontStyle> fonts) {
+        this(document, html, policy, limits, fonts, null);
+    }
+    WebRenderer(SectionedDocument document, boolean html, ExportPolicy policy, ExportLimits limits, Map<String, FontStyle> fonts, ProcessingPolicy processing) {
         this.document = document; this.html = html; this.policy = policy; this.limits = limits; this.fonts = fonts;
+        this.processing = processing;
         out = new Sink(limits.maxOutputBytes());
     }
 
@@ -86,23 +96,46 @@ final class WebRenderer {
             }
             if (section.firstPageNumber() != 0) { loss(ExportFeature.PAGE_NUMBERING, base, "Displayed page numbering omitted from flowing output"); }
             if (html) { out.add("<section data-section=\""); escaped(section.id(), false); out.add("\">\n"); }
+            if (!section.pageRegions().variants().isEmpty()) {
+                loss(ExportFeature.PAGE_REGIONS, base,
+                        "First/even page selection replaced with sequential section bands; explicit blank selection is lost");
+            }
+            overlays(section.pageRegions().background(), index, "BACKGROUND");
             region(section.pageRegions().header(), index, "HEADER");
+            for (var variant : section.pageRegions().variants().entrySet()) {
+                region(variant.getValue().header(), index, "HEADER_" + variant.getKey());
+            }
             roots(section.blocks(), index, "BODY");
             region(section.pageRegions().footer(), index, "FOOTER");
+            for (var variant : section.pageRegions().variants().entrySet()) {
+                region(variant.getValue().footer(), index, "FOOTER_" + variant.getKey());
+            }
+            overlays(section.pageRegions().foreground(), index, "FOREGROUND");
             if (html) { out.add("</section>\n"); }
         }
         if (html) { out.add("</main></body></html>\n"); }
         byte[] bytes = out.text.toString().getBytes(StandardCharsets.UTF_8);
-        return new Rendered(bytes, new ExportResult(bytes.length, diagnostics));
+        return new Rendered(bytes, new ExportResult(bytes.length, diagnostics), new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues));
+    }
+
+    private void overlays(List<com.mirakyux.export4j.model.PageOverlay> values, int section, String name) throws IOException {
+        for (int index = 0; index < values.size(); index++) {
+            var region = name + ":" + index;
+            loss(ExportFeature.PAGE_REGIONS, new ExportLocation(section, region, -1, "", List.of(), -1),
+                    "Repeated page overlay emitted once in section flow; position, overlap and paint order are lost");
+            if (html) { out.add("<div data-page-layer=\"" + name + "\">\n"); }
+            roots(values.get(index).content().blocks(), section, region);
+            if (html) { out.add("</div>\n"); }
+        }
     }
 
     private void region(PageRegion region, int section, String name) throws IOException {
         if (region.height() == 0) { return; }
         loss(ExportFeature.PAGE_REGIONS, new ExportLocation(section, name, -1, "", List.of(), -1),
                 "Fixed repeated region emitted once in section flow without fixed geometry");
-        if (html) { out.add(name.equals("HEADER") ? "<header>\n" : "<footer>\n"); }
+        if (html) { out.add(name.startsWith("HEADER") ? "<header>\n" : "<footer>\n"); }
         roots(region.blocks(), section, name);
-        if (html) { out.add(name.equals("HEADER") ? "</header>\n" : "</footer>\n"); }
+        if (html) { out.add(name.startsWith("HEADER") ? "</header>\n" : "</footer>\n"); }
     }
 
     private void roots(List<Block> values, int section, String region) throws IOException {
@@ -432,6 +465,22 @@ final class WebRenderer {
         out.add(" id=\"e" + elementId++ + "\" data-source-id=\""); escaped(location.blockId(), false); out.add("\"");
     }
     private void loss(ExportFeature feature, ExportLocation location, String message) throws IOException {
+        if (processing != null) {
+            String target = html ? "HTML" : "MARKDOWN";
+            var rule = processing.resolve(target, feature.name(), "EXPORT");
+            var treatment = switch (feature) {
+                case CUSTOM_BLOCK, METADATA, PAGE_NUMBERING -> ProcessingPolicy.Treatment.DISCARD;
+                default -> ProcessingPolicy.Treatment.DEGRADE;
+            };
+            String section = location.sectionIndex() < 0 ? "" : document.sections().get(location.sectionIndex()).id();
+            var source = new ProcessingIssue.Location(section, location.region(), location.blockId(), location.cellPath(), location.sourceOffset(), location.sourceOffset());
+            var issue = new ProcessingIssue("EXPORT", "MODEL", target, feature.name(), "EXPORT", source,
+                    message, rule.action(), rule.treatment(), List.of(feature.name() + "_" + treatment.name()));
+            if (rule.action() == ProcessingPolicy.Action.ERROR) { throw new ProcessingException(issue); }
+            if (rule.treatment() != treatment) { throw new IllegalArgumentException("web export treatment unavailable: " + feature); }
+            if (issues.size() >= limits.maxDiagnostics()) { limit(location, "Processing report budget exceeded"); }
+            issues.add(issue); return;
+        }
         UnsupportedAction action = policy.action(feature);
         if (action == UnsupportedAction.IGNORE) { return; }
         var diagnostic = new ExportDiagnostic(feature, location, message);
@@ -444,12 +493,15 @@ final class WebRenderer {
         if (document.sections().size() > limits.maxSections()) { limit(DOCUMENT, "Section budget exceeded"); }
         sourceText(document.metadata().title(), DOCUMENT); sourceText(document.metadata().author(), DOCUMENT);
         var headers = new HashSet<PageRegion>(); var footers = new HashSet<PageRegion>();
+        var backgrounds = new HashSet<PageRegion>(); var foregrounds = new HashSet<PageRegion>();
         for (int section = 0; section < document.sections().size(); section++) {
             var value = document.sections().get(section);
             sourceText(value.id(), DOCUMENT);
             scan(value.blocks(), section, "BODY");
-            if (headers.add(value.pageRegions().header())) { scan(value.pageRegions().header().blocks(), section, "HEADER"); }
-            if (footers.add(value.pageRegions().footer())) { scan(value.pageRegions().footer().blocks(), section, "FOOTER"); }
+            for (var band : value.pageRegions().headers()) { if (headers.add(band)) { scan(band.blocks(), section, "HEADER"); } }
+            for (var band : value.pageRegions().footers()) { if (footers.add(band)) { scan(band.blocks(), section, "FOOTER"); } }
+            for (var band : value.pageRegions().backgrounds()) { if (backgrounds.add(band)) { scan(band.blocks(), section, "BACKGROUND"); } }
+            for (var band : value.pageRegions().foregrounds()) { if (foregrounds.add(band)) { scan(band.blocks(), section, "FOREGROUND"); } }
         }
     }
     private void scan(List<Block> values, int section, String region) throws IOException {

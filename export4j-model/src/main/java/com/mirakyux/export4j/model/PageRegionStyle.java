@@ -4,7 +4,7 @@ package com.mirakyux.export4j.model;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Complete immutable header/footer text defaults. Geometry uses points; RGB is 24-bit.
+/** Complete immutable page-band/overlay text defaults. Geometry uses points; RGB is 24-bit.
  * An empty role selects the caller's explicit default fonts. Owns no resources and is thread-safe.
  * Defaults are resolved when a paragraph is authored, without a later cascade into explicit runs.
  */

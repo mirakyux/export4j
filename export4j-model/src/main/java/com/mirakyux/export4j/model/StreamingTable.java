@@ -8,13 +8,26 @@ import java.util.Objects;
 
 /** Immutable fixed-column specification for a single-pass table; not a Block and retains no body rows.
  * Widths and padding use points. Columns are left-aligned inside the page content area and may leave
- * unused width. Header rows repeat intact; body rows are supplied separately and never split.
- * The streaming layouter supports plain or pure rich-text cells with explicit font roles and bounded
- * run counts. Hyperlinks, fields, images, block cells and merged cells are not supported.
+ * unused width. Header rows repeat intact; body rows are supplied separately and remain atomic unless allowRowSplit is enabled.
+ * The streaming layouter supports text and explicit inline PNG/JPEG with font roles and bounded
+ * run counts. Horizontal spans cover consecutive fixed columns and deduct padding once.
+ * Passive text/image hyperlinks require the link-aware page consumer. PAGE resolves at each actual
+ * presentation; PAGES requires a positive expectedPages total, checked before successful completion.
+ * Zero means an unknown total. Block cells, vertical spans and future references are not supported.
  * This value is thread-safe; row sources and builders are task-confined.
  */
 public record StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
-        List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding) {
+        List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit, int expectedPages) {
+    /** Compatibility constructor without a caller-declared total page count. */
+    public StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
+            List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit) {
+        this(id, metadata, pageSettings, columnWidths, headerRows, padding, allowRowSplit, 0);
+    }
+    /** Compatibility constructor preserving atomic body rows. */
+    public StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
+            List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding) {
+        this(id, metadata, pageSettings, columnWidths, headerRows, padding, false);
+    }
     public StreamingTable {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(metadata, "metadata");
@@ -25,6 +38,7 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
         if (id.isBlank() || columnWidths.isEmpty()) {
             throw new IllegalArgumentException("streaming table requires an ID and fixed columns");
         }
+        if (expectedPages < 0) { throw new IllegalArgumentException("expected page count must be nonnegative"); }
         double width = 0;
         for (double column : columnWidths) {
             if (!Double.isFinite(column) || column <= padding.left() + padding.right()) {
@@ -42,11 +56,15 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
             if (row.cells().stream().anyMatch(cell -> cell.rowSpan() != 1)) {
                 throw new IllegalArgumentException("streaming tables do not support row spans");
             }
-            if (row.cells().stream().anyMatch(cell -> cell.columnSpan() != 1)) {
-                throw new IllegalArgumentException("streaming tables do not support column spans");
+            int covered = 0;
+            for (var cell : row.cells()) {
+                if (cell.columnSpan() > columnWidths.size() - covered) {
+                    throw new IllegalArgumentException("streaming header spans exceed column count");
+                }
+                covered += cell.columnSpan();
             }
-            if (row.cells().size() != columnWidths.size()) {
-                throw new IllegalArgumentException("streaming headers must match column count");
+            if (covered != columnWidths.size()) {
+                throw new IllegalArgumentException("streaming headers must cover every column");
             }
         }
     }
@@ -55,7 +73,7 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
     public static Builder builder(String id) { return new Builder(id); }
     public Builder toBuilder() {
         return new Builder(id).metadata(metadata).pageSettings(pageSettings).columnWidths(columnWidths)
-                .headerRows(headerRows).padding(padding);
+                .headerRows(headerRows).padding(padding).allowRowSplit(allowRowSplit).expectedPages(expectedPages);
     }
 
     public static final class Builder {
@@ -66,6 +84,8 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
         private final List<TableRow> headers = new ArrayList<>();
         private PageMargins padding = PageMargins.uniform(3);
         private CellFormat cellFormat = CellFormat.of(12);
+        private boolean allowRowSplit;
+        private int expectedPages;
 
         private Builder(String id) { this.id = Objects.requireNonNull(id, "id"); }
         public Builder metadata(DocumentMetadata value) { metadata = Objects.requireNonNull(value, "metadata"); return this; }
@@ -82,6 +102,12 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
         public Builder cellFormat(CellFormat value) { cellFormat = Objects.requireNonNull(value, "cellFormat"); return this; }
         public Builder padding(PageMargins value) { padding = Objects.requireNonNull(value, "padding"); return this; }
         public Builder padding(double points) { return padding(PageMargins.uniform(points)); }
-        public StreamingTable build() { return new StreamingTable(id, metadata, pageSettings, widths, headers, padding); }
+        /** Allows complete-line continuation of body rows. Headers always remain atomic. */
+        public Builder allowRowSplit(boolean value) { allowRowSplit = value; return this; }
+        /** Declares an exact total for PAGES fields; zero means unknown and forbids PAGES.
+         * The actual total is checked before successful completion, even without PAGES fields.
+         */
+        public Builder expectedPages(int value) { expectedPages = value; return this; }
+        public StreamingTable build() { return new StreamingTable(id, metadata, pageSettings, widths, headers, padding, allowRowSplit, expectedPages); }
     }
 }

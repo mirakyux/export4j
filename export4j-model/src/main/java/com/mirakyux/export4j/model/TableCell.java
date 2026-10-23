@@ -6,7 +6,7 @@ import java.util.List;
 
 /** Immutable inline cell or ordered semantic block cell. Empty inline text retains one line.
  * columnSpan and rowSpan are positive counts of consecutive physical grid columns and rows; defaults are 1.
- * Block content accepts Paragraph/Table only, at most two table levels including the owning root table.
+ * Block content accepts Paragraph/Table only, at most 16 table levels including the owning root table.
  * Legacy inline views fail for block cells; UTF-16 offsets belong to each original leaf paragraph.
  */
 public record TableCell(String text, CellFormat format, List<InlineText> inlines, List<Paragraph.ImageSpan> images,

@@ -12,7 +12,7 @@ import java.util.Objects;
  * Input is snapshotted per render; caller-supplied collection implementations remain trusted Java code.
  */
 public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
-        PageRegions pageRegions, List<SectionNode> sections) {
+        PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates) {
     private static final double LOG10_2 = 0.3010299956639812;
 
     public DocumentTemplate {
@@ -21,8 +21,23 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         nodes = List.copyOf(nodes);
         Objects.requireNonNull(limits, "limits");
         Objects.requireNonNull(pageRegions, "pageRegions");
+        pageRegions.requireContained(pageSettings.size());
         sections = List.copyOf(sections);
+        hyperlinkTemplates = Map.copyOf(hyperlinkTemplates);
+        if (hyperlinkTemplates.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("hyperlink template budget exceeded"); }
+        for (var entry : hyperlinkTemplates.entrySet()) {
+            new ExternalDestination(entry.getKey());
+            if (entry.getValue().length() > (long) limits.maxCodePoints() * 2) {
+                throw new IllegalArgumentException("hyperlink template source budget exceeded");
+            }
+        }
         if (!sections.isEmpty() && !nodes.isEmpty()) { throw new IllegalArgumentException("sections cannot mix with root body nodes"); }
+    }
+
+    /** Compatibility constructor for templates with static hyperlinks. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
+            PageRegions pageRegions, List<SectionNode> sections) {
+        this(metadata, pageSettings, nodes, limits, pageRegions, sections, Map.of());
     }
 
     /** Compatibility constructor for body-only templates. */
@@ -40,6 +55,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public SectionNode {
             Objects.requireNonNull(id, "id"); Objects.requireNonNull(pageSettings, "pageSettings");
             Objects.requireNonNull(pageRegions, "pageRegions"); nodes = List.copyOf(nodes);
+            pageRegions.requireContained(pageSettings.size());
             if (id.isBlank() || firstPageNumber < 0) { throw new IllegalArgumentException("invalid template section"); }
         }
     }
@@ -130,7 +146,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
 
     public static final class BindingException extends IllegalArgumentException {
         private static final long serialVersionUID = 1L;
-        public enum Code { MISSING_VALUE, TYPE_MISMATCH, INVALID_EXPRESSION, UNSUPPORTED_BLOCK, BUDGET_EXCEEDED, EMPTY_TABLE }
+        public enum Code { MISSING_VALUE, TYPE_MISMATCH, INVALID_EXPRESSION, INVALID_VALUE, UNSUPPORTED_BLOCK, BUDGET_EXCEEDED, EMPTY_TABLE }
         private final Code code;
         private final String path;
         BindingException(Code code, String path) {
@@ -160,10 +176,10 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
         var root = new Scope(map, null);
         state.expand(nodes, root, "", 0, Map.of());
-        var header = state.band(pageRegions.header(), root);
-        var footer = state.band(pageRegions.footer(), root);
+        var bands = new HashMap<PageRegion, PageRegion>();
+        var regions = pageRegions.map((name, value) -> bands.computeIfAbsent(value, band -> state.band(band, root)));
         return new PageDocument(new Document(new DocumentMetadata(state.text(metadata.title(), root),
-                state.text(metadata.author(), root)), pageSettings, state.blocks), new PageRegions(header, footer));
+                state.text(metadata.author(), root)), pageSettings, state.blocks), regions);
     }
 
     /** Binds static sections and their regions using one input snapshot and shared counters.
@@ -183,10 +199,9 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             state.blocks.clear();
             state.expand(declaration.nodes(), root, "", 0, Map.of());
             var regions = declaration.pageRegions();
-            var header = bands.computeIfAbsent(regions.header(), value -> state.band(value, root));
-            var footer = bands.computeIfAbsent(regions.footer(), value -> state.band(value, root));
+            var resolved = regions.map((name, value) -> bands.computeIfAbsent(value, band -> state.band(band, root)));
             values.add(new Section(declaration.id(), declaration.pageSettings(), state.blocks,
-                    declaration.firstPageNumber(), new PageRegions(header, footer)));
+                    declaration.firstPageNumber(), resolved));
         }
         return new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values);
     }
@@ -385,18 +400,26 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 return p.inlines().isEmpty() ? new Paragraph(id, text(p.text(), scope), p.format())
                         : new Paragraph(id, p.inlines().stream().map(run -> {
                             visit("inlines");
-                            return new InlineText(text(run.text(), scope), run.style(), text(run.hyperlink(), scope));
+                            return new InlineText(text(run.text(), scope), run.style(), hyperlink(run.hyperlink(), scope));
                         }).toList(), p.format());
             }
             var content = p.content().stream().map(item -> {
                 visit("inlines");
                 return switch (item) {
-                case InlineText run -> (InlineContent) new InlineText(text(run.text(), scope), run.style(), text(run.hyperlink(), scope));
-                case InlineImage image -> new InlineImage(image.resource(), image.width(), image.height(), image.baselineShift(), text(image.altText(), scope), text(image.hyperlink(), scope));
+                case InlineText run -> (InlineContent) new InlineText(text(run.text(), scope), run.style(), hyperlink(run.hyperlink(), scope));
+                case InlineImage image -> new InlineImage(image.resource(), image.width(), image.height(), image.baselineShift(), text(image.altText(), scope), hyperlink(image.hyperlink(), scope));
                 case InlineField field -> new InlineField(field.kind(), fieldTarget(field.targetId(), scope, relocations), field.width(), field.style());
                 };
             }).toList();
             return Paragraph.mixed(id, content, p.format());
+        }
+        private String hyperlink(String reference, Scope scope) {
+            String template = hyperlinkTemplates.get(reference);
+            if (template == null) { return text(reference, scope); }
+            String value = text(template, scope);
+            try { new ExternalDestination(value); }
+            catch (IllegalArgumentException invalid) { throw error(BindingException.Code.INVALID_VALUE, "hyperlink"); }
+            return value;
         }
         private String fieldTarget(String source, Scope scope, Map<String, String> relocations) {
             String value = text(source, scope);
@@ -557,7 +580,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }
     /** Starts an independent builder from this value; referenced resources remain borrowed. */
-    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections); }
+    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates); }
 
     /** Mutable, task-confined construction state; built values do not retain this builder. */
     public static final class Builder {
@@ -567,6 +590,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private Limits limits = Limits.DEFAULT;
         private PageRegions pageRegions = PageRegions.EMPTY;
         private List<SectionNode> sections = List.of();
+        private Map<String, String> hyperlinkTemplates = Map.of();
 
         private Builder() { }
         public Builder metadata(DocumentMetadata value) { metadata = java.util.Objects.requireNonNull(value, "metadata"); return this; }
@@ -575,6 +599,11 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder limits(Limits value) { limits = java.util.Objects.requireNonNull(value, "limits"); return this; }
         public Builder pageRegions(PageRegions value) { pageRegions = Objects.requireNonNull(value, "pageRegions"); return this; }
         public Builder sections(List<SectionNode> values) { sections = List.copyOf(values); return this; }
+        /** Maps passive prototype URI keys to expressions bound in the link's lexical scope.
+         * Keys are valid ExternalDestination URIs; final values undergo the same validation after binding.
+         * Does not fetch resources. Copies the map immediately; each render uses independent state.
+         */
+        public Builder hyperlinkTemplates(Map<String, String> values) { hyperlinkTemplates = Map.copyOf(values); return this; }
         public Builder node(Node value) { nodes.add(Objects.requireNonNull(value, "node")); return this; }
         public Builder block(Block value) { return node(new ValueBlock(value)); }
         public Builder when(String path, java.util.function.Consumer<Nodes> yes, java.util.function.Consumer<Nodes> no) {
@@ -584,6 +613,6 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder each(String path, String variable, java.util.function.Consumer<Nodes> configure) {
             var value = new Nodes(); configure.accept(value); return node(new Each(path, variable, value.snapshot()));
         }
-        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections); }
+        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates); }
     }
 }

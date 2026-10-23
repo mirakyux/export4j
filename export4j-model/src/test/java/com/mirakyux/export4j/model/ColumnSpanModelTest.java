@@ -177,11 +177,16 @@ class ColumnSpanModelTest {
     }
 
     @Test
-    void streamingHeadersRejectSpansEvenWhenAnchorCountMatchesColumns() {
+    void streamingHeadersRequireExactSpanCoverageInsteadOfMatchingAnchorCount() {
         assertThrows(IllegalArgumentException.class, () -> StreamingTable.builder("stream")
                 .columns(50, 50).header(new TableRow(List.of(cell("merged", 2), cell("trailing", 1)))).build());
-        assertThrows(IllegalArgumentException.class, () -> StreamingTable.builder("stream")
-                .columns(50, 50).header(new TableRow(List.of(cell("merged", 2)))).build());
+        var spec = StreamingTable.builder("stream")
+                .columns(50, 50).header(new TableRow(List.of(cell("merged", 2)))).build();
+        assertEquals(2, spec.headerRows().getFirst().cells().getFirst().columnSpan());
+        assertThrows(IllegalArgumentException.class, () -> spec.toBuilder()
+                .headerRows(List.of(new TableRow(List.of(cell("short", 1))))).build());
+        assertThrows(IllegalArgumentException.class, () -> spec.toBuilder()
+                .headerRows(List.of(new TableRow(List.of(cell("overflow", Integer.MAX_VALUE))))).build());
     }
 
     private static TableCell cell(String text, int span) {

@@ -7,7 +7,7 @@ import java.util.Objects;
 /**
  * Immutable rectangular semantic table with at least one body row and positive rectangular cell spans.
  * Source cells are real content anchors covering every grid slot exactly once. Ordered Paragraph/Table
- * block cells are atomic and bounded to two table levels, including this root table.
+ * block cells are bounded to 16 table levels, including this root table.
  * The first headerRows rows repeat together on continuation pages. Zero disables headers.
  * Fixed-only tables are left-aligned; fractional columns fill the remaining content width.
  */
@@ -28,6 +28,7 @@ public record Table(String id, List<ColumnWidth> columns, List<TableRow> rows,
         private int headerRows;
         private TableFormat format = TableFormat.DEFAULT;
         private CellFormat cellFormat = CellFormat.of(12);
+        private TextAppearance textAppearance = TextAppearance.DEFAULT;
 
         private Builder(String id) {
             this.id = Objects.requireNonNull(id, "id");
@@ -36,6 +37,8 @@ public record Table(String id, List<ColumnWidth> columns, List<TableRow> rows,
 
         public Builder columns(ColumnWidth... values) { columns = List.of(values); return this; }
         public Builder cellFormat(CellFormat value) { cellFormat = Objects.requireNonNull(value, "cellFormat"); return this; }
+        /** Defaults for future string rows only; complete TableCell values remain explicit. */
+        public Builder textAppearance(TextAppearance value) { textAppearance = Objects.requireNonNull(value, "textAppearance"); return this; }
         public Builder format(TableFormat value) { format = Objects.requireNonNull(value, "format"); return this; }
         public Builder format(java.util.function.Consumer<TableFormat.Builder> configure) {
             var value = format.toBuilder(); configure.accept(value); return format(value.build());
@@ -57,7 +60,7 @@ public record Table(String id, List<ColumnWidth> columns, List<TableRow> rows,
             rows.add(TableRow.covered()); headerRows++; return this;
         }
         public Builder row(String... values) {
-            return row(java.util.Arrays.stream(values).map(text -> new TableCell(text, cellFormat)).toArray(TableCell[]::new));
+            return row(java.util.Arrays.stream(values).map(text -> textCell(text, cellFormat, textAppearance)).toArray(TableCell[]::new));
         }
         public Builder row(TableCell... cells) { rows.add(new TableRow(List.of(cells))); return this; }
         /** Adds a body row with no new anchors; earlier body anchors must cover every physical column. */
@@ -81,14 +84,26 @@ public record Table(String id, List<ColumnWidth> columns, List<TableRow> rows,
      * Use the canonical constructor for widths, rich cells, padding or row splitting.
      */
     public static Table text(String id, List<String> headers, List<List<String>> rows, CellFormat cellFormat) {
+        return text(id, headers, rows, cellFormat, TextAppearance.DEFAULT);
+    }
+
+    /** Text table with resolved appearance applied only to the supplied string cells. */
+    public static Table text(String id, List<String> headers, List<List<String>> rows,
+            CellFormat cellFormat, TextAppearance appearance) {
+        Objects.requireNonNull(appearance, "appearance");
         headers = List.copyOf(headers);
         var content = new java.util.ArrayList<TableRow>();
-        content.add(new TableRow(headers.stream().map(value -> new TableCell(value, cellFormat)).toList()));
+        content.add(new TableRow(headers.stream().map(value -> textCell(value, cellFormat, appearance)).toList()));
         for (var row : List.copyOf(rows)) {
-            content.add(new TableRow(row.stream().map(value -> new TableCell(value, cellFormat)).toList()));
+            content.add(new TableRow(row.stream().map(value -> textCell(value, cellFormat, appearance)).toList()));
         }
         List<ColumnWidth> widths = headers.stream().<ColumnWidth>map(ignored -> new ColumnWidth.Fraction(1)).toList();
         return new Table(id, widths, content, 1, TableFormat.DEFAULT);
+    }
+
+    private static TableCell textCell(String text, CellFormat format, TextAppearance appearance) {
+        return appearance.equals(TextAppearance.DEFAULT) ? new TableCell(text, format)
+                : TableCell.rich(List.of(new InlineText(text, appearance.style(format.fontSize()))), format);
     }
 
     public static Table text(String id, List<String> headers, List<List<String>> rows) {

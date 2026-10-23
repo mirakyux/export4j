@@ -10,6 +10,9 @@ import com.mirakyux.export4j.layout.core.DocumentPainter;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
 import com.mirakyux.export4j.layout.core.PageBand;
 import com.mirakyux.export4j.layout.core.PageTemplate;
+import com.mirakyux.export4j.layout.core.Placement;
+import com.mirakyux.export4j.layout.core.Position;
+import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.PageRegion;
@@ -21,8 +24,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
 
-/** Bridges immutable model page bands to the component SPI without a template-adapter dependency.
- * Lengths use points; regions reserve body space before pagination and resolve fields afterwards.
+/** Bridges immutable model page regions to the component SPI without a template-adapter dependency.
+ * Lengths use points; bands reserve body space before pagination, overlays do not. Fields resolve afterwards.
  * Returned templates are immutable and reusable with immutable font resources. No I/O or resources owned.
  */
 public final class PageRegionTemplates {
@@ -33,7 +36,36 @@ public final class PageRegionTemplates {
      */
     public static PageTemplate from(PageRegions regions) {
         Objects.requireNonNull(regions, "regions");
-        return PageTemplate.builder().header(band(regions.header())).footer(band(regions.footer())).build();
+        if (!regions.variants().isEmpty()) {
+            throw new IllegalArgumentException("page-region variants require sectionFrom");
+        }
+        return template(regions, new PageRegions.Bands(regions.header(), regions.footer()));
+    }
+
+    /** Converts complete model variants, selecting FIRST before displayed parity and reserving all bands.
+     * An absent FIRST uses odd/even even on the section's first page; a declared blank pair stays blank.
+     */
+    public static SectionTemplate sectionFrom(PageRegions regions) {
+        Objects.requireNonNull(regions, "regions");
+        var odd = template(regions, new PageRegions.Bands(regions.header(), regions.footer()));
+        var evenPair = regions.variants().get(PageRegions.Variant.EVEN);
+        var firstPair = regions.variants().get(PageRegions.Variant.FIRST);
+        var even = evenPair == null ? odd : template(regions, evenPair);
+        var first = firstPair == null ? null : template(regions, firstPair);
+        return new SectionTemplate(first == null ? odd : first, odd, even, first == null ? even : first);
+    }
+
+    private static PageTemplate template(PageRegions regions, PageRegions.Bands pair) {
+        var result = PageTemplate.builder().header(band(pair.header())).footer(band(pair.footer()));
+        for (var box : regions.background()) {
+            result.background(new Placement(new RegionContent(box.content()),
+                    new Position.Absolute(new Rect(box.x(), box.y(), box.width(), box.content().height()))));
+        }
+        for (var box : regions.foreground()) {
+            result.foreground(new Placement(new RegionContent(box.content()),
+                    new Position.Absolute(new Rect(box.x(), box.y(), box.width(), box.content().height()))));
+        }
+        return result.build();
     }
 
     private static PageBand band(PageRegion region) {

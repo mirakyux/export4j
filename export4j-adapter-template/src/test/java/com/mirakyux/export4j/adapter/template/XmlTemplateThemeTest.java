@@ -242,13 +242,15 @@ class XmlTemplateThemeTest {
         assertEquals(CELL, inner.rows().getFirst().cells().getFirst().format());
     }
 
-    @Test void themedSplitCannotSilentlyDisableExistingBlockAndInnerTableRejections() {
+    @Test void themedSplitPropagatesToBlockCellsInnerTablesAndDynamicRows() {
         var compiler = XmlTemplate.builder().theme(theme().toBuilder().tableFormat(format -> format.allowRowSplit(true)).build()).build();
         for (String content : List.of(table("", "<p>Block</p>"), table(" row-split='false'", table("", "Inner")),
                 "<rows items='items' as='item'>" + COLUMNS + "<row><cell><p>Block</p></cell></row></rows>")) {
-            rejected(compiler, xml(content), TemplateException.Code.INVALID_VALUE, 1);
-            rejected(compiler, xml("<if test='flag'><then><p>Safe</p></then><else>" + content + "</else></if>"),
-                    TemplateException.Code.INVALID_VALUE, 1);
+            var result = compiler.compile(xml(content)).render(Map.of("items", List.of("one")));
+            var table = (Table) result.blocks().getFirst();
+            if (!content.startsWith("<table row-split='false'")) { assertTrue(table.format().allowRowSplit()); }
+            assertEquals(1, compiler.compile(xml("<if test='flag'><then><p>Safe</p></then><else>" + content + "</else></if>"))
+                    .render(Map.of("flag", true, "items", List.of("one"))).blocks().size());
         }
     }
 

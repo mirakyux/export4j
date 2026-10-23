@@ -7,6 +7,7 @@ import com.mirakyux.export4j.layout.core.Component;
 import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.model.ExecutionContext;
 import java.util.List;
 import java.util.Objects;
@@ -17,7 +18,7 @@ import java.util.Objects;
  * Owns no resources; immutable structure, with thread safety determined by the supplied child and fonts.
  * An unknown role fails before the child is invoked. No system font lookup or output I/O occurs.
  */
-public record FontRoleScope(Component content, String fontRole) implements RegionFlow {
+public record FontRoleScope(Component content, String fontRole) implements WidthAwareRegionFlow {
     public FontRoleScope {
         Objects.requireNonNull(content, "content");
         requireRole(fontRole);
@@ -42,6 +43,10 @@ public record FontRoleScope(Component content, String fontRole) implements Regio
     public List<RegionFlow.Fragment> layoutRegions(ComponentContext context, FlowRegions regions) {
         Objects.requireNonNull(regions, "regions");
         return selected(context).layoutRegions(context, regions);
+    }
+
+    @Override public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        return selected(context).layoutVariableRegions(context, regions, widths);
     }
 
     private FontScope selected(ComponentContext context) {

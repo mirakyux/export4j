@@ -1,0 +1,239 @@
+// SPDX-License-Identifier: Apache-2.0
+package com.mirakyux.export4j.adapter.pdf;
+
+import com.mirakyux.export4j.model.ExecutionContext;
+import com.mirakyux.export4j.model.ExecutionOptions;
+import com.mirakyux.export4j.model.processing.ProcessingIssue;
+import com.mirakyux.export4j.model.processing.ProcessingPolicy;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSNumber;
+import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
+import org.apache.pdfbox.pdfwriter.ContentStreamWriter;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
+
+/** Task-confined literal replacement in page Tj/TJ operators, without page reflow.
+ * Explicit replacement fonts are embedded. Marked text, Form text and nondefault text spacing are
+ * outside this subset. This edits content; it does not sanitize other copies or document history.
+ */
+public final class PdfTextEditor {
+    private record Replacement(int page, String search, String replacement, PdfFont font) { }
+    private static final Set<String> UNSUPPORTED = Set.of("BDC", "BMC", "EMC", "MP", "DP", "gs", "'", "\"");
+    private final PdfAdapter adapter;
+    private final PdfInput input;
+    private final PdfLimits limits;
+    private final List<Replacement> edits = new ArrayList<>();
+    private ProcessingPolicy policy = ProcessingPolicy.STRICT;
+    private ExecutionOptions execution = ExecutionOptions.DEFAULT;
+    PdfTextEditor(PdfAdapter adapter, PdfInput input, PdfLimits limits) { this.adapter = adapter; this.input = input; this.limits = limits; }
+    /** Zero-based page; matches cannot cross a show operator. Empty replacement is allowed. */
+    public PdfTextEditor replace(int page, String search, String replacement, PdfFont font) {
+        if (page < 0 || text(search).isEmpty()) { throw new IllegalArgumentException("invalid text replacement selection"); }
+        text(replacement); Objects.requireNonNull(font, "font");
+        if (edits.size() >= limits.maxObjects() || search.length() > limits.maxTextCharacters() || replacement.length() > limits.maxTextCharacters()) { throw new IllegalArgumentException("PDF replacement request budget exceeded"); }
+        edits.add(new Replacement(page, search, replacement, font)); return this;
+    }
+    public PdfTextEditor policy(ProcessingPolicy value) { policy = Objects.requireNonNull(value, "policy"); return this; }
+    public PdfTextEditor execution(ExecutionOptions value) { execution = Objects.requireNonNull(value, "execution"); return this; }
+    public PreparedPdf prepare() throws IOException {
+        var operations = List.copyOf(edits); var strategy = policy; var control = execution;
+        return ExecutionContext.execute(control, () -> {
+            var budget = new PdfPreflight(limits);
+            try (var document = adapter.openForEdit(input, budget)) {
+                var state = new State(document, strategy);
+                if (document.isEncrypted()) { state.loss("ENCRYPTION_REMOVED", ProcessingPolicy.Treatment.DEGRADE, "OUTPUT_IS_UNENCRYPTED", -1); }
+                for (var edit : operations) {
+                    ExecutionContext.checkpoint();
+                    if (edit.page() >= document.getNumberOfPages()) { throw new PdfOperationException(PdfOperationException.Code.INVALID_SELECTION, 0, edit.page()); }
+                    state.edit(document.getPage(edit.page()), edit);
+                }
+                for (var font : state.usedFonts) { if (font.willBeSubset()) { font.subset(); } }
+                new PdfPreflight(limits).inspect(document);
+                return PreparedPdf.encode(document, state.changes, state.issues, limits, control);
+            }
+        });
+    }
+    private final class State {
+        final PDDocument document; final ProcessingPolicy strategy;
+        final List<ProcessingIssue> issues = new ArrayList<>();
+        final Map<PdfFont, PDType0Font> fonts = new IdentityHashMap<>();
+        final Set<PDType0Font> usedFonts = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        long textUnits; long fontBytes; int changes;
+        State(PDDocument document, ProcessingPolicy strategy) { this.document = document; this.strategy = strategy; }
+        void count(long value) throws IOException {
+            ExecutionContext.checkpoint(); if (value > limits.maxTextCharacters() - textUnits) { throw new PdfOperationException(PdfOperationException.Code.TEXT_LIMIT, 0, -1); } textUnits += value;
+        }
+        void loss(String feature, ProcessingPolicy.Treatment treatment, String effect, int page) {
+            PdfImageSupport.loss(strategy, issues, "PDF", feature, "REPLACE_TEXT", treatment, effect, page);
+        }
+        void edit(PDPage page, Replacement edit) throws IOException {
+            String resourceIssue = new PdfRasterResources().check(page);
+            if (resourceIssue != null) { loss("TEXT_RESOURCE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_TEXT_UNCHANGED", edit.page()); return; }
+            var bytes = new PdfImageSupport.Bytes(Math.min(limits.maxDecodedBytes(), limits.maxDecodedStreamBytes()));
+            try (var content = page.getContents()) { var buffer = new byte[8192]; int length; while ((length = content.read(buffer)) != -1) { bytes.write(buffer, 0, length); } }
+            List<Object> tokens; var parser = new PDFStreamParser(bytes.data());
+            try { tokens = parser.parse(); } finally { parser.close(); }
+            for (var token : tokens) {
+                if (token instanceof Operator operator && UNSUPPORTED.contains(operator.getName())) {
+                    loss("TEXT_STRUCTURE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_TEXT_UNCHANGED", edit.page()); return;
+                }
+            }
+            // A Form can be shared by other pages; editing only this page must not mutate that source.
+            if (page.getResources() != null) {
+                for (var name : page.getResources().getXObjectNames()) {
+                    if (page.getResources().getXObject(name) instanceof PDFormXObject) { loss("TEXT_STRUCTURE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_TEXT_UNCHANGED", edit.page()); return; }
+                }
+            }
+            var output = new ArrayList<Object>(); var operands = new ArrayList<COSBase>(); var stack = new ArrayDeque<TextState>();
+            var state = new TextState(); boolean inText = false; int pageChanges = 0;
+            PDResources resources = copy(page.getResources());
+            for (var token : tokens) {
+                ExecutionContext.checkpoint();
+                if (!(token instanceof Operator operator)) { operands.add((COSBase) token); continue; }
+                String name = operator.getName();
+                if (name.equals("q")) { stack.push(state.copy()); }
+                else if (name.equals("Q")) { if (stack.isEmpty()) { throw PdfObjects.invalid(); } state = stack.pop(); }
+                else if (name.equals("BT")) { if (inText) { throw PdfObjects.invalid(); } inText = true; }
+                else if (name.equals("ET")) { if (!inText) { throw PdfObjects.invalid(); } inText = false; }
+                else if (name.equals("Tf")) {
+                    if (operands.size() != 2 || !(operands.get(0) instanceof COSName fontName)) { throw PdfObjects.invalid(); }
+                    state.name = fontName; state.size = number(operands, 1); if (state.size <= 0) { throw PdfObjects.invalid(); }
+                } else if (Set.of("Tc", "Tw", "Tz", "Tr", "Ts").contains(name)) {
+                    if (operands.size() != 1) { throw PdfObjects.invalid(); } state.values.put(name, number(operands, 0));
+                }
+                if (name.equals("Tj") || name.equals("TJ")) {
+                    if (!inText || state.name == null || operands.size() != 1 || page.getResources() == null) { throw PdfObjects.invalid(); }
+                    var font = page.getResources().getFont(state.name);
+                    if (font == null || !font.isEmbedded()) { throw PdfObjects.invalid(); }
+                    var shown = decode(operands.getFirst(), font, name.equals("TJ"));
+                    if (shown.text().contains(edit.search())) {
+                        if (font.isVertical() || !state.simple() || !PdfPageEditor.simpleText(shown.text()) || !PdfPageEditor.simpleText(edit.replacement())) {
+                            loss("TEXT_SHAPING", ProcessingPolicy.Treatment.SKIP_MATCH, "SHOW_OPERATOR_UNCHANGED", edit.page());
+                        } else {
+                            int replaced = replaceShown(shown, edit, state, resources, output);
+                            if (replaced > 0) { pageChanges += replaced; operands.clear(); continue; }
+                        }
+                    }
+                }
+                output.addAll(operands); output.add(operator); operands.clear();
+            }
+            if (inText || !stack.isEmpty() || !operands.isEmpty()) { throw PdfObjects.invalid(); }
+            if (pageChanges > 0) {
+                var stream = new PDStream(document); var data = new PdfImageSupport.Bytes(limits.maxDecodedStreamBytes()); new ContentStreamWriter(data).writeTokens(output);
+                try (var target = stream.createOutputStream(COSName.FLATE_DECODE)) { target.write(data.data()); }
+                page.setContents(stream); page.setResources(resources); changes = Math.addExact(changes, pageChanges);
+            }
+        }
+        PDType0Font font(PdfFont source) throws IOException {
+            var existing = fonts.get(source); if (existing != null) { return existing; }
+            fontBytes += source.bytes().length; if (fontBytes > limits.maxTotalInputBytes()) { throw new PdfOperationException(PdfOperationException.Code.INPUT_LIMIT, 0, -1); }
+            var loaded = PDType0Font.load(document, new ByteArrayInputStream(source.bytes()), source.subsetAllowed()); fonts.put(source, loaded); return loaded;
+        }
+        int replaceShown(Shown shown, Replacement edit, TextState state, PDResources resources, List<Object> output) throws IOException {
+            var result = new ArrayList<Object>(); int offset = 0; int consumed = 0; int changed = 0; int scan = 0;
+            while ((offset = shown.text().indexOf(edit.search(), offset)) >= 0) {
+                count(edit.replacement().length()); int end = offset + edit.search().length();
+                int first = -1; int last = -1;
+                for (int index = scan; index < shown.atoms().size(); index++) {
+                    var atom = shown.atoms().get(index);
+                    if (atom.start() >= end && atom.end() > end) { break; }
+                    scan = index + 1;
+                    if (atom.end() > atom.start() && atom.start() == offset) { first = index; }
+                    if (atom.end() > atom.start() && atom.end() == end) { last = index; break; }
+                }
+                offset = end;
+                if (first < 0 || last < first) { loss("TEXT_BOUNDARY", ProcessingPolicy.Treatment.SKIP_MATCH, "MATCH_SPLITS_ENCODED_GLYPH", edit.page()); continue; }
+                var selected = shown.atoms().subList(first, last + 1);
+                double advance = selected.stream().mapToDouble(Atom::advance).sum();
+                var replacementFont = font(edit.font()); byte[] encoded;
+                try { encoded = replacementFont.encode(edit.replacement()); }
+                catch (IllegalArgumentException exception) { throw new IOException("explicit replacement font lacks required glyphs", exception); }
+                double width = replacementFont.getStringWidth(edit.replacement());
+                if (width > advance + .001 || advance < 0) { loss("TEXT_CAPACITY", ProcessingPolicy.Treatment.SKIP_MATCH, "MATCH_UNCHANGED", edit.page()); continue; }
+                loss("TEXT_FONT", ProcessingPolicy.Treatment.DEGRADE, "MATCH_USES_EXPLICIT_FONT", edit.page());
+                if (selected.stream().anyMatch(atom -> atom.value() instanceof COSNumber && atom.advance() != 0)) { loss("TEXT_SPACING", ProcessingPolicy.Treatment.DEGRADE, "MATCH_INTERNAL_KERNING_REPLACED", edit.page()); }
+                append(result, shown.atoms().subList(consumed, first));
+                COSName name = resources.add(replacementFont); usedFonts.add(replacementFont);
+                if (replacementFont.willBeSubset()) { edit.replacement().codePoints().forEach(replacementFont::addToSubset); }
+                result.add(name); result.add(new COSFloat((float) state.size)); result.add(Operator.getOperator("Tf"));
+                var array = new COSArray(); array.add(new COSString(encoded)); array.add(new COSFloat((float) (width - advance)));
+                result.add(array); result.add(Operator.getOperator("TJ"));
+                result.add(state.name); result.add(new COSFloat((float) state.size)); result.add(Operator.getOperator("Tf"));
+                consumed = last + 1; changed++;
+            }
+            if (changed > 0) { append(result, shown.atoms().subList(consumed, shown.atoms().size())); output.addAll(result); }
+            return changed;
+        }
+        Shown decode(COSBase value, PDFont font, boolean array) throws IOException {
+            var text = new StringBuilder(); var atoms = new ArrayList<Atom>();
+            List<? extends COSBase> values = array && value instanceof COSArray items ? items.toList() : List.of(value);
+            if (array && !(value instanceof COSArray)) { throw PdfObjects.invalid(); }
+            for (var part : values) {
+                if (part instanceof COSString string) {
+                    byte[] bytes = string.getBytes();
+                    try (var input = new ByteArrayInputStream(bytes)) {
+                        while (input.available() > 0) {
+                            int byteStart = bytes.length - input.available(); int start = text.length();
+                            int code = font.readCode(input); String unicode = font.toUnicode(code); count(1);
+                            if (unicode == null || unicode.isEmpty()) { throw PdfObjects.invalid(); }
+                            text.append(text(unicode)); double advance = font.getWidth(code);
+                            if (!Double.isFinite(advance)) { throw PdfObjects.invalid(); }
+                            atoms.add(new Atom(new COSString(java.util.Arrays.copyOfRange(bytes, byteStart, bytes.length - input.available())), start, text.length(), advance));
+                        }
+                    }
+                } else if (array && part instanceof COSNumber number) {
+                    double amount = number.floatValue(); if (!Double.isFinite(amount)) { throw PdfObjects.invalid(); }
+                    atoms.add(new Atom(number, text.length(), text.length(), -amount));
+                } else { throw PdfObjects.invalid(); }
+            }
+            count(text.length()); return new Shown(text.toString(), List.copyOf(atoms));
+        }
+    }
+    private static void append(List<Object> output, List<Atom> atoms) {
+        if (atoms.isEmpty()) { return; } var values = new COSArray(); for (var atom : atoms) { values.add(atom.value()); } output.add(values); output.add(Operator.getOperator("TJ"));
+    }
+    private record Atom(COSBase value, int start, int end, double advance) { }
+    private record Shown(String text, List<Atom> atoms) { }
+    private static final class TextState {
+        COSName name; double size; final Map<String, Double> values = new java.util.HashMap<>();
+        TextState copy() { var copy = new TextState(); copy.name = name; copy.size = size; copy.values.putAll(values); return copy; }
+        boolean simple() { return values.entrySet().stream().allMatch(entry -> entry.getValue() == (entry.getKey().equals("Tz") ? 100 : 0)); }
+    }
+    private static double number(List<COSBase> operands, int index) throws IOException {
+        if (!(operands.get(index) instanceof COSNumber number) || !Double.isFinite(number.floatValue())) { throw PdfObjects.invalid(); } return number.floatValue();
+    }
+
+    private static PDResources copy(PDResources original) {
+        var values = original == null ? new COSDictionary() : new COSDictionary(original.getCOSObject());
+        var fonts = values.getCOSDictionary(COSName.FONT); if (fonts != null) { values.setItem(COSName.FONT, new COSDictionary(fonts)); } return new PDResources(values);
+    }
+    private static String text(String value) {
+        Objects.requireNonNull(value, "text");
+        for (int index = 0; index < value.length(); index++) {
+            char c = value.charAt(index);
+            if (Character.isHighSurrogate(c)) { if (++index >= value.length() || !Character.isLowSurrogate(value.charAt(index))) { throw new IllegalArgumentException("invalid Unicode"); } }
+            else if (Character.isLowSurrogate(c) || Character.isISOControl(c)) { throw new IllegalArgumentException("invalid text code point"); }
+        }
+        return value;
+    }
+}

@@ -357,16 +357,56 @@ class XmlTemplateIncludeTest {
     }
 
     @Test
-    void everyIncludeInsideAFragmentIsRejectedEvenWhenHiddenOrInAnIllegalInlinePosition() {
+    void recursiveCyclesAreRejectedEvenWhenHiddenAndIllegalIncludePositionsStayRejected() {
         String call = include("part", "nested");
         for (String content : List.of(call,
                 "<if test='flag'><then><p>Safe</p></then><else>" + call + "</else></if>",
                 "<each items='items' as='item'>" + call + "</each>",
                 "<p><span>" + call + "</span></p>", table("outer", call))) {
             var failure = rejected(XmlTemplate.builder().fragment("part", fragment(content)).build(), xml(include("part", "copy")),
-                    TemplateException.Code.UNSUPPORTED_ELEMENT);
+                    content.startsWith("<p>") || content.startsWith("<table") ? TemplateException.Code.UNSUPPORTED_ELEMENT
+                            : TemplateException.Code.INVALID_STRUCTURE);
             assertEquals(Optional.of("part"), failure.fragmentName());
         }
+    }
+
+    @Test void recursiveIncludesComposeNamespacesAndLocalReferencesAndKeepMainTargets() {
+        var compiler = XmlTemplate.builder()
+                .fragment("leaf", fragment("<p id='target'>LEAF <page-reference target='target' width='20'/></p>"))
+                .fragment("panel", fragment("<p id='intro'>PANEL <page-reference target='part-target' width='20'/>"
+                        + " <page-reference target='global' width='20'/></p>" + include("leaf", "part"))).build();
+        var source = xml("<p id='global'>GLOBAL</p>" + include("panel", "left") + include("panel", "right"));
+        var document = compiler.compile(source).render(Map.of());
+        assertEquals(List.of("global", "left-intro", "left-part-target", "right-intro", "right-part-target"),
+                document.blocks().stream().map(block -> block.id()).toList());
+        var intro = (Paragraph) document.blocks().get(1);
+        assertEquals(List.of("left-part-target", "global"), intro.fields().stream().map(field -> field.field().targetId()).toList());
+        var leaf = (Paragraph) document.blocks().get(2);
+        assertEquals("left-part-target", leaf.fields().getFirst().field().targetId());
+    }
+
+    @Test void recursiveIncludeChainsHaveAnIndependentLimitEvenWhenWrappersDisappear() {
+        var builder = XmlTemplate.builder();
+        for (int depth = 1; depth <= XmlTemplate.MAX_INCLUDE_DEPTH; depth++) {
+            builder.fragment("part" + depth, fragment(depth == XmlTemplate.MAX_INCLUDE_DEPTH
+                    ? "<p id='end'>END</p>" : include("part" + (depth + 1), "x")));
+        }
+        var legal = builder.build().compile(xml(include("part1", "x"))).render(Map.of());
+        assertEquals("x-".repeat(XmlTemplate.MAX_INCLUDE_DEPTH) + "end", legal.blocks().getFirst().id());
+        builder.fragment("outer", fragment(include("part1", "x")));
+        rejected(builder.build(), xml(include("outer", "x")), TemplateException.Code.BUDGET_EXCEEDED);
+        var cycle = XmlTemplate.builder().fragment("one", fragment(include("two", "x")))
+                .fragment("two", fragment(include("one", "x"))).build();
+        rejected(cycle, xml(include("one", "x")), TemplateException.Code.INVALID_STRUCTURE);
+    }
+
+    @Test void recursiveIncludeCombinedPrefixCollisionsAndUnknownRefsCannotHideInBranches() {
+        var compiler = XmlTemplate.builder().fragment("leaf", fragment("<p id='target'>LEAF</p>"))
+                .fragment("parent", fragment(include("leaf", "child"))).build();
+        rejected(compiler, xml(include("parent", "root") + include("leaf", "root-child")), TemplateException.Code.INVALID_VALUE);
+        var unknown = XmlTemplate.builder().fragment("parent", fragment("<if test='flag'><then><p>Safe</p></then><else>"
+                + include("missing", "child") + "</else></if>")).build();
+        rejected(unknown, xml(include("parent", "root")), TemplateException.Code.UNKNOWN_RESOURCE);
     }
 
     @Test
@@ -524,9 +564,10 @@ class XmlTemplateIncludeTest {
     void includedBlockCellsStillRespectAtomicThemeSplitAndNestedDynamicSyntaxBoundaries() {
         var theme = DocumentTheme.builder().tableFormat(format -> format.allowRowSplit(true)).build();
         String block = table("outer", "<p id='leaf'>Leaf</p>");
-        var failure = rejected(XmlTemplate.builder().theme(theme).fragment("part", fragment(block)).build(), xml(include("part", "copy")),
-                TemplateException.Code.INVALID_VALUE);
-        assertEquals(Optional.of("part"), failure.fragmentName());
+        var expanded = XmlTemplate.builder().theme(theme).fragment("part", fragment(block)).build()
+                .compile(xml(include("part", "copy"))).render(Map.of());
+        assertTrue(((Table) expanded.blocks().getFirst()).format().allowRowSplit());
+        assertEquals("copy-leaf", ((Table) expanded.blocks().getFirst()).rows().getFirst().cells().getFirst().blocks().getFirst().id());
         String atomic = block.replace("<table id='outer'>", "<table id='outer' row-split='false'>");
         assertEquals(1, XmlTemplate.builder().theme(theme).fragment("part", fragment(atomic)).build()
                 .compile(xml(include("part", "copy"))).render(Map.of()).blocks().size());

@@ -23,6 +23,7 @@ import com.mirakyux.export4j.layout.ComponentLayout;
 import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.layout.core.TextInheritance;
 import com.mirakyux.export4j.model.PaginationPolicy;
 import com.mirakyux.export4j.text.LineBreakRules;
@@ -39,7 +40,7 @@ import com.mirakyux.export4j.model.LineBreakPolicy;
  * Builders inherit unset style and color from the layout context; constructors keep explicit values.
  */
 public record OpenTypeText(String text, ParagraphStyle style, RgbColor color, Direction direction,
-        boolean kerning, boolean ligatures, boolean cjkPunctuation, TextInheritance inheritance) implements RegionFlow {
+        boolean kerning, boolean ligatures, boolean cjkPunctuation, TextInheritance inheritance) implements WidthAwareRegionFlow {
     public enum Direction { AUTO, LEFT_TO_RIGHT, RIGHT_TO_LEFT }
     record Line(int sourceStart, int sourceEnd, double width, DrawCommand.OutlineText command) { }
     record Measured(List<Line> lines, List<TextDiagnostic> diagnostics) { }
@@ -70,11 +71,11 @@ public record OpenTypeText(String text, ParagraphStyle style, RgbColor color, Di
     }
 
     @Override
-    public List<ComponentLayout> layoutParts(ComponentContext context) { return RegionFlow.super.layoutParts(context); }
+    public List<ComponentLayout> layoutParts(ComponentContext context) { return WidthAwareRegionFlow.super.layoutParts(context); }
 
     @Override
     public List<ComponentLayout> layoutParts(ComponentContext context, double firstPageHeight) {
-        return RegionFlow.super.layoutParts(context, firstPageHeight);
+        return WidthAwareRegionFlow.super.layoutParts(context, firstPageHeight);
     }
 
     @Override
@@ -82,6 +83,17 @@ public record OpenTypeText(String text, ParagraphStyle style, RgbColor color, Di
         if (!inheritance.equals(TextInheritance.NONE)) { return resolved(context).layoutRegions(context, regions); }
         ComponentSupport.fits(context.width(), regions.continuationHeight(), context);
         var measured = measure(context, line -> context.width(), line -> 0);
+        return layoutMeasured(measured, regions, region -> context.width());
+    }
+
+    @Override
+    public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        if (!inheritance.equals(TextInheritance.NONE)) { return resolved(context).layoutVariableRegions(context, regions, widths); }
+        var slots = new TextRegionWidths(context, regions, widths, style.lineHeight(), PaginationPolicy.DEFAULT);
+        return layoutMeasured(measure(context, slots::lineWidth, line -> 0), regions, slots::width);
+    }
+
+    private List<RegionFlow.Fragment> layoutMeasured(Measured measured, FlowRegions regions, IntToDoubleFunction widths) {
         List<RegionFlow.Fragment> parts = new ArrayList<>();
         for (var slice : LineFlowSlices.split(measured.lines().size(), style.lineHeight(), regions, PaginationPolicy.DEFAULT)) {
             int first = slice.first();
@@ -96,7 +108,7 @@ public record OpenTypeText(String text, ParagraphStyle style, RgbColor color, Di
             int start = measured.lines().get(first).sourceStart();
             int end = measured.lines().get(first + count - 1).sourceEnd();
             var diagnostics = measured.diagnostics().stream().filter(d -> d.sourceStart() >= start && d.sourceStart() < end).toList();
-            parts.add(new RegionFlow.Fragment(slice.region(), new ComponentLayout(context.width(), count * style.lineHeight(), count, commands, diagnostics)));
+            parts.add(new RegionFlow.Fragment(slice.region(), new ComponentLayout(widths.applyAsDouble(slice.region()), count * style.lineHeight(), count, commands, diagnostics)));
         }
         return List.copyOf(parts);
     }

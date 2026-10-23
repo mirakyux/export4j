@@ -154,26 +154,45 @@ class RowSpanLayouterTest {
                         .layout(document(List.of(source), 30), fonts)).code());
     }
 
-    @Test void automaticColumnsOnlyRejectTheActualMergedInterval() {
+    @Test void verticalMergedOwnersUseAutomaticWidthsOnce() {
         var rows = List.of(row(cell("A", 1, 2), cell("B", 1, 1)), row(cell("C", 1, 1)));
         var good = new Table("auto", List.of(new ColumnWidth.Fixed(50), new ColumnWidth.Auto(20, 50)), rows, 0,
                 new TableFormat(PageMargins.uniform(0), 0, 0));
         assertEquals(1, layout(good, 30).pages().size());
         var bad = new Table("auto", List.of(new ColumnWidth.Auto(20, 50), new ColumnWidth.Fixed(50)), rows, 0, good.format());
-        var failure = assertThrows(DocumentLayoutException.class, () -> layout(bad, 30));
-        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, failure.code()); assertEquals(0, failure.columnIndex());
+        var result = layout(bad, 30);
+        assertEquals(1, result.pages().size());
+        var table = (TableFragment) result.pages().getFirst().elements().getFirst();
+        assertEquals(20, table.rows().getFirst().cells().getFirst().bounds().width());
+        assertEquals(20, table.rows().getFirst().cells().getFirst().bounds().height());
     }
 
-    @Test void explicitRowSplitWithVerticalSpanIsRejectedBeforeOutput() {
+    @Test void explicitRowSplitContinuesVerticalOwnersWithoutDuplicatingContent() {
         var source = connected();
-        var bad = new Table(source.id(), source.columns(), source.rows(), 0, source.format().toBuilder().allowRowSplit(true).build());
-        for (boolean cursor : List.of(false, true)) {
-            var failure = assertThrows(DocumentLayoutException.class, () -> {
-                if (cursor) { new DocumentLayouter().prepareTable(bad, context(40)); }
-                else { layout(bad, 40); }
-            });
-            assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, failure.code()); assertEquals(0, failure.rowIndex());
-        }
+        var split = new Table(source.id(), source.columns(), source.rows(), 0, source.format().toBuilder().allowRowSplit(true).build());
+        assertEquals(1, layout(split, 40).pages().size());
+        var cursor = new DocumentLayouter().prepareTable(split, context(40));
+        assertTrue(cursor.take(9).isEmpty());
+        var first = cursor.take(20).orElseThrow();
+        assertEquals(0, first.rows().getFirst().rowIndex());
+        assertEquals(20, first.rows().getFirst().cells().getFirst().bounds().height());
+        assertTrue(cursor.take(20).isPresent()); assertTrue(cursor.done());
+    }
+
+    @Test void longVerticalContentSplitsAndCoveredTailMakesProgressWithoutBlankPages() {
+        var source = table(List.of(row(cell("A\nB\nC\nD\nE", 1, 2), cell("SIDE", 1, 1)),
+                row(cell("TAIL", 1, 1))), 0, 1, true);
+        var result = layout(source, 32);
+        assertEquals(3, result.pages().size());
+        var lines = result.pages().stream().flatMap(page -> page.elements().stream()).map(TableFragment.class::cast)
+                .flatMap(table -> table.rows().stream()).filter(row -> row.rowIndex() == 0)
+                .flatMap(row -> row.cells().stream()).filter(cell -> cell.columnIndex() == 0 && !cell.hasBlocks())
+                .flatMap(cell -> cell.layout().lines().stream()).toList();
+        assertEquals(List.of(0, 2, 4, 6, 8), lines.stream().map(line -> line.sourceStart()).toList());
+        var covered = Table.builder("covered").columns(new ColumnWidth.Fixed(50))
+                .format(format -> format.padding(0).allowRowSplit(true))
+                .row(cell("A\nB\nC\nD", 1, 3)).coveredRow().coveredRow().build();
+        assertEquals(2, layout(covered, 20).pages().size());
     }
 
     @Test void cancellationRestoresScopeAndDoesNotConsumeGroup() {

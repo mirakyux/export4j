@@ -32,6 +32,7 @@ public record Section(String id, PageSettings pageSettings, List<Block> blocks, 
         Objects.requireNonNull(pageSettings, "pageSettings");
         blocks = List.copyOf(blocks);
         Objects.requireNonNull(pageRegions, "pageRegions");
+        pageRegions.requireContained(pageSettings.size());
         if (id.isBlank() || firstPageNumber < 0) {
             throw new IllegalArgumentException("invalid section ID or page number");
         }

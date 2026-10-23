@@ -22,6 +22,19 @@ public interface PageWriter extends AutoCloseable {
      */
     void accept(DisplayPage page) throws IOException;
 
+    /** Consumes one page and its passive external links in the same synchronous operation.
+     * Link page indices must equal this session's next zero-based page index. Coordinates use
+     * top-left points. The caller may release both arguments on return. The default accepts an
+     * empty list and explicitly rejects interactions; existing writers cannot silently drop links.
+     * @throws IOException if interactions are unsupported, invalid or exceed backend budgets
+     */
+    default void accept(DisplayPage page, java.util.List<DocumentExtras.ExternalLink> links) throws IOException {
+        java.util.Objects.requireNonNull(page, "page");
+        java.util.Objects.requireNonNull(links, "links");
+        if (!links.isEmpty()) { throw new IOException("page writer does not support external links"); }
+        accept(page);
+    }
+
     /**
      * Completes successful output after at least one page. May write buffered format data;
      * a failed finish can leave partial bytes. This method does not close the writer or the

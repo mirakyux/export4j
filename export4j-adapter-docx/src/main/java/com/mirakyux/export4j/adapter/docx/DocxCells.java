@@ -75,7 +75,7 @@ final class DocxCells {
     }
 
     private static void indexTable(Element table, int depth, List<Element> elements, Budget budget) throws IOException {
-        if (depth > 2) { throw new IOException("DOCX semantic table nesting exceeds two levels"); }
+        if (depth > com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH) { throw new IOException("DOCX semantic table nesting budget exceeded"); }
         budget.node(); elements.add(table);
         int columns = children(child(table, "tblGrid")).size();
         var rows = children(table).stream().filter(element -> W.equals(element.getNamespaceURI())

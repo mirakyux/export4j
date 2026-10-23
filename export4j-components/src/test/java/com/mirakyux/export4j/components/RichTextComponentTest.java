@@ -53,6 +53,19 @@ class RichTextComponentTest {
         arabic = font("NotoNaskhArabic-Regular.ttf");
     }
 
+    @Test void flowingRichTextKeepsFontVariantsSourcesAndShortRegions() {
+        var rich = RichTextComponent.builder().lineHeight(20)
+                .add("ONE\nTWO\n", new InlineStyle("bold", 10, 0xff0000, 0, true, false))
+                .add("THREE\nFOUR", new InlineStyle("italic", 10, 0x0000ff, 0, false, true)).build();
+        var parts = rich.flow().layoutRegions(context(200, 60), new FlowRegions(List.of(19.0), 40));
+        assertEquals(List.of(1, 2), parts.stream().map(part -> part.regionIndex()).toList());
+        assertEquals(List.of("ONETWO", "THREEFOUR"), parts.stream().map(part -> logical(part.layout())).toList());
+        assertTrue(glyphs(parts.getFirst().layout()).stream().allMatch(run -> run.run().font().id().equals(bold.fonts().getFirst().data().id())));
+        assertTrue(glyphs(parts.getLast().layout()).stream().allMatch(run -> run.run().font().id().equals(italic.fonts().getFirst().data().id())));
+        assertEquals(2, ContinuousColumns.builder(rich.flow()).columns(2).build().layoutParts(context(200, 20)).size());
+        assertThrows(IllegalArgumentException.class, () -> rich.flow(com.mirakyux.export4j.model.PaginationPolicy.builder().keepWithNext(true).build()));
+    }
+
     @Test void realFontVariantsColorsDecorationsAndBaselineShiftsReachDrawingCommands() {
         var rich = RichTextComponent.builder()
                 .add("A", new InlineStyle("bold", 12, 0xff0000, 0, true, false))

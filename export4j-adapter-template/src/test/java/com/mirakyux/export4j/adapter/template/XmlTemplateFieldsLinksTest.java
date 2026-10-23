@@ -169,7 +169,7 @@ class XmlTemplateFieldsLinksTest {
             assertRejected(TemplateException.Code.INVALID_VALUE, unselected("<page-number width='" + width + "'/>"));
         }
         assertRejected(TemplateException.Code.INVALID_VALUE, unselected("<page-count/>"));
-        for (String target : List.of("${target}", "target@0", "space id", "0target", "x".repeat(129))) {
+        for (String target : List.of("target@0", "space id", "0target", "x".repeat(129))) {
             assertRejected(TemplateException.Code.INVALID_VALUE, unselected("<page-reference target='" + target + "' width='20'/>"));
         }
         assertRejected(TemplateException.Code.INVALID_STRUCTURE, unselected("<number-reference width='20'/>"));
@@ -199,19 +199,43 @@ class XmlTemplateFieldsLinksTest {
         assertRejected(TemplateException.Code.UNSUPPORTED_ATTRIBUTE, xml("<p><link href='https://example.com' onclick='execute'>text</link></p>"));
     }
 
-    @Test void staticDestinationsUseExistingUriRulesAndRejectInterpolationEvenInUnselectedBranches() {
+    @Test void staticDestinationsUseExistingUriRulesAndDynamicExpressionsCompileInAllBranches() {
         for (String destination : List.of("javascript:alert(1)", "file:///secret", "ftp://example.com/file", "/relative", "example.com",
                 "https://user:password@example.com/report", "https:///path", "mailto:", "https://example.com/&#x7f;", "https://example.com/" + "x".repeat(8192))) {
             assertRejected(TemplateException.Code.INVALID_VALUE, unselected("<link href='" + destination + "'>text</link>"));
         }
         for (String destination : List.of("${url}", "https://example.com/${path}", "https://example.com/$&#123;path}")) {
-            assertRejected(TemplateException.Code.INVALID_EXPRESSION, unselected("<link href='" + destination + "'>text</link>"));
+            assertEquals("Safe", compiler().compile(unselected("<link href='" + destination + "'>text</link>"))
+                    .render(Map.of("flag", true)).paragraphs().getFirst().text());
         }
+        assertRejected(TemplateException.Code.INVALID_EXPRESSION, unselected("<link href='${unsafe() }'>text</link>"));
         for (String destination : List.of("https://example.com/report", "HTTP://example.com/report", "mailto:docs@example.com")) {
             var paragraph = compiler().compile(xml("<p><link href='" + destination + "'>${value}</link></p>"))
                     .render(Map.of("value", "Text")).paragraphs().getFirst();
             assertEquals(destination, paragraph.inlines().getFirst().hyperlink());
         }
+    }
+
+    @Test void dynamicLinksAndTargetsBindInLexicalScopeAndInvalidValuesNeverLeakIntoTheDocument() throws IOException {
+        var template = XmlTemplate.builder().image("logo", image()).build().compile(xml("<each items='records' as='record'>"
+                + "<p id='target'>TARGET</p><p id='link'><link href='${record.url}'><span color='#224488'>LINK</span>"
+                + "<image ref='logo' width='8' height='8'/></link><page-reference target='${record.target}' width='20'/></p></each>"));
+        var result = template.render(Map.of("records", List.of(Map.of("url", "https://example.com/a", "target", "target@0"),
+                Map.of("url", "mailto:docs@example.com", "target", "target@1"))));
+        var first = (Paragraph) result.blocks().get(1); var second = (Paragraph) result.blocks().get(3);
+        assertEquals("https://example.com/a", first.inlines().getFirst().hyperlink());
+        assertEquals("https://example.com/a", first.images().getFirst().image().hyperlink());
+        assertEquals("target@0", first.fields().getFirst().field().targetId());
+        assertEquals("mailto:docs@example.com", second.inlines().getFirst().hyperlink());
+        assertEquals("target@1", second.fields().getFirst().field().targetId());
+        for (String invalid : List.of("javascript:SECRET", "file:///SECRET", "https://user:SECRET@example.com", "/SECRET", "")) {
+            var failure = assertThrows(DocumentTemplate.BindingException.class, () -> template.render(Map.of("records",
+                    List.of(Map.of("url", invalid, "target", "target@0")))));
+            assertEquals(DocumentTemplate.BindingException.Code.INVALID_VALUE, failure.code());
+            assertFalse(failure.getMessage().contains("SECRET")); assertEquals(null, failure.getCause());
+        }
+        assertEquals(result, template.toBuilder().build().render(Map.of("records", List.of(
+                Map.of("url", "https://example.com/a", "target", "target@0"), Map.of("url", "mailto:docs@example.com", "target", "target@1")))));
     }
 
     @Test void numberingRejectsMissingDynamicInvalidOrUnsupportedConfigurationBeforeBinding() {
@@ -270,9 +294,9 @@ class XmlTemplateFieldsLinksTest {
         try {
             var resource = image();
             String destination = "http://127.0.0.1:" + server.getAddress().getPort() + "/report";
-            var document = XmlTemplate.builder().image("logo", resource).build().compile(xml("<p><link href='" + destination + "'>"
+            var document = XmlTemplate.builder().image("logo", resource).build().compile(xml("<p><link href='${destination}'>"
                     + "${text}<image ref='logo' width='12' height='12' alt='${text}'/></link><page-number width='20'/></p>"))
-                    .render(Map.of("text", "Text"));
+                    .render(Map.of("text", "Text", "destination", destination));
             var paragraph = document.paragraphs().getFirst();
             assertEquals(destination, paragraph.inlines().getFirst().hyperlink());
             assertEquals(destination, paragraph.images().getFirst().image().hyperlink());

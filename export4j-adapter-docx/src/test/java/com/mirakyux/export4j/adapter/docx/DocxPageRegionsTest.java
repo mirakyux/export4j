@@ -40,7 +40,10 @@ class DocxPageRegionsTest {
                 new Section("three", PageSettings.A4, List.of(new Paragraph("p3", "Third", ParagraphFormat.of(10))), 0)));
     }
     private static Map<String, byte[]> parts() throws IOException {
-        var out = new ByteArrayOutputStream(); new DocxAdapter().write(document(), out);
+        return parts(document());
+    }
+    private static Map<String, byte[]> parts(SectionedDocument source) throws IOException {
+        var out = new ByteArrayOutputStream(); new DocxAdapter().write(source, out);
         var result = new LinkedHashMap<String, byte[]>();
         try (var zip = new ZipInputStream(new ByteArrayInputStream(out.toByteArray()))) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) { result.put(entry.getName(), zip.readAllBytes()); }
@@ -75,6 +78,21 @@ class DocxPageRegionsTest {
         assertEquals(PageRegions.EMPTY, result.document().sections().getLast().pageRegions());
         assertEquals(PageSettings.A4.margins(), result.document().sections().getFirst().pageSettings().margins());
         assertEquals(595.3, result.document().sections().getFirst().pageSettings().size().width());
+    }
+
+    @Test void materializedDefaultsPreserveSectionBoundariesEmptyBandsAndHeaderFields() throws IOException {
+        var parts = parts();
+        replace(parts, "word/styles.xml", "</w:styles>", "<w:docDefaults><w:rPrDefault><w:rPr><w:color w:val=\"123456\"/></w:rPr></w:rPrDefault></w:docDefaults></w:styles>");
+        var result = read(parts, DocxAdapter.Policy.ALLOW_LOSS);
+        assertEquals(3, result.document().sections().size());
+        assertEquals(List.of("First", "Second", "Third"), result.document().sections().stream()
+                .map(section -> ((Paragraph) section.blocks().getFirst()).text()).toList());
+        assertEquals(PageRegions.EMPTY, result.document().sections().getLast().pageRegions());
+        var first = result.document().sections().getFirst().pageRegions().header();
+        assertEquals(document().sections().getFirst().pageRegions().header().height(), first.height());
+        var text = (Paragraph) first.blocks().getFirst();
+        assertEquals(InlineField.Kind.PAGE, text.fields().getLast().field().kind());
+        assertTrue(result.diagnostics().stream().anyMatch(issue -> issue.element().equals("styleGraph")));
     }
 
     @Test void missingDefaultReferenceInheritsPreviousSectionButExplicitEmptyPartClearsIt() throws IOException {
@@ -145,6 +163,78 @@ class DocxPageRegionsTest {
         var unknown = parts(); replace(unknown, "word/header1.xml", "</w:hdr>", "<w:unknown/></w:hdr>");
         assertThrows(IOException.class, () -> read(unknown, DocxAdapter.Policy.STRICT));
         assertTrue(read(unknown, DocxAdapter.Policy.ALLOW_LOSS).diagnostics().stream().anyMatch(value -> value.part().equals("word/header1.xml")));
+    }
+
+    private static PageRegion band(String name, double height) {
+        return PageRegion.builder().height(height).gap(4).paragraph(new Paragraph(name,
+                List.of(new InlineText(name.toUpperCase(java.util.Locale.ROOT), InlineStyle.of(10))), ParagraphFormat.of(10))).build();
+    }
+    private static SectionedDocument variantDocument() {
+        var regions = PageRegions.builder().header(band("odd", 20)).footer(band("odd-footer", 20))
+                .header(PageRegions.Variant.FIRST, band("first", 30)).footer(PageRegions.Variant.FIRST, band("first-footer", 25))
+                .header(PageRegions.Variant.EVEN, band("even", 40)).footer(PageRegions.Variant.EVEN, band("even-footer", 35)).build();
+        return new SectionedDocument(DocumentMetadata.EMPTY, List.of(
+                new Section("one", PageSettings.A4, List.of(new Paragraph("p1", "A", ParagraphFormat.of(10))), 2, regions),
+                new Section("two", PageSettings.A4, List.of(new Paragraph("p2", "B", ParagraphFormat.of(10))), 0,
+                        regions.toBuilder().variant(PageRegions.Variant.FIRST, PageRegions.Bands.EMPTY).build()),
+                new Section("three", PageSettings.A4, List.of(new Paragraph("p3", "C", ParagraphFormat.of(10))), 0,
+                        new PageRegions(regions.header(), regions.footer()))));
+    }
+
+    @Test void standardFirstEvenSwitchesReferencesAndLargestReservationsRoundTrip() throws IOException {
+        var source = variantDocument();
+        var parts = parts(source);
+        assertTrue(text(parts, "word/settings.xml").contains("<w:evenAndOddHeaders/>"));
+        assertEquals(2, text(parts, "word/document.xml").split("<w:titlePg/>", -1).length - 1);
+        assertTrue(text(parts, "word/document.xml").contains("w:type=\"first\""));
+        assertTrue(text(parts, "word/document.xml").contains("w:type=\"even\""));
+        var result = read(parts, DocxAdapter.Policy.STRICT);
+        assertTrue(result.diagnostics().isEmpty());
+        assertEquals(source.sections().stream().map(Section::pageRegions).toList(), result.document().sections().stream().map(Section::pageRegions).toList());
+        assertTrue(result.document().sections().stream().allMatch(section -> section.pageSettings().margins().equals(PageSettings.A4.margins())));
+        assertSame(result.document().sections().get(0).pageRegions().variants().get(PageRegions.Variant.EVEN).header(),
+                result.document().sections().get(1).pageRegions().variants().get(PageRegions.Variant.EVEN).header());
+    }
+
+    @Test void explicitDefaultEvenReferencesRemainValidWithoutIntentMetadataAndInactiveDeclarationsReportLoss() throws IOException {
+        var fixture = variantDocument();
+        var equalGeometry = new SectionedDocument(fixture.metadata(), fixture.sections().stream().map(section ->
+                new Section(section.id(), section.pageSettings(), section.blocks(), section.firstPageNumber(),
+                        section.pageRegions().map((name, band) -> band.height() == 0 ? band : new PageRegion(20, 4, band.blocks())))).toList());
+        var parts = parts(equalGeometry);
+        String main = text(parts, "word/document.xml");
+        parts.put("word/document.xml", main.replaceAll(" od:evenDefault=\"true\"", "").getBytes(StandardCharsets.UTF_8));
+        var nativeResult = read(parts, DocxAdapter.Policy.STRICT);
+        assertTrue(nativeResult.diagnostics().isEmpty());
+        assertEquals(new PageRegions.Bands(nativeResult.document().sections().getLast().pageRegions().header(),
+                nativeResult.document().sections().getLast().pageRegions().footer()),
+                nativeResult.document().sections().getLast().pageRegions().variants().get(PageRegions.Variant.EVEN));
+        replace(parts, "word/settings.xml", "<w:evenAndOddHeaders/>", "<w:evenAndOddHeaders w:val=\"false\"/>");
+        assertThrows(IOException.class, () -> read(parts, DocxAdapter.Policy.STRICT));
+        assertTrue(read(parts, DocxAdapter.Policy.ALLOW_LOSS).diagnostics().stream().anyMatch(diagnostic -> diagnostic.message().contains("inactive")));
+        var duplicate = parts(variantDocument());
+        replace(duplicate, "word/document.xml", "w:type=\"first\"", "w:type=\"default\"");
+        assertThrows(IOException.class, () -> read(duplicate, DocxAdapter.Policy.ALLOW_LOSS));
+    }
+
+    @Test void metadataFreeNativeFirstEvenReferencesUseExplicitGeometry() throws IOException {
+        var source = variantDocument().sections().getFirst();
+        var fixture = new SectionedDocument(DocumentMetadata.EMPTY, List.of(new Section(source.id(), source.pageSettings(), source.blocks(), 2,
+                source.pageRegions().map((name, band) -> new PageRegion(20, 4, band.blocks())))));
+        var parts = parts(fixture);
+        for (var name : List.copyOf(parts.keySet())) {
+            if (name.endsWith(".xml")) {
+                parts.put(name, text(parts, name).replaceAll(" od:[A-Za-z_][A-Za-z_0-9]*=\"[^\"]*\"", "").getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        assertThrows(IOException.class, () -> read(parts, DocxAdapter.Policy.STRICT));
+        var adapter = DocxAdapter.builder().regionGeometry(new DocxAdapter.RegionGeometry(20, 4, 20, 4)).build();
+        var result = adapter.read(new ByteArrayInputStream(zip(parts)), DocxAdapter.Policy.STRICT);
+        assertTrue(result.diagnostics().isEmpty());
+        var regions = result.document().sections().getFirst().pageRegions();
+        assertEquals("FIRST", regions.variants().get(PageRegions.Variant.FIRST).header().paragraphs().getFirst().text());
+        assertEquals("EVEN-FOOTER", regions.variants().get(PageRegions.Variant.EVEN).footer().paragraphs().getFirst().text());
+        assertEquals(PageSettings.A4.margins(), result.document().sections().getFirst().pageSettings().margins());
     }
 
     @Test void bodyReferencesCannotTargetRepeatingBandIds() {

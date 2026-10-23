@@ -4,6 +4,8 @@
 
 主题值与名称规则见[主题 API](themes-api.md)，现有语法、预算和资源白名单见[XML 模板 API](xml-template-api.md)。设计范围与拒绝依据见[XML 主题设计](adr/0038-xml-theme-styles.md)。
 
+全局字体角色与颜色、分域覆盖及 XML TextDefaults 优先级见[主题 API](themes-api.md#字体角色与颜色级联)。
+
 ## 同一结构，两套主题
 
 ~~~java
@@ -86,4 +88,4 @@ build/verification/python-phase13/Scripts/python.exe scripts/verify_xml_themes.p
 
 独立脚本直接读取最终 PDF 实际字号、颜色、行距、缩进、真实粗体字体、装饰及根／内表坐标，核对 SVG 原文／颜色／轮廓边界，以及标准 OOXML 标题级别、完整段落和运行属性、嵌套表、动态行、字段与链接关系。期望值在脚本中独立声明，不从 Java 样式或几何清单导入。它还检查隔离 Maven 调用方；默认读取成功目录指针，可用 `--consumer-build-directory` 指定本次目录。全部四页由 Poppler 与 PDFium 独立渲染，并须逐页目视复查，不更新视觉基线。
 
-HTML／CSS、XML 内主题定义、动态名称、逐属性级联、字段主题、表头专用主题、远程资源和一般 Word 文档无损互转仍不在本能力范围。
+HTML／CSS、XML 内主题定义、动态名称、完整 CSS 级联、字段主题、表头专用主题、远程资源和一般 Word 文档无损互转仍不在本能力范围。

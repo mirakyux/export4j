@@ -19,11 +19,8 @@ import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.text.ParagraphLayout;
 import com.mirakyux.export4j.text.ParagraphLayouter;
-import com.mirakyux.export4j.text.ParagraphStyle;
-import com.mirakyux.export4j.text.StyledSpan;
-import com.mirakyux.export4j.text.TextAlignment;
+import com.mirakyux.export4j.text.InlineFieldInk;
 import com.mirakyux.export4j.text.TextLine;
-import com.mirakyux.export4j.text.TextOutline;
 
 /** Replaces reserved logical slots with final ink without changing source ranges, line positions or pagination. */
 final class InlineFields {
@@ -144,21 +141,8 @@ final class InlineFields {
                         var style = field.style();
                         var group = style.fontRole().isEmpty() ? measuredFonts : measuredRoles.get(style.fontRole());
                         if (group == null) { throw new IllegalArgumentException("unknown inline field font role"); }
-                        var resolved = layouter.layoutOpenType(List.of(new StyledSpan(value, group, style.fontSize(), style.rgb(),
-                                style.baselineShift(), style.underline(), style.strikeThrough())), field.width(),
-                                new ParagraphStyle(style.fontSize(), step, 0, 0, TextAlignment.LEFT));
-                        if (resolved.lines().size() != 1 || resolved.lines().getFirst().width() > Math.nextUp(field.width())) {
-                            throw new IllegalArgumentException("inline field value exceeds reserved width");
-                        }
-                        List<TextOutline.Segment> paths = new ArrayList<>();
-                        for (var outline : resolved.lines().getFirst().outlines()) {
-                            for (var segment : outline.segments()) {
-                                var coordinates = new ArrayList<>(segment.coordinates());
-                                for (int i = 0; i < coordinates.size(); i += 2) { coordinates.set(i, coordinates.get(i) + box.x()); }
-                                paths.add(new TextOutline.Segment(segment.operation(), coordinates));
-                            }
-                        }
-                        ink.set(box.outlineIndex(), new TextOutline(value, paths, style.rgb()));
+                        var resolved = InlineFieldInk.resolve(box, value, step, group, layouter);
+                        ink.set(box.outlineIndex(), resolved.outline());
                         for (var diagnostic : resolved.diagnostics()) {
                             diagnostics.add(new ContextualDiagnostic(owner.blockId(), owner.pageIndex(),
                                     "INLINE_FIELD:" + box.sourceIndex(), owner.rowIndex(), owner.columnIndex(), diagnostic, owner.sourcePath()));

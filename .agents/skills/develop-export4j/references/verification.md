@@ -33,6 +33,11 @@
 - 行内图像变更运行 `build :examples:inlineImages` 和 `python scripts/verify_inline_images.py`，检查原文顺序、固定行框、分页与表头重复、图片／链接矩形、标准 OOXML 媒体和全部独立渲染页面。隔离调用方使用独立构建目录；生产验证读取成功目录指针或显式 `--consumer-build-directory`，不能检查被占用的旧输出冒充本次结果。
 - 浮动绕排变更运行 `build :examples:multiFloats :examples:production :examples:advancedPdf` 和 `python scripts/verify_multi_floats.py`，验证左右错位、实际碰撞拒绝、封闭行带、整组移页、浮动仅一次及正文续页。检查最终 PDF 的矩形／原文锚点及全部独立渲染页；旧 `FloatText` 通过生产示例回归。公共 API 同时验证隔离 Maven 调用方。
 - 连续分栏变更运行 `build :examples:continuousColumns :examples:production :examples:advancedPdf` 和 `python scripts/verify_continuous_columns.py`，验证剩余高度、完整续栏、最低行数移页、三栏、复杂文字及后续正文位置。检查最终 PDF 坐标、SVG 来源顺序及全部独立渲染页；保留相同栏宽未分页结果、首行缩进、缺字 UTF-16 诊断与取消恢复。公共 API 同时验证隔离 Maven 调用方；不得自动刷新视觉基线。
+- 变宽最低行数变更另运行 `:examples:minimumLines :examples:variableColumns` 与 `scripts/verify_minimum_lines.py`／`scripts/verify_variable_columns.py`。验证短区跳过、3／2 断点、实际字形推进、完整来源及最终试排诊断；回归普通／富文本／复杂文字与有界平衡，全部新增页双渲染并逐页复查。
+- 变宽语义表格另运行 `:examples:variableTables`、新隔离调用方和 `scripts/verify_variable_tables.py`；核对实际列宽／换行、原始锚点、合并连通组、原子内表、最终逐栏字段和图片／链接，来源与候选／呈现预算分别验证。回归语义区域、递归表格、自动列合并、混合栏和最低行数；全部新增页双渲染并逐页复查。
+- PDF 已有签名校验另运行 `:examples:verifyPdfSignatures`、新隔离调用方和 `scripts/verify_pdf_signatures.py`；由独立解析器重建准确 ByteRange／DER 并用真实离线 CMS 验证完整性、未签追加及最新版本篡改。校验器回调不得冒充证书信任／修改符合性，不能把单元协议夹具称为真实 CMS；全部新增页双渲染并逐页复查。
+- 单向字段另运行 `:examples:streamingFields`、新隔离调用方及 `scripts/verify_streaming_fields.py`；检查重复表头、移页正文和拆行字段的实际页码、准确声明总数、源／生成预算和失败原子性。共享字段绘制变更回归完整文档字段、变宽表格、图文、生产及进阶路径，不刷新视觉基线；全部新增页双渲染并逐页复查。
+- 行内内表 Auto 另运行 `:examples:nestedAutomaticTables`、新隔离调用方及 `scripts/verify_nested_automatic_tables.py`；核对父格实际宽度、最小值收缩、合并锚点、递归字段／链接和探测异常祖先路径。回归块格、递归表格、普通 Auto、变宽区域和双跨度；DOCX 单独检查真实网格、Auto 声明及原生字段，不扩大为 Word 通用布局一致。
 - 混合分栏／表格区域变更额外运行 `:examples:mixedColumns :examples:tablePdf` 和 `python scripts/verify_mixed_columns.py`，核对每栏剩余高度、内边距／间距、图片仅一次、逐栏表头、合并行组不拆开、正文唯一性和原子片段回退。全部新页须独立渲染并人工复查；验证隔离 Maven 调用方的混合 API、重复表头及图片。
 - 行内字段／注释锚点变更运行 `build sbom publishLocalBundle :examples:inlineFields :examples:production :examples:advancedPdf` 与 `python scripts/verify_inline_fields.py`，核对最终目录偏移、分节页码、引用链接、原文来源、宽度失败及脚注实际归属。全部新页须独立渲染并人工复查；同时验证隔离 Maven 调用方、原脚注续页和图文／表格回归，不自动刷新基线。
 
@@ -60,6 +65,7 @@
 - 单向长表／逐页 SPI 变更运行 `build sbom publishLocalBundle :examples:streamingTable :examples:writeStreamingTableClasspath`、新隔离调用方和 `python scripts/verify_streaming_table.py --consumer-build-directory <成功构建目录>`。核对单次源／一行预读、重复表头、真实页行列诊断、普通小数高度的一 ULP 边界、所有预算、未知总量、回调快照、关闭顺序／suppressed／旧目标保持及全部新页双渲染。回归现有完整文档、交互、安全选项与最终 PDF/A。容量用 `scripts/measure_streaming_table.ps1 -SkipBuild -IncludeSmallHeapControl`，只采样独立 JVM；分别记录 layout-discard／PDF 的堆、工作集、私有字节、句柄、吞吐和临时盘，不宣称完整 PDF 恒内存或长期无泄漏。
 
 - 单向富文本变更额外运行 `:examples:streamingRichText` 和 `scripts/verify_streaming_rich_text.py`，使用隔离调用方，独立核对实际字体变体／颜色／装饰、格边界和全部小样页。容量例的 sourceInlineRuns 必须从实际构造的行／格累计，不手算；富文本与普通控制分别采样并检查字体摘要、退出码及真实临时目录。
+- 单向固定列横向合并变更额外运行 `:examples:streamingColumnSpans :examples:columnSpans` 与 `scripts/verify_streaming_column_spans.py`；核对完整覆盖、真实物理列、宽度只扣一次 padding、覆盖槽预算及锚点计数、重复表头、单行预读和输出后失败的原子保护。新样例／调用方全部页双渲染并逐页查看，原普通及富文本单向路径独立回归。
 
 - 编写主题变更运行 `build sbom publishLocalBundle :examples:themes`、隔离调用方和 `scripts/verify_themes.py`，核对完整默认模型／最终绘制兼容、双主题全部页、六级标题分页策略、命名额度和快照、语义表格回调优先、组件局部覆盖／恢复、标准 OOXML。普通段落在 DOCX 中展开为默认运行是表示差异，规范化时不得删除完整格式／ID／内容断言。
 
@@ -70,3 +76,22 @@
 - 组件富文本／列表标记／XML 默认外观变更分别运行 `:examples:componentText :examples:listMarkers :examples:xmlTextDefaults` 及对应 `verify_component_text.py`／`verify_list_markers.py`／`verify_xml_text_defaults.py`，使用隔离调用方。检查真实物理字体、标记与正文独立推进和装饰、四类最终字段及链接框／XYZ、标准 DOCX 所选级别／marker-only 角色，保持全编号树有界验证和严格损失。全部新页双渲染并逐页查看；有限 Latin 样例不推广为一般塑形／Word 兼容。
 
 - HTML／Markdown 导出变更运行 `build sbom publishLocalBundle :examples:webExports`、新隔离调用方及 `scripts/verify_web_exports.py`。核对真实锚点／覆盖槽、嵌套顺序、编号重启、强调边界、链接、原图字节、源码诊断及 ERROR／WARN／IGNORE 差异，并检查浏览器宽／窄屏输出；HTML/CSS 输入不在该验收内。
+
+## 编辑、导入与转换
+
+各批均运行 `build sbom publishLocalBundle` 和新的隔离 Maven 调用方，再执行下表中的实际样例与独立验证器。依赖已缓存且刷新网络不可用时，可以离线新建隔离构建目录；成功后才更新调用方指针，保留是否联网的真实边界。
+
+| 变更 | 示例任务（`:examples:` 前缀） | 独立验证器（`scripts/verify_` 前缀） |
+| --- | --- | --- |
+| 语义编辑／字面替换／共享策略 | `semanticEditing` | `semantic_editing.py` |
+| 通用 Markdown／HTML/CSS 导入 | `markdownImport`／`htmlImport` | `markdown_import.py`／`html_import.py` |
+| 统一转换／编码预检 | `documentConversion` | `document_conversion.py` |
+| DOCX 原包／样式级联 | `docxPackageEdit`／`docxStyleImport` | `docx_package_edit.py`／`docx_style_import.py` |
+| PDF 页级编辑 | `pdfPageEditing` | `pdf_page_editing.py` |
+| PDF 被动对象编辑／合并 | `pdfObjectEditing` | `pdf_object_editing.py`／`pdf_object_composition.py` |
+| PDF 渲染／图片提取 | `pdfRaster` | `pdf_raster.py` |
+| PDF 优化 | `pdfOptimization` | `pdf_optimization.py` |
+| PDF 文字替换／区域脱敏 | `pdfContentEditing` | `pdf_content_editing.py` |
+| PDF 语义恢复与转换 | `pdfSemanticImport` | `pdf_semantic_import.py` |
+
+检查 PREVIEW／ACTUAL 对账、IGNORE 实际损失、配置快照、未编辑内容及取消／失败原子性。全部新 PDF 页双渲染并查看；DOCX／HTML／Markdown 验证真实标准结构、文字和图片字节／像素。PDF 文字替换验证未命中位置，脱敏检查所有对象／解码流和区域像素，不能以矩形覆盖代替删除。恢复模型允许已声明的重排，不能要求像素恒等或声称任意无损恢复。Word 打开、更新、保存和导出各自登记；控制组也超时后不无假设重试。

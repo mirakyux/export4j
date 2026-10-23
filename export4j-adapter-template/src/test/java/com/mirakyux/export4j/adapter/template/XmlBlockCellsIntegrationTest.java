@@ -254,8 +254,8 @@ class XmlBlockCellsIntegrationTest {
     @Test
     void unsupportedTreesInUnselectedBranchesFailDuringCompilationWithSafeOwnSourceLocations() {
         assertUnselectedFailure(simpleTable("outer", "<p id='before'>Before</p>\n"
-                        + simpleTable("inner", "<p id='inside'>Inside</p>\n" + simpleTable("third", "<p>SECRET</p>"))),
-                TemplateException.Code.INVALID_STRUCTURE, "<table id='third'");
+                        + simpleTable("inner", "<p id='inside'>Inside</p>\n" + simpleTable("third", "<heading>SECRET</heading>"))),
+                TemplateException.Code.UNSUPPORTED_ELEMENT, "<heading>");
         assertUnselectedFailure(simpleTable("outer", "SECRET<p id='leaf'>Leaf</p>"),
                 TemplateException.Code.INVALID_STRUCTURE, "<cell>");
         String header = "<table id='outer'><columns><column weight='1'/></columns><header>\n"
@@ -265,7 +265,7 @@ class XmlBlockCellsIntegrationTest {
                 + simpleTable("inner", "<p id='leaf'>SECRET</p>"));
         assertUnselectedFailure(duplicate, TemplateException.Code.INVALID_VALUE, "<p id='leaf'>SECRET");
         String split = simpleTable("outer", "<p id='before'>Before</p>\n"
-                + "<table id='inner' row-split='true'><columns><column weight='1'/></columns><row><cell>SECRET</cell></row></table>");
+                + "<table id='inner' row-split='INVALID'><columns><column weight='1'/></columns><row><cell>SECRET</cell></row></table>");
         assertUnselectedFailure(split, TemplateException.Code.INVALID_VALUE, "<table id='inner'");
         assertUnselectedFailure(simpleTable("outer", "\n<p id='invalid' size='-123.456'>SECRET</p>"),
                 TemplateException.Code.INVALID_VALUE, "<p id='invalid'");

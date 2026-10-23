@@ -35,11 +35,13 @@ final class DocxPageRegions {
     private final DocxAdapter.Policy policy;
     private final List<DocxAdapter.Diagnostic> diagnostics;
     private PageRegions inherited = PageRegions.EMPTY;
+    private final boolean evenEnabled;
 
     DocxPageRegions(Map<String, byte[]> parts, Element relationships, DocxAdapter.RegionGeometry fallback,
             DocxAdapter.Policy policy, List<DocxAdapter.Diagnostic> diagnostics, DocxCells.Budget budget,
             Map<String, ImageResource> decoded, double defaultWidth) throws IOException {
         this.policy = policy; this.diagnostics = diagnostics;
+        evenEnabled = parts.containsKey("word/settings.xml") && enabled(child(parse(parts.get("word/settings.xml")), "evenAndOddHeaders"));
         if (relationships == null) { return; }
         var targetKinds = new HashMap<String, String>();
         for (var relation : children(relationships)) {
@@ -139,32 +141,65 @@ final class DocxPageRegions {
         }
     }
 
+    private static boolean enabled(Element element) {
+        return element != null && !Set.of("false", "0", "off").contains(element.getAttributeNS(W, "val"));
+    }
+
     Section attach(Section section, Element properties) throws IOException {
-        PageRegion header = inherited.header(), footer = inherited.footer();
+        var builder = inherited.toBuilder();
         var kinds = new HashSet<String>();
+        boolean firstEnabled = enabled(child(properties, "titlePg"));
         for (var element : children(properties)) {
             String name = element.getLocalName();
             if (!W.equals(element.getNamespaceURI()) || !Set.of("headerReference", "footerReference").contains(name)) { continue; }
             String kind = name.equals("headerReference") ? "header" : "footer";
             String variant = element.getAttributeNS(W, "type");
-            if (!variant.equals("default")) {
-                loss(policy, diagnostics, "word/document.xml", name, "only default page regions are supported"); continue;
+            if (!Set.of("default", "first", "even").contains(variant)) {
+                loss(policy, diagnostics, "word/document.xml", name, "unknown page region variant"); continue;
             }
-            if (!kinds.add(kind)) { throw new IOException("duplicate DOCX page region reference"); }
+            if (!kinds.add(kind + ":" + variant)) { throw new IOException("duplicate DOCX page region reference"); }
             var source = sources.get(element.getAttributeNS(R, "id"));
             if (source == null || !source.kind().equals(kind)) { throw new IOException("missing or mismatched DOCX page region relationship"); }
-            if (kind.equals("header")) { header = regions.get(source.part()); } else { footer = regions.get(source.part()); }
+            var band = regions.get(source.part());
+            if (variant.equals("default")) {
+                if (kind.equals("header")) { builder.header(band); } else { builder.footer(band); }
+            } else {
+                var selected = variant.equals("first") ? PageRegions.Variant.FIRST : PageRegions.Variant.EVEN;
+                if (kind.equals("header")) { builder.header(selected, band); } else { builder.footer(selected, band); }
+                if (selected == PageRegions.Variant.FIRST && !firstEnabled || selected == PageRegions.Variant.EVEN && !evenEnabled) {
+                    loss(policy, diagnostics, "word/document.xml", name, "inactive page region declaration is not represented in the semantic model");
+                }
+            }
         }
-        inherited = new PageRegions(header, footer);
+        inherited = builder.build();
+        if (!firstEnabled) { builder.inherit(PageRegions.Variant.FIRST); }
+        if (!evenEnabled) { builder.inherit(PageRegions.Variant.EVEN); }
+        // A global Word switch needs explicit default references in sections without a model override.
+        if (properties.getAttributeNS(OD, "evenDefault").equals("true")) {
+            var pair = inherited.variants().get(PageRegions.Variant.EVEN);
+            if (!evenEnabled || pair == null || !pair.equals(new PageRegions.Bands(inherited.header(), inherited.footer()))) {
+                throw new IOException("DOCX default-even declaration conflicts with its references");
+            }
+            builder.inherit(PageRegions.Variant.EVEN);
+        }
+        // Word uses a blank pair when a switch is active before any reference was declared.
+        var active = builder.build();
+        if (firstEnabled && !active.variants().containsKey(PageRegions.Variant.FIRST)) { builder.variant(PageRegions.Variant.FIRST, PageRegions.Bands.EMPTY); }
+        if (evenEnabled && !properties.getAttributeNS(OD, "evenDefault").equals("true") && !active.variants().containsKey(PageRegions.Variant.EVEN)) {
+            builder.variant(PageRegions.Variant.EVEN, PageRegions.Bands.EMPTY);
+        }
+        active = builder.build();
+        double top = active.headers().stream().mapToDouble(band -> band.height() + band.gap()).max().orElse(0);
+        double bottom = active.footers().stream().mapToDouble(band -> band.height() + band.gap()).max().orElse(0);
         var margins = section.pageSettings().margins();
         var settings = new PageSettings(section.pageSettings().size(), new PageMargins(
-                margins.top() - Math.round((header.height() + header.gap()) * 20) / 20.0, margins.right(),
-                margins.bottom() - Math.round((footer.height() + footer.gap()) * 20) / 20.0, margins.left()));
+                margins.top() - Math.round(top * 20) / 20.0, margins.right(),
+                margins.bottom() - Math.round(bottom * 20) / 20.0, margins.left()));
         var wordMargins = child(properties, "pgMar");
         if (wordMargins != null) {
-            checkDistance(wordMargins, "header", header.height(), settings.margins().top());
-            checkDistance(wordMargins, "footer", footer.height(), settings.margins().bottom());
+            checkDistance(wordMargins, "header", top, settings.margins().top());
+            checkDistance(wordMargins, "footer", bottom, settings.margins().bottom());
         }
-        return new Section(section.id(), settings, section.blocks(), section.firstPageNumber(), inherited);
+        return new Section(section.id(), settings, section.blocks(), section.firstPageNumber(), active);
     }
 }

@@ -156,14 +156,14 @@ class StreamingRichTextLayouterTest {
         assertTrue(pages.isEmpty()); assertEquals(1, source.reads);
     }
 
-    @Test void emptyHyperlinkRunIsRejectedBeforeAnyCellIsShaped() {
+    @Test void emptyHyperlinkRunStillConsumesItsRunBudgetBeforeAnyCellIsShaped() {
         var spec = table().toBuilder().columns(80, 80).build();
         var source = new Source(1, index -> row(rich(new InlineText("😀", PLAIN)),
                 rich(new InlineText("SAFE", PLAIN), new InlineText("", PLAIN, "https://example.com/"))));
         var pages = new ArrayList<LayoutPage>();
         var failure = assertThrows(DocumentLayoutException.class,
-                () -> layout(spec, source, Map.of(), pages, StreamingTableLimits.DEFAULT));
-        assertEquals(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, failure.code());
+                () -> layout(spec, source, Map.of(), pages, StreamingTableLimits.DEFAULT.toBuilder().maxCellInlines(1).build()));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
         assertEquals(0, failure.rowIndex()); assertEquals(1, failure.columnIndex());
         assertTrue(pages.isEmpty()); assertEquals(1, source.reads);
     }

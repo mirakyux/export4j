@@ -10,9 +10,10 @@ import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.PageableComponent;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 
 /** Applies an explicit font group to a component and all of its nested flow, preserving missing-glyph policy. */
-public record FontScope(Component content, FontGroup fonts) implements RegionFlow {
+public record FontScope(Component content, FontGroup fonts) implements WidthAwareRegionFlow {
     public FontScope { Objects.requireNonNull(content, "content"); Objects.requireNonNull(fonts, "fonts"); }
     @Override public List<ComponentLayout> layoutParts(ComponentContext context) { return layoutParts(context, context.height()); }
     @Override public List<ComponentLayout> layoutParts(ComponentContext context, double firstPageHeight) {
@@ -28,6 +29,10 @@ public record FontScope(Component content, FontGroup fonts) implements RegionFlo
         var scoped = context.withFonts(fonts);
         return content instanceof RegionFlow flow ? flow.layoutRegions(scoped, regions)
                 : ComponentSupport.atomicRegions(content, scoped, regions);
+    }
+
+    @Override public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        return ComponentSupport.variableRegions(content, context.withFonts(fonts), regions, widths);
     }
 
     /** Task-confined builder. Dimensions use points unless the type specifies another unit.

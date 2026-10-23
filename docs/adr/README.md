@@ -67,3 +67,34 @@
 | 0048 | [XML 固定页眉页脚与独立主题](0048-xml-page-regions.md) | 已采纳；模型声明、共享绑定和最终页区组合 |
 | 0049 | [语义页区、XML 分节与 DOCX 映射](0049-semantic-page-regions-and-sections.md) | 已采纳；有序图文／表格、共享绑定、固定几何与标准页区关系 |
 | 0050 | [语义 HTML／Markdown 导出与动作策略](0050-semantic-web-exports.md) | 已采纳；模型直出、逐功能损失、共享预算及原子输出 |
+| 0051 | [不可变语义编辑与可查询损失报告](0051-semantic-editing-and-loss-reports.md) | 已采纳；跨运行替换、范围回滚、预检候选与完整性校验 |
+| 0052 | [离线 CommonMark／GFM 语义导入](0052-offline-commonmark-import.md) | 已采纳；成熟语法解析、显式资源、源位置及实际损失 |
+| 0053 | [离线 HTML／CSS 语义子集导入](0053-offline-html-css-import.md) | 已采纳；有限级联、物理格、显式资源及损失报告 |
+| 0054 | [统一转换与确切输出预检](0054-prepared-document-conversion.md) | 已采纳；单次编码、共享实际损失、未编辑内容检查与原子发布 |
+| 0055 | [保留源包的 DOCX 文字编辑](0055-preserving-docx-package-edits.md) | 已采纳；普通运行编辑、复杂边界保留、整包验证与确切输出 |
+| 0056 | [DOCX 样式图展开与显式字体映射](0056-materialized-docx-styles.md) | 已采纳；有限级联、真实角色、图损失及累计工作预算 |
+| 0057 | [已有 PDF 的静态页级编辑](0057-static-pdf-page-edits.md) | 已采纳；物理坐标、显式叠加、裁剪损失及确切输出 |
+| 0058 | [已有 PDF 的被动交互对象编辑](0058-passive-pdf-object-edits.md) | 已采纳；字段外观、对象关系、显式扁平化及原内容保持 |
+| 0059 | [被动 PDF 对象的选页和合并](0059-passive-pdf-composition.md) | 已采纳；显式命名空间、关系重映射、实际损失及禁止隐式修复 |
+| 0060 | [已有 PDF 的有界页面渲染与图片提取](0060-bounded-pdf-raster-and-images.md) | 已采纳；物理像素、显式字体、去重资源、实际损失及确切图像输出 |
+| 0061 | [实测 PDF 优化](0061-measured-pdf-optimization.md) | 已采纳；流压缩、简单资源去重及显式有损重采样 |
+| 0062 | [有界 PDF 文字替换](0062-bounded-pdf-text-replacement.md) | 已采纳；命中范围编码替换、显式字体及后续坐标保持 |
+| 0063 | [新建图片 PDF 的区域脱敏](0063-fresh-raster-pdf-redaction.md) | 已采纳；清除敏感像素、不复制源对象及全文光栅化损失 |
+| 0064 | [有界 PDF 语义恢复](0064-bounded-pdf-semantic-recovery.md) | 已采纳；逐行／标题推断、显式表格网格、流图片及共享转换 |
+| 0065 | [递归语义格续排](0065-recursive-semantic-continuation.md) | 已采纳；有界深表、纵向 owner、事务取片及原始格块序号 |
+| 0066 | [递归片段与动态目的地](0066-recursive-includes-and-dynamic-destinations.md) | 已采纳；组合命名、词法引用、完整动态目标及最终地址校验 |
+| 0067 | [按实际栏宽换行](0067-width-aware-continuous-columns.md) | 已采纳；可选区域宽度、完整来源与混合流同步传播 |
+| 0068 | [编写时字体角色与颜色级联](0068-theme-text-appearance.md) | 已采纳；全局及分域声明意图、单项恢复与加入时快照 |
+| 0069 | [语义首页与奇偶页区](0069-semantic-page-variants.md) | 已采纳；显示页码选择、显式空对、最大预留及标准 DOCX 开关 |
+| 0070 | [固定语义页面图层](0070-fixed-semantic-page-overlays.md) | 已采纳；静态页框、图层顺序、共享来源与明确转换损失 |
+| 0071 | [变宽栏的最低行数](0071-minimum-lines-in-variable-columns.md) | 已采纳；有界全源重排、实际分配验证与最终诊断 |
+| 0072 | [单向长表固定列横向合并](0072-single-pass-horizontal-spans.md) | 已采纳；真实物理列、完整覆盖、锚点及覆盖槽分开计费 |
+| 0073 | [单向长表图像及被动外链](0073-single-pass-images-and-links.md) | 已采纳；共享最终几何、逐页交互、累计预算及显式拒绝 |
+| 0074 | [合并格覆盖有界自动宽度列](0074-merged-automatic-columns.md) | 已采纳；有界首选宽度、稳定约束顺序及一次内边距 |
+| 0075 | [单向长表完整行续排](0075-single-pass-row-continuation.md) | 已采纳；源行测量一次、完整行／图片切片与页内最终链接 |
+| 0076 | [离线 PDF 认证签名](0076-offline-pdf-certification.md) | 已采纳；首签 DocMDP、显式三档权限及原子签名目标 |
+| 0077 | [单向 PDF 的加密及静态归档](0077-single-pass-pdf-protection.md) | 已采纳；共享权限、静态归档限制与锚点字体额度 |
+| 0078 | [语义表格按实际区域宽度布局](0078-variable-width-semantic-tables.md) | 已采纳；原子合并行组、独立候选预算与最终语义来源 |
+| 0079 | [显式 CMS 校验与 PDF 字节覆盖分离](0079-explicit-pdf-signature-verification.md) | 已采纳；有界快照、准确 ByteRange、完整性及未签追加分别报告 |
+| 0080 | [单向长表实际页码与准确声明总数](0080-single-pass-page-fields.md) | 已采纳；实际呈现解析、总数严格核对、来源及生成预算分开 |
+| 0081 | [行内内容内表复用有界自动列宽](0081-nested-inline-automatic-columns.md) | 已采纳；父格实际宽度、完整探测来源及原生 DOCX 声明 |

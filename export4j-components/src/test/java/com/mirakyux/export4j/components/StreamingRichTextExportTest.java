@@ -152,14 +152,14 @@ class StreamingRichTextExportTest {
         ExecutionContext.checkpoint();
     }
 
-    @Test void linkedEmptyRunCannotBeSilentlyDroppedAndTemporaryTargetIsRemoved() throws IOException {
+    @Test void linkedRunCannotBeSilentlyDroppedByLegacyWriterAndTemporaryTargetIsRemoved() throws IOException {
         var target = directory.resolve("links.bin"); Files.writeString(target, "previous");
         var events = new ArrayList<String>();
-        var source = new Source(1, index -> row(new InlineText("LABEL", PLAIN), new InlineText("", role("bold"), "https://example.com/")), events);
-        var failure = assertThrows(DocumentLayoutException.class, () -> DocumentEngine.builder(regular).fontRole("bold", bold).build()
+        var source = new Source(1, index -> row(new InlineText("LABEL", PLAIN), new InlineText("LINK", role("bold"), "https://example.com/")), events);
+        var failure = assertThrows(IOException.class, () -> DocumentEngine.builder(regular).fontRole("bold", bold).build()
                 .export(table(), () -> source).backend((metadata, output) -> new Sink(output, events)).to(target));
-        assertEquals(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, failure.code());
-        assertEquals(1, source.reads); assertEquals(1, source.closes); assertFalse(events.contains("page"));
+        assertTrue(failure.getMessage().contains("external links"));
+        assertEquals(2, source.reads); assertEquals(1, source.closes); assertFalse(events.contains("page"));
         assertFalse(events.contains("finish")); assertEquals("previous", Files.readString(target));
         try (var entries = Files.list(directory)) { assertEquals(1, entries.count()); }
     }

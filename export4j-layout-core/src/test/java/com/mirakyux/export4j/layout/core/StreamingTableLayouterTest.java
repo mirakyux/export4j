@@ -64,12 +64,77 @@ class StreamingTableLayouterTest {
         return StreamingTable.builder("stream").pageSettings(PAGE).columns(100).padding(0).cellFormat(FORMAT).header("HEAD").build();
     }
     private static TableRow row(String text) { return new TableRow(List.of(new TableCell(text, FORMAT))); }
+    private static TableCell span(String text, int columns) {
+        return TableCell.builder().text(text).format(FORMAT).columnSpan(columns).build();
+    }
     private static List<TableRowFragment> rows(LayoutPage page) { return ((TableFragment) page.elements().getFirst()).rows(); }
     private static String text(TableRowFragment row) {
         return row.cells().getFirst().layout().lines().stream().flatMap(line -> line.runs().stream()).map(run -> run.text()).collect(java.util.stream.Collectors.joining());
     }
     private static FontGroup replacements() {
         return FontGroup.builder().fonts(fonts.fonts()).missingGlyphPolicy(MissingGlyphPolicy.PLACEHOLDER_WITH_WARNING).placeholderCodePoint('?').build();
+    }
+
+    @Test void horizontalSpansRetainPhysicalColumnsHeaderReuseAndSingleRowLookahead() throws IOException {
+        var spec = StreamingTable.builder("spans").pageSettings(PAGE).columns(30, 40, 50).padding(0)
+                .header(new TableRow(List.of(span("MERGED HEADER", 3)))).build();
+        var source = new Source(7, index -> new TableRow(switch (index % 3) {
+            case 1 -> List.of(span("MERGED" + index, 2), span("TAIL" + index, 1));
+            case 2 -> List.of(span("A" + index, 1), span("B" + index, 1), span("C" + index, 1));
+            default -> List.of(span("WIDTH-SHARED" + index, 3));
+        }));
+        var pages = new ArrayList<LayoutPage>();
+        var readCounts = new ArrayList<Integer>();
+        var result = new StreamingTableLayouter().layout(spec, source, fonts, page -> {
+            pages.add(page); readCounts.add(source.reads);
+        }, diagnostic -> { throw new AssertionError("unexpected diagnostic"); }, StreamingTableLimits.DEFAULT);
+        assertEquals(3, result.pages()); assertEquals(7, result.bodyRows()); assertEquals(15, result.sourceCells());
+        assertEquals(List.of(4, 7, 8), readCounts); assertEquals(0, source.closes);
+        for (var page : pages) {
+            var header = rows(page).getFirst().cells().getFirst();
+            assertEquals(120, header.bounds().width());
+            assertSame(rows(pages.getFirst()).getFirst().cells().getFirst().layout(), header.layout());
+            for (var row : rows(page)) {
+                for (var cell : row.cells()) { assertEquals(1, cell.layout().lines().size()); }
+                if (row.rowIndex() % 3 == 1) {
+                    assertEquals(List.of(0, 2), row.cells().stream().map(value -> value.columnIndex()).toList());
+                    assertEquals(70, row.cells().getFirst().bounds().width());
+                    assertEquals(70, row.cells().getLast().bounds().x());
+                    assertEquals(50, row.cells().getLast().bounds().width());
+                }
+            }
+        }
+        assertEquals(List.of(1, 2, 3, 4, 5, 6, 7), pages.stream().flatMap(page -> rows(page).stream())
+                .filter(row -> !row.header()).map(TableRowFragment::rowIndex).toList());
+    }
+
+    @Test void mergedStreamingCellsKeepPhysicalDiagnosticColumnsAndUtf16Offsets() {
+        var spec = StreamingTable.builder("spans").pageSettings(PAGE).columns(30, 40, 50).padding(0).build();
+        var source = new Source(1, index -> new TableRow(List.of(span("OK", 2), span("A😀", 1))));
+        var failure = assertThrows(DocumentLayoutException.class, () -> layout(spec, source, new ArrayList<>(), StreamingTableLimits.DEFAULT));
+        assertEquals(DocumentLayoutException.Code.TEXT_LAYOUT_FAILED, failure.code());
+        assertEquals(0, failure.rowIndex()); assertEquals(2, failure.columnIndex()); assertEquals(1, failure.sourceIndex());
+        assertEquals(1, source.reads);
+    }
+
+    @Test void coverageBudgetsCountMergedSlotsWhileSourceCountsCountOnlyAnchors() throws IOException {
+        var spec = StreamingTable.builder("spans").pageSettings(PAGE).columns(30, 40, 50).padding(0).build();
+        var limits = StreamingTableLimits.DEFAULT.toBuilder().document(new DocumentLayoutLimits(10, 1_000, 100, 10, 100, 3, 2)).build();
+        var source = new Source(1, index -> new TableRow(List.of(span("WIDE", 3))));
+        var failure = assertThrows(DocumentLayoutException.class, () -> layout(spec, source, new ArrayList<>(), limits));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code()); assertEquals(0, failure.columnIndex());
+        assertEquals(1, source.reads);
+        var accepted = layout(spec, new Source(1, index -> new TableRow(List.of(span("WIDE", 3)))), new ArrayList<>(),
+                limits.toBuilder().document(new DocumentLayoutLimits(10, 1_000, 100, 10, 100, 3, 3)).build());
+        assertEquals(1, accepted.sourceCells()); assertEquals(4, accepted.sourceCodePoints());
+        for (int count : List.of(2, 4, Integer.MAX_VALUE)) {
+            var invalid = new Source(1, index -> new TableRow(List.of(span("WIDE", count))));
+            assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, assertThrows(DocumentLayoutException.class,
+                    () -> layout(spec, invalid, new ArrayList<>(), StreamingTableLimits.DEFAULT)).code());
+        }
+        var vertical = new Source(1, index -> new TableRow(List.of(span("WIDE", 3).toBuilder().rowSpan(2).build())));
+        assertEquals(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, assertThrows(DocumentLayoutException.class,
+                () -> layout(spec, vertical, new ArrayList<>(), StreamingTableLimits.DEFAULT)).code());
     }
     private static final class Source implements TableRowSource {
         private final int size;
@@ -195,22 +260,123 @@ class StreamingTableLayouterTest {
         assertEquals(DocumentLayoutException.Code.CONTENT_TOO_TALL, failure.code()); assertEquals(0, source.reads);
     }
 
-    @Test void rowMustMatchColumnsAndUnsupportedLinkImageAndFieldCellsFailExplicitly() throws IOException {
-        var encoded = new ByteArrayOutputStream();
-        var raster = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
-        try { assertTrue(ImageIO.write(raster, "png", encoded)); }
-        finally { raster.flush(); }
-        var image = new InlineImage(ImageResource.load(encoded.toByteArray()), 8, 8, 0, "pixel");
+    @Test void rowMustMatchColumnsAndUnsupportedFieldCellsFailExplicitly() {
         var bad = List.of(new TableRow(List.of(new TableCell("A", FORMAT), new TableCell("B", FORMAT))),
-                new TableRow(List.of(TableCell.rich(List.of(new InlineText("LINK", InlineStyle.of(10), "https://example.com/")), FORMAT))),
-                new TableRow(List.of(TableCell.mixed(List.of(image), FORMAT))),
-                new TableRow(List.of(TableCell.mixed(List.of(InlineField.builder().width(20).build()), FORMAT))));
+                new TableRow(List.of(TableCell.mixed(List.of(InlineField.builder().kind(InlineField.Kind.PAGES).width(20).build()), FORMAT))));
         for (int index = 0; index < bad.size(); index++) {
             var value = bad.get(index); var source = new Source(1, ignored -> value);
             var failure = assertThrows(DocumentLayoutException.class, () -> layout(table(), source, new ArrayList<>(), StreamingTableLimits.DEFAULT));
             assertEquals(index == 0 ? DocumentLayoutException.Code.INVALID_GEOMETRY : DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, failure.code());
             assertEquals(1, failure.rowIndex()); assertEquals(1, source.reads);
         }
+    }
+
+    private static InlineImage image(String target) throws IOException {
+        var encoded = new ByteArrayOutputStream();
+        var raster = new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
+        try { assertTrue(ImageIO.write(raster, "png", encoded)); }
+        finally { raster.flush(); }
+        return new InlineImage(ImageResource.load(encoded.toByteArray()), 8, 8, 0, "pixel", target);
+    }
+
+    @Test void mixedImagesAndLinksRetainRepeatedHeadersPhysicalColumnsAndSingleRowLookahead() throws IOException {
+        var logo = image("https://example.com/image");
+        var header = TableCell.mixed(List.of(logo, new InlineText(" HEAD", InlineStyle.of(10), "https://example.com/header")), FORMAT);
+        var spec = table().toBuilder().columns(30, 40, 50).headerRows(List.of(new TableRow(List.of(
+                header.toBuilder().columnSpan(3).build())))).build();
+        var source = new Source(7, index -> new TableRow(List.of(span("ROW" + index, 2),
+                TableCell.mixed(List.of(new InlineText("X", InlineStyle.of(10)), logo), FORMAT))));
+        var pages = new ArrayList<LayoutPage>();
+        var links = new ArrayList<List<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink>>();
+        var reads = new ArrayList<Integer>();
+        var consumer = new StreamingTableLayouter.PageConsumer() {
+            @Override public void accept(LayoutPage page) { throw new AssertionError("links omitted"); }
+            @Override public void accept(LayoutPage page, List<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink> value) {
+                pages.add(page); links.add(value); reads.add(source.reads);
+            }
+        };
+        var summary = new StreamingTableLayouter().layout(spec, source, fonts, consumer, ignored -> { }, StreamingTableLimits.DEFAULT);
+        assertEquals(3, summary.pages()); assertEquals(List.of(4, 7, 8), reads);
+        assertEquals(15, summary.sourceCells()); assertEquals(7, summary.bodyRows());
+        for (int index = 0; index < pages.size(); index++) {
+            var page = pages.get(index);
+            assertSame(rows(pages.getFirst()).getFirst().cells().getFirst().layout(), rows(page).getFirst().cells().getFirst().layout());
+            assertEquals(rows(page).size() + 1, links.get(index).size());
+            assertEquals(10, links.get(index).getFirst().bounds().x());
+            assertEquals(8, links.get(index).getFirst().bounds().width());
+            assertTrue(links.get(index).stream().allMatch(link -> link.pageIndex() == page.pageIndex()));
+            for (var row : rows(page)) {
+                var cell = row.cells().getLast();
+                assertEquals(row.header() ? 0 : 2, cell.columnIndex());
+                var boxes = cell.layout().lines().stream().flatMap(line -> line.images().stream()).toList();
+                assertEquals(1, boxes.size()); assertSame(logo, boxes.getFirst().image());
+                assertEquals(row.header() ? 0 : 1, boxes.getFirst().sourceIndex());
+            }
+        }
+    }
+
+    @Test void linkBudgetsIncludeRepeatedHeadersAndLegacyConsumersFailInsteadOfDroppingLinks() {
+        var linked = TableCell.rich(List.of(new InlineText("HEAD", InlineStyle.of(10), "https://example.com/")), FORMAT);
+        var spec = table().toBuilder().headerRows(List.of(new TableRow(List.of(linked)))).build();
+        var source = new Source(5);
+        var accepted = new AtomicInteger();
+        var consumer = new StreamingTableLayouter.PageConsumer() {
+            @Override public void accept(LayoutPage page) { throw new AssertionError("links omitted"); }
+            @Override public void accept(LayoutPage page, List<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink> links) {
+                accepted.incrementAndGet(); assertEquals(1, links.size());
+            }
+        };
+        var failure = assertThrows(DocumentLayoutException.class, () -> new StreamingTableLayouter().layout(spec, source, fonts,
+                consumer, ignored -> { }, StreamingTableLimits.DEFAULT.toBuilder().maxLinks(1).build()));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
+        assertEquals(1, failure.pageIndex()); assertEquals(0, failure.rowIndex()); assertEquals(1, accepted.get());
+        assertEquals(4, source.reads);
+        assertThrows(IOException.class, () -> layout(spec, new Source(5), new ArrayList<>(), StreamingTableLimits.DEFAULT));
+    }
+
+    @Test void splitRowsPreserveWholeLinesOffsetsImagesLinksAndOneSourceReadUntilComplete() throws IOException {
+        var picture = image("https://example.com/picture");
+        var spec = table().toBuilder().columns(30, 40, 50).padding(2).allowRowSplit(true)
+                .headerRows(List.of(new TableRow(List.of(span("HEAD", 3))))).build();
+        var source = new Source(1, ignored -> new TableRow(List.of(TableCell.rich(List.of(new InlineText("A\nB\nC\nD\nE",
+                InlineStyle.of(10), "https://example.com/text")), FORMAT).toBuilder().columnSpan(2).build(),
+                TableCell.mixed(List.of(new InlineText("SHORT", InlineStyle.of(10)), picture), FORMAT))));
+        var pages = new ArrayList<LayoutPage>(); var reads = new ArrayList<Integer>();
+        var links = new ArrayList<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink>();
+        var consumer = new StreamingTableLayouter.PageConsumer() {
+            @Override public void accept(LayoutPage page) { throw new AssertionError("links omitted"); }
+            @Override public void accept(LayoutPage page, List<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink> value) {
+                pages.add(page); reads.add(source.reads); links.addAll(value);
+            }
+        };
+        var summary = new StreamingTableLayouter().layout(spec, source, fonts, consumer, ignored -> { }, StreamingTableLimits.DEFAULT);
+        assertEquals(3, summary.pages()); assertEquals(1, summary.bodyRows()); assertEquals(3, summary.sourceCells());
+        assertEquals(List.of(1, 1, 2), reads);
+        assertEquals(List.of(0, 2, 4), pages.stream().map(page -> rows(page).getLast().cells().getFirst().firstLineIndex()).toList());
+        assertEquals(List.of(false, true, true), pages.stream().map(page -> rows(page).getLast().continuedRow()).toList());
+        assertEquals(1, pages.stream().flatMap(page -> rows(page).stream()).flatMap(row -> row.cells().stream())
+                .flatMap(cell -> cell.layout().lines().stream()).flatMap(line -> line.images().stream()).count());
+        assertEquals(6, links.size()); assertEquals(1, links.stream().filter(link -> link.destination().uri().endsWith("picture")).count());
+        assertEquals(List.of(0, 2, 4, 6, 8), pages.stream().flatMap(page -> rows(page).getLast().cells().getFirst().layout().lines().stream())
+                .map(line -> line.sourceStart()).toList());
+        assertTrue(rows(pages.get(1)).getLast().cells().getLast().layout().lines().getFirst().runs().isEmpty());
+        assertEquals(11, summary.outputLines());
+    }
+
+    @Test void splitRowsReportOriginalUtf16WarningsExactlyOnceAndRejectImpossibleNextLine() throws IOException {
+        var spec = table().toBuilder().padding(2).allowRowSplit(true).build();
+        var diagnostics = new ArrayList<StreamingTableDiagnostic>();
+        var summary = new StreamingTableLayouter().layout(spec, new Source(1, ignored -> row("A\nB\n😀\nD\nE")), replacements(),
+                page -> { }, diagnostics::add, StreamingTableLimits.DEFAULT);
+        assertEquals(3, summary.pages()); assertEquals(1, diagnostics.size());
+        assertEquals(1, diagnostics.getFirst().pageIndex()); assertEquals(4, diagnostics.getFirst().diagnostic().sourceStart());
+        assertEquals(6, diagnostics.getFirst().diagnostic().sourceEnd());
+        var impossible = table().toBuilder().allowRowSplit(true).headerRows(List.of(row("H\nH\nH"))).build();
+        var source = new Source(1, ignored -> new TableRow(List.of(new TableCell("BODY", CellFormat.builder().fontSize(10).lineHeight(20).build()))));
+        var pages = new ArrayList<LayoutPage>();
+        assertEquals(DocumentLayoutException.Code.CONTENT_TOO_TALL, assertThrows(DocumentLayoutException.class,
+                () -> layout(impossible, source, pages, StreamingTableLimits.DEFAULT)).code());
+        assertTrue(pages.isEmpty()); assertEquals(1, source.reads);
     }
 
     @Test void malformedNullSourceResultFailsAndSourceIOExceptionIsUnchanged() {
@@ -260,7 +426,8 @@ class StreamingTableLayouterTest {
         var failure = assertThrows(DocumentLayoutException.class, () -> layout(spec, source, new ArrayList<>(), limits));
         assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
         assertEquals(1, failure.columnIndex()); assertEquals(1, failure.sourceIndex());
-        var header = table().toBuilder().headerRows(List.of(new TableRow(List.of(TableCell.rich(List.of(new InlineText("LINK", InlineStyle.of(10), "https://example.com/")), FORMAT))))).build();
+        var header = table().toBuilder().headerRows(List.of(new TableRow(List.of(TableCell.mixed(
+                List.of(InlineField.builder().kind(InlineField.Kind.PAGES).width(20).build()), FORMAT))))).build();
         var untouched = new Source(1);
         assertEquals(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, assertThrows(DocumentLayoutException.class,
                 () -> layout(header, untouched, new ArrayList<>(), StreamingTableLimits.DEFAULT)).code());

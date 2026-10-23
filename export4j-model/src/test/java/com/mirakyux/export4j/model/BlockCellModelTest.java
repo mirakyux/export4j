@@ -97,14 +97,24 @@ class BlockCellModelTest {
         assertThrows(IllegalArgumentException.class, () -> TableCell.builder().blocks(List.of(marker)).build());
     }
 
-    @Test void allowsTwoTableLevelsAndRejectsAnAdditionalOuterTable() {
+    @Test void allowsBoundedDeepTablesAndRejectsTheNextLevel() {
         var inner = table("inner", TableCell.builder().paragraph("inner-leaf", "Leaf").build());
         var outer = table("outer", TableCell.builder().paragraph("before", "Before")
                 .blocks(List.of(new Paragraph("before", "Before", PARAGRAPH), inner)).build());
         assertTrue(inner.hasBlockCells());
         assertTrue(outer.hasBlockCells());
-        assertThrows(IllegalArgumentException.class, () -> TableCell.builder().blocks(List.of(outer)).build());
+        var tree = outer;
+        for (int level = 3; level <= SemanticTree.MAX_TABLE_DEPTH; level++) {
+            tree = table("level-" + level, TableCell.builder().blocks(List.of(tree)).build());
+        }
+        var deepest = tree;
+        assertEquals(SemanticTree.MAX_TABLE_DEPTH + 2, countNodes(deepest));
+        assertThrows(IllegalArgumentException.class, () -> TableCell.builder().blocks(List.of(deepest)).build());
         assertFalse(table("plain", new TableCell("Text", CELL)).hasBlockCells());
+    }
+
+    private static int countNodes(Table table) {
+        var count = new int[1]; SemanticTree.walk(table, visit -> count[0]++); return count[0];
     }
 
     @Test void documentAndSectionsRejectAllDescendantIdCollisionsIncludingRepeatedInstances() {

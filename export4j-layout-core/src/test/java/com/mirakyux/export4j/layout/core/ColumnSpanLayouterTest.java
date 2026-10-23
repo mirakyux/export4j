@@ -64,18 +64,45 @@ class ColumnSpanLayouterTest {
         assertEquals(25, result.layout().width());
     }
 
-    @Test void mergedAutomaticColumnsFailAtAnchorButUnrelatedAutomaticColumnWorks() {
+    @Test void mergedAutomaticColumnsAndUnrelatedAutomaticColumnUseActualAnchorWidths() {
         var bad = new Table("auto", List.of(new ColumnWidth.Fixed(40), new ColumnWidth.Auto(20, 80), new ColumnWidth.Fixed(40)),
                 List.of(row(cell("A", 2), cell("B", 1))), 0, PLAIN);
-        var failure = assertThrows(DocumentLayoutException.class, () -> new DocumentLayouter().layout(document(bad, 150, 100), fonts));
-        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, failure.code());
-        assertEquals(0, failure.rowIndex()); assertEquals(0, failure.columnIndex());
+        var merged = fragment(new DocumentLayouter().layout(document(bad, 150, 100), fonts), 0).rows().getFirst().cells();
+        assertEquals(60, merged.getFirst().bounds().width());
+        assertEquals(60, merged.getLast().bounds().x());
         var good = new Table("auto", List.of(new ColumnWidth.Fixed(40), new ColumnWidth.Fixed(40), new ColumnWidth.Auto(20, 80)),
                 bad.rows(), 0, PLAIN);
         var cells = fragment(new DocumentLayouter().layout(document(good, 150, 100), fonts), 0).rows().getFirst().cells();
         assertEquals(List.of(0, 2), cells.stream().map(c -> c.columnIndex()).toList());
         assertEquals(80, cells.getFirst().bounds().width());
         assertTrue(cells.getLast().bounds().width() >= 20);
+    }
+
+    @Test void spanningAutomaticPreferencesDistributeOnceAndShrinkWithinExplicitBounds() {
+        var source = new Table("autos", List.of(new ColumnWidth.Auto(20, 80), new ColumnWidth.Auto(20, 80)),
+                List.of(row(cell("MMMMMMMMMMMM", 2)), row(cell("A", 1), cell("B", 1))), 0,
+                new TableFormat(PageMargins.uniform(2), 0, 0));
+        var generous = fragment(new DocumentLayouter().layout(document(source, 180, 100), fonts), 0);
+        var narrowSource = new Table(source.id(), source.columns(), List.of(source.rows().getFirst(),
+                row(cell("MMMMMMMMM", 1), cell("MMMMMMMMM", 1))), 0, source.format());
+        var narrow = fragment(new DocumentLayouter().layout(document(narrowSource, 60, 100), fonts), 0);
+        var first = generous.rows().getLast().cells();
+        assertTrue(first.getFirst().bounds().width() > 20);
+        assertEquals(first.getFirst().bounds().width(), first.getLast().bounds().width(), 1e-10);
+        assertEquals(first.stream().mapToDouble(cell -> cell.bounds().width()).sum(), generous.rows().getFirst().cells().getFirst().bounds().width(), 1e-10);
+        assertEquals(30, narrow.rows().getLast().cells().getFirst().bounds().width(), 1e-10);
+        assertEquals(30, narrow.rows().getLast().cells().getLast().bounds().width(), 1e-10);
+        assertEquals(56, narrow.rows().getFirst().cells().getFirst().layout().width(), 1e-10);
+        assertTrue(narrow.rows().getFirst().cells().getFirst().layout().lines().size() > 1);
+        var limits = new DocumentLayoutLimits(1, 14, 20, 1, 2, 2, 4);
+        new DocumentLayouter(new ParagraphLayouter(), limits).layout(document(source, 180, 100), fonts);
+    }
+
+    @Test void mixedAutoFractionSpansResolveWithoutIndependentPaddingForCoveredColumns() {
+        var source = new Table("mixed-auto", List.of(new ColumnWidth.Auto(3, 3), new ColumnWidth.Fraction(1)),
+                List.of(row(cell("MERGED", 2))), 0, new TableFormat(PageMargins.uniform(4), 0, 0));
+        var cell = fragment(new DocumentLayouter().layout(document(source, 100, 100), fonts), 0).rows().getFirst().cells().getFirst();
+        assertEquals(100, cell.bounds().width()); assertEquals(92, cell.layout().width());
     }
 
     @Test void sourceCountsEachAnchorOnceButStructuralBudgetCountsCoveredSlots() {
@@ -149,13 +176,13 @@ class ColumnSpanLayouterTest {
         assertEquals(0, error.rowIndex()); assertEquals(2, error.columnIndex()); assertEquals(2, error.sourceIndex());
     }
 
-    @Test void streamingRowsExplicitlyRejectSpansEvenWithMatchingAnchorCount() {
+    @Test void streamingRowsRejectSpanOverflowEvenWithMatchingAnchorCount() {
         var specification = StreamingTable.builder("source").columns(50, 50).padding(PageMargins.uniform(0)).build();
         TableRowSource source = () -> Optional.of(row(cell("A", 2), cell("B", 1)));
         var error = assertThrows(DocumentLayoutException.class, () -> new StreamingTableLayouter().layout(specification,
                 source, fonts, page -> { throw new AssertionError("must reject before delivery"); }, diagnostic -> { }, StreamingTableLimits.DEFAULT));
-        assertEquals(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, error.code());
-        assertEquals(0, error.columnIndex());
+        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, error.code());
+        assertEquals(2, error.columnIndex());
     }
 
     private static Table splitSource() {

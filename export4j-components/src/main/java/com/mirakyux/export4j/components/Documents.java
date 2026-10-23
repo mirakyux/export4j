@@ -15,6 +15,8 @@ import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Table;
+import com.mirakyux.export4j.model.TextAppearance;
+import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.text.ParagraphStyle;
 import com.mirakyux.export4j.text.TextAlignment;
 
@@ -29,6 +31,7 @@ public final class Documents {
         private final Document.Builder document = Document.builder();
         private DocumentMetadata metadata = DocumentMetadata.EMPTY;
         private ParagraphFormat bodyFormat = ParagraphFormat.of(12);
+        private TextAppearance bodyText = TextAppearance.DEFAULT;
         private boolean componentDefaultsSet;
         private Builder() { }
 
@@ -38,11 +41,11 @@ public final class Documents {
         public Builder pageSettings(PageSettings value) { document.pageSettings(value); return this; }
         public Builder pageSettings(Consumer<PageSettings.Builder> configure) { document.pageSettings(configure); return this; }
         /** Snapshots theme defaults for future semantic content and component typography.
-         * Components inherit the same six text properties as bodyFormat; colors and explicit styles
-         * remain independent. The finished document contains resolved values and no theme reference. */
+         * Components inherit body typography, color and default fonts; explicit colors and named run roles
+         * remain independent. Empty rich-run roles select the scoped default fonts. The finished document contains resolved values and no theme reference. */
         public Builder theme(DocumentTheme value) {
             Objects.requireNonNull(value, "theme");
-            document.theme(value); bodyFormat = value.bodyFormat(); componentDefaultsSet = true; return this;
+            document.theme(value); bodyFormat = value.bodyFormat(); bodyText = value.bodyText(); componentDefaultsSet = true; return this;
         }
         /** Snapshots defaults for subsequently added body content. Components inherit only typography:
          * size, fixed line height, indents, alignment and line breaking. Explicit component styles win.
@@ -82,7 +85,10 @@ public final class Documents {
             if (!componentDefaultsSet) { return component; }
             var style = new ParagraphStyle(bodyFormat.fontSize(), bodyFormat.lineHeight(), bodyFormat.firstLineIndent(),
                     bodyFormat.subsequentLineIndent(), TextAlignment.valueOf(bodyFormat.alignment().name()), bodyFormat.lineBreakPolicy());
-            return StyleScope.builder(component).style(style).build();
+            Component content = StyleScope.builder(component).style(style)
+                    .color(new RgbColor((bodyText.rgb() >> 16 & 255) / 255.0,
+                            (bodyText.rgb() >> 8 & 255) / 255.0, (bodyText.rgb() & 255) / 255.0)).build();
+            return bodyText.fontRole().isEmpty() ? content : new FontRoleScope(content, bodyText.fontRole());
         }
         public Builder column(Consumer<FlowColumn.Builder> configure) {
             var value = FlowColumn.builder(); configure.accept(value); return component(value.build());

@@ -239,6 +239,28 @@ class DocumentThemeCompositionTest {
         assertEquals(TextLayoutException.Code.LINE_HEIGHT_TOO_SMALL, assertInstanceOf(TextLayoutException.class, failure.getCause()).code());
     }
 
+    @Test void globalAppearanceFlowsThroughNestedComponentsAndLocalExplicitValuesWin() {
+        var theme = theme(10, 20).toBuilder().fontRole("bold").rgb(0x224488).build();
+        var doc = Documents.builder().theme(theme)
+                .column(column -> column.text("A").add(new FontScope(FlowText.builder("B").color(RgbColor.BLACK).build(), regular))
+                        .add(RichTextComponent.builder().inlines(List.of(new InlineText("C", new InlineStyle("regular", 10, 0x884422, 0, false, false)),
+                                new InlineText("D", InlineStyle.of(10)))).build()))
+                .bodyFormat(format -> format.fontSize(11).lineHeight(22)).component(FlowText.builder("E").build())
+                .theme(DocumentTheme.builder().build()).component(FlowText.builder("F").build()).build();
+        var result = DocumentEngine.builder(regular).fontRole("bold", bold).fontRole("regular", regular).build().layout(doc);
+        var actual = glyphs(result);
+        assertEquals("ABCDEF", logical(result));
+        assertEquals(List.of(bold.fonts().getFirst().data().id(), regular.fonts().getFirst().data().id(),
+                regular.fonts().getFirst().data().id(), bold.fonts().getFirst().data().id(),
+                bold.fonts().getFirst().data().id(), regular.fonts().getFirst().data().id()),
+                actual.stream().map(value -> value.run().font().id()).toList());
+        var blue = new RgbColor(34 / 255.0, 68 / 255.0, 136 / 255.0);
+        assertEquals(List.of(blue, RgbColor.BLACK, new RgbColor(136 / 255.0, 68 / 255.0, 34 / 255.0),
+                RgbColor.BLACK, blue, RgbColor.BLACK), actual.stream().map(DrawCommand.GlyphText::color).toList());
+        assertEquals(List.of(10.0, 10.0, 10.0, 10.0, 11.0, 12.0), actual.stream().map(value -> value.run().fontSize()).toList());
+        assertTrue(result.contextualDiagnostics().isEmpty());
+    }
+
     @Test void explicitSemanticTableInsideThemedComponentsRetainsItsOriginalFormatAndSource() {
         var format = CellFormat.builder().fontSize(12).lineHeight(18).build();
         var table = Table.builder("explicit-table").cellFormat(format).format(value -> value.padding(0).spaceAfter(0))

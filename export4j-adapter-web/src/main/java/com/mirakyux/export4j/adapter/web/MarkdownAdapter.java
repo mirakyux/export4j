@@ -29,6 +29,12 @@ public final class MarkdownAdapter {
         return new WebExportRequest(document, false, policy, limits, fonts, ExecutionOptions.DEFAULT);
     }
     public static Builder builder() { return new Builder(); }
+    /** Shared-policy conversion target; retains every actual loss including IGNORE.
+     * ExportPolicy remains specific to the existing export() entry point.
+     */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Target conversionTarget() {
+        return WebConversionTargets.target(false, limits, fonts);
+    }
     /** Task-confined builder; font role mappings select Markdown emphasis, without guessing role names. */
     public static final class Builder {
         private ExportPolicy policy = ExportPolicy.STRICT;

@@ -28,6 +28,12 @@ public final class HtmlAdapter {
         return new WebExportRequest(document, true, policy, limits, fonts, ExecutionOptions.DEFAULT);
     }
     public static Builder builder() { return new Builder(); }
+    /** Shared-policy conversion target; old ExportPolicy remains specific to export().
+     * Reports include IGNORE losses. Prepared conversion snapshots the encoded result before final I/O.
+     */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Target conversionTarget() {
+        return WebConversionTargets.target(true, limits, fonts);
+    }
     /** Task-confined builder. Role names never imply bold/italic; mappings are explicit. */
     public static final class Builder {
         private ExportPolicy policy = ExportPolicy.STRICT;

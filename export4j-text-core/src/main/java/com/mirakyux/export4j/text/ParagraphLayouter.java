@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.IntToDoubleFunction;
 import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.FontGroup;
 
@@ -60,6 +61,16 @@ public final class ParagraphLayouter {
         return layout(spans, width, style, Map.of());
     }
 
+    /** Wraps against a positive width per zero-based output line, without slicing the logical source.
+     * width is the maximum viewport width in points. The synchronous callback must be deterministic and
+     * return a finite width no greater than that maximum, leaving positive space after indentation.
+     */
+    public ParagraphLayout layout(List<StyledSpan> spans, double width, ParagraphStyle style,
+            IntToDoubleFunction lineWidths) {
+        Objects.requireNonNull(lineWidths, "lineWidths");
+        return layout(spans, width, style, Map.of(), Map.of(), Map.of(), false, lineWidths);
+    }
+
     /** Shapes atomic inline images together with text using the default adaptive layouter.
      * Keys are original UTF-16 U+FFFC positions. An explicitly injected text shaper rejects images.
      */
@@ -99,6 +110,13 @@ public final class ParagraphLayouter {
             Map<Integer, com.mirakyux.export4j.model.InlineImage> images,
             Map<Integer, com.mirakyux.export4j.model.InlineField> fields,
             Map<Integer, InlineGraphic> graphics, boolean forceOpenType) {
+        return layout(spans, width, style, images, fields, graphics, forceOpenType, line -> width);
+    }
+
+    private ParagraphLayout layout(List<StyledSpan> spans, double width, ParagraphStyle style,
+            Map<Integer, com.mirakyux.export4j.model.InlineImage> images,
+            Map<Integer, com.mirakyux.export4j.model.InlineField> fields,
+            Map<Integer, InlineGraphic> graphics, boolean forceOpenType, IntToDoubleFunction lineWidths) {
         images = Map.copyOf(images);
         fields = Map.copyOf(fields);
         graphics = Map.copyOf(graphics);
@@ -133,7 +151,8 @@ public final class ParagraphLayouter {
         }
         if (!images.isEmpty() || !fields.isEmpty() || !graphics.isEmpty() || forceOpenType || adaptive && (OpenTypeParagraphLayouter.required(text)
                 || spans.stream().flatMap(span -> span.fonts().stream()).anyMatch(font -> font.data().cffOutlines()))) {
-            return new OpenTypeParagraphLayouter(limits).layout(spans, width, style, ascent, images, fields, graphics);
+            return new OpenTypeParagraphLayouter(limits).layout(spans, width, style, ascent, images, fields, graphics,
+                    line -> checkedLineWidth(lineWidths, line, width, style));
         }
         List<TextLine> lines = new ArrayList<>();
         List<TextDiagnostic> diagnostics = new ArrayList<>();
@@ -161,7 +180,7 @@ public final class ParagraphLayouter {
                 }
                 spanStart += span.text().length();
             }
-            appendLines(part, start, glyphs, ascent, width, style, lines, styles);
+            appendLines(part, start, glyphs, ascent, line -> checkedLineWidth(lineWidths, line, width, style), style, lines, styles);
             if (end == text.length()) {
                 break;
             }
@@ -171,8 +190,17 @@ public final class ParagraphLayouter {
         return new ParagraphLayout(width, lines.size() * style.lineHeight(), lines, diagnostics);
     }
 
+    private static double checkedLineWidth(IntToDoubleFunction widths, int line, double maximum, ParagraphStyle style) {
+        double value = widths.applyAsDouble(line);
+        double indent = line == 0 ? style.firstLineIndent() : style.subsequentLineIndent();
+        if (!Double.isFinite(value) || value <= indent || value > Math.nextUp(maximum)) {
+            throw new IllegalArgumentException("line width must fit the viewport and leave positive text space");
+        }
+        return value;
+    }
+
     private void appendLines(String source, int sourceOffset, List<ShapedGlyph> glyphs,
-            double ascent, double width, ParagraphStyle style, List<TextLine> lines, Map<Integer, StyledSpan> styles) {
+            double ascent, IntToDoubleFunction widths, ParagraphStyle style, List<TextLine> lines, Map<Integer, StyledSpan> styles) {
         boolean[] breaks = new boolean[source.length() + 1];
         BreakIterator iterator = BreakIterator.getLineInstance(Locale.ROOT);
         iterator.setText(source);
@@ -183,7 +211,7 @@ public final class ParagraphLayouter {
         do {
             com.mirakyux.export4j.model.ExecutionContext.checkpoint();
             double indent = lines.isEmpty() ? style.firstLineIndent() : style.subsequentLineIndent();
-            double available = width - indent;
+            double available = widths.applyAsDouble(lines.size()) - indent;
             double measured = 0;
             int fit = start;
             int legalBreak = start;

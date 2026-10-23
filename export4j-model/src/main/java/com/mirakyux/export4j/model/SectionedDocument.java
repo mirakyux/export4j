@@ -30,10 +30,13 @@ public record SectionedDocument(DocumentMetadata metadata, List<Section> section
         var blocks = new java.util.ArrayList<Block>();
         var headers = new HashSet<PageRegion>();
         var footers = new HashSet<PageRegion>();
+        var backgrounds = new HashSet<PageRegion>(); var foregrounds = new HashSet<PageRegion>();
         for (var section : sections) {
             blocks.addAll(section.blocks());
-            if (headers.add(section.pageRegions().header())) { blocks.addAll(section.pageRegions().header().blocks()); }
-            if (footers.add(section.pageRegions().footer())) { blocks.addAll(section.pageRegions().footer().blocks()); }
+            for (var band : section.pageRegions().headers()) { if (headers.add(band)) { blocks.addAll(band.blocks()); } }
+            for (var band : section.pageRegions().footers()) { if (footers.add(band)) { blocks.addAll(band.blocks()); } }
+            for (var band : section.pageRegions().backgrounds()) { if (backgrounds.add(band)) { blocks.addAll(band.blocks()); } }
+            for (var band : section.pageRegions().foregrounds()) { if (foregrounds.add(band)) { blocks.addAll(band.blocks()); } }
         }
         SemanticTree.validateUniqueIds(blocks);
     }

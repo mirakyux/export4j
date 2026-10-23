@@ -9,6 +9,12 @@ import com.mirakyux.export4j.layout.ComponentLayout;
 import com.mirakyux.export4j.layout.core.Component;
 import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.TextInheritance;
+import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
+import java.util.function.IntToDoubleFunction;
+import com.mirakyux.export4j.layout.core.FlowRegions;
+import com.mirakyux.export4j.model.PaginationPolicy;
+import com.mirakyux.export4j.text.ParagraphLayout;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
@@ -52,6 +58,53 @@ public record RichTextComponent(List<InlineText> inlines, ParagraphStyle style,
 
     @Override
     public ComponentLayout layout(ComponentContext context) {
+        var text = shape(context);
+        ComponentSupport.fits(text.width(), text.height(), context);
+        var builder = new DisplayListBuilder(new PageSize(text.width(), text.height()));
+        TextLayoutPainter.draw(builder, text, new Point(0, 0), RgbColor.BLACK);
+        return new ComponentLayout(text.width(), text.height(), text.lines().size(),
+                builder.build().commands(), text.diagnostics());
+    }
+
+    /** Returns a complete-line continuation using the same immutable runs and explicit fonts.
+     * Supports FlowColumn, grid cells and continuous columns; unequal widths with minimum-line policies
+     * use bounded full-source reflow. Fixed-width and default-line policies keep the single-wrap path.
+     */
+    public RegionFlow flow() { return flow(PaginationPolicy.DEFAULT); }
+
+    /** Returns continuation with explicit orphan/widow line counts. Adjacency flags are unsupported.
+     * The policy and source are immutable; resources remain borrowed from the layout context.
+     */
+    public RegionFlow flow(PaginationPolicy pagination) {
+        Objects.requireNonNull(pagination, "pagination");
+        if (pagination.keepWithNext() || pagination.pageBreakBefore()) {
+            throw new IllegalArgumentException("nested rich text uses line limits, not block adjacency flags");
+        }
+        return new Flowing(this, pagination);
+    }
+
+    private record Flowing(RichTextComponent source, PaginationPolicy pagination) implements WidthAwareRegionFlow {
+        @Override public List<RegionFlow.Fragment> layoutRegions(ComponentContext context, FlowRegions regions) {
+            ComponentSupport.fits(context.width(), regions.continuationHeight(), context);
+            var shaped = source.shape(context);
+            var style = source.inheritance.resolveStyle(source.style, context);
+            return FlowText.layoutShaped(shaped, style.lineHeight(), RgbColor.BLACK, pagination, regions);
+        }
+
+        @Override public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+            var style = source.inheritance.resolveStyle(source.style, context);
+            var slots = new TextRegionWidths(context, regions, widths, style.lineHeight(), pagination);
+            int units = source.inlines.stream().mapToInt(value -> value.text().length()).sum();
+            var shaped = slots.shape(units, lineWidths -> source.shape(context, lineWidths));
+            return FlowText.layoutShaped(shaped, style.lineHeight(), RgbColor.BLACK, slots.slices(shaped.lines().size()), slots::width);
+        }
+    }
+
+    private ParagraphLayout shape(ComponentContext context) {
+        return shape(context, line -> context.width());
+    }
+
+    private ParagraphLayout shape(ComponentContext context, IntToDoubleFunction widths) {
         Objects.requireNonNull(context, "context");
         var spans = new ArrayList<StyledSpan>(inlines.size());
         int sourceOffset = 0;
@@ -68,13 +121,7 @@ public record RichTextComponent(List<InlineText> inlines, ParagraphStyle style,
             sourceOffset += inline.text().length();
         }
         var paragraphStyle = inheritance.resolveStyle(style, context);
-        var text = new ParagraphLayouter().layout(spans, context.width(), paragraphStyle);
-        ComponentSupport.fits(text.width(), text.height(), context);
-        var builder = new DisplayListBuilder(new PageSize(text.width(), text.height()));
-        // Every span has explicit RGB; this fallback painter color does not override those values.
-        TextLayoutPainter.draw(builder, text, new Point(0, 0), RgbColor.BLACK);
-        return new ComponentLayout(text.width(), text.height(), text.lines().size(),
-                builder.build().commands(), text.diagnostics());
+        return new ParagraphLayouter().layout(spans, context.width(), paragraphStyle, widths);
     }
 
     private record ValidatedRuns(List<InlineText> values, int codePoints, int sourceLength) { }

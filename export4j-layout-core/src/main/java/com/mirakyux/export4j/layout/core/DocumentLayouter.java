@@ -27,6 +27,7 @@ import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.PageBreak;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
@@ -125,7 +126,8 @@ public final class DocumentLayouter {
         var document = new Document(DocumentMetadata.EMPTY,
                 new PageSettings(new PageSize(context.width(), context.height()), PageMargins.uniform(0)), List.of(table));
         var flow = new Flow(document, context.fontGroup(), context.fontRoles(), preflight(document));
-        return new TableCursor(flow.new Cursor(table));
+        return new TableCursor(table.format().allowRowSplit() && (table.hasBlockCells() || table.hasRowSpans())
+                ? flow.new RecursiveCursor(table, 0) : flow.new Cursor(table));
     }
 
     /**
@@ -166,6 +168,45 @@ public final class DocumentLayouter {
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * Distributes complete rows or transitive merged-row groups at each region's actual width.
+     * Widths are a nonempty cyclic sequence of at most 16 finite positive point values fitting the context.
+     * Equal widths use the ordinary cursor, including its explicit row-splitting policy. Unequal widths
+     * require atomic rows: reflowing a partially consumed cell across widths is not supported.
+     *
+     * <p>Source budgets apply once. Each distinct width is prepared at most once, with at most 4,000,000
+     * cumulative source UTF-16 units and this layouter's line limit per prepared alternative. Only selected
+     * rows and actual repeated headers consume the final output-line budget. Initial short regions may be
+     * skipped; every full continuation region must advance. Fonts/resources remain borrowed; no I/O occurs.
+     */
+    public List<TableRegion> layoutTableRegions(Table table, ComponentContext context, FlowRegions regions,
+            List<Double> widths) {
+        Objects.requireNonNull(table, "table");
+        Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(regions, "regions");
+        widths = List.copyOf(widths);
+        if (widths.isEmpty() || widths.size() > 16 || !fits(regions.continuationHeight(), context.height())) {
+            throw new IllegalArgumentException("invalid table region widths or continuation height");
+        }
+        for (double width : widths) {
+            if (!Double.isFinite(width) || width <= 0 || !fits(width, context.width())) {
+                throw new IllegalArgumentException("table region width must be positive and fit the viewport");
+            }
+        }
+        double first = widths.getFirst();
+        if (widths.stream().allMatch(width -> width == first)) {
+            return layoutTableRegions(table, context.viewport(first, context.height()), regions);
+        }
+        if (table.format().allowRowSplit()) {
+            throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, 0, 0, table.headerRows(), -1, -1,
+                    "variable-width tables require atomic rows; partial-cell reflow is unsupported", null);
+        }
+        var document = new Document(DocumentMetadata.EMPTY, new PageSettings(
+                new PageSize(context.width(), regions.continuationHeight()), PageMargins.uniform(0)), List.of(table));
+        var flow = new Flow(document, context.fontGroup(), context.fontRoles(), preflight(document));
+        return flow.variableTableRegions(table, regions, widths);
     }
 
     private long preflight(Document document) {
@@ -268,6 +309,7 @@ public final class DocumentLayouter {
         private final FontGroup fontGroup;
         private final Map<Integer, ParagraphLayout> paragraphs = new HashMap<>();
         private final Map<Integer, MeasuredTable> tables = new HashMap<>();
+        private final Map<String, MeasuredTable> cellTables = new HashMap<>();
         private final Map<Integer, List<ComponentLayout>> components = new HashMap<>();
         private boolean pendingBreak;
         private double used;
@@ -280,6 +322,7 @@ public final class DocumentLayouter {
         private final SemanticSourceRegistry semanticSources;
         private long semanticPlacements;
         private List<CellLocation> measuringPath = List.of();
+        private boolean measuringVariableTable;
         private int keptThrough = -1;
         private Flow(Document document, FontGroup group, Map<String, FontGroup> roles, long codePoints) {
             this.document = document;
@@ -585,6 +628,7 @@ public final class DocumentLayouter {
         }
 
         private void table(Table table, int index) {
+            if (table.format().allowRowSplit() && (table.hasBlockCells() || table.hasRowSpans())) { recursiveTable(table, index); return; }
             if (table.format().allowRowSplit()) { splitTable(table, index); return; }
             var measured = measuredTable(table, index);
             double[] widths = measured.widths();
@@ -658,46 +702,23 @@ public final class DocumentLayouter {
                             .filter(value -> value.cell().hasBlocks()).findFirst().orElseThrow();
                     boolean header = grid.anchorRows().stream().limit(table.headerRows()).flatMap(List::stream)
                             .anyMatch(value -> value.cell().hasBlocks());
-                    if (table.format().allowRowSplit() || header
-                            || table.columns().stream().anyMatch(ColumnWidth.Auto.class::isInstance)) {
+                    if (header || table.columns().stream().anyMatch(ColumnWidth.Auto.class::isInstance)) {
                         throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(),
                                 anchor.rowIndex(), anchor.columnIndex(), -1,
-                                "block cells require fixed/fraction columns, atomic rows and ordinary parent headers", null)
+                                "block cells require fixed/fraction columns and ordinary parent headers", null)
                                 .withSourcePath(cellPath(measuringPath, table, anchor.rowIndex(), anchor.columnIndex(), 0));
                     }
                 }
-                if (!measuringPath.isEmpty() && (table.format().allowRowSplit()
-                        || table.columns().stream().anyMatch(ColumnWidth.Auto.class::isInstance))) {
-                    throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(), -1, -1, -1,
-                            "atomic nested tables require fixed/fraction columns and no row splitting", null).withSourcePath(measuringPath);
-                }
-                if (table.format().allowRowSplit() && table.hasRowSpans()) {
-                    var anchor = grid.anchorRows().stream().flatMap(List::stream)
-                            .filter(value -> value.cell().rowSpan() > 1).findFirst().orElseThrow();
-                    throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(),
-                            anchor.rowIndex(), anchor.columnIndex(), -1,
-                            "vertical spans require atomic connected row groups; row splitting is unsupported", null);
-                }
+                // Automatic inline-cell columns use this table's actual parent content width.
+                // Tables which themselves own block cells still require fixed/fraction columns above.
                 double[] widths = columnWidths(table, grid, index, availableWidth);
                 var rows = measure(table, grid, index, widths, requireRowFit);
-                return new MeasuredTable(widths, rows, groupEnds(grid, rows.size()));
+                var measured = new MeasuredTable(widths, rows, groupEnds(grid, rows.size()), table.hasRowSpans());
+                cellTables.put(table.id(), measured);
+                return measured;
         }
 
         private double[] columnWidths(Table table, TableGrid grid, int index, double availableWidth) {
-            for (var row : grid.anchorRows()) {
-                for (var anchor : row) {
-                    var cell = anchor.cell();
-                    int start = anchor.columnIndex();
-                    if (cell.columnSpan() > 1 || cell.rowSpan() > 1) {
-                        for (int column = start; column < start + cell.columnSpan(); column++) {
-                            if (table.columns().get(column) instanceof ColumnWidth.Auto) {
-                                throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index,
-                                        pages.size(), anchor.rowIndex(), start, -1, "merged cells cannot cover automatic columns", null);
-                            }
-                        }
-                    }
-                }
-            }
             double fixed = 0;
             double maxWeight = 0;
             double[] automatic = new double[table.columns().size()];
@@ -740,12 +761,13 @@ public final class DocumentLayouter {
                 if (table.columns().get(column) instanceof ColumnWidth.Auto auto) {
                     double preferred = auto.minPoints();
                     double measureWidth = Math.min(auto.maxPoints(), availableWidth) - cellPadding.left() - cellPadding.right();
-                    if (measureWidth <= 0) { throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(), -1, column, -1, "automatic column has no text area", null); }
                     for (var row : grid.anchorRows()) {
                         for (var anchor : row) {
-                            if (anchor.columnIndex() != column) { continue; }
-                            var measured = shapeCell(anchor.cell(), measureWidth, table, index, anchor.rowIndex(), column, false);
-                            preferred = Math.max(preferred, measured.lines().stream().mapToDouble(TextLine::width).max().orElse(0)
+                            if (anchor.columnIndex() != column || anchor.cell().columnSpan() != 1) { continue; }
+                            if (measureWidth <= 0) { throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(),
+                                    anchor.rowIndex(), column, -1, "automatic column has no text area", null); }
+                            var measured = preferredInlineWidth(anchor.cell(), measureWidth, table, index, anchor.rowIndex(), column);
+                            preferred = Math.max(preferred, measured
                                     + cellPadding.left() + cellPadding.right());
                         }
                     }
@@ -753,6 +775,11 @@ public final class DocumentLayouter {
                     autoMinimum += auto.minPoints();
                     autoPreferred += automatic[column];
                 }
+            }
+            if (autoPreferred > 0) {
+                preferredMergedWidths(table, grid, index, availableWidth, automatic);
+                autoPreferred = 0;
+                for (double value : automatic) { autoPreferred += value; }
             }
             double autoSpace = availableWidth - fixed - (autoPreferred > 0 ? fractionMinimum : 0);
             if (autoMinimum > autoSpace) { throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(), -1, -1, -1, "minimum column widths exceed page", null); }
@@ -782,6 +809,57 @@ public final class DocumentLayouter {
                 }
             }
             return widths;
+        }
+
+        private void preferredMergedWidths(Table table, TableGrid grid, int index, double availableWidth, double[] automatic) {
+            var anchors = grid.anchorRows().stream().flatMap(List::stream)
+                    .filter(anchor -> anchor.cell().columnSpan() > 1)
+                    .sorted(java.util.Comparator.comparingInt((TableGrid.Anchor anchor) -> anchor.cell().columnSpan())
+                            .thenComparingInt(TableGrid.Anchor::rowIndex).thenComparingInt(TableGrid.Anchor::columnIndex)).toList();
+            double padding = table.format().padding().left() + table.format().padding().right();
+            for (var anchor : anchors) {
+                ExecutionContext.checkpoint();
+                int start = anchor.columnIndex(), end = start + anchor.cell().columnSpan();
+                boolean fraction = false;
+                double maximum = 0, preferred = 0, capacity = 0;
+                for (int column = start; column < end; column++) {
+                    switch (table.columns().get(column)) {
+                        case ColumnWidth.Fixed value -> { maximum += value.points(); preferred += value.points(); }
+                        case ColumnWidth.Auto value -> {
+                            // A column never needs more than the entire available table width.
+                            double cap = Math.min(value.maxPoints(), availableWidth);
+                            maximum += cap; preferred += automatic[column];
+                            capacity += Math.max(0, cap - automatic[column]);
+                        }
+                        case ColumnWidth.Fraction ignored -> fraction = true;
+                    }
+                }
+                // Fraction columns share the final remainder; they need no separate preferred-width claim.
+                if (fraction || capacity == 0) { continue; }
+                double measureWidth = Math.min(maximum, availableWidth) - padding;
+                if (measureWidth <= 0) {
+                    throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(),
+                            anchor.rowIndex(), start, -1, "merged automatic columns have no text area", null);
+                }
+                double wanted = preferredInlineWidth(anchor.cell(), measureWidth, table, index, anchor.rowIndex(), start) + padding;
+                double growth = Math.min(capacity, Math.max(0, wanted - preferred));
+                for (int column = start; column < end; column++) {
+                    if (table.columns().get(column) instanceof ColumnWidth.Auto value) {
+                        double cap = Math.min(value.maxPoints(), availableWidth);
+                        automatic[column] += growth * (Math.max(0, cap - automatic[column]) / capacity);
+                    }
+                }
+            }
+        }
+
+        private double preferredInlineWidth(com.mirakyux.export4j.model.TableCell cell, double width,
+                Table table, int index, int row, int column) {
+            try {
+                return shapeCell(cell, width, table, index, row, column, false)
+                        .lines().stream().mapToDouble(TextLine::width).max().orElse(0);
+            } catch (DocumentLayoutException cause) {
+                throw cause.withSourcePath(cellPath(measuringPath, table, row, column, -1));
+            }
         }
 
         private List<MeasuredRow> measure(Table table, TableGrid grid, int index, double[] widths, boolean requireRowFit) {
@@ -978,6 +1056,88 @@ public final class DocumentLayouter {
             return Optional.of(new RowSlice(new TableRowFragment(row, false, false, cells, continued), height, take, complete));
         }
 
+        private List<TableRegion> variableTableRegions(Table table, FlowRegions regions, List<Double> widths) {
+            long[] sourceUnits = {0};
+            SemanticTree.walk(List.of(table), visit -> {
+                ExecutionContext.checkpoint();
+                if (visit.block() instanceof Paragraph paragraph) { sourceUnits[0] += paragraph.text().length(); }
+                else if (visit.block() instanceof Table nested) {
+                    for (var anchors : nested.grid().anchorRows()) {
+                        for (var anchor : anchors) {
+                            if (!anchor.cell().hasBlocks()) { sourceUnits[0] += anchor.cell().text().length(); }
+                        }
+                    }
+                }
+            });
+            var alternatives = new HashMap<Double, MeasuredTable>();
+            var result = new ArrayList<TableRegion>();
+            long measuredUnits = 0;
+            int row = table.headerRows();
+            for (int region = 0; row < table.rows().size(); region++) {
+                ExecutionContext.checkpoint();
+                if (region >= 100_016 || result.size() >= Math.min(limits.maxPages(), 100_000)) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, table, 0, result.size(), row, -1, 0,
+                            "table region budget exceeded", null);
+                }
+                if (regions.height(region) == 0) { continue; }
+                double width = widths.get(region % widths.size());
+                var measured = alternatives.get(width);
+                if (measured == null) {
+                    if (sourceUnits[0] > 4_000_000L - measuredUnits) {
+                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, table, 0, result.size(), row, -1, 0,
+                                "variable table measurement source-unit budget exceeded", null);
+                    }
+                    measuredUnits += sourceUnits[0];
+                    // Probe lines are bounded independently; only the finally selected rows are output.
+                    long outputLines = lineCount;
+                    lineCount = 0;
+                    measuringVariableTable = true;
+                    try { measured = prepareMeasuredTable(table, 0, width, false); }
+                    finally { lineCount = outputLines; measuringVariableTable = false; }
+                    alternatives.put(width, measured);
+                    // Atomic fragments retain their complete child IR; no cursor uses this preparation map.
+                    cellTables.clear();
+                }
+                var placed = new ArrayList<TableRowFragment>();
+                double height = 0;
+                long lines = 0;
+                for (int header = 0; header < table.headerRows(); header++) {
+                    var original = measured.rows().get(header);
+                    appendRow(placed, table, header, original, measured.widths(), height, !result.isEmpty());
+                    height += original.height();
+                    lines += original.lines();
+                }
+                int next = row;
+                while (next < table.rows().size() && fits(height + groupHeight(measured, next), regions.height(region))) {
+                    int end = measured.groupEnds()[next];
+                    while (next < end) {
+                        ExecutionContext.checkpoint();
+                        var original = measured.rows().get(next);
+                        appendRow(placed, table, next, original, measured.widths(), height, false);
+                        height += original.height();
+                        lines += original.lines();
+                        next++;
+                    }
+                }
+                if (next == row) {
+                    if (region >= regions.initialHeights().size()) {
+                        throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, table, 0, result.size(), row, -1, 0,
+                                "table headers and next merged-row group cannot fit the actual region width", null);
+                    }
+                    continue;
+                }
+                if (lines > limits.maxLines() - lineCount) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, table, 0, result.size(), row, -1, 0,
+                            "table output-line budget exceeded, including repeated headers", null);
+                }
+                lineCount += lines;
+                result.add(new TableRegion(region, new TableFragment(table.id(), 0, new Point(0, 0),
+                        java.util.Arrays.stream(measured.widths()).sum(), height, placed)));
+                row = next;
+            }
+            return List.copyOf(result);
+        }
+
         private final class Cursor implements TableCursor.State {
             private final Table table;
             private final MeasuredTable measured;
@@ -1101,6 +1261,336 @@ public final class DocumentLayouter {
             }
         }
 
+        private void recursiveTable(Table table, int index) {
+            var cursor = new RecursiveCursor(table, index);
+            double spacing = elements.isEmpty() ? 0 : previousAfter + table.format().spaceBefore();
+            while (!cursor.done()) {
+                var part = cursor.take(Math.max(0, currentCapacity() - used - spacing));
+                if (part.isEmpty()) {
+                    if (elements.isEmpty()) {
+                        throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, table, index, pages.size(),
+                                cursor.rowIndex(), -1, -1, "table headers and next complete cell content cannot fit", null);
+                    }
+                    nextPage(table, index, cursor.rowIndex(), 0);
+                    spacing = 0;
+                    continue;
+                }
+                used += spacing;
+                var placed = part.orElseThrow();
+                elements.add(new TableFragment(table.id(), index, origin(), placed.width(), placed.height(), placed.rows()));
+                used += placed.height();
+                spacing = 0;
+                if (!cursor.done()) { nextPage(table, index, cursor.rowIndex(), 0); }
+            }
+            previousAfter = table.format().spaceAfter();
+            tables.remove(index);
+        }
+
+        /** All tentative allocations operate on copies; only the outer accepted take charges budgets. */
+        private final class RecursiveCursor implements TableCursor.State {
+            private TableProgress progress;
+            private final int index;
+
+            private RecursiveCursor(Table table, int index) {
+                this.index = index;
+                progress = new TableProgress(table, measuredTable(table, index, false), index);
+            }
+            @Override public boolean done() { return progress.done(); }
+            @Override public int rowIndex() { return progress.row; }
+            @Override public int fragmentIndex() { return progress.outputs; }
+            @Override public double remainingHeight() { return progress.remainingHeight(); }
+            @Override public Optional<TableFragment> take(double height) {
+                if (!Double.isFinite(height) || height < 0 || !fits(height, settings.contentHeight())) {
+                    throw new IllegalArgumentException("table take height must be finite and within the preparation viewport");
+                }
+                var attempt = progress.take(height);
+                if (attempt == null) { return Optional.empty(); }
+                if (progress.outputs >= Math.min(limits.maxPages(), 100_000)) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, progress.table, index,
+                            progress.outputs, progress.row, -1, -1, "table occupied-region budget exceeded", null);
+                }
+                addLines(attempt.extraLines(), progress.table, index, progress.row, -1);
+                progress = attempt.next();
+                return Optional.of(attempt.fragment());
+            }
+        }
+
+        private record TableAttempt(TableProgress next, TableFragment fragment, long extraLines) { }
+        private record ContentAttempt(ContentProgress next, CellFragment.Content content, double height, long extraLines) { }
+
+        private final class TableProgress {
+            private final Table table;
+            private final MeasuredTable measured;
+            private final int index;
+            private final TableGrid grid;
+            private int row;
+            private int outputs;
+            private int rowParts;
+            private List<ContentProgress> cells;
+            private Map<Long, ContentProgress> spanning = Map.of();
+
+            private TableProgress(Table table, MeasuredTable measured, int index) {
+                this(table, measured, index, table.grid());
+            }
+            private TableProgress(Table table, MeasuredTable measured, int index, TableGrid grid) {
+                this.table = table; this.measured = measured; this.index = index; row = table.headerRows();
+                this.grid = grid;
+            }
+            private TableProgress copy() {
+                var next = new TableProgress(table, measured, index, grid);
+                next.row = row; next.outputs = outputs; next.rowParts = rowParts;
+                next.cells = cells; next.spanning = spanning;
+                return next;
+            }
+            private boolean done() { return row == table.rows().size(); }
+            private double remainingHeight() {
+                if (done()) { return 0; }
+                double height = measured.rows().subList(0, table.headerRows()).stream().mapToDouble(MeasuredRow::height).sum();
+                for (int at = row; at < measured.rows().size(); at++) { height += measured.rows().get(at).height(); }
+                if (measured.hasSpans() && table.format().allowRowSplit()) {
+                    height = measured.rows().subList(0, table.headerRows()).stream().mapToDouble(MeasuredRow::height).sum();
+                    for (int at = row; at < measured.rows().size(); at++) {
+                        double content = 0;
+                        for (var anchor : measured.rows().get(at).anchors()) {
+                            var saved = spanning.get(anchorKey(anchor));
+                            var original = measured.rows().get(at);
+                            int ordinal = original.anchors().indexOf(anchor);
+                            content = Math.max(content, saved == null ? original.cells().get(ordinal).height() : saved.remainingHeight());
+                        }
+                        if (at == row && cells != null) { content = cells.stream().mapToDouble(ContentProgress::remainingHeight).max().orElse(0); }
+                        if (content > 0) { height += content + table.format().padding().top() + table.format().padding().bottom(); }
+                    }
+                } else if (cells != null) {
+                    height -= measured.rows().get(row).height();
+                    height += cells.stream().mapToDouble(ContentProgress::remainingHeight).max().orElse(0)
+                            + table.format().padding().top() + table.format().padding().bottom();
+                }
+                if (!Double.isFinite(height)) { throw new IllegalArgumentException("remaining table height overflow"); }
+                return height;
+            }
+            private TableAttempt take(double available) {
+                com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                if (done()) { return null; }
+                var next = copy();
+                var rows = new ArrayList<TableRowFragment>();
+                double height = 0;
+                long extras = 0;
+                for (int header = 0; header < table.headerRows(); header++) {
+                    var source = measured.rows().get(header);
+                    appendRow(rows, table, header, source, measured.widths(), height, outputs > 0);
+                    height += source.height();
+                    if (outputs > 0) { extras += source.lines(); }
+                }
+                boolean progressed = false;
+                while (!next.done()) {
+                    com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                    if (!table.format().allowRowSplit()) {
+                        if (!fits(height + groupHeight(measured, next.row), available)) { break; }
+                        int end = measured.groupEnds()[next.row];
+                        while (next.row < end) {
+                            var source = measured.rows().get(next.row);
+                            appendRow(rows, table, next.row++, source, measured.widths(), height, false);
+                            height += source.height();
+                        }
+                        progressed = true;
+                        continue;
+                    }
+                    var anchors = next.owners();
+                    var padding = table.format().padding();
+                    double inside = available - height - padding.top() - padding.bottom();
+                    var current = next.cells;
+                    if (current == null) {
+                        current = new ArrayList<>();
+                        for (var anchor : anchors) {
+                            var saved = next.spanning.get(anchorKey(anchor));
+                            var original = measured.rows().get(anchor.rowIndex());
+                            int ordinal = original.anchors().indexOf(anchor);
+                            current.add(saved == null ? new ContentProgress(anchor.cell(), original.cells().get(ordinal).content(), index) : saved);
+                        }
+                    }
+                    var parts = new ArrayList<ContentAttempt>();
+                    double contentHeight = 0;
+                    for (int at = 0; at < current.size(); at++) {
+                        var cell = current.get(at);
+                        var part = cell.done() && anchors.get(at).rowIndex() < next.row
+                                ? new ContentAttempt(cell, new CellFragment.Blocks(List.of(), List.of()), 0, 0) : cell.take(inside);
+                        if (part == null) { parts.clear(); break; }
+                        parts.add(part); contentHeight = Math.max(contentHeight, part.height());
+                    }
+                    if (parts.isEmpty()) { break; }
+                    if (contentHeight == 0) { next.row++; next.cells = null; next.rowParts = 0; continue; }
+                    double rowHeight = contentHeight + padding.top() + padding.bottom();
+                    if (!fits(height + rowHeight, available)) { break; }
+                    for (int at = 0; at < parts.size(); at++) {
+                        var anchor = anchors.get(at);
+                        double x = spannedWidth(measured.widths(), 0, anchor.columnIndex());
+                        double width = spannedWidth(measured.widths(), anchor.columnIndex(), anchor.cell().columnSpan());
+                        var part = parts.get(at);
+                        var placed = new CellFragment(anchor.columnIndex(), new Rect(x, height, width, rowHeight),
+                                new Point(x + padding.left(), height + padding.top()), part.content());
+                        rows.add(new TableRowFragment(anchor.rowIndex(), false, false, List.of(placed),
+                                next.rowParts > 0 || anchor.rowIndex() < next.row));
+                        extras += part.extraLines();
+                    }
+                    height += rowHeight; progressed = true; next.rowParts++;
+                    next.cells = parts.stream().map(ContentAttempt::next).toList();
+                    if (next.cells.stream().anyMatch(cell -> !cell.done())) { break; }
+                    var saved = new HashMap<Long, ContentProgress>();
+                    for (int at = 0; at < anchors.size(); at++) {
+                        var anchor = anchors.get(at);
+                        if (anchor.rowIndex() + anchor.cell().rowSpan() > next.row + 1) {
+                            saved.put(anchorKey(anchor), next.cells.get(at));
+                        }
+                    }
+                    next.spanning = Map.copyOf(saved);
+                    next.row++; next.cells = null; next.rowParts = 0;
+                }
+                if (!progressed) { return null; }
+                next.outputs++;
+                return new TableAttempt(next, new TableFragment(table.id(), index, new Point(0, 0),
+                        java.util.Arrays.stream(measured.widths()).sum(), height, coalesceRows(rows)), extras);
+            }
+
+            private List<TableGrid.Anchor> owners() {
+                if (!measured.hasSpans()) { return measured.rows().get(row).anchors(); }
+                var result = new ArrayList<TableGrid.Anchor>();
+                for (int column = 0; column < measured.widths().length;) {
+                    var owner = grid.ownerAt(row, column);
+                    result.add(owner); column += owner.cell().columnSpan();
+                }
+                return result;
+            }
+        }
+
+        private long anchorKey(TableGrid.Anchor anchor) { return (long) anchor.rowIndex() << 32 | anchor.columnIndex(); }
+
+        /** Extend a completed vertical owner through covered rows without drawing internal borders. */
+        private List<TableRowFragment> coalesceRows(List<TableRowFragment> rows) {
+            var result = new java.util.LinkedHashMap<Integer, TableRowFragment>();
+            for (var row : rows) {
+                var previous = result.get(row.rowIndex());
+                if (previous == null) { result.put(row.rowIndex(), row); continue; }
+                var cells = new ArrayList<>(previous.cells());
+                for (var cell : row.cells()) {
+                    int match = -1;
+                    for (int at = 0; at < cells.size(); at++) { if (cells.get(at).columnIndex() == cell.columnIndex()) { match = at; break; } }
+                    if (match < 0) { cells.add(cell); continue; }
+                    var old = cells.get(match);
+                    if (!cell.hasBlocks() || !cell.blocks().isEmpty()
+                            || !fits(Math.abs(old.bounds().y() + old.bounds().height() - cell.bounds().y()), Math.ulp(cell.bounds().y()))) {
+                        throw new IllegalStateException("noncontiguous vertical cell presentation");
+                    }
+                    cells.set(match, new CellFragment(old.columnIndex(), new Rect(old.bounds().x(), old.bounds().y(),
+                            old.bounds().width(), cell.bounds().y() + cell.bounds().height() - old.bounds().y()), old.textOrigin(), old.content()));
+                }
+                cells.sort(java.util.Comparator.comparingInt(CellFragment::columnIndex));
+                result.put(row.rowIndex(), new TableRowFragment(row.rowIndex(), row.header(), row.repeatedHeader(), cells, previous.continuedRow()));
+            }
+            return List.copyOf(result.values());
+        }
+
+        private final class ContentProgress {
+            private final com.mirakyux.export4j.model.TableCell source;
+            private final CellFragment.Content full;
+            private final int index;
+            private int block;
+            private int line;
+            private TableProgress nested;
+
+            private ContentProgress(com.mirakyux.export4j.model.TableCell source, CellFragment.Content full, int index) {
+                this.source = source; this.full = full; this.index = index;
+            }
+            private ContentProgress copy() {
+                var next = new ContentProgress(source, full, index);
+                next.block = block; next.line = line; next.nested = nested;
+                return next;
+            }
+            private boolean done() {
+                return full instanceof CellFragment.Inline inline ? line == inline.layout().lines().size()
+                        : block == ((CellFragment.Blocks) full).fragments().size();
+            }
+            private double remainingHeight() {
+                if (done()) { return 0; }
+                if (full instanceof CellFragment.Inline inline) {
+                    return (inline.layout().lines().size() - line) * source.format().lineHeight();
+                }
+                var fragments = ((CellFragment.Blocks) full).fragments();
+                double result = 0;
+                for (int at = block; at < fragments.size(); at++) {
+                    var child = fragments.get(at);
+                    if (at > block) { result += before(source.blocks().get(at)) + after(source.blocks().get(at - 1)); }
+                    result += child instanceof ParagraphFragment paragraph
+                            ? paragraph.layout().height() - (at == block ? line * ((Paragraph) source.blocks().get(at)).format().lineHeight() : 0)
+                            : at == block && nested != null ? nested.remainingHeight() : ((TableFragment) child).height();
+                }
+                return result;
+            }
+            private ContentAttempt take(double available) {
+                com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                var next = copy();
+                if (full instanceof CellFragment.Inline inline) {
+                    var layout = inline.layout();
+                    double step = source.format().lineHeight();
+                    if (done()) {
+                        if (!fits(step, available)) { return null; }
+                        int end = layout.lines().getLast().sourceEnd();
+                        var empty = new ParagraphLayout(layout.width(), step, List.of(new TextLine(end, end, 0,
+                                layout.lines().getFirst().baselineY(), 0, List.of())), List.of());
+                        return new ContentAttempt(next, new CellFragment.Inline(empty, line), step, 1);
+                    }
+                    int count = (int) Math.min(layout.lines().size() - line, Math.max(0, Math.floor(Math.nextUp(available / step))));
+                    if (count == 0) { return null; }
+                    next.line += count;
+                    return new ContentAttempt(next, new CellFragment.Inline(fragment(layout, line, count, step), line), count * step, 0);
+                }
+                if (done()) { return new ContentAttempt(next, new CellFragment.Blocks(List.of(), List.of()), 0, 0); }
+                var fullBlocks = ((CellFragment.Blocks) full).fragments();
+                var placed = new ArrayList<LayoutFragment>();
+                var ordinals = new ArrayList<Integer>();
+                double height = 0;
+                long extras = 0;
+                while (!next.done()) {
+                    int sourceBlock = next.block;
+                    var child = source.blocks().get(next.block);
+                    double spacing = placed.isEmpty() ? 0 : before(child) + after(source.blocks().get(next.block - 1));
+                    double capacity = available - height - spacing;
+                    LayoutFragment output;
+                    double usedHeight;
+                    if (child instanceof Paragraph paragraph) {
+                        var shaped = ((ParagraphFragment) fullBlocks.get(next.block)).layout();
+                        double step = paragraph.format().lineHeight();
+                        int remaining = shaped.lines().size() - next.line;
+                        int count = (int) Math.min(remaining, Math.max(0, Math.floor(Math.nextUp(capacity / step))));
+                        if (count < remaining) {
+                            var policy = paragraph.format().pagination();
+                            count = Math.min(count, remaining - policy.minLinesAfterBreak());
+                            if (paragraph.format().keepTogether() || count < policy.minLinesBeforeBreak()) { count = 0; }
+                        }
+                        if (count == 0) { break; }
+                        output = new ParagraphFragment(child.id(), index, next.line, new Point(0, height + spacing),
+                                fragment(shaped, next.line, count, step));
+                        usedHeight = count * step;
+                        next.line += count;
+                        if (next.line == shaped.lines().size()) { next.block++; next.line = 0; }
+                    } else {
+                        var table = (Table) child;
+                        var current = next.nested == null ? new TableProgress(table, cellTables.get(table.id()), index) : next.nested;
+                        var part = current.take(capacity);
+                        if (part == null) { break; }
+                        var f = part.fragment();
+                        output = new TableFragment(f.blockId(), index, new Point(0, height + spacing), f.width(), f.height(), f.rows());
+                        usedHeight = f.height(); extras += part.extraLines(); next.nested = part.next();
+                        if (next.nested.done()) { next.block++; next.nested = null; }
+                    }
+                    placed.add(output); ordinals.add(sourceBlock);
+                    height += spacing + usedHeight;
+                    if (next.line > 0 || next.nested != null) { break; }
+                }
+                if (placed.isEmpty()) { return null; }
+                return new ContentAttempt(next, new CellFragment.Blocks(placed, ordinals), height, extras);
+            }
+        }
+
         private MeasuredCell measureCell(com.mirakyux.export4j.model.TableCell cell, double width,
                 Table table, int index, int row, int column) {
             if (!cell.hasBlocks()) {
@@ -1143,7 +1633,7 @@ public final class DocumentLayouter {
                                 nestedHeight += measured.rows().get(innerRow).height();
                                 lines += measured.rows().get(innerRow).lines();
                             }
-                            if (!fits(nestedHeight, settings.contentHeight())) {
+                            if (!measuringVariableTable && !table.format().allowRowSplit() && !fits(nestedHeight, settings.contentHeight())) {
                                 throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, nested, index, pages.size(),
                                         row, column, -1, "atomic nested table exceeds a fresh content region", null);
                             }
@@ -1154,7 +1644,7 @@ public final class DocumentLayouter {
                             throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, child, index,
                                     pages.size(), row, column, -1, "unsupported semantic cell block", null);
                         }
-                        if (!fits(height, settings.contentHeight())) {
+                        if (!measuringVariableTable && !table.format().allowRowSplit() && !fits(height, settings.contentHeight())) {
                             throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, child, index, pages.size(),
                                     row, column, -1, "atomic cell content exceeds a fresh content region", null);
                         }
@@ -1296,7 +1786,7 @@ public final class DocumentLayouter {
         private double width() { return layout().width(); }
     }
 
-    private record MeasuredTable(double[] widths, List<MeasuredRow> rows, int[] groupEnds) {
+    private record MeasuredTable(double[] widths, List<MeasuredRow> rows, int[] groupEnds, boolean hasSpans) {
     }
 
     private record HeightConstraint(int row, int column, int span, double height) { }
@@ -1343,7 +1833,7 @@ public final class DocumentLayouter {
         };
     }
 
-    private static ParagraphLayout fragment(ParagraphLayout shaped, int first, int count, double lineHeight) {
+    static ParagraphLayout fragment(ParagraphLayout shaped, int first, int count, double lineHeight) {
         List<TextLine> lines = new ArrayList<>();
         double ascent = shaped.lines().getFirst().baselineY();
         for (int offset = 0; offset < count; offset++) {

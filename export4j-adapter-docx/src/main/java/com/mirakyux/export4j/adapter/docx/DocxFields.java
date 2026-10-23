@@ -43,7 +43,7 @@ final class DocxFields {
             var bands = new java.util.HashSet<com.mirakyux.export4j.model.PageRegion>();
             document.sections().forEach(section -> {
                 SemanticTree.walk(section.blocks(), visit -> blocks.add(visit.block()));
-                for (var band : List.of(section.pageRegions().header(), section.pageRegions().footer())) {
+                for (var band : java.util.stream.Stream.concat(section.pageRegions().headers().stream(), section.pageRegions().footers().stream()).toList()) {
                     if (bands.add(band)) { SemanticTree.walk(band.blocks(), visit -> {
                         blocks.add(visit.block()); bandBlocks.add(visit.block());
                     }); }

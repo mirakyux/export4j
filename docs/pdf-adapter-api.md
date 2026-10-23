@@ -1,6 +1,22 @@
-# PDF 读取与页面组合 API
+# PDF 处理 API
 
-`export4j-adapter-pdf` 提供离线静态 PDF 子集的逐页信息、文字提取、选择页复制与合并。它直接处理既有 PDF，不把 PDF 猜测成 Export4j 语义模型，也不经过布局引擎。公共类型位于 `com.mirakyux.export4j.adapter.pdf`，签名不暴露 PDFBox。
+各入口有独立输入子集和损失契约，不因一个入口支持某种对象而放宽其他入口的拒绝规则。
+
+| 任务 | 入口及指南 |
+| --- | --- |
+| 读页、普通字形提取、静态选页／合并 | `read`／`copy`／`merge`，见下文 |
+| 旋转／裁剪／缩放、显式图文叠加 | `editPages`，[页级编辑](pdf-page-editing-api.md)；裁剪隐藏未删除 |
+| 被动表单、批注、链接、书签、附件、Info | `readObjects`／`editObjects`，[对象编辑](pdf-object-editing-api.md) |
+| 含被动对象的选页与跨来源合并 | `composeObjects`，[对象组合](pdf-object-composition-api.md) |
+| 已有 PDF 渲染为 PNG／JPEG、提取图片资源 | `render`／`extractImages`，[渲染与提取](pdf-raster-api.md) |
+| 流压缩、资源去重及显式图片重采样 | `optimize`，[优化](pdf-optimization-api.md)；不保证输出更小 |
+| 有界真实文字替换 | `editText`，[文字编辑](pdf-text-editing-api.md)；不是安全脱敏 |
+| 区域像素清除并新建纯图片 PDF | `redact`，[脱敏](pdf-redaction-api.md)；损失全文搜索及矢量编辑 |
+| 恢复可编辑模型再转 DOCX／HTML／Markdown | `importDocument`，[语义恢复](pdf-semantic-import-api.md)；显式网格、几何推断，无 OCR |
+
+下文描述原有严格读取／静态复制入口，其拒绝边界保持。
+
+`export4j-adapter-pdf` 的读取／静态复制通道提供逐页信息、文字提取、选择页复制与合并，直接处理既有对象，不经过布局引擎；语义恢复另走上表的明确损失通道。公共类型位于 `com.mirakyux.export4j.adapter.pdf`，签名不暴露 PDFBox。
 
 ## 常用入口
 

@@ -61,7 +61,7 @@
 
 多浮动组件已扩展为同一首片段内多个左右矩形的逐行避让、封闭行带跳过和整体移页，并保持全文原文顺序与续页全宽，见[调用指南](multi-floats-api.md)及[独立验收](verification/phase-7-multi-floats.md)。任意轮廓／跨页浮动锚点仍未覆盖。
 
-当前页连续文字分栏已支持剩余高度、完整续栏、两栏／三栏、最低行数移页和后续正文接续，见[调用指南](continuous-columns-api.md)及[独立验收](verification/phase-8-continuous-columns.md)。混合组件、嵌套流与表格后续已接入区域 SPI，支持图片整块移动、逐栏表头和完整合并行组，见[混合分栏指南](mixed-columns-api.md)及[验收](verification/phase-9-mixed-columns.md)。连续栏自动平衡、变栏宽和合并单元格拆栏继续单独推进。
+当前页连续文字分栏已支持剩余高度、完整续栏、两栏／三栏、最低行数移页和后续正文接续，见[调用指南](continuous-columns-api.md)及[独立验收](verification/phase-8-continuous-columns.md)。混合组件、嵌套流与表格后续已接入区域 SPI，支持图片整块移动、逐栏表头和完整合并行组，见[混合分栏指南](mixed-columns-api.md)及[验收](verification/phase-9-mixed-columns.md)。文字／混合流变栏宽与平衡见[阶段五十九](verification/phase-59-variable-columns.md)，变宽最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；表格跨变宽区域仍需独立续排契约。
 
 正文行内动态字段、页码／编号引用和注释锚点已实现。字段固定宽度，最终分页后解析；脚注跟随标记实际所在行，见[字段指南](inline-fields-api.md)及[验收](verification/phase-10-inline-fields.md)。语义表格单元格进一步支持页码和引用字段、逐页重复表头及拆行来源，见[表格字段验收](verification/phase-11-table-fields.md)。DOCX 原生四类字段及显式宽度导入已补齐，见[DOCX 字段验收](verification/phase-12-docx-fields.md)。单元格注释标记、任意组件字段、长表区域流、自动字段宽度重排和结构化可访问性仍属后续范围。
 
@@ -148,4 +148,6 @@
 
 第十六批完成 Java 编写时主题快照、正文／六级标题／便利语义表格默认值、命名完整样式和组件富文本便利入口，见[阶段三十](verification/phase-30-authoring-themes.md)。753 项测试、9 页独立 PDF／SVG／DOCX 输出与新调用方通过；默认输出、显式12 pt／黑色／零值、局部继承和固定行框保持。下一独立单元为 XML 静态样式名称与主题初始化，保留 XML 旧配置范围；全局字体角色级联、可编辑字段、完整品牌主题和持续容量继续独立。
 
-阶段四十三新增语义 HTML／Markdown 导出，支持静态自包含 HTML5、CommonMark/GFM 内容与逐功能 ERROR／WARN／IGNORE。默认严格，合并／块格在 Markdown 中仅按明确策略展开，字段使用未解析标记；见[API](web-export-api.md)与[验收](verification/phase-43-web-exports.md)。HTML/CSS 输入及可视化设计器仍独立。
+阶段四十三新增语义 HTML／Markdown 导出，支持静态自包含 HTML5、CommonMark/GFM 内容与逐功能 ERROR／WARN／IGNORE。默认严格，合并／块格在 Markdown 中仅按明确策略展开，字段使用未解析标记；见[API](web-export-api.md)与[验收](verification/phase-43-web-exports.md)。
+
+阶段四十四至五十六依次完成[语义编辑／字面替换](semantic-editing-api.md)、[通用 Markdown](markdown-import-api.md)／[离线 HTML/CSS](html-import-api.md)输入、[统一转换](document-conversion-api.md)、[DOCX 原包文字](docx-editing-api.md)与[样式级联](docx-style-import-api.md)，以及 [PDF 页／被动对象编辑、组合、渲染提取、优化、文字替换、光栅脱敏及语义恢复](pdf-adapter-api.md)的明确子集。全部按实际输出、损失预检／结果和隔离制品验收。PDF 恢复按行／字号推断并需显式表格网格；脱敏新建图片 PDF，损失搜索和矢量编辑。完整标准、任意文档无损往返、设计器和长期容量仍不属于这些已交付目标；详见[执行计划](remaining-capabilities-plan.md)。

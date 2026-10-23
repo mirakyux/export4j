@@ -164,14 +164,15 @@ class XmlTemplateBlockCellsTest {
         reject(TemplateException.Code.UNSUPPORTED_ELEMENT, table("outer", "<p><note-marker width='20'/></p>"));
     }
 
-    @Test void thirdTableLevelBlockHeadersAndInnerOrOuterSplitFailBeforeBinding() {
-        reject(TemplateException.Code.INVALID_STRUCTURE, table("outer", table("inner", table("deep", "Deep"))));
+    @Test void deeperTablesAndRowSplittingCompileWhileUnsupportedHeadersAndDynamicSpansFail() {
+        assertEquals(3, ids(XmlTemplate.builder().build().compile(xml(table("outer", table("inner", table("deep", "Deep")))))
+                .render(Map.of())).size());
         reject(TemplateException.Code.INVALID_STRUCTURE, "<table>" + COLUMNS
                 + "<header><cell><p>Block header</p></cell></header><row><cell>Body</cell></row></table>");
-        reject(TemplateException.Code.INVALID_VALUE, "<table row-split='true'>" + COLUMNS
-                + "<row><cell><p>Block</p></cell></row></table>");
-        reject(TemplateException.Code.INVALID_VALUE, table("outer", "<table row-split='true'>" + COLUMNS
-                + "<row><cell>Nested</cell></row></table>"));
+        assertEquals(2, ids(XmlTemplate.builder().build().compile(xml("<table row-split='true'>" + COLUMNS
+                + "<row><cell><p>Block</p></cell></row></table>")).render(Map.of())).size());
+        assertEquals(2, ids(XmlTemplate.builder().build().compile(xml(table("outer", "<table row-split='true'>" + COLUMNS
+                + "<row><cell>Nested</cell></row></table>"))).render(Map.of())).size());
         reject(TemplateException.Code.INVALID_STRUCTURE, table("outer", "<table>" + COLUMNS
                 + "<row><cell column-span='2'>Too wide</cell></row></table>"));
         reject(TemplateException.Code.INVALID_VALUE, "<rows items='items' as='item'>" + COLUMNS

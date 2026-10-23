@@ -509,6 +509,30 @@ public final class Consumer {
         XmlPageRegionsConsumer.verify(font, output);
         XmlSectionsConsumer.verify(font, output);
         WebExportConsumer.verify(output);
+        SemanticEditingConsumer.verify(engine, output);
+        MarkdownImportConsumer.verify(engine, output);
+        HtmlImportConsumer.verify(engine, output);
+        DocumentConversionConsumer.verify(engine, output);
+        DocxPackageEditConsumer.verify(output);
+        DocxStyleImportConsumer.verify(engine, output);
+        PdfPageEditingConsumer.verify(engine, font, output);
+        PdfObjectEditingConsumer.verify(font, output);
+        RecursiveTablesConsumer.verify(engine, output);
+        RecursiveIncludesConsumer.verify(engine, output);
+        VariableColumnsConsumer.verify(engine, output);
+        ThemeAppearanceConsumer.verify(font, output);
+        PageVariantsConsumer.verify(engine, output);
+        PageOverlaysConsumer.verify(engine, output);
+        MinimumLinesConsumer.verify(engine, output);
+        StreamingColumnSpansConsumer.verify(engine, output);
+        StreamingMediaConsumer.verify(engine, image, output);
+        AdvancedTablesConsumer.verify(engine, output);
+        VariableTablesConsumer.verify(engine, output);
+        PdfSignatureVerificationConsumer.verify(output);
+        PdfCertificationConsumer.verify(engine, output);
+        StreamingProtectionConsumer.verify(engine, font.data(), output);
+        StreamingFieldsConsumer.verify(engine, output);
+        NestedAutomaticTablesConsumer.verify(engine, output);
         System.out.println("Consumer outputs: " + output.toAbsolutePath());
     }
 }

@@ -15,7 +15,7 @@ import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableGrid;
 import com.mirakyux.export4j.model.InlineText;
-import com.mirakyux.export4j.model.ExternalDestination;
+import com.mirakyux.export4j.layout.core.InlineLinkGeometry;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.SectionedDocument;
@@ -26,7 +26,6 @@ import com.mirakyux.export4j.text.ParagraphLayout;
 
 /** Resolves inline hyperlink boxes from final line ink, including continuation pages and bidi positions. */
 final class InlineHyperlinks {
-    private record Range(int start, int end, ExternalDestination target) { }
     private record Source(String text, List<InlineText> inlines, double step, Point origin, ParagraphLayout layout,
             SemanticFragments.Text context) { }
     private InlineHyperlinks() { }
@@ -69,55 +68,9 @@ final class InlineHyperlinks {
                 });
                 for (var paragraph : sources) {
                     ExecutionContext.checkpoint();
-                    List<Range> targets = new ArrayList<>();
-                    int base = 0;
-                    for (var inline : paragraph.inlines()) {
-                        if (!inline.hyperlink().isEmpty()) { targets.add(new Range(base, base + inline.text().length(), new ExternalDestination(inline.hyperlink()))); }
-                        base += inline.text().length();
-                    }
-                    for (var line : paragraph.layout().lines()) {
-                        ExecutionContext.checkpoint();
-                        double x = paragraph.origin().x() + line.offsetX();
-                        double height = paragraph.step();
-                        double y = paragraph.origin().y() + line.baselineY() - paragraph.layout().lines().getFirst().baselineY();
-                        for (var image : line.images()) {
-                            var item = image.image();
-                            if (!item.hyperlink().isEmpty()) {
-                                append(result, maxLinks, new DocumentExtras.ExternalLink(page.pageIndex() + pageOffset,
-                                    new Rect(x + image.x(), paragraph.origin().y() + line.baselineY() + item.baselineShift() - item.height(), item.width(), item.height()), new ExternalDestination(item.hyperlink())), paragraph, image.sourceIndex());
-                            }
-                        }
-                        int source = line.sourceStart();
-                        for (var run : line.runs()) {
-                            for (var glyph : run.glyphs()) {
-                                int end = source + Character.charCount(paragraph.text().codePointAt(source));
-                                for (var range : targets) {
-                                    if (source < range.end() && end > range.start() && glyph.advance() > 0) {
-                                        append(result, maxLinks, new DocumentExtras.ExternalLink(page.pageIndex() + pageOffset, new Rect(x, y, glyph.advance(), height), range.target()), paragraph, source);
-                                    }
-                                }
-                                x += glyph.advance(); source = end;
-                            }
-                        }
-                        for (var outline : line.outlines()) {
-                            int end = source + outline.logicalText().length();
-                            double left = Double.POSITIVE_INFINITY;
-                            double right = Double.NEGATIVE_INFINITY;
-                            for (var segment : outline.segments()) {
-                                for (int i = 0; i < segment.coordinates().size(); i += 2) {
-                                    left = Math.min(left, segment.coordinates().get(i)); right = Math.max(right, segment.coordinates().get(i));
-                                }
-                            }
-                            for (var range : targets) {
-                                if (source < range.end() && end > range.start() && right > left) {
-                                    double from = Math.max(0, x + left);
-                                    double to = Math.min(page.size().width(), x + right);
-                                    if (to > from) { append(result, maxLinks, new DocumentExtras.ExternalLink(page.pageIndex() + pageOffset, new Rect(from, y, to - from, height), range.target()), paragraph, source); }
-                                }
-                            }
-                            source = end;
-                        }
-                    }
+                    InlineLinkGeometry.collect(paragraph.text(), paragraph.inlines(), paragraph.step(),
+                            paragraph.origin(), paragraph.layout(), page.pageIndex() + pageOffset, page.size().width(),
+                            (link, source) -> append(result, maxLinks, link, paragraph, source));
                 }
             }
         }

@@ -108,7 +108,7 @@ def check_bundle(consumer_build_directory=None):
     sbom = json.loads((ROOT / "build/reports/sbom.cdx.json").read_text(encoding="utf-8"))
     require(sbom["bomFormat"] == "CycloneDX" and sbom["specVersion"] == "1.6", "SBOM format differs")
     components = sbom["components"]
-    require(len(components) == len({c["bom-ref"] for c in components}) == 19, "SBOM runtime inventory differs")
+    require(len(components) == len({c["bom-ref"] for c in components}) == 23, "SBOM runtime inventory differs")
     own = [c for c in components if c["group"] == "com.mirakyux.export4j"]
     require(len(own) == 15 and {"export4j-adapter-template", "export4j-adapter-pdf", "export4j-adapter-web"} <= {c["name"] for c in own}, "SBOM library count differs")
     with (ROOT / "third-party/dependencies.csv").open(encoding="utf-8", newline="") as source:
@@ -118,6 +118,8 @@ def check_bundle(consumer_build_directory=None):
             continue
         key = f'{component["group"]}:{component["name"]}:{component["version"]}'
         require(reviewed[key]["scope"] == "runtime" and reviewed[key]["sha256"] == component["hashes"][0]["content"], f"external SBOM artifact differs: {key}")
+        expected_license = "BSD-2-Clause" if component["group"] == "org.commonmark" else "MIT" if component["group"] == "org.jsoup" else "Apache-2.0"
+        require(component["licenses"] == [{"license": {"id": expected_license}}], f"external SBOM license differs: {key}")
     repo = ROOT / "build/repository/com/mirakyux/export4j"
     def published(name, version, extension, classifier=""):
         directory = repo / name / version
@@ -147,7 +149,7 @@ def check_bundle(consumer_build_directory=None):
         require(pointer.exists(), "run verify_local_consumer.ps1 first or pass --consumer-build-directory")
         consumer_build_directory = Path(pointer.read_text(encoding="utf-8").strip())
     libraries = (consumer_build_directory / "resolved-libraries.txt").read_text().splitlines()
-    require(len(libraries) == 19 and set(libraries) == {f'{c["group"]}:{c["name"]}:{c["version"]}' for c in components}, "isolated consumer dependencies differ")
+    require(len(libraries) == 23 and set(libraries) == {f'{c["group"]}:{c["name"]}:{c["version"]}' for c in components}, "isolated consumer dependencies differ")
     consumer = consumer_build_directory / "output"
     require("CONSUMER-OK-123" in extracted(consumer / "consumer.pdf"), "consumer PDF text differs")
     require(WordDocument(consumer / "consumer.docx").paragraphs[0].text == "CONSUMER-OK-123", "consumer DOCX differs")
@@ -188,7 +190,7 @@ def check_bundle(consumer_build_directory=None):
     with ZipFile(examples_jar) as archive:
         for name in ("NotoNaskhArabic-Regular.ttf", "NotoNaskhArabic-OFL.txt", "NotoSansDevanagari-Regular.ttf", "NotoSansThai-Regular.ttf"):
             require(archive.read("fonts/" + name) == (ROOT / "assets/fonts" / name).read_bytes(), f"packaged Arabic font/license differs: {name}")
-    return {"runtimeComponents": 19, "libraries": 15, "bomConstraints": len(managed), "isolatedConsumer": "passed"}
+    return {"runtimeComponents": len(components), "libraries": 15, "bomConstraints": len(managed), "isolatedConsumer": "passed"}
 
 
 def main():

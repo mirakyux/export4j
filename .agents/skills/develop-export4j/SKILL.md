@@ -33,8 +33,8 @@ description: '开发、修复或重构 Export4j 的 Java 模型、字体、布�
 | `export4j-backend-pdf`／`export4j-backend-svg`／`export4j-backend-raster` | 消费最终绘制结果，不重新布局 |
 | `export4j-adapter-docx` | 语义 DOCX 导入／导出，使用 JDK ZIP 与安全 XML |
 | `export4j-adapter-template` | 离线 XML／Markdown 到既有模板模型 |
-| `export4j-adapter-web` | 语义 HTML／Markdown 导出、逐功能损失策略及有界原子输出 |
-| `export4j-adapter-pdf` | 有界静态 PDF 处理，内部封装 PDFBox |
+| `export4j-adapter-web` | 离线 HTML/CSS／Markdown 子集导入、语义导出、逐功能损失及有界原子输出 |
+| `export4j-adapter-pdf` | 有界 PDF 页／被动对象编辑、组合、渲染提取、优化、脱敏及语义恢复；内部封装 PDFBox |
 | `export4j-bom`／`examples` | 制品版本对齐／可运行示例，核心不反向依赖它们 |
 
 具体依赖以各模块 `build.gradle.kts` 为准；该表不允许跨越既有依赖边界。

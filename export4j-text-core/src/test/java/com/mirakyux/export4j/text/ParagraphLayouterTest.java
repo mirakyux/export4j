@@ -21,6 +21,18 @@ import com.mirakyux.export4j.font.GlyphMetrics;
 import com.mirakyux.export4j.font.TrueTypeFontLoader;
 
 class ParagraphLayouterTest {
+    @Test void variableLineWidthsPreserveOriginalIndicesAndUseEachLinesOwnAlignmentSpace() {
+        var face = fixture(latin, cp -> true, new FontMetrics(.8, .2, 0));
+        var spans = List.of(new StyledSpan("ABCDEFGHIJKL", com.mirakyux.export4j.font.FontGroup.strict(List.of(face)), 10, -1, 0, false, false));
+        var result = new ParagraphLayouter().layout(spans, 40, STYLE, line -> line % 2 == 0 ? 20 : 40);
+        assertEquals(List.of("AB", "CDEF", "GH", "IJKL"), texts(result));
+        assertEquals(List.of(0, 2, 6, 8), result.lines().stream().map(TextLine::sourceStart).toList());
+        assertEquals(List.of(2, 6, 8, 12), result.lines().stream().map(TextLine::sourceEnd).toList());
+        for (double invalid : List.of(0.0, -1.0, Double.NaN, 41.0)) {
+            assertThrows(IllegalArgumentException.class, () -> new ParagraphLayouter().layout(spans, 40, STYLE, line -> invalid));
+        }
+    }
+
     @Test void justificationExpandsSpacesOrCjkGapsOnlyOnSoftWrappedLines() {
         var face = fixture(latin, cp -> true, new FontMetrics(.8, .2, 0));
         var style = STYLE.withAlignment(TextAlignment.JUSTIFY);

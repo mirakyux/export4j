@@ -25,7 +25,7 @@ headerCells 接受真实表头格；原 header(String...) 保持。普通文字�
 
 TableRow.cells() 是压缩的真实内容列表。例如 [A(span=2), B(span=1)] 中，B 的列表下标为 1，物理起始列为 2。columnCount() 返回覆盖列数；cellAtColumn(1) 返回 A，cellAtColumn(2) 返回 B，越界抛 IndexOutOfBoundsException。IR 的 CellFragment.columnIndex、异常及诊断使用物理起始列；原文位置仍是格内 UTF-16。
 
-合并宽度等于覆盖列宽之和，左右内边距仅扣一次，内部不生成假格边框。固定／比例列可合并；覆盖任何 Auto 列的合并格明确失败，其他未合并 Auto 列保持。源代码点／图片和测量按真实锚点一次处理；DocumentLayoutLimits.maxCells 继续计所有覆盖网格槽，不能用合并绕过结构上限。
+合并宽度等于覆盖列宽之和，左右内边距仅扣一次，内部不生成假格边框。固定／比例／有界 Auto 列可合并，首选宽度探测与显式最小／最大约束见[自动列合并 API](automatic-merged-columns-api.md)。源代码点／图片和测量按真实锚点一次处理；DocumentLayoutLimits.maxCells 继续计所有覆盖网格槽，不能用合并绕过结构上限。
 
 默认整行移动；显式 allowRowSplit 仍按完整文字行拆分，保留 firstLineIndex、continuedRow、图片及字段的原始位置。相邻行允许不同跨度结构。SemanticTable、短区域、连续栏和网格中的语义表格复用同一核心算法，字段按实际物理页解析，外链用最终矩形。
 
@@ -37,6 +37,6 @@ DOCX 写标准 w:gridSpan，保留 tblGrid 物理列和一个锚点一个 w:tc�
 
 ## 边界与迁移
 
-阶段二十五的列合并切面不包含语义 rowSpan；后续标准 vMerge 与二维来源见[跨行合并 API](row-spans-api.md)。嵌套表格、跨 Auto 合并、横向分页或 StreamingTable 合并仍不支持。复杂 Word 表格的旧 hMerge、省略槽及未知结构仍按严格损失边界处理，不能推断几何或扁平化内容后称为无损。
+阶段二十五的列合并切面不包含语义 rowSpan；后续标准 vMerge 与二维来源见[跨行合并 API](row-spans-api.md)。递归块格见[块格 API](block-cells-api.md)。横向分页仍不支持；StreamingTable 已支持[固定列横向合并](streaming-table-api.md#固定列横向合并)，纵向合并继续拒绝。复杂 Word 表格的旧 hMerge、省略槽及未知结构仍按严格损失边界处理，不能推断几何或扁平化内容后称为无损。
 
 阶段二十五将 TableCell 由五项 record 变为六项，旧构造调用与 accessor 保留；后续 rowSpan 将其扩为七项。record 解构参数数目和反射 shape 改变，调用方需重新编译并调整解构模式。没有新增依赖、字体或隐式资源访问。

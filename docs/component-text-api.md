@@ -48,4 +48,6 @@ Builder 默认继承段落几何，可逐项设置／恢复 `lineHeight`、`alig
 - 诊断和错误索引使用拼接原文的 UTF-16 偏移，角色保留各自缺字策略。
 - 列表不可变；字体和子组件按原契约借用，作用域不关闭它们、不执行 I/O。
 
-完整富文本分页、默认角色／颜色级联、XML 页区、页区语义表格及 PDF/UA 不在本单元范围。共享复杂文字仍受[文字语料](text-corpus-api.md)所列阅读器兼容边界约束。实现取舍见 [ADR-0045](adr/0045-component-text-authoring.md)，证据见[阶段三十八](verification/phase-38-component-text.md)。
+`rich.flow()` 返回使用相同运行快照的 `RegionFlow`，可放入 FlowColumn、GridTable 和 ContinuousColumns。`flow(PaginationPolicy)` 显式控制孤行，拒绝块邻接标志；段落在固定区域宽度塑形一次，再按完整行取片，首行缩进不在续栏重置。默认 `layout` 仍为原子组件。分页证据见[阶段五十七](verification/phase-57-recursive-tables.md)。
+
+默认角色／颜色级联及 PDF/UA 仍有独立契约。共享复杂文字仍受[文字语料](text-corpus-api.md)所列阅读器兼容边界约束。固定富文本设计见 [ADR-0045](adr/0045-component-text-authoring.md)，原子子集证据见[阶段三十八](verification/phase-38-component-text.md)。

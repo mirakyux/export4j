@@ -8,6 +8,7 @@ import com.mirakyux.export4j.layout.core.Component;
 import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.layout.core.PageableComponent;
 import com.mirakyux.export4j.model.ExecutionContext;
 
@@ -64,5 +65,46 @@ final class ComponentSupport {
             previous = region;
         }
         return fragments;
+    }
+
+    static List<RegionFlow.Fragment> variableRegions(Component content, ComponentContext context, FlowRegions regions, List<Double> widths) {
+        widths = variableWidths(context, regions, widths);
+        List<RegionFlow.Fragment> values;
+        if (content instanceof WidthAwareRegionFlow flow) {
+            values = flow.layoutVariableRegions(context, regions, widths);
+        } else if (content instanceof PageableComponent) {
+            throw new IllegalArgumentException("pageable child does not support variable region widths");
+        } else {
+            int region = 0;
+            while (true) {
+                ExecutionContext.checkpoint();
+                double width = widths.get(region % widths.size());
+                var layout = content.layout(context.viewport(width, regions.continuationHeight()));
+                fits(layout.width(), layout.height(), context.viewport(width, regions.continuationHeight()));
+                if (layout.height() <= Math.nextUp(regions.height(region))) {
+                    values = List.of(new RegionFlow.Fragment(region, layout)); break;
+                }
+                if (region >= regions.initialHeights().size()) { throw new IllegalArgumentException("atomic child exceeds continuation region"); }
+                region++;
+            }
+        }
+        var result = regionFragments(values, context, regions);
+        for (var fragment : result) {
+            fits(fragment.layout().width(), fragment.layout().height(), context.viewport(
+                    widths.get(fragment.regionIndex() % widths.size()), regions.height(fragment.regionIndex())));
+        }
+        return result;
+    }
+
+    static List<Double> variableWidths(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        fits(context.width(), regions.continuationHeight(), context);
+        var snapshot = List.copyOf(widths);
+        if (snapshot.isEmpty() || snapshot.size() > 16) { throw new IllegalArgumentException("invalid variable region width count"); }
+        for (double width : snapshot) {
+            if (!Double.isFinite(width) || width <= 0 || width > Math.nextUp(context.width())) {
+                throw new IllegalArgumentException("variable region width must fit the viewport");
+            }
+        }
+        return snapshot;
     }
 }

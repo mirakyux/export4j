@@ -2,7 +2,7 @@
 
 组件 `GridTable` 后续已支持连续分栏的逐栏表头和合并行组分配，见[混合分栏 API](mixed-columns-api.md)。以下语义 `Table` 的行拆分／来源契约保持独立。
 
-当前表格支持固定／比例／有界自动列宽、文本／富文本／行内图像／动态字段单元格、行列合并、内边距、自动行高、整行／连通行组跨页及重复表头。合并同时贯通静态模板和标准 DOCX gridSpan／vMerge，见[列合并指南](column-spans-api.md)和[跨行合并指南](row-spans-api.md)；合并覆盖 Auto 仍拒绝。表格和段落共用有序文档块，字体栈由调用方显式提供。模型只依赖 JDK，布局不写文件，PDF 后端不参与尺寸计算。
+当前表格支持固定／比例／有界自动列宽、文本／富文本／行内图像／动态字段单元格、行列合并、内边距、自动行高、整行／连通行组跨页及重复表头。合并同时贯通静态模板和标准 DOCX gridSpan／vMerge，见[列合并指南](column-spans-api.md)和[跨行合并指南](row-spans-api.md)；普通文本合并覆盖 Auto 见[自动列合并 API](automatic-merged-columns-api.md)，块格／内表仍有独立限制。表格和段落共用有序文档块，字体栈由调用方显式提供。模型只依赖 JDK，布局不写文件，PDF 后端不参与尺寸计算。
 
 ## 运行示例
 
@@ -46,7 +46,7 @@ var source = new Document(DocumentMetadata.EMPTY, PageSettings.A4,
 
 ## 列宽、内边距与行高
 
-跨行合并先满足单行格的高度，再按跨度／行／列顺序补足合并约束；覆盖行不重复添加 padding。纵向连通组首批整体移页／移区，不能与 allowRowSplit 组合；无纵向合并的完整行拆分保持。具体零基础行、IR 省略覆盖行、来源和迁移规则见[跨行合并指南](row-spans-api.md)。
+跨行合并先满足单行格的高度，再按跨度／行／列顺序补足合并约束；覆盖行不重复添加 padding。纵向连通组默认整体移页／移区，显式 allowRowSplit 可按原始 owner 续排；无纵向合并的完整行拆分保持。具体零基础行、IR 省略覆盖行、来源和迁移规则见[跨行合并指南](row-spans-api.md)。
 
 | 配置 | 行为 |
 | --- | --- |
@@ -78,7 +78,7 @@ var source = new Document(DocumentMetadata.EMPTY, PageSettings.A4,
 5. 默认任一正文行加表头高于新页内容区域时失败；开启拆行时，表头与最小文字片段必须放入新页，否则失败。
 6. 表前表后间距与相邻段落间距相加；页边缘间距舍弃。续页不重新应用表前间距。
 
-这套规则允许页尾留白，但保证正文文字按原顺序出现一次。语义 `Table` 支持列合并，尚不提供行合并、表格整体保持、最少正文行数、嵌套或横向分页。`TableCell.rich(inlines, format)` 支持行内角色、颜色、上下标和装饰，`TableCell.mixed(content, format)` 支持行内 PNG／JPEG；外链由最终行片段解析，图片续页及重复表头见[图像 API](inline-images-api.md)。需要组件跨行合并及任意块图文格时使用 `GridTable`，见[进阶 API](advanced-api.md#可跨页组件与合并表格)；其来源不同于语义表格，完整行续排须显式开启。显式拆行的 `CellFragment.firstLineIndex` 与 `TableRowFragment.continuedRow` 保留续页身份，旧构造器仍默认从第 0 行开始且非续行。
+这套规则允许页尾留白，但保证正文文字按原顺序出现一次。语义 `Table` 支持列合并，支持行合并和[有界递归块格／内表](block-cells-api.md)，尚不提供表格整体保持、最少正文行数或横向分页。`TableCell.rich(inlines, format)` 支持行内角色、颜色、上下标和装饰，`TableCell.mixed(content, format)` 支持行内 PNG／JPEG；外链由最终行片段解析，图片续页及重复表头见[图像 API](inline-images-api.md)。需要组件跨行合并及任意块图文格时使用 `GridTable`，见[进阶 API](advanced-api.md#可跨页组件与合并表格)；其来源不同于语义表格，完整行续排须显式开启。显式拆行的 `CellFragment.firstLineIndex` 与 `TableRowFragment.continuedRow` 保留续页身份，旧构造器仍默认从第 0 行开始且非续行。
 
 ## 布局来源与绘制
 
@@ -126,3 +126,5 @@ new com.mirakyux.export4j.layout.core.DocumentLayoutLimits(
 `ParagraphFragment.paragraphIndex()` 是原文档块索引，混合文档中可能不连续；`blockId()` 和 `blockIndex()` 是统一入口。异常原有的 `paragraphId()`／`paragraphIndex()` 是块 ID／索引别名，表格失败也返回表格标识。
 
 这是尚未发布的 `0.1.0-SNAPSHOT` 公共契约演进。Record 组件与泛型类型发生变化，不能据此宣称任意反射代码或已有二进制完全兼容。设计见 [ADR-0005](adr/0005-basic-tables.md)，实际证据见[表格验收](verification/phase-3-tables.md)。
+
+行内内容内表支持父格实际宽度下的[有界自动列](nested-automatic-tables-api.md)；含块格表自身的 Auto 仍拒绝，不能把此能力扩大为任意块树首选宽度或单向源自动列。

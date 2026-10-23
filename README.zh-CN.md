@@ -7,6 +7,8 @@ A Java Document Layout and Generation Engine
 
 Export4j 是用于生成报告和结构化文档的开源 Java 引擎。通过链式 Java API 或离线 XML 模板编写内容，由共享布局引擎生成 PDF、SVG 和 PNG；独立适配器将文档语义映射为 DOCX 子集、自包含 HTML 和 CommonMark/GFM Markdown。
 
+[统一转换](docs/document-conversion-api.md)串联受支持的 Markdown、HTML/CSS、DOCX 导入和 [PDF 语义恢复](docs/pdf-semantic-import-api.md)，再编辑、预检损失并导出。DOCX 另有[样式级联](docs/docx-style-import-api.md)及[保留原包的文字编辑](docs/docx-editing-api.md)，具体边界分别登记。
+
 **当前处于早期开发阶段，尚未发布稳定制品，API 可能调整。** 受支持的 PDF 报告和密集静态表单已具备限定范围的试用条件，具体证据与限制见[就绪评估](docs/readiness-assessment.md)和[能力矩阵](docs/capabilities-api.md)。
 
 - Java 21 LTS · Gradle Wrapper · Apache-2.0。
@@ -33,16 +35,18 @@ Export4j 是用于生成报告和结构化文档的开源 Java 引擎。通过�
 
 | 领域 | 当前能力 |
 | --- | --- |
-| 文档编写 | 链式 Builder、标题、段落、富文本、列表、可复用主题与命名样式 |
+| 文档编写 | 链式 Builder、标题、段落、富文本、列表、全局及分域字体／颜色主题与命名样式 |
 | 文字与字体 | 显式字体组及真实变体、缺字策略、基于 JDK 的 OpenType 塑形、双向文本、两端对齐和可选严格中文禁则子集 |
-| 页面布局 | 自动分页、分节、页眉页脚、页面背景、多栏、矩形绕排及区域流组件 |
-| 表格 | 重复表头、受支持的自动列宽、跨行／跨列合并、显式拆行续页、多段单元格及两层原子内表 |
+| 页面布局 | 自动分页、分节、页眉页脚、页面背景、等宽／变宽文字栏与平衡、矩形绕排及区域流组件 |
+| 表格 | 重复表头、受支持的自动列宽、跨行／跨列合并、显式拆行续页、多段单元格、有界递归内表及行内内容自动列宽、纵向合并续排及不同栏宽的原子语义行 |
 | 图片与绘制 | 行内 PNG／JPEG、矢量路径、形状、水印及受限离线 SVG 输入子集 |
 | 导航与表单 | 目录、书签、链接、评论、页码／引用字段、脚注续页、静态表单组件及四类基础可编辑 PDF 字段 |
-| 模板 | 离线 XML 变量、条件、循环、动态行、主题、静态页面配置、图文／表格页眉页脚、分节、平面 include 和字段；严格轻量 Markdown |
+| 模板 | 离线 XML 变量、条件、循环、动态行、主题、静态页面配置、图文／表格页眉页脚、分节、有界递归 include、动态链接和字段；严格轻量 Markdown |
 | 输出格式 | PDF、自包含 SVG、PNG 单页／ZIP、DOCX 语义子集、HTML 和 Markdown |
-| PDF 处理 | 有界静态页检查、文字提取、选页及合并；AES-256 输出、PDF/A-2b 子集及外部 detached CMS 签名回调 |
-| 长表与执行控制 | 单向普通／富文本行源、同步逐页输出、资源预算、取消、超时、结构化诊断和原子路径写入 |
+| PDF 处理 | 页级编辑／叠加、被动表单／评论／导航／附件、对象关系重映射合并、PNG／JPEG 渲染、图片提取、实测优化、受限文字替换及新建图片 PDF 脱敏；各有明确输入子集 |
+| 导入与编辑 | Markdown／HTML/CSS／DOCX 子集、显式表格网格的 PDF 几何恢复、不可变语义编辑、DOCX 原包文字编辑及结构化损失预检／结果报告 |
+| PDF 安全与标准 | AES-256 输出、PDF/A-2b 子集、外部 detached CMS 签名、三档 DocMDP 认证及显式签名字节完整性校验 |
+| 长表与执行控制 | 单向普通／富文本／图片行源、被动外链、横向合并、完整行续页、实际页码／准确总数校验和同步逐页输出、资源预算、取消、超时、结构化诊断和原子路径写入 |
 
 各项能力都有明确边界。组件网格、语义表格和单向长表分别服务不同契约，选择入口时参阅[编写指南](docs/authoring-api.md)、[链式 API](docs/fluent-api.md)与[长表指南](docs/streaming-table-api.md)。
 
@@ -73,12 +77,19 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java 编写、文字排版与语义 DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告模板与数据绑定 |
+| `:examples:pageOverlays` | `examples/build/page-overlays/` | XML 背景／前景、可见遮挡关系及明确转换损失 |
 | `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | XML 页眉页脚主题，以及含目录的最终页码 |
 | `:examples:xmlSections` | `examples/build/xml-sections/` | 图片／表格页区、分节纸张／页码和原生 DOCX 严格往返 |
 | `:examples:webExports` | `examples/build/web-exports/` | HTML／Markdown、嵌入图片及按功能报错／警告／忽略 |
+| `:examples:documentConversion` | `examples/build/document-conversion/` | 导入、编辑、实际损失预检和四格式输出 |
+| `:examples:pdfObjectEditing` | `examples/build/pdf-object-editing/` | 被动字段／对象及关系重映射选页／合并 |
+| `:examples:pdfContentEditing` | `examples/build/pdf-content-editing/` | 真实文字替换及新建纯图片 PDF 的区域脱敏 |
+| `:examples:pdfSemanticImport` | `examples/build/pdf-semantic-import/` | 恢复 PDF 标题、显式表格和图片，再编辑与转换 |
 | `:examples:production` | `examples/build/production/` | 分页、分栏、绕排、表格与多格式输出 |
 | `:examples:staticForms` | `examples/build/static-forms/` | 密集静态表单与矢量控件 |
 | `:examples:streamingTable` | `examples/build/streaming-table/` | 单向长表输出 |
+| `:examples:variableTables` | `examples/build/variable-tables/` | 按实际栏宽布局的语义行、合并 owner 和原子嵌套格 |
+| `:examples:verifyPdfSignatures` | `examples/build/pdf-signature-verification/` | 显式离线 CMS 校验、未签追加及签名字节篡改区分 |
 
 示例显式加载仓库内固定字体，运行时不下载字体。核心库不携带这些示例字体，来源与许可见[字体资源](assets/fonts/README.md)。
 
@@ -148,7 +159,7 @@ public class QuickStart {
 
 模板编译到既有文档模型。资源须显式登记，所有分支都会在编译时检查，编译器不自行读取文件或网络资源；未知语法和不安全 XML 明确拒绝。
 
-XML 支持独立主题的图文／表格页眉页脚及最终页码字段。单节使用 `template.renderWithPageRegions(data)`，分节使用 `template.renderSections(data)`，可配置各节纸张、页码和页区继承／覆盖。两者均可交给 `engine.export(document)`，也能导出原生 DOCX 页眉页脚。见[页区](docs/xml-page-regions-api.md)、[分节](docs/xml-sections-api.md)和 [DOCX 映射](docs/docx-page-regions-api.md)。
+XML 支持独立主题的图文／表格页眉页脚及最终页码字段。单节使用 `template.renderWithPageRegions(data)`，分节使用 `template.renderSections(data)`，可配置各节纸张、页码和页区继承／覆盖。静态默认／首页／偶数页区按显示页码选择，包含显式空首页，见[页区变体](docs/page-variants-api.md)。[XML 背景／前景框](docs/page-overlays-api.md)支持固定位置、独立主题和最终字段。两者均可交给 `engine.export(document)`，也能导出原生 DOCX 页眉页脚。见[页区](docs/xml-page-regions-api.md)、[分节](docs/xml-sections-api.md)和 [DOCX 映射](docs/docx-page-regions-api.md)。
 
 参阅 [XML 指南](docs/xml-template-api.md)、[纸张与边距](docs/xml-page-settings-api.md)、[完整报告模板](examples/src/main/resources/templates/report.xml)和[Java 调用](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java)。
 
@@ -174,14 +185,15 @@ HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出
 
 | 格式 | 当前范围 |
 | --- | --- |
-| PDF | 主要报告输出，支持已声明的导航、表单及安全能力；另有受限静态页适配器 |
+| PDF | 报告输出；另有受限页／对象编辑、渲染、优化、脱敏与语义恢复入口，见 [PDF 指南](docs/pdf-adapter-api.md) |
 | SVG／PNG | 复用共享 Display List 的静态输出；非空交互数据明确拒绝 |
 | DOCX | 明确的语义子集，包含受支持文字、表格、图片、编号、字段和各节默认页眉页脚；不支持项按策略拒绝或返回诊断 |
-| HTML | 语义 HTML5、内联 CSS、嵌入图片、合并／嵌套表格及显式损失策略 |
+| HTML | 语义 HTML5 导出和离线元素／CSS 子集导入；嵌入／显式图片、受支持合并／嵌套表格及显式损失策略 |
 | Markdown 输出 | CommonMark/GFM 内容；不支持的几何／结构按报错、警告或忽略策略处理 |
-| XML／Markdown 输入 | 有明确语法和预算的离线编写输入；XML 不等同于 HTML/CSS |
+| 输入与编辑 | 离线 XML／严格 Markdown 模板；通用 Markdown／HTML/CSS／DOCX 子集和受限 PDF 语义恢复；[统一转换](docs/document-conversion-api.md)含编辑、损失预检和结果报告 |
 
 - 不保证一般 Word 文档无损往返，也不保证 DOCX 与 PDF 分页相同。
+- PDF 恢复按文字行推断段落／标题，表格须显式提供网格。脱敏会将全页光栅化并移除源对象，损失文字搜索及矢量编辑；调用方须列出全部敏感区域。
 - 复杂文字、提取、搜索与选择受已测脚本和阅读器范围约束，不宣称完整 OpenType、完整 Unicode 分段或 PDF/UA 合规。
 - PDF/A 文件需要独立合规验证；签名要求调用方提供外部签名器，项目不捆绑私钥。
 - 固定字段与原子内容必须放入预留区域，不通过隐式缩小或裁切处理不支持的内容。
@@ -192,10 +204,10 @@ HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出
 
 以下能力仍未完整实现，不属于当前已支持特性：
 
-- 完整字体角色／颜色级联、更多页区变体，以及 XML 背景／前景声明。
-- 连续富文本组件和更广泛的单元格递归续排。
+- 更广页面图层组合、DOCX 图层映射及跨阅读器验收。
+- 半行及组件网格跨变宽栏续排，以及更广泛的页面浮动布局。
 - 更多复杂脚本与阅读器互操作，包括搜索和文本选择。
-- 有明确范围的 HTML/CSS 输入与可视化模板设计器。
+- 更广 HTML/CSS 兼容与可视化模板设计器。
 - 稳定公共 API、Maven Central 分发及可重复的跨平台发布验证。
 
 优先级、已有子集与验收条件以[能力缺口表](docs/capability-gaps.md)、[剩余计划](docs/remaining-capabilities-plan.md)和[研发路线](docs/roadmap.md)为准。OCR 不在当前范围内。
@@ -205,7 +217,8 @@ HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出
 ```text
 Document Model → Layout Engine → Layout IR → Display List → PDF / SVG / Raster
 DOCX / OOXML  ↔ DOCX Adapter   ↔ Document Model
-Document Model → Web Adapter → HTML / Markdown
+HTML / Markdown ↔ Web Adapter ↔ Document Model
+Existing PDF → Bounded Semantic Recovery → Document Model
 ```
 
 布局引擎负责换行与分页，后端消费最终绘制指令；DOCX 适配器直接处理文档语义。
@@ -236,6 +249,10 @@ Java 根包名与 Gradle group 为 `com.mirakyux.export4j`。依赖边界及设�
 | 表单与导航 | [静态表单](docs/static-forms-api.md) · [可编辑表单](docs/form-styles-api.md) · [行内字段](docs/inline-fields-api.md) |
 | 模板 | [XML](docs/xml-template-api.md) · [Markdown](docs/markdown-template-api.md) · [XML 主题](docs/xml-themes-api.md) |
 | 适配器 | [HTML／Markdown 导出](docs/web-export-api.md) · [DOCX 页区](docs/docx-page-regions-api.md) · [DOCX 字段](docs/docx-fields-api.md) · [静态 PDF](docs/pdf-adapter-api.md) |
+| 编辑 | [语义编辑与损失报告](docs/semantic-editing-api.md) |
+| 转换 | [统一导入、编辑与导出](docs/document-conversion-api.md) · [完整样例](examples/src/main/java/com/mirakyux/export4j/examples/DocumentConversionExample.java) |
+| 导入 | [通用 Markdown](docs/markdown-import-api.md) · [离线 HTML/CSS](docs/html-import-api.md) · [PDF 语义恢复](docs/pdf-semantic-import-api.md)，支持导入后编辑及损失报告 |
+| PDF 编辑 | [页面](docs/pdf-page-editing-api.md) · [对象](docs/pdf-object-editing-api.md) · [合并](docs/pdf-object-composition-api.md) · [渲染／图片](docs/pdf-raster-api.md) · [优化](docs/pdf-optimization-api.md) · [文字](docs/pdf-text-editing-api.md) · [脱敏](docs/pdf-redaction-api.md) |
 | 工程维护 | [开发规约](docs/development.md) · [验收记录](docs/verification) · [发布规范](docs/releasing.md) |
 
 ## 构建与验证
@@ -267,6 +284,7 @@ Export4j 复用了以下开源基础设施与显式提供的字体资源：
 | --- | --- |
 | [Apache PDFBox／FontBox](https://pdfbox.apache.org/) | PDF 后端、受限 PDF 处理与字体解析 |
 | [Apache Commons Logging](https://commons.apache.org/proper/commons-logging/) | PDFBox 传递运行依赖 |
+| [commonmark-java](https://github.com/commonmark/commonmark-java)、[jsoup](https://jsoup.org/) | 离线 Markdown 与 HTML 解析 |
 | [OpenJDK](https://openjdk.org/) | Java 运行时、Java2D／OpenType、ZIP 与 XML 基础设施 |
 | [Gradle](https://gradle.org/)、[JUnit](https://junit.org/) | 构建与 Java 测试 |
 | [pypdf](https://github.com/py-pdf/pypdf)、[pypdfium2](https://github.com/pypdfium2-team/pypdfium2)、[Pillow](https://python-pillow.org/)、[python-docx](https://github.com/python-openxml/python-docx)、[cryptography](https://cryptography.io/)、[Poppler](https://poppler.freedesktop.org/) | 独立格式、渲染与验收工具 |

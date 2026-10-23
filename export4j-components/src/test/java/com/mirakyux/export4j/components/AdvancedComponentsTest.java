@@ -40,6 +40,22 @@ import com.mirakyux.export4j.text.ParagraphStyle;
 
 class AdvancedComponentsTest {
     @Test
+    void firstPageBuilderPreservesBothParitiesForExistingCallers() {
+        var original = new SectionTemplate(header("FIRST"), header("ODD"), header("EVEN"));
+        var replacement = header("REPLACED");
+        var updated = original.toBuilder().first(replacement).build();
+        assertEquals(replacement, updated.page(0, 1));
+        assertEquals(replacement, updated.page(0, 2));
+        assertEquals(original.odd(), updated.page(1, 3));
+        assertEquals(original.even(), updated.page(1, 4));
+        var evenFirst = header("EVEN-FIRST");
+        var specialized = updated.toBuilder().firstEven(evenFirst).build();
+        assertEquals(replacement, specialized.page(0, 1));
+        assertEquals(evenFirst, specialized.page(0, 2));
+        assertEquals(original.first(), original.page(0, 2));
+    }
+
+    @Test
     void fontGroupPolicyPropagatesToContentsBodyNestedComponentsAndPageRegions() {
         var latin = fonts.getFirst();
         var group = com.mirakyux.export4j.font.FontGroup.placeholder(List.of(latin), '?');

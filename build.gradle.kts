@@ -95,6 +95,16 @@ tasks.register("publishLocalBundle") {
 }
 
 val inventoryLibraries = subprojects.filter { it.name != "examples" && it.name != "export4j-bom" }
+val reviewedRuntimeLicenses = mapOf(
+    "org.jsoup:jsoup:1.21.2" to "MIT",
+    "org.apache.pdfbox:pdfbox:3.0.8" to "Apache-2.0",
+    "org.apache.pdfbox:fontbox:3.0.8" to "Apache-2.0",
+    "org.apache.pdfbox:pdfbox-io:3.0.8" to "Apache-2.0",
+    "commons-logging:commons-logging:1.4.0" to "Apache-2.0",
+    "org.commonmark:commonmark:0.24.0" to "BSD-2-Clause",
+    "org.commonmark:commonmark-ext-gfm-tables:0.24.0" to "BSD-2-Clause",
+    "org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0" to "BSD-2-Clause"
+)
 fun jsonQuoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 for (library in inventoryLibraries) {
     library.tasks.register("runtimeInventory") {
@@ -107,10 +117,10 @@ for (library in inventoryLibraries) {
         outputs.file(target)
         doLast {
             val entries = sortedMapOf<String, String>()
-            fun component(group: String, name: String, version: String, file: File): String {
+            fun component(group: String, name: String, version: String, file: File, licenseId: String = "Apache-2.0"): String {
                 val purl = "pkg:maven/$group/$name@$version"
                 val sha = java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
-                return "{\"type\":\"library\",\"bom-ref\":${jsonQuoted(purl)},\"group\":${jsonQuoted(group)},\"name\":${jsonQuoted(name)},\"version\":${jsonQuoted(version)},\"purl\":${jsonQuoted(purl)},\"hashes\":[{\"alg\":\"SHA-256\",\"content\":\"$sha\"}],\"licenses\":[{\"license\":{\"id\":\"Apache-2.0\"}}]}"
+                return "{\"type\":\"library\",\"bom-ref\":${jsonQuoted(purl)},\"group\":${jsonQuoted(group)},\"name\":${jsonQuoted(name)},\"version\":${jsonQuoted(version)},\"purl\":${jsonQuoted(purl)},\"hashes\":[{\"alg\":\"SHA-256\",\"content\":\"$sha\"}],\"licenses\":[{\"license\":{\"id\":${jsonQuoted(licenseId)}}}]}"
             }
             val archive = library.tasks.named<Jar>("jar").get().archiveFile.get().asFile
             val own = "${library.group}:${library.name}:${library.version}"
@@ -119,10 +129,8 @@ for (library in inventoryLibraries) {
                 val id = artifact.moduleVersion.id
                 if (id.group == library.group) continue
                 val key = "${id.group}:${id.name}:${id.version}"
-                if (key !in setOf("org.apache.pdfbox:pdfbox:3.0.8", "org.apache.pdfbox:fontbox:3.0.8", "org.apache.pdfbox:pdfbox-io:3.0.8", "commons-logging:commons-logging:1.4.0")) {
-                    error("Runtime artifact needs a reviewed SBOM license record: $key")
-                }
-                entries[key] = component(id.group, id.name, id.version, artifact.file)
+                val licenseId = reviewedRuntimeLicenses[key] ?: error("Runtime artifact needs a reviewed SBOM license record: $key")
+                entries[key] = component(id.group, id.name, id.version, artifact.file, licenseId)
             }
             target.get().asFile.apply { parentFile.mkdirs(); writeText(entries.values.joinToString("\n"), Charsets.UTF_8) }
         }

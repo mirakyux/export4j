@@ -1,6 +1,6 @@
 # 第三方许可记录
 
-`dependencies.csv` 记录实际锁定的 15 个 Maven 坐标、用途、许可证来源、SHA-256 和证据路径。
+`dependencies.csv` 记录实际锁定的 19 个 Maven 坐标、用途、许可证来源、SHA-256 和证据路径。
 
 `licenses/` 中的文件来自实际依赖 JAR。JSpecify 的 JAR 没有附带许可文件，使用其 v1.0.0 源仓库 LICENSE；JUnit BOM 使用 POM 许可声明和同版本 JUnit 原文。
 

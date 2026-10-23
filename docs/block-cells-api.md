@@ -21,15 +21,17 @@ var table = Table.builder("report")
 
 ## 模型与测量
 
-`TableCell` 的行内与块内容互斥。Builder 的 `text`／`content`／`blocks` 切换分支会替换旧分支，连续 `paragraph`／`table` 则追加块；`TableCell.rich`／`mixed` 是另建行内格的静态工厂。块列表必须非空，仅接受 `Paragraph`／`Table`。根表计第一层，内表计第二层，第三层明确拒绝。真实空段落仍占一个完整行框。
+`TableCell` 的行内与块内容互斥。Builder 的 `text`／`content`／`blocks` 切换分支会替换旧分支，连续 `paragraph`／`table` 则追加块；`TableCell.rich`／`mixed` 是另建行内格的静态工厂。块列表必须非空，仅接受 `Paragraph`／`Table`。根表计第一层，最多 16 层，超过共享深度预算明确拒绝。真实空段落仍占一个完整行框。
 
 先调用 `hasBlocks()` 选择分支。块格的 `text()`／`inlines()`／`images()`／`fields()` 明确抛出 `IllegalStateException`，避免旧代码把多段当作空正文。`blocks()` 返回不可变列表；行内格返回空列表。`columnSpan`／`rowSpan` 在两个分支都有效，覆盖槽仍通过 `TableGrid` 定位真实锚点。
 
-父格按覆盖列宽之和扣一次内边距，内表以父内容宽度解析固定／比例列，不使用整页宽度。格内第一个块的前间距和最后一个块的后间距不计入格高；相邻块的前后间距相加。父子 padding 独立。各叶只塑形一次，完整子树高度进入父行高与纵向跨度约束。
+父格按覆盖列宽之和扣一次内边距，内表以父内容宽度解析固定／比例列及行内内容的有界 Auto 列，不使用整页宽度。格内第一个块的前间距和最后一个块的后间距不计入格高；相邻块的前后间距相加。父子 padding 独立。各叶最终布局一次，Auto 首选探测独立且不重复计费；完整子树高度进入父行高与纵向跨度约束。
 
-当前整个块格及其父连通行组原子移页／移区，适用于正文、`SemanticTable`、`FlowColumn`、`ContinuousColumns` 和网格中的语义插槽。短首区可跳过，完整新区域容不下则失败，不裁切、缩小或无限重试。普通行内父表头可逐区重复；块格出现在重复父表头时拒绝。内表在原子子树内完整呈现，其表头只出现一次。
+默认整个块格及其父连通行组原子移页／移区，适用于正文、`SemanticTable`、`FlowColumn`、`ContinuousColumns` 和网格中的语义插槽。短首区可跳过，完整新区域容不下则失败，不裁切、缩小或无限重试。普通行内父表头可逐区重复；块格出现在重复父表头时拒绝。内表在原子子树内完整呈现，其表头只出现一次。
 
-本批拒绝含块格父表及原子内表的 `Auto` 列宽／`allowRowSplit`、格段 `pageBreakBefore`／`keepWithNext`、格内注释标记、组件块、单向长表源块格及 Markdown 新嵌套语法。XML 已通过[多段格语法](xml-block-cells-api.md)接入同一模型；普通行内表既有拆行路径保持。递归子树续排、纵向组拆分和更深嵌套另行设计。
+显式 `TableFormat.allowRowSplit(true)` 将当前表的格内容按完整段落行和内表片段续排。内表自己的开关独立；开启后逐片重复内表头，关闭后整组移动。纵向 owner 在原始锚点行消费内容，可跨多页，之后延伸到覆盖行；不会复制文字或在同页合并格内加横线。段落 `keepTogether` 和孤行限制保留。短区域和预算失败不提交任何子游标。
+
+[行内内表 Auto](nested-automatic-tables-api.md)已支持；仍拒绝含块格父表的 `Auto` 列宽、格段 `pageBreakBefore`／`keepWithNext`、格内注释标记、组件块、单向长表源块格及 Markdown 新嵌套语法。XML 已通过[多段格语法](xml-block-cells-api.md)接入同一模型；普通行内表既有拆行路径保持。递归续排及纵向组拆分的设计见 [ADR-0065](adr/0065-recursive-semantic-continuation.md)，证据见[阶段五十七](verification/phase-57-recursive-tables.md)。
 
 ## 来源、字段和预算
 
@@ -39,7 +41,7 @@ var table = Table.builder("report")
 
 书签、固定宽度 PAGE／PAGES／页码引用／编号引用和图文外链在最终目录偏移与分节显示页码确定后解析。字段不会改变已排好的行宽、原文范围或分页，预留宽度不足仍失败。格内段落和内表均可作为目标；来源 ID 不等于 PDF 对象编号。
 
-IR `CellFragment` 的内容分为 `Inline`／`Blocks`。子片段坐标相对父格 `textOrigin`，绘制和交互矩形统一累积平移；后端只绘制，不重新排版。旧单段 `layout()`／`firstLineIndex()` 对块格失败，完整行数用返回 `long` 的 `lineCount()`。
+IR `CellFragment` 的内容分为 `Inline`／`Blocks`。`Blocks.sourceBlockIndices()` 保存每个子片段的原始格块序号，无内容续格可返回空列表。子片段坐标相对父格 `textOrigin`，绘制和交互矩形统一累积平移；后端只绘制，不重新排版。旧单段 `layout()`／`firstLineIndex()` 对块格失败，完整行数用返回 `long` 的 `lineCount()`。
 
 ## DOCX 与迁移边界
 

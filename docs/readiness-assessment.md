@@ -1,6 +1,6 @@
 # PDF 报告首版就绪评估
 
-日期：2026-10-16。判断依据为当前源码、[能力缺口表](capability-gaps.md)和阶段三十八至四十的本地验收。OCR 不在当前评估范围内。
+初始评估日期：2026-10-16；能力补充更新：2026-10-23。判断依据为当前源码、[能力缺口表](capability-gaps.md)和各阶段验收。下文阶段三十八至四十的数据保留为该批历史证据。OCR 不在当前评估范围内。
 
 ## 当前结论
 
@@ -16,7 +16,7 @@
 | 精确位置、固定页区、密集静态表单 | GridTable、静态表单组件及 PageTemplate | 合并格、长格续排、矢量选择标记、标签值与填写线；角色作用域和固定富文本无需私有绘制器；[静态表单](static-forms-api.md)、[组件文字](component-text-api.md) |
 | 可编辑 PDF 字段 | 后端中立交互模型与 FormStyle | 四类基础字段、真实字体／当前值／外观检查；固定字号不保证长值完整放入，人工阅读器结果单列；[字段样式](form-styles-api.md) |
 | 业务模板复用 | XmlTemplate 编译到既有 DocumentTemplate | 变量、条件、循环、动态行、静态纸张、主题、平面 include、字段、编号和分域外观；Java 管数据和显式资源；[XML 指南](xml-template-api.md)、[文字默认值](xml-text-defaults-api.md) |
-| 大量固定列文字记录 | StreamingTable／TableRowSource | 普通／纯富文本整行分页、同步逐页交付与资源生命周期；PDFBox 页树仍增长；[长表](streaming-table-api.md) |
+| 大量固定列文字记录 | StreamingTable／TableRowSource | 普通／富文本／图片及被动链接、横向合并、完整行续页、同步交付与资源生命周期；PDFBox 页树仍增长；[长表](streaming-table-api.md) |
 | Word／SVG／PNG 交付 | 各独立适配器或静态后端 | DOCX 为语义子集，SVG／Raster 明确拒绝交互；[支持矩阵](capabilities-api.md) |
 
 普通报告优先从语义入口开始，需要精确固定布局时才进入组件模型。语义 Table 的字段／来源和 DOCX 能力不能由定位 GridTable 名称替代；固定富文本也不能冒充自动分页文本。选择入口的这部分复杂度仍存在，但调用方已经能够用链式结构或 XML 看出段落、表格与父子关系，无需普遍手写底层绘制指令。
@@ -37,15 +37,15 @@
 
 | 能力 | 保留边界与后续依据 |
 | --- | --- |
-| 完整主题和更广 XML 页区 | [固定页眉页脚及独立主题](xml-page-regions-api.md)已支持；[图片／表格、XML 分节及 DOCX 默认页区](verification/phase-42-sections-and-docx-regions.md)已验收；完整外观级联及 XML 背景／前景仍开放 |
-| 更复杂表格和连续富文本组件 | 两层原子内表、纵向连通组整体移动已有；更深递归续排、纵向拆组、更多单向流语义和固定富文本自动分页仍需独立设计 |
-| 字体／阅读器／Word 兼容 | 六脚本语料及有界 DOCX 子集已有；一般样式级联、保存回读、跨阅读器提取／选区仍有已知限制 |
-| 长期容量和更多平台 | 本轮没有重做容量采样；历史有限 JVM 样本不能证明长期无泄漏、任意并发或硬 RSS 上限 |
-| PDF 工具与标准 | 静态页处理、受限 PDF/A-2b、外部 CMS 已有；交互编辑、资源优化、PDF/UA、完整 PAdES/LTV 继续开放 |
-| 可视化设计器／HTML-CSS／条码图表 | 尚非现成功能；资源／可信自定义组件可以接入，但不等于这些能力已经实现 |
+| 完整主题和更广 XML 页区 | [固定页眉页脚及独立主题](xml-page-regions-api.md)已支持；[图片／表格、XML 分节及 DOCX 默认页区](verification/phase-42-sections-and-docx-regions.md)已验收；全局／分域外观及 XML 背景／前景已由阶段六十至六十二验收 |
+| 更复杂表格和连续富文本组件 | 16 层语义内表、纵向 owner 续排和连续富文本已有；自动列合并及单向图文／链接／完整行续页已验收；表格跨变宽区、递归组件网格及未来流式语义独立 |
+| 字体／阅读器／Word 兼容 | 六脚本语料、[有限 DOCX 样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已有；一般 Word 无损语义往返、保存回读及跨阅读器提取／选区仍有已知限制 |
+| 长期容量和更多平台 | [同进程并发失败恢复](verification/phase-69-streaming-stability.md)已完成有限运行；不证明长期无泄漏、任意并发或硬 RSS 上限 |
+| PDF 工具与标准 | [页／对象编辑、组合、渲染提取、优化、文字替换、光栅脱敏及语义恢复](pdf-adapter-api.md)的明确子集已验收；任意 PDF 无损编辑、PDF/UA、完整 PAdES/LTV 仍开放 |
+| 可视化设计器／完整浏览器 CSS／条码图表 | [离线 HTML/CSS 子集](html-import-api.md)已有；完整浏览器兼容和其余列举能力尚非现成功能 |
 
 后续优先处理真实试用暴露的阻断和高频编写成本，再扩大独立能力。触发新组合、契约变化或缺陷时重开对应验收；持续保持原子输出、显式字体、损失诊断和开源许可边界。
 
 图文页区／分节补充：见[阶段四十二](verification/phase-42-sections-and-docx-regions.md)。XML、模型页区、PDF 与 DOCX 默认页眉页脚已形成受支持语义闭环；原生 Word 打开及字段更新与保存／PDF 导出各自记录，不由前者推断后者。
 
-内容分发补充：[HTML／Markdown 导出](web-export-api.md)已具备明确子集的使用条件，支持全局与逐功能 ERROR／WARN／IGNORE；合并／嵌套格的 HTML 保留与 Markdown 降级分别验收，见[阶段四十三](verification/phase-43-web-exports.md)。阅读器自行重排，Markdown 的 data 图片／生成标签显示取决于阅读器；不等于 HTML/CSS 输入或全部布局兼容。
+内容分发补充：[HTML／Markdown 导出](web-export-api.md)支持明确损失策略，阅读器自行重排；data 图片／生成标签显示取决于阅读器。后续[通用 Markdown](markdown-import-api.md)和[离线 HTML/CSS](html-import-api.md)子集、[统一导入编辑转换](document-conversion-api.md)及 [PDF 语义恢复](pdf-semantic-import-api.md)已完成专项验收，仍不等于全部布局兼容。编辑／导入／转换批次的完整证据见[执行计划](remaining-capabilities-plan.md)。

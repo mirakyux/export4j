@@ -49,6 +49,49 @@ import com.mirakyux.export4j.text.GlyphRun;
 import com.mirakyux.export4j.text.SimpleTextShaper;
 
 class PdfPageWriterTest {
+    @Test void passivePageLinksUseTopLeftCoordinatesAndCumulativeBudgets() throws IOException {
+        var bytes = new ByteArrayOutputStream();
+        var target = new com.mirakyux.export4j.model.ExternalDestination("https://example.com/link");
+        try (var writer = new PdfBackend().open(DocumentMetadata.EMPTY, bytes)) {
+            for (int page = 0; page < 2; page++) {
+                writer.accept(blank(), List.of(new com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink(page,
+                        new Rect(10, 20, 30, 12), target)));
+            }
+            writer.finish();
+        }
+        try (var pdf = Loader.loadPDF(bytes.toByteArray())) {
+            for (int index = 0; index < 2; index++) {
+                var link = (org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink) pdf.getPage(index).getAnnotations().getFirst();
+                assertEquals(10, link.getRectangle().getLowerLeftX());
+                assertEquals(168, link.getRectangle().getLowerLeftY());
+                assertEquals(target.uri(), ((org.apache.pdfbox.pdmodel.interactive.action.PDActionURI) link.getAction()).getURI());
+            }
+        }
+        for (var limits : List.of(PdfLimits.DEFAULT.toBuilder().maxInteractions(1).build(),
+                PdfLimits.DEFAULT.toBuilder().maxInteractionCodePoints(target.uri().length()).build())) {
+            try (var writer = new PdfBackend(limits).open(DocumentMetadata.EMPTY, new ByteArrayOutputStream())) {
+                writer.accept(blank(), List.of(new com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink(0, new Rect(10, 20, 30, 12), target)));
+                var failure = assertThrows(PdfRenderException.class, () -> writer.accept(blank(), List.of(
+                        new com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink(1, new Rect(10, 20, 30, 12), target))));
+                assertEquals(PdfErrorCode.BUDGET_EXCEEDED, failure.code());
+                assertThrows(IllegalStateException.class, writer::finish);
+            }
+        }
+    }
+
+    @Test void invalidPageLinkIndexAndBoundsTerminateWriterBeforeSaving() throws IOException {
+        var target = new com.mirakyux.export4j.model.ExternalDestination("https://example.com/");
+        for (var link : List.of(new com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink(1, new Rect(10, 20, 30, 12), target),
+                new com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink(0, new Rect(190, 20, 30, 12), target))) {
+            var bytes = new ByteArrayOutputStream();
+            try (var writer = new PdfBackend().open(DocumentMetadata.EMPTY, bytes)) {
+                assertEquals(PdfErrorCode.INVALID_GEOMETRY, assertThrows(PdfRenderException.class,
+                        () -> writer.accept(blank(), List.of(link))).code());
+                assertThrows(IllegalStateException.class, writer::finish);
+            }
+            assertEquals(0, bytes.size());
+        }
+    }
     private static final PageSize SIZE = new PageSize(200, 200);
     private static final TextStyle STYLE = new TextStyle(FontFamily.SANS_SERIF, 12, RgbColor.BLACK);
     private static final DocumentMetadata METADATA = new DocumentMetadata("Paged output", "Export4j test");
@@ -246,16 +289,85 @@ class PdfPageWriterTest {
     }
 
     @Test
-    void encryptionAndArchivalAreRejectedBeforeOpeningASession() throws IOException {
+    void pageOutputAppliesAes256AtFinishAndRetainsPassiveLinksAndBorrowedOutput() throws IOException {
         var encrypted = PdfOptions.DEFAULT.withEncryption(new PdfEncryption("owner".toCharArray(), "reader".toCharArray(),
                 PdfEncryption.Permissions.READ_ONLY));
+        var output = new TrackingOutput();
+        try (var writer = new PdfBackend(PdfLimits.DEFAULT, encrypted).open(METADATA, output)) {
+            writer.accept(text("FIRST"), List.of(new com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink(0,
+                    new Rect(10, 20, 30, 12), new com.mirakyux.export4j.model.ExternalDestination("https://example.com/"))));
+            writer.accept(text("SECOND"));
+            assertEquals(0, output.size());
+            writer.finish();
+        }
+        assertFalse(output.closed);
+        assertThrows(org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException.class, () -> Loader.loadPDF(output.toByteArray()));
+        try (var pdf = Loader.loadPDF(output.toByteArray(), "reader")) {
+            assertEquals(256, pdf.getEncryption().getLength()); assertEquals(2, pdf.getNumberOfPages());
+            assertFalse(pdf.getCurrentAccessPermission().canPrint()); assertFalse(pdf.getCurrentAccessPermission().canModify());
+            assertFalse(pdf.getCurrentAccessPermission().canExtractContent());
+            assertEquals(1, pdf.getPage(0).getAnnotations().size());
+            assertTrue(new PDFTextStripper().getText(pdf).contains("SECOND"));
+        }
+        try (var pdf = Loader.loadPDF(output.toByteArray(), "owner")) { assertTrue(pdf.getCurrentAccessPermission().isOwnerPermission()); }
+    }
+
+    @Test
+    void staticArchivalPageOutputEmbedsFontsAndPreservesItsMetadata() throws IOException {
         var archival = new PdfArchival(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData(), font("LiberationSans-Regular.ttf").data());
-        for (var options : List.of(encrypted, PdfOptions.DEFAULT.withArchival(archival))) {
+        var output = new TrackingOutput();
+        try (var writer = new PdfBackend(PdfLimits.DEFAULT, PdfOptions.DEFAULT.withArchival(archival)).open(METADATA, output)) {
+            writer.accept(glyphPage(font("LiberationSans-Regular.ttf"), "ARCHIVAL")); writer.finish();
+        }
+        assertFalse(output.closed);
+        try (var pdf = Loader.loadPDF(output.toByteArray())) {
+            assertFalse(pdf.isEncrypted()); assertEquals(1, pdf.getNumberOfPages());
+            assertEquals(METADATA.title(), pdf.getDocumentInformation().getTitle());
+            assertEquals(1, pdf.getDocumentCatalog().getOutputIntents().size());
+            assertTrue(new String(pdf.getDocumentCatalog().getMetadata().toByteArray(), java.nio.charset.StandardCharsets.UTF_8)
+                    .contains("pdfaid:conformance=\"B\""));
+            assertTrue(new PDFTextStripper().getText(pdf).contains("ARCHIVAL"));
+        }
+    }
+
+    @Test
+    void archivalPageLinksAndStandardFontsFailAndTerminateWithoutSaving() throws IOException {
+        var archival = new PdfArchival(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData(), font("LiberationSans-Regular.ttf").data());
+        for (boolean link : List.of(false, true)) {
             var output = new TrackingOutput();
-            assertThrows(IllegalArgumentException.class, () -> new PdfBackend(PdfLimits.DEFAULT, options).open(METADATA, output));
+            try (var writer = new PdfBackend(PdfLimits.DEFAULT, PdfOptions.DEFAULT.withArchival(archival)).open(METADATA, output)) {
+                if (link) {
+                    assertThrows(IOException.class, () -> writer.accept(blank(), List.of(
+                            new com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink(0, new Rect(10, 20, 30, 12),
+                                    new com.mirakyux.export4j.model.ExternalDestination("https://example.com/")))));
+                } else { assertThrows(PdfRenderException.class, () -> writer.accept(text("UNEMBEDDED"))); }
+                assertThrows(IllegalStateException.class, writer::finish);
+            }
             assertEquals(0, output.size());
             assertFalse(output.closed);
         }
+    }
+
+    @Test
+    void archivalOutlineAnchorCountsTowardFontBytesAndSharesTheEmbeddedFontIdentity() throws IOException {
+        var face = font("LiberationSans-Regular.ttf");
+        var options = PdfOptions.DEFAULT.withArchival(new PdfArchival(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData(), face.data()));
+        var outline = new DisplayPage(SIZE, List.of(new DrawCommand.OutlineText("AB", List.of(path()), RgbColor.BLACK)));
+        var small = PdfLimits.DEFAULT.toBuilder().maxFontBytes(face.data().byteSize() - 1).build();
+        var output = new TrackingOutput();
+        var backend = new PdfBackend(small, options);
+        assertEquals(PdfErrorCode.BUDGET_EXCEEDED, assertThrows(PdfRenderException.class,
+                () -> backend.write(new DisplayDocument(METADATA, List.of(outline)), output)).code());
+        try (var writer = backend.open(METADATA, output)) {
+            assertEquals(PdfErrorCode.BUDGET_EXCEEDED, assertThrows(PdfRenderException.class, () -> writer.accept(outline)).code());
+            assertThrows(IllegalStateException.class, writer::finish);
+        }
+        assertEquals(0, output.size()); assertFalse(output.closed);
+        var exact = PdfLimits.DEFAULT.toBuilder().maxFontBytes(face.data().byteSize()).build();
+        try (var writer = new PdfBackend(exact, options).open(METADATA, output)) {
+            writer.accept(glyphPage(face, "SHARED FONT")); writer.accept(outline); writer.finish();
+        }
+        try (var pdf = Loader.loadPDF(output.toByteArray())) { assertEquals(2, pdf.getNumberOfPages()); }
     }
 
     @Test

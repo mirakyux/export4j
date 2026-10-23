@@ -96,6 +96,64 @@ public final class PdfAdapter {
 
     public static Builder builder() { return new Builder(); }
 
+    /** Starts real, bounded content-stream replacement in the static page-text subset. */
+    public PdfTextEditor editText(PdfInput input) { return new PdfTextEditor(this, Objects.requireNonNull(input, "input"), limits); }
+
+    /** Starts irreversible raster redaction into a fresh image-only PDF; source objects are not copied. */
+    public PdfRedactor redact(PdfInput input) { return new PdfRedactor(this, Objects.requireNonNull(input, "input"), limits); }
+
+    /** Starts explicit-loss geometric recovery into editable semantic blocks, without OCR. */
+    public PdfSemanticImporter importDocument(PdfInput input) { return new PdfSemanticImporter(this, Objects.requireNonNull(input, "input"), limits); }
+
+    /** Starts bounded, same-format editing of the validated static PDF subset. */
+    public PdfPageEditor editPages(PdfInput input) { return new PdfPageEditor(this, Objects.requireNonNull(input, "input"), limits); }
+
+    /** Same-format passive interactive-object editing; the strict static API keeps its old boundary. */
+    public PdfObjectEditor editObjects(PdfInput input) { return new PdfObjectEditor(this, Objects.requireNonNull(input, "input"), limits); }
+
+    /** Composes ordered page selections with passive objects and explicit source namespaces. */
+    public PdfObjectComposer composeObjects() { return new PdfObjectComposer(this, limits); }
+
+    /** Renders selected CropBox pages to bounded PNG/JPEG candidates; no OCR or implicit font fallback. */
+    public PdfRasterRequest render(PdfSelection selection) { return new PdfRasterRequest(this, Objects.requireNonNull(selection, "selection"), limits); }
+
+    /** Extracts unique image resources reachable from selected pages, including form/pattern resources. */
+    public PdfImageExtractor extractImages(PdfSelection selection) { return new PdfImageExtractor(this, Objects.requireNonNull(selection, "selection"), limits); }
+
+    /** Optimizes a validated passive PDF with separate lossless and opt-in image resampling paths. */
+    public PdfOptimizer optimize(PdfInput input) { return new PdfOptimizer(this, Objects.requireNonNull(input, "input"), limits); }
+
+    public PdfObjects.Snapshot readObjects(PdfInput input) throws IOException { return readObjects(input, ExecutionOptions.DEFAULT); }
+
+    /** Reads a bounded projection of supported passive objects. Never executes actions or loads attachments. */
+    public PdfObjects.Snapshot readObjects(PdfInput input, ExecutionOptions options) throws IOException {
+        Objects.requireNonNull(input, "input");
+        return ExecutionContext.execute(options, () -> {
+            checkInputs(List.of(input));
+            var budget = new PdfPreflight(limits, true);
+            try (var document = open(input, budget)) {
+                if (!document.getCurrentAccessPermission().canExtractContent()) { throw budget.failure(PdfOperationException.Code.PERMISSION_DENIED); }
+                return PdfObjects.inspect(document, limits);
+            }
+        });
+    }
+
+    PDDocument openForEdit(PdfInput input, PdfPreflight budget) throws IOException {
+        checkInputs(List.of(input));
+        var document = open(input, budget);
+        try {
+            if (document.isEncrypted()) {
+                if (!allowDecryptedCopy) { throw budget.failure(PdfOperationException.Code.ENCRYPTED_COPY_REJECTED); }
+                ownerAuthentication(document, budget);
+                document.setAllSecurityToBeRemoved(true);
+            }
+            return document;
+        } catch (IOException | RuntimeException | Error failure) {
+            try { document.close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
     /** Task-confined configuration. Built adapters retain only immutable values. */
     public static final class Builder {
         private PdfLimits limits = PdfLimits.DEFAULT;
@@ -365,7 +423,8 @@ public final class PdfAdapter {
         }
     }
 
-    private PDDocument open(PdfInput input, PdfPreflight budget) throws IOException {
+    PDDocument open(PdfInput input, PdfPreflight budget) throws IOException {
+        if (input.byteSize() > limits.maxInputBytes() || input.byteSize() > limits.maxTotalInputBytes()) { throw budget.failure(PdfOperationException.Code.INPUT_LIMIT); }
         byte[] bytes = input.bytes();
         if (bytes.length < 8 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F' || bytes[4] != '-') {
             throw budget.failure(PdfOperationException.Code.INVALID_PDF);

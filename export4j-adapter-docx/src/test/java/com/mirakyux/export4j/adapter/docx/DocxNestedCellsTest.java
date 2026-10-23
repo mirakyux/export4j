@@ -165,7 +165,9 @@ class DocxNestedCellsTest {
 
     @Test
     void depthAndCellParagraphPaginationCannotBeSilentlyReduced() throws IOException {
-        rejectBoth(table(table(table(p("too deep")))));
+        String deep = p("too deep");
+        for (int level = 0; level <= com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH; level++) { deep = table(deep); }
+        rejectBoth(deep);
         for (String property : List.of("<w:keepNext/>", "<w:pageBreakBefore/>", "<w:pStyle w:val=\"Heading1\"/>",
                 "<w:sectPr/>")) {
             rejectBoth(table("<w:p><w:pPr>" + property + "</w:pPr><w:r><w:t>content</w:t></w:r></w:p>" + p("after")));
@@ -207,8 +209,10 @@ class DocxNestedCellsTest {
         failWrite(single("outer-wide", TableCell.builder().blocks(List.of(wide)).build()));
         var inner = single("inner", new TableCell("inner", CELL));
         var block = TableCell.builder().blocks(List.of(inner)).build();
-        failWrite(new Table("split", List.of(new ColumnWidth.Fraction(1)), List.of(new TableRow(List.of(block))), 0,
-                TableFormat.DEFAULT.toBuilder().allowRowSplit(true).build()));
+        var split = new Table("split", List.of(new ColumnWidth.Fraction(1)), List.of(new TableRow(List.of(block))), 0,
+                TableFormat.DEFAULT.toBuilder().allowRowSplit(true).build());
+        assertEquals(List.of(split), read(new DocxAdapter(), write(new DocxAdapter(), document(List.of(split))),
+                DocxAdapter.Policy.STRICT).document().sections().getFirst().blocks());
         failWrite(new Table("auto", List.of(new ColumnWidth.Auto(10, 200)), List.of(new TableRow(List.of(block))), 0, TableFormat.DEFAULT));
         failWrite(new Table("header", List.of(new ColumnWidth.Fraction(1)),
                 List.of(new TableRow(List.of(block)), new TableRow(List.of(new TableCell("body", CELL)))), 1, TableFormat.DEFAULT));
@@ -216,6 +220,23 @@ class DocxNestedCellsTest {
                 List.of(new TableRow(List.of(new TableCell("header", CELL))), new TableRow(List.of(block))), 1, TableFormat.DEFAULT);
         assertEquals(List.of(ordinaryHeader), read(new DocxAdapter(), write(new DocxAdapter(), document(List.of(ordinaryHeader))),
                 DocxAdapter.Policy.STRICT).document().sections().getFirst().blocks());
+    }
+
+    @Test
+    void inlineNestedAutomaticColumnsPreserveBoundsSpansAndNativeFields() throws IOException {
+        var fieldCell = TableCell.mixed(List.of(new InlineText("PAGE=", InlineStyle.of(12)),
+                field(InlineField.Kind.PAGE, "")), CELL).toBuilder().columnSpan(2).build();
+        var child = Table.builder("automatic-child").columns(new ColumnWidth.Auto(20, 80), new ColumnWidth.Fixed(40))
+                .cellFormat(CELL).row(fieldCell).row("SOURCE", "TAIL").build();
+        var source = single("outer-auto", TableCell.builder().blocks(List.of(child)).build());
+        var adapter = new DocxAdapter();
+        var encoded = write(adapter, document(List.of(source)));
+        assertEquals(List.of(source), read(adapter, encoded, DocxAdapter.Policy.STRICT).document().sections().getFirst().blocks());
+        var xml = new String(parts(encoded).get("word/document.xml"), StandardCharsets.UTF_8);
+        assertEquals(1, count(xml, "od:autoMin=\"20.0\""));
+        assertEquals(1, count(xml, "od:autoMax=\"80.0\""));
+        assertTrue(xml.contains("<w:gridSpan w:val=\"2\""));
+        assertTrue(xml.contains("w:instr=\"PAGE\""));
     }
 
     private static void failWrite(Table table) {

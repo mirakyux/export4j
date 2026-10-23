@@ -41,6 +41,7 @@ import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
 import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.PageRegions;
+import com.mirakyux.export4j.model.PageOverlay;
 import com.mirakyux.export4j.model.PageRegionStyle;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
@@ -53,11 +54,11 @@ import com.mirakyux.export4j.adapter.template.TemplateException.Code;
 
 /** Immutable offline XML template compiler. Each compile owns its parser and state; instances may be shared.
  * Compiles the documented version-1 subset, with no scripts, namespaces, DTDs or implicit I/O.
- * Flat includes use explicitly registered source snapshots, static unique prefixes and no resource loading.
+ * Bounded recursive includes use registered source snapshots, composed unique prefixes and no resource loading.
  * Lengths use points; page settings additionally accept explicit pt/mm/cm/in suffixes.
  * Images are immutable resources supplied explicitly by the caller.
- * Cells contain either inline content or ordered Paragraph/Table blocks, with at most two table levels.
- * Block cells are atomic; mixed content, nested dynamic syntax and block repeating headers are rejected.
+ * Cells contain either inline content or ordered Paragraph/Table blocks, with at most 16 table levels.
+ * Block cells may explicitly continue by complete lines; mixed content, nested dynamic syntax and block headers are rejected.
  * Themes resolve complete defaults and static p/span style names during compilation, before data binding.
  * One optional first, empty page element overrides caller page settings with static point/pt/mm/cm/in lengths.
  * It is restricted to the main source; fragments, branches and repeated content cannot declare page settings.
@@ -72,11 +73,14 @@ import com.mirakyux.export4j.adapter.template.TemplateException.Code;
  * Both operations observe the caller's synchronous ExecutionContext. No font or backend is retained.
  */
 public final class XmlTemplate {
+    /** Maximum active include chain; wrappers do not contribute to final XML tree depth. */
+    public static final int MAX_INCLUDE_DEPTH = 16;
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z_0-9]{0,255}");
     private static final Pattern ID = Pattern.compile("[A-Za-z_][A-Za-z_0-9-]{0,127}");
     private static final Pattern FRAGMENT_NAME = Pattern.compile("[A-Za-z_][A-Za-z_0-9-]{0,63}");
     private static final Pattern PATH = Pattern.compile("[A-Za-z_][A-Za-z_0-9]*(\\.[A-Za-z_][A-Za-z_0-9]*)*");
     private static final Pattern LENGTH = Pattern.compile("([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(pt|mm|cm|in)?");
+    private static final String LINK_REFERENCE_PREFIX = "https://export4j.invalid/.template-link/";
     private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "page-break", "table", "rows");
     private static final Set<String> PARAGRAPH_ATTRIBUTES = Set.of("id", "size", "line-height", "align",
             "keep-together", "space-before", "space-after");
@@ -100,9 +104,13 @@ public final class XmlTemplate {
         theme = builder.theme;
         bodyFormat = builder.bodyFormat;
         cellFormat = builder.cellFormat;
-        bodyText = builder.bodyText;
-        cellText = builder.cellText;
-        headingText = Map.copyOf(builder.headingText);
+        bodyText = builder.bodyText == null ? defaults(theme.bodyText()) : builder.bodyText;
+        cellText = builder.cellText == null ? defaults(theme.cellText()) : builder.cellText;
+        var headings = new HashMap<Integer, TextDefaults>();
+        for (int level = 1; level <= 6; level++) {
+            headings.put(level, builder.headingText.getOrDefault(level, defaults(theme.headingText(level))));
+        }
+        headingText = Map.copyOf(headings);
         images = Map.copyOf(builder.images);
         fragments = Map.copyOf(builder.fragments);
         long inputCharacters = 0;
@@ -110,6 +118,10 @@ public final class XmlTemplate {
         fragmentInputCharacters = inputCharacters;
         limits = builder.limits;
         bindingLimits = builder.bindingLimits;
+    }
+
+    private static TextDefaults defaults(com.mirakyux.export4j.model.TextAppearance value) {
+        return new TextDefaults(value.fontRole(), value.rgb());
     }
 
     /** Independent source and expansion budgets. Input counts main and all registered sources in UTF-16 units.
@@ -306,6 +318,8 @@ public final class XmlTemplate {
         private final SourceBudget sourceBudget = new SourceBudget();
         private final Map<String, Fragment> parsed = new HashMap<>();
         private final Set<String> prefixes = new HashSet<>();
+        private final ArrayDeque<String> loading = new ArrayDeque<>();
+        private final ArrayDeque<String> expanding = new ArrayDeque<>();
         private long elements;
         private long text;
 
@@ -331,8 +345,8 @@ public final class XmlTemplate {
                 } else {
                     var child = (Element) part;
                     if (child.name().equals("include")) {
-                        if (!blockList || !namespace.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
-                        content.addAll(include(child, depth + 1));
+                        if (!blockList) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
+                        content.addAll(include(child, depth + 1, namespace));
                     } else {
                         boolean childList = blockList && Set.of("each", "section", "header", "footer").contains(child.name())
                                 || conditional && (child.name().equals("then") || child.name().equals("else"));
@@ -345,16 +359,45 @@ public final class XmlTemplate {
                     source.line(), source.column(), source.fragmentName(), namespace);
         }
 
-        private List<Part> include(Element call, int depth) {
+        private List<Part> include(Element call, int depth, String parentNamespace) {
             // Charge the include's work, without adding its removed wrapper to final-tree depth.
             countElement(call, 1, null);
             attributes(call, Set.of("ref", "prefix"));
             empty(call);
             String name = fragmentName(call, "ref");
             String prefix = fragmentName(call, "prefix");
+            if (!parentNamespace.isEmpty()) { prefix = qualifiedId(call, parentNamespace, prefix); }
             if (!prefixes.add(prefix)) { throw error(call, Code.INVALID_VALUE); }
+            if (expanding.size() >= MAX_INCLUDE_DEPTH) { throw error(call, Code.BUDGET_EXCEEDED); }
+            var fragment = fragment(name, call);
+            expanding.push(name);
+            try {
+                List<Part> result = new ArrayList<>();
+                for (var part : fragment.root().content()) {
+                    ExecutionContext.checkpoint();
+                    if (part instanceof Text literal) {
+                        if (!literal.value().isBlank()) { throw error(fragment.root(), Code.INVALID_STRUCTURE); }
+                        text += literal.value().codePointCount(0, literal.value().length());
+                        if (text > limits.maxTextCodePoints()) { throw error(call, Code.BUDGET_EXCEEDED); }
+                        result.add(literal);
+                    } else {
+                        var child = (Element) part;
+                        if (child.name().equals("include")) { result.addAll(include(child, depth, prefix)); }
+                        else { result.add(element(child, depth, child.name().equals("each"), child.name().equals("if"),
+                                prefix, fragment.ids(), call)); }
+                    }
+                }
+                return result;
+            } finally { expanding.pop(); }
+        }
+
+        private Fragment fragment(String name, Element call) {
             var fragment = parsed.get(name);
-            if (fragment == null) {
+            if (fragment != null) { return fragment; }
+            if (loading.contains(name)) { throw error(call, Code.INVALID_STRUCTURE); }
+            if (loading.size() >= MAX_INCLUDE_DEPTH) { throw error(call, Code.BUDGET_EXCEEDED); }
+            loading.push(name);
+            try {
                 String source = fragments.get(name);
                 if (source == null) { throw error(call, Code.UNKNOWN_RESOURCE); }
                 var root = read(source, name, sourceBudget, call);
@@ -364,41 +407,46 @@ public final class XmlTemplate {
                 pagePlacement(root, false);
                 fragment = new Fragment(root, fragmentIds(root));
                 parsed.put(name, fragment);
-            }
-            List<Part> result = new ArrayList<>();
-            for (var part : fragment.root().content()) {
-                ExecutionContext.checkpoint();
-                if (part instanceof Text literal) {
-                    if (!literal.value().isBlank()) { throw error(fragment.root(), Code.INVALID_STRUCTURE); }
-                    text += literal.value().codePointCount(0, literal.value().length());
-                    if (text > limits.maxTextCodePoints()) { throw error(call, Code.BUDGET_EXCEEDED); }
-                    result.add(literal);
-                } else {
-                    var child = (Element) part;
-                    result.add(element(child, depth, child.name().equals("each"), child.name().equals("if"),
-                            prefix, fragment.ids(), call));
-                }
-            }
-            return result;
+                return fragment;
+            } finally { loading.pop(); }
         }
+
+        private record IdScan(Element element, boolean blockList, boolean conditional) { }
 
         private Set<String> fragmentIds(Element root) {
             Set<String> result = new HashSet<>();
-            var pending = new ArrayDeque<Element>();
-            pending.push(root);
+            var pending = new ArrayDeque<IdScan>();
+            pending.push(new IdScan(root, true, false));
             while (!pending.isEmpty()) {
                 ExecutionContext.checkpoint();
-                var current = pending.pop();
-                if (current.name().equals("include")) { throw error(current, Code.UNSUPPORTED_ELEMENT); }
+                var scan = pending.pop();
+                var current = scan.element();
+                if (current.name().equals("include")) {
+                    attributes(current, Set.of("ref", "prefix")); empty(current);
+                    String prefix = fragmentName(current, "prefix");
+                    var child = fragment(fragmentName(current, "ref"), current);
+                    for (String id : child.ids()) {
+                        ExecutionContext.checkpoint();
+                        if (!result.add(qualifiedId(current, prefix, id))) { throw error(current, Code.INVALID_VALUE); }
+                        if (result.size() > limits.maxElements()) { throw error(current, Code.BUDGET_EXCEEDED); }
+                    }
+                    continue;
+                }
                 if (BLOCK_ELEMENTS.contains(current.name()) && current.attributes().containsKey("id")) {
                     String id = current.attributes().get("id");
                     if (!ID.matcher(id).matches() || !result.add(id)) { throw error(current, Code.INVALID_VALUE); }
+                    if (result.size() > limits.maxElements()) { throw error(current, Code.BUDGET_EXCEEDED); }
                 }
                 if (current.name().equals("numbered") && current.attributes().containsKey("list-id")) {
                     literalId(current, "list-id");
                 }
                 for (int i = current.content().size() - 1; i >= 0; i--) {
-                    if (current.content().get(i) instanceof Element child) { pending.push(child); }
+                    if (current.content().get(i) instanceof Element child) {
+                        if (child.name().equals("include") && !scan.blockList()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
+                        boolean childList = scan.blockList() && Set.of("each", "section", "header", "footer").contains(child.name())
+                                || scan.conditional() && (child.name().equals("then") || child.name().equals("else"));
+                        pending.push(new IdScan(child, childList, scan.blockList() && child.name().equals("if")));
+                    }
                 }
             }
             return Set.copyOf(result);
@@ -450,6 +498,7 @@ public final class XmlTemplate {
     }
 
     private final class Compiler {
+        private final Map<String, String> hyperlinkTemplates = new HashMap<>();
         private final Set<String> ids = new HashSet<>();
         private final Set<String> explicitIds = new HashSet<>();
         private final Map<String, String> listOwners = new HashMap<>();
@@ -467,21 +516,9 @@ public final class XmlTemplate {
                 settings = page(content.getFirst());
                 content = content.subList(1, content.size());
             }
-            var header = PageRegion.EMPTY;
-            var footer = PageRegion.EMPTY;
-            boolean hasHeader = false, hasFooter = false;
-            int start = 0;
-            while (start < content.size()) {
-                var element = content.get(start);
-                if (element.name().equals("header") && !hasHeader) {
-                    header = region(element, theme.headerStyle()); hasHeader = true;
-                } else if (element.name().equals("footer") && !hasFooter) {
-                    footer = region(element, theme.footerStyle()); hasFooter = true;
-                } else { break; }
-                start++;
-            }
-            var regions = new PageRegions(header, footer);
-            var body = content.subList(start, content.size());
+            var prefix = regionPrefix(root, content, 0, PageRegions.EMPTY, settings);
+            var regions = prefix.regions();
+            var body = content.subList(prefix.end(), content.size());
             if (body.stream().anyMatch(element -> element.name().equals("section"))) {
                 var sections = new ArrayList<DocumentTemplate.SectionNode>();
                 var sectionIds = new HashSet<String>();
@@ -499,33 +536,82 @@ public final class XmlTemplate {
                     if (!children.isEmpty() && children.getFirst().name().equals("page")) {
                         sectionSettings = page(children.getFirst(), settings); index++;
                     }
-                    var sectionHeader = header;
-                    var sectionFooter = footer;
-                    boolean foundHeader = false, foundFooter = false;
-                    while (index < children.size()) {
-                        var child = children.get(index);
-                        if (child.name().equals("header") && !foundHeader) {
-                            sectionHeader = region(child, theme.headerStyle()); foundHeader = true;
-                        } else if (child.name().equals("footer") && !foundFooter) {
-                            sectionFooter = region(child, theme.footerStyle()); foundFooter = true;
-                        } else { break; }
-                        index++;
-                    }
+                    var selected = regionPrefix(element, children, index, regions, sectionSettings);
                     sections.add(new DocumentTemplate.SectionNode(sectionId, sectionSettings,
-                            nodes(children.subList(index, children.size())), first, new PageRegions(sectionHeader, sectionFooter)));
+                            nodes(children.subList(selected.end(), children.size())), first, selected.regions()));
                 }
-                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections);
+                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates);
             }
-            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions);
+            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates);
+        }
+
+        private record RegionPrefix(PageRegions regions, int end) { }
+
+        private RegionPrefix regionPrefix(Element owner, List<Element> elements, int start, PageRegions inherited, PageSettings settings) {
+            var result = inherited.toBuilder();
+            var declared = new HashSet<String>();
+            int index = start;
+            while (index < elements.size()) {
+                var element = elements.get(index);
+                if (element.name().equals("background") || element.name().equals("foreground")) {
+                    if (!declared.add(element.name())) { throw error(element, Code.INVALID_STRUCTURE); }
+                    var overlays = overlays(element, settings);
+                    if (element.name().equals("background")) { result.background(overlays); } else { result.foreground(overlays); }
+                    index++; continue;
+                }
+                if (!element.name().equals("header") && !element.name().equals("footer")) { break; }
+                String selected = value(element, "variant", "default");
+                if (!Set.of("default", "first", "even").contains(selected)) { throw error(element, Code.INVALID_VALUE); }
+                if (!declared.add(element.name() + ":" + selected)) { throw error(element, Code.INVALID_STRUCTURE); }
+                boolean header = element.name().equals("header");
+                var band = region(element, header ? theme.headerStyle() : theme.footerStyle());
+                if (selected.equals("default")) {
+                    if (header) { result.header(band); } else { result.footer(band); }
+                } else {
+                    var variant = selected.equals("first") ? PageRegions.Variant.FIRST : PageRegions.Variant.EVEN;
+                    if (header) { result.header(variant, band); } else { result.footer(variant, band); }
+                }
+                index++;
+            }
+            var selected = validated(owner, result::build);
+            for (var box : selected.background()) { validated(owner, () -> { box.requireContained(settings.size()); return box; }); }
+            for (var box : selected.foreground()) { validated(owner, () -> { box.requireContained(settings.size()); return box; }); }
+            return new RegionPrefix(selected, index);
+        }
+
+        private List<PageOverlay> overlays(Element element, PageSettings settings) {
+            if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
+            attributes(element, Set.of());
+            var result = new ArrayList<PageOverlay>();
+            var defaults = element.name().equals("background") ? theme.backgroundStyle() : theme.foregroundStyle();
+            for (var box : children(element)) {
+                requireName(box, "box");
+                if (!box.fragmentName().isEmpty()) { throw error(box, Code.UNSUPPORTED_ELEMENT); }
+                attributes(box, Set.of("x", "y", "width", "height"));
+                for (var key : List.of("x", "y", "width", "height")) {
+                    if (required(box, key).contains("${")) { throw error(box, Code.INVALID_EXPRESSION); }
+                }
+                result.add(validated(box, () -> {
+                    var value = new PageOverlay(length(box, "x", 0), length(box, "y", 0), length(box, "width", 0),
+                            new PageRegion(length(box, "height", 0), 0, regionBlocks(box, defaults)));
+                    value.requireContained(settings.size()); return value;
+                }));
+                if (result.size() > 64) { throw error(box, Code.BUDGET_EXCEEDED); }
+            }
+            return List.copyOf(result);
         }
 
         private PageRegion region(Element element, PageRegionStyle defaults) {
             if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
-            attributes(element, Set.of("height", "gap"));
+            attributes(element, Set.of("height", "gap", "variant"));
             required(element, "height");
             for (var value : element.attributes().values()) {
                 if (value.contains("${")) { throw error(element, Code.INVALID_EXPRESSION); }
             }
+            return validated(element, () -> new PageRegion(length(element, "height", 0), length(element, "gap", 0), regionBlocks(element, defaults)));
+        }
+
+        private List<Block> regionBlocks(Element element, PageRegionStyle defaults) {
             var blocks = new ArrayList<Block>();
             for (var child : children(element)) {
                 if (child.name().equals("p")) {
@@ -535,7 +621,7 @@ public final class XmlTemplate {
                     blocks.add(validated(child, Code.INVALID_STRUCTURE, () -> tableParts(child, 1).value()));
                 } else { throw error(child, Code.UNSUPPORTED_ELEMENT); }
             }
-            return validated(element, () -> new PageRegion(length(element, "height", 0), length(element, "gap", 0), blocks));
+            return List.copyOf(blocks);
         }
 
         private PageSettings page(Element element) { return page(element, pageSettings); }
@@ -698,7 +784,7 @@ public final class XmlTemplate {
         }
 
         private ParsedTable tableParts(Element element, int tableDepth) {
-            if (tableDepth > 2) { throw error(element, Code.INVALID_STRUCTURE); }
+            if (tableDepth > com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH) { throw error(element, Code.INVALID_STRUCTURE); }
             boolean dynamic = element.name().equals("rows");
             attributes(element, dynamic ? Set.of("id", "row-split", "items", "as") : Set.of("id", "row-split"));
             String id = id(element);
@@ -724,10 +810,6 @@ public final class XmlTemplate {
             var defaults = theme.tableFormat();
             var format = defaults.toBuilder().allowRowSplit(flag(element, "row-split", defaults.allowRowSplit())).build();
             if (dynamic && rows.getFirst().cells().stream().anyMatch(cell -> cell.rowSpan() > 1)) {
-                throw error(element, Code.INVALID_VALUE);
-            }
-            if (format.allowRowSplit() && (tableDepth > 1 || rows.stream().anyMatch(row ->
-                    row.cells().stream().anyMatch(TableCell::hasBlocks)))) {
                 throw error(element, Code.INVALID_VALUE);
             }
             return new ParsedTable(id, columns, headers, rows, format);
@@ -820,8 +902,15 @@ public final class XmlTemplate {
                         if (!allowObjects || !hyperlink.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         attributes(child, Set.of("href"));
                         String destination = required(child, "href");
-                        if (destination.contains("${")) { throw error(child, Code.INVALID_EXPRESSION); }
-                        validated(child, () -> new ExternalDestination(destination));
+                        if (destination.contains("${")) {
+                            String template = expression(child, destination);
+                            destination = LINK_REFERENCE_PREFIX + hyperlinkTemplates.size();
+                            hyperlinkTemplates.put(destination, template);
+                        } else {
+                            if (destination.startsWith(LINK_REFERENCE_PREFIX)) { throw error(child, Code.INVALID_VALUE); }
+                            String literal = destination;
+                            validated(child, () -> new ExternalDestination(literal));
+                        }
                         if (child.content().isEmpty()) { throw error(child, Code.INVALID_STRUCTURE); }
                         result.addAll(inline(child, defaults, true, destination));
                     }
@@ -850,7 +939,9 @@ public final class XmlTemplate {
             allowed.add("width");
             if (targeted) { allowed.add("target"); }
             attributes(element, allowed); empty(element);
-            return validated(element, () -> new InlineField(kind, targeted ? literalId(element, "target") : "",
+            String target = targeted ? required(element, "target") : "";
+            String targetValue = target.contains("${") ? expression(element, target) : targeted ? literalId(element, "target") : "";
+            return validated(element, () -> new InlineField(kind, targetValue,
                     number(element, "width", 0), inlineStyle(element, defaults)));
         }
 
@@ -1067,8 +1158,8 @@ public final class XmlTemplate {
         private DocumentTheme theme = DocumentTheme.builder().build();
         private ParagraphFormat bodyFormat = ParagraphFormat.of(12);
         private CellFormat cellFormat = CellFormat.of(12);
-        private TextDefaults bodyText = TextDefaults.DEFAULT;
-        private TextDefaults cellText = TextDefaults.DEFAULT;
+        private TextDefaults bodyText;
+        private TextDefaults cellText;
         private final Map<Integer, TextDefaults> headingText = new HashMap<>();
         private final Map<String, ImageResource> images = new HashMap<>();
         private final Map<String, String> fragments = new HashMap<>();
@@ -1080,7 +1171,7 @@ public final class XmlTemplate {
          * Null is rejected. Built compilers snapshot the immutable value; omitting page preserves it exactly. */
         public Builder pageSettings(PageSettings value) { pageSettings = Objects.requireNonNull(value, "pageSettings"); return this; }
         /** Initializes complete body, cell, heading, table and named-style defaults for future compilers.
-         * TextDefaults remain independent, as do later bodyFormat and cellFormat calls. The immutable theme owns no resources;
+         * Explicit TextDefaults remain complete overrides in either setter order; undeclared domains inherit theme appearance. The immutable theme owns no resources;
          * null is rejected, and built compilers and compiled templates do not track subsequent builder edits. */
         public Builder theme(DocumentTheme value) {
             theme = Objects.requireNonNull(value, "theme");
@@ -1094,13 +1185,22 @@ public final class XmlTemplate {
         public Builder bodyText(TextDefaults value) { bodyText = Objects.requireNonNull(value, "bodyText"); return this; }
         /** Configures body/list text defaults synchronously and snapshots the callback result. */
         public Builder bodyText(Consumer<TextDefaults.Builder> configure) {
-            var builder = bodyText.toBuilder(); Objects.requireNonNull(configure, "configure").accept(builder);
+            var builder = (bodyText == null ? defaults(theme.bodyText()) : bodyText).toBuilder(); Objects.requireNonNull(configure, "configure").accept(builder);
             return bodyText(builder.build());
         }
         /** Sets only cell text defaults, including inner tables; outer cell overrides do not reach inner tables. */
         public Builder cellText(TextDefaults value) { cellText = Objects.requireNonNull(value, "cellText"); return this; }
+        /** Restores the body's complete appearance to the current/future theme. */
+        public Builder inheritBodyText() { bodyText = null; return this; }
+        /** Restores cell appearance to the current/future theme, including inner-table cells. */
+        public Builder inheritCellText() { cellText = null; return this; }
+        /** Restores one heading level's appearance to the current/future theme. */
+        public Builder inheritHeadingText(int level) {
+            if (level < 1 || level > 6) { throw new IllegalArgumentException("heading level must be 1..6"); }
+            headingText.remove(level); return this;
+        }
         public Builder cellText(Consumer<TextDefaults.Builder> configure) {
-            var builder = cellText.toBuilder(); Objects.requireNonNull(configure, "configure").accept(builder);
+            var builder = (cellText == null ? defaults(theme.cellText()) : cellText).toBuilder(); Objects.requireNonNull(configure, "configure").accept(builder);
             return cellText(builder.build());
         }
         /** Sets font-role/RGB for one heading level (1..6), independent of all paragraph formats. */
@@ -1110,7 +1210,7 @@ public final class XmlTemplate {
         }
         public Builder headingText(int level, Consumer<TextDefaults.Builder> configure) {
             if (level < 1 || level > 6) { throw new IllegalArgumentException("heading level must be 1..6"); }
-            var builder = headingText.getOrDefault(level, TextDefaults.DEFAULT).toBuilder();
+            var builder = headingText.getOrDefault(level, defaults(theme.headingText(level))).toBuilder();
             Objects.requireNonNull(configure, "configure").accept(builder); return headingText(level, builder.build());
         }
         public Builder limits(Limits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
@@ -1123,7 +1223,7 @@ public final class XmlTemplate {
         /** Registers an immutable offline fragment source; no path resolution or I/O is performed.
          * Names match {@code [A-Za-z_][A-Za-z_0-9-]{0,63}}. Duplicate names and more than 128 entries
          * are rejected with IllegalArgumentException. Sources require a version-1 fragment root and may
-         * not include other fragments. Only referenced sources are parsed; all sources count toward input.
+         * include registered fragments within the bounded, acyclic include chain. Only referenced sources are parsed; all sources count toward input.
          * Null names/sources are rejected. build snapshots the registry; this builder is task-confined.
          */
         public Builder fragment(String name, String source) {

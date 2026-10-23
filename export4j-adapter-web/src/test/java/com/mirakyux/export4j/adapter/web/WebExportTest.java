@@ -48,6 +48,22 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebExportTest {
+    @Test void pageOverlaysAreFlattenedWithExplicitGeometryAndPaintOrderLoss() throws IOException {
+        var regions = PageRegions.builder()
+                .background(new com.mirakyux.export4j.model.PageOverlay(0, 0, 100, new PageRegion(20, 0, List.of(p("bg", "BACKGROUND")))))
+                .foreground(new com.mirakyux.export4j.model.PageOverlay(0, 0, 100, new PageRegion(20, 0, List.of(p("fg", "FOREGROUND"))))).build();
+        var source = new PageDocument(doc(p("body", "BODY")), regions);
+        var output = new ByteArrayOutputStream();
+        assertThrows(ExportException.class, () -> new HtmlAdapter().export(source).to(output)); assertEquals(0, output.size());
+        var result = HtmlAdapter.builder().policy(all(UnsupportedAction.WARN)).build().export(source).to(output);
+        String html = output.toString(StandardCharsets.UTF_8);
+        assertTrue(html.indexOf("BACKGROUND</span>") < html.indexOf("BODY</span>"));
+        assertTrue(html.indexOf("BODY</span>") < html.indexOf("FOREGROUND</span>"));
+        assertTrue(result.diagnostics().stream().anyMatch(value -> value.feature() == ExportFeature.PAGE_REGIONS && value.location().region().equals("BACKGROUND:0")));
+        var markdown = text(MarkdownAdapter.builder().policy(all(UnsupportedAction.WARN)).build().export(source));
+        assertTrue(markdown.contains("BACKGROUND") && markdown.contains("FOREGROUND"));
+    }
+
     @TempDir Path temporary;
     private static final ParagraphFormat BODY = ParagraphFormat.of(12);
     private static Document doc(Block... blocks) { return new Document(DocumentMetadata.EMPTY, PageSettings.A4, List.of(blocks)); }
@@ -69,6 +85,22 @@ class WebExportTest {
                 .row(TableCell.builder().blocks(List.of(p("before", "BEFORE"), inner, p("after", "AFTER"))).build(),
                         TableCell.builder().text("TALL").rowSpan(2).build())
                 .row(TableCell.builder().text("LAST").build()).build();
+    }
+
+    @Test void firstEvenBandsAreNeverSilentlyOmittedAndBlankSelectorsReportDegradation() throws IOException {
+        var regions = PageRegions.builder().header(PageRegions.Variant.FIRST,
+                PageRegion.builder().height(20).paragraph(p("first", "FIRST-CONTENT")).build())
+                .header(PageRegions.Variant.EVEN, PageRegion.builder().height(20).paragraph(p("even", "EVEN-CONTENT")).build()).build();
+        var source = new PageDocument(doc(p("body", "BODY")), regions);
+        var output = new ByteArrayOutputStream();
+        assertThrows(ExportException.class, () -> new HtmlAdapter().export(source).to(output));
+        assertEquals(0, output.size());
+        var result = HtmlAdapter.builder().policy(all(UnsupportedAction.WARN)).build().export(source).to(output);
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains("FIRST-CONTENT"));
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains("EVEN-CONTENT"));
+        assertTrue(result.diagnostics().stream().anyMatch(value -> value.location().region().equals("HEADER_FIRST")));
+        var blank = new PageDocument(doc(p("body", "BODY")), PageRegions.builder().variant(PageRegions.Variant.FIRST, PageRegions.Bands.EMPTY).build());
+        assertThrows(ExportException.class, () -> new HtmlAdapter().export(blank).to(new ByteArrayOutputStream()));
     }
 
     @Test void htmlEscapesTextAttributesMetadataAndNeverAddsExecutableSource() throws IOException {

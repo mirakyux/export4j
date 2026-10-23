@@ -1,6 +1,6 @@
 # XML 多段单元格与原子内表
 
-XML 版本 1 的两层原子块格已通过编译、绑定、端到端、独立输出与隔离调用方验收，见[阶段二十八验收](verification/phase-28-xml-block-cells.md)。设计见 [ADR-0035](adr/0035-xml-block-cells.md)，模型与布局契约见[块格 API](block-cells-api.md)。
+XML 版本 1 的原子块格最初已通过编译、绑定、端到端、独立输出与隔离调用方验收，见[阶段二十八验收](verification/phase-28-xml-block-cells.md)。设计见 [ADR-0035](adr/0035-xml-block-cells.md)，模型与布局契约见[块格 API](block-cells-api.md)。
 
 ## 直接按文档结构编写
 
@@ -148,3 +148,6 @@ DOCX 继续按标准 `w:tc` 下的有序 `w:p`／`w:tbl` 输出，复用已有�
 本批只扩展 XML 语法，不新增生产依赖，也不引入 Markdown 嵌套语法、HTML/CSS、include、远程资源、递归子树续排或单向长表块格。
 
 可读样例见 [XmlBlockCellsExample](../examples/src/main/java/com/mirakyux/export4j/examples/XmlBlockCellsExample.java)。生成任务为 `:examples:xmlBlockCells`，独立脚本为 [verify_xml_block_cells.py](../scripts/verify_xml_block_cells.py)。执行命令、实际产物和逐页证据由[阶段二十八验收](verification/phase-28-xml-block-cells.md)登记；本文不把测试通过代替独立输出验收。
+
+
+后续[阶段五十七](verification/phase-57-recursive-tables.md)将共享表深扩为 16 层，静态内表与块格父表均可显式 `row-split="true"`。各层拆分开关独立，编译阶段仍检查全部分支；旧原子子集的阶段记录保留。

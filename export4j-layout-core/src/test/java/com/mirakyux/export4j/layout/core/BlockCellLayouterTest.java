@@ -154,11 +154,130 @@ class BlockCellLayouterTest {
         var child = inner("inner", "A");
         var splitChild = new Table(child.id(), child.columns(), child.rows(), 0, child.format().toBuilder().allowRowSplit(true).build());
         var autoChild = new Table(child.id(), List.of(new ColumnWidth.Auto(20, 160)), child.rows(), 0, child.format());
-        for (var source : List.of(splitParent, autoParent, outer(block(splitChild), PageMargins.uniform(0)),
-                outer(block(autoChild), PageMargins.uniform(0)))) {
-            var failure = assertThrows(DocumentLayoutException.class, () -> layout(List.of(source), 100));
-            assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, failure.code()); assertFalse(failure.sourcePath().isEmpty());
-        }
+        assertEquals(1, layout(List.of(splitParent), 100).pages().size());
+        assertEquals(1, layout(List.of(outer(block(splitChild), PageMargins.uniform(0))), 100).pages().size());
+        assertEquals(1, layout(List.of(outer(block(autoChild), PageMargins.uniform(0))), 100).pages().size());
+        var failure = assertThrows(DocumentLayoutException.class, () -> layout(List.of(autoParent), 100));
+        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, failure.code()); assertFalse(failure.sourcePath().isEmpty());
+    }
+
+    @Test void nestedAutomaticColumnsUseParentContentWidthAndKeepIndependentPadding() {
+        var child = Table.builder("inner").cellFormat(CELL).columns(new ColumnWidth.Auto(20, 120), new ColumnWidth.Fixed(40))
+                .format(format -> format.padding(2)).row("WWWWWWWWWWWW", "TAIL").build();
+        var parent = outer(block(child), PageMargins.uniform(3));
+        var wide = firstTable(layout(List.of(parent), 100));
+        var narrow = firstTable(new DocumentLayouter().layout(new Document(DocumentMetadata.EMPTY,
+                PageSettings.builder().size(100, 100).margins(0).build(), List.of(parent)), fonts));
+        var a = (TableFragment) wide.rows().getFirst().cells().getFirst().blocks().getFirst();
+        var b = (TableFragment) narrow.rows().getFirst().cells().getFirst().blocks().getFirst();
+        double wideColumn = a.rows().getFirst().cells().getFirst().bounds().width();
+        assertTrue(wideColumn > 54 && wideColumn <= 120);
+        assertEquals(94, b.width(), 1e-9); assertEquals(54, b.rows().getFirst().cells().getFirst().bounds().width(), 1e-9);
+        assertEquals(50, b.rows().getFirst().cells().getFirst().layout().width(), 1e-9);
+        assertTrue(b.rows().getFirst().cells().getFirst().lineCount() > a.rows().getFirst().cells().getFirst().lineCount());
+        assertEquals(40, b.rows().getFirst().cells().getLast().bounds().width());
+    }
+
+    @Test void nestedAutomaticMergedOwnersRetainPhysicalColumnsAndCoveredRows() {
+        var child = Table.builder("inner").cellFormat(CELL)
+                .columns(new ColumnWidth.Auto(20, 60), new ColumnWidth.Auto(20, 60), new ColumnWidth.Fixed(30))
+                .format(format -> format.padding(1))
+                .row(TableCell.builder().format(CELL).text("MERGED OWNER").columnSpan(2).rowSpan(2).build(), inline("A"))
+                .row(inline("B")).build();
+        var nested = (TableFragment) firstTable(layout(List.of(outer(block(child), PageMargins.uniform(2))), 100))
+                .rows().getFirst().cells().getFirst().blocks().getFirst();
+        var owner = nested.rows().getFirst().cells().getFirst();
+        assertEquals(0, owner.columnIndex()); assertEquals(2, nested.rows().getLast().cells().getFirst().columnIndex());
+        assertTrue(owner.bounds().width() >= 40 && owner.bounds().width() <= 120);
+        assertEquals(nested.height(), owner.bounds().height());
+        assertEquals(owner.bounds().width(), nested.rows().getLast().cells().getFirst().bounds().x());
+        assertEquals(3, nested.rows().stream().mapToInt(row -> row.cells().size()).sum());
+    }
+
+    @Test void nestedAutomaticProbesDoNotDoubleChargeSourceLinesOrMissingGlyphWarnings() {
+        var child = Table.builder("inner").cellFormat(CELL).columns(new ColumnWidth.Auto(20, 160))
+                .format(format -> format.padding(0)).row("A\u4e2d").build();
+        var source = outer(block(child), PageMargins.uniform(0));
+        var limits = new DocumentLayoutLimits(2, 2, 1, 1, 1, 1, 2);
+        var result = new DocumentLayouter(new ParagraphLayouter(), limits).layout(document(List.of(source), 100),
+                FontGroup.placeholder(fonts.fonts(), '?'));
+        var nested = (TableFragment) firstTable(result).rows().getFirst().cells().getFirst().blocks().getFirst();
+        assertEquals(1, nested.rows().getFirst().cells().getFirst().layout().diagnostics().size());
+        assertEquals(1, nested.rows().getFirst().cells().getFirst().lineCount());
+        var exhausted = new DocumentLayoutLimits(2, 1, 1, 1, 1, 1, 2);
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED,
+                assertThrows(DocumentLayoutException.class, () -> limited(source, exhausted)).code());
+    }
+
+    @Test void nestedAutomaticMinimumOverflowAndProbeFailureKeepTheirSourceAncestry() {
+        var tooWide = Table.builder("inner").cellFormat(CELL).columns(new ColumnWidth.Auto(200, 220)).row("A").build();
+        var geometry = assertThrows(DocumentLayoutException.class,
+                () -> layout(List.of(outer(block(tooWide), PageMargins.uniform(0))), 100));
+        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, geometry.code());
+        assertEquals(new CellLocation("outer", 0, 0, 0), geometry.sourcePath().getFirst());
+        var missing = Table.builder("inner").cellFormat(CELL).columns(new ColumnWidth.Auto(20, 160))
+                .row(new String(Character.toChars(0x10FFFF))).build();
+        var font = assertThrows(DocumentLayoutException.class,
+                () -> layout(List.of(outer(block(missing), PageMargins.uniform(0))), 100));
+        assertEquals(DocumentLayoutException.Code.TEXT_LAYOUT_FAILED, font.code()); assertEquals(0, font.sourceIndex());
+        assertEquals(List.of(new CellLocation("outer", 0, 0, 0), new CellLocation("inner", 0, 0, -1)), font.sourcePath());
+    }
+
+    @Test void recursiveCellsContinueParagraphsAndTablesWithOriginalOrdinalsAndLineRanges() {
+        var inner = Table.builder("inner").cellFormat(CELL).format(format -> format.padding(0).allowRowSplit(true))
+                .header("INNER").row("A\nB\nC\nD\nE\nF").row("END").build();
+        var middle = Table.builder("middle").format(format -> format.padding(0).allowRowSplit(true))
+                .row(block(inner)).build();
+        var outer = Table.builder("outer").cellFormat(CELL).format(format -> format.padding(0).allowRowSplit(true))
+                .header("OUTER").row(block(new Paragraph("before", "BEFORE", TEXT), middle,
+                        new Paragraph("after", "AFTER", TEXT))).build();
+        var result = layout(List.of(outer), 50);
+        assertEquals(4, result.pages().size());
+        var children = result.pages().stream().map(page -> (TableFragment) page.elements().getFirst())
+                .flatMap(table -> table.rows().stream().filter(row -> !row.header()))
+                .flatMap(row -> row.cells().stream()).flatMap(cell -> cell.blocks().stream()).toList();
+        assertEquals("before", children.getFirst().blockId()); assertEquals("after", children.getLast().blockId());
+        var finalCell = ((TableFragment) result.pages().getLast().elements().getFirst()).rows().getLast().cells().getFirst();
+        assertTrue(finalCell.sourceBlockIndices().contains(2));
+        assertFalse(DocumentPainter.paint(result).pages().getLast().commands().isEmpty());
+    }
+
+    @Test void recursiveShortTakeAndFailedBudgetNeverConsumeNestedContent() {
+        var inner = Table.builder("inner").columns(new ColumnWidth.Auto(20, 160)).cellFormat(CELL).format(format -> format.padding(0).allowRowSplit(true))
+                .header("H").row("A\nB\nC").build();
+        var source = Table.builder("outer").format(format -> format.padding(2).allowRowSplit(true)).row(block(inner)).build();
+        var cursor = new DocumentLayouter().prepareTable(source, new ComponentContext(180, 40, fonts, 0, 0, 1));
+        assertTrue(cursor.take(23).isEmpty()); assertEquals(44, cursor.remainingHeight());
+        assertEquals(24, cursor.take(24).orElseThrow().height());
+        assertTrue(cursor.take(23).isEmpty()); assertEquals(0, cursor.rowIndex());
+        var second = cursor.take(24).orElseThrow();
+        var nested = (TableFragment) second.rows().getFirst().cells().getFirst().blocks().getFirst();
+        assertTrue(nested.rows().getFirst().repeatedHeader());
+        assertEquals(1, nested.rows().getLast().cells().getFirst().firstLineIndex());
+        assertTrue(cursor.take(24).isPresent()); assertTrue(cursor.done());
+    }
+
+    @Test void recursiveParagraphKeepTogetherAndWidowConstraintsAreObserved() {
+        var paragraph = new Paragraph("child", "A\nB\nC", TEXT.toBuilder().keepTogether(true).build());
+        var source = Table.builder("outer").format(format -> format.padding(0).allowRowSplit(true)).row(block(paragraph)).build();
+        var cursor = new DocumentLayouter().prepareTable(source, new ComponentContext(180, 40, fonts, 0, 0, 1));
+        assertTrue(cursor.take(20).isEmpty()); assertTrue(cursor.take(30).isPresent()); assertTrue(cursor.done());
+    }
+
+    @Test void recursiveRepeatedHeaderBudgetAndCancellationLeaveCursorUnchanged() {
+        var inner = Table.builder("inner").cellFormat(CELL).format(format -> format.padding(0).allowRowSplit(true))
+                .header("H").row("A\nB\nC").build();
+        var source = Table.builder("outer").format(format -> format.padding(0).allowRowSplit(true)).row(block(inner)).build();
+        var cursor = new DocumentLayouter(new ParagraphLayouter(), new DocumentLayoutLimits(10, 100, 4, 10))
+                .prepareTable(source, new ComponentContext(180, 40, fonts, 0, 0, 1));
+        assertTrue(cursor.take(20).isPresent());
+        double remaining = cursor.remainingHeight();
+        assertThrows(ExecutionException.class, () -> ExecutionContext.execute(ExecutionOptions.builder().cancelled(() -> true).build(),
+                () -> cursor.take(20)));
+        var failure = assertThrows(DocumentLayoutException.class, () -> cursor.take(20));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
+        assertEquals(remaining, cursor.remainingHeight()); assertEquals(1, cursor.fragmentIndex());
+        assertFalse(cursor.done()); assertEquals(0, cursor.rowIndex());
     }
 
     @Test void ordinaryOuterHeadersRepeatButBlockParentHeadersAreRejected() {

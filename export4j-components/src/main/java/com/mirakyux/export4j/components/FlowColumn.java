@@ -13,6 +13,7 @@ import com.mirakyux.export4j.layout.core.ComponentSemantics;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.PageableComponent;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSize;
@@ -23,7 +24,7 @@ import com.mirakyux.export4j.text.TextDiagnostic;
  * Region-aware children consume the remaining and following regions once. Other pageable children
  * retain atomic measured fragments. Lengths are points; owns no resources, child thread safety applies.
  */
-public record FlowColumn(List<Component> children, PageMargins padding, double gap, Alignment alignment) implements RegionFlow {
+public record FlowColumn(List<Component> children, PageMargins padding, double gap, Alignment alignment) implements WidthAwareRegionFlow {
     public enum Alignment { START, CENTER, END }
 
     public FlowColumn {
@@ -37,12 +38,12 @@ public record FlowColumn(List<Component> children, PageMargins padding, double g
 
     @Override
     public List<ComponentLayout> layoutParts(ComponentContext context) {
-        return RegionFlow.super.layoutParts(context);
+        return WidthAwareRegionFlow.super.layoutParts(context);
     }
 
     @Override
     public List<ComponentLayout> layoutParts(ComponentContext context, double firstPageHeight) {
-        return RegionFlow.super.layoutParts(context, firstPageHeight);
+        return WidthAwareRegionFlow.super.layoutParts(context, firstPageHeight);
     }
 
     @Override
@@ -108,6 +109,50 @@ public record FlowColumn(List<Component> children, PageMargins padding, double g
         }
         parts.add(new RegionFlow.Fragment(region, pack(context.width(), current)));
         return ComponentSupport.regionFragments(parts, context, regions);
+    }
+
+    @Override
+    public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        widths = ComponentSupport.variableWidths(context, regions, widths);
+        double maximum = widths.stream().mapToDouble(Double::doubleValue).max().orElseThrow();
+        double innerWidth = maximum - padding.left() - padding.right();
+        double innerHeight = innerHeight(regions.continuationHeight());
+        var childContext = context.viewport(innerWidth, innerHeight);
+        var result = new ArrayList<RegionFlow.Fragment>();
+        var current = new ArrayList<ComponentLayout>();
+        int region = 0;
+        int placed = 0;
+        double used = 0;
+        for (var child : children) {
+            ExecutionContext.checkpoint();
+            double remaining = Math.max(0, innerHeight(regions.height(region)) - used - (current.isEmpty() ? 0 : gap));
+            var initial = new ArrayList<Double>();
+            initial.add(remaining);
+            for (int next = region + 1; next < regions.initialHeights().size(); next++) { initial.add(innerHeight(regions.height(next))); }
+            var childRegions = new FlowRegions(initial, innerHeight);
+            var childWidths = new ArrayList<Double>();
+            for (int column = 0; column < widths.size(); column++) {
+                double width = widths.get((region + column) % widths.size()) - padding.left() - padding.right();
+                if (width <= 0) { throw new IllegalArgumentException("column padding consumes a variable region width"); }
+                childWidths.add(width);
+            }
+            var fragments = ComponentSupport.variableRegions(child, childContext, childRegions, childWidths);
+            int start = region;
+            for (var fragment : fragments) {
+                ExecutionContext.checkpoint();
+                if (++placed > 100_000) { throw new IllegalArgumentException("nested fragment budget exceeded"); }
+                int assigned = Math.addExact(start, fragment.regionIndex());
+                if (assigned != region) {
+                    if (!current.isEmpty()) { result.add(new RegionFlow.Fragment(region, pack(widths.get(region % widths.size()), current))); }
+                    current.clear(); used = 0; region = assigned;
+                }
+                var layout = fragment.layout();
+                used += (current.isEmpty() ? 0 : gap) + layout.height();
+                current.add(layout);
+            }
+        }
+        result.add(new RegionFlow.Fragment(region, pack(widths.get(region % widths.size()), current)));
+        return ComponentSupport.regionFragments(result, context, regions);
     }
 
     private double innerHeight(double outerHeight) {

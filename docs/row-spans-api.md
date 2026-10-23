@@ -37,7 +37,7 @@ var rows = grid.anchorRows();        // 每个物理行的有序锚点，全覆�
 
 固定／比例列的合并格按完整宽度换行一次，内边距只扣一次。先用 rowSpan=1 的真实格决定各行基础高度；没有此类格的行基础为 0。再按跨度、行、列顺序，将合并格尚缺的高度等分到覆盖行，最后一行补舍入差。覆盖行不会重复添加 padding；有的全覆盖行可以保持零高度。固定行距保留，共享图文段落可能因图像 ascent 与邻格基线不同。
 
-纵向跨度连接的行组成传递连通组，整体移页或移区。重复表头始终完整，必须与至少一个完整正文组放入新区域；过短首区可以跳过，超高组明确失败。首批拒绝 rowSpan 与 `allowRowSplit(true)` 组合，以及合并覆盖 Auto 列。无纵向合并的既有完整行拆分保持。
+纵向跨度连接的行组成传递连通组，整体移页或移区。重复表头始终完整，必须与至少一个完整正文组放入新区域；过短首区可以跳过，超高组明确失败。显式 `allowRowSplit(true)` 可拆分 owner 内容；原始锚点行排完后再进入覆盖行，已完成的 owner 延伸边框但不重复正文，同页相邻空续格合并矩形。拆分模式不承诺原子行高分配。普通文本合并支持[有界 Auto 列](automatic-merged-columns-api.md)，[行内内表 Auto](nested-automatic-tables-api.md)已支持，含块格表保持独立限制。无纵向合并的既有完整行拆分保持。
 
 IR 仅保存真实锚点；完全覆盖行不产生重复格或文字，但高度计入真实格矩形和表格高度。行列与 UTF-16 位置属于原始锚点。字段在最终页解析，图片和链接只输出一次，表头字段按实际呈现页解析。
 
@@ -53,4 +53,4 @@ DOCX 使用原生 `w:vMerge` restart／continue 和 `w:gridSpan`。覆盖行输�
 
 保留 TableCell 旧 2—6 参数构造器，旧调用 rowSpan 默认为 1，Builder／toBuilder 保留双跨度。record 组件从 6 变为 7，解构和反射形状变化，不能宣称完全二进制兼容。空 TableRow 的合法性须放到完整 Table 上下文判断。
 
-单向 StreamingTable 继续拒绝任何合并。纵向合并组跨页拆分、递归格内容、HTML/CSS 和任意 DOCX 无损互转仍独立。设计见 [ADR-0033](adr/0033-semantic-row-spans.md)，实际验证见[阶段二十六](verification/phase-26-row-spans.md)。
+单向 StreamingTable 继续拒绝任何合并。纵向拆分与递归格内容见[块格续排](block-cells-api.md)和[阶段五十七](verification/phase-57-recursive-tables.md)。任意 DOCX 无损互转仍未承诺。设计见 [ADR-0033](adr/0033-semantic-row-spans.md)，实际验证见[阶段二十六](verification/phase-26-row-spans.md)。

@@ -5,6 +5,7 @@ import com.mirakyux.export4j.model.ExecutionContext;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.io.ByteArrayInputStream;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -18,12 +19,12 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.pdfparser.PDFParser;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
 /** Operation-confined graph and decoding preflight; deliberately accepts a strict static subset. */
 final class PdfPreflight {
@@ -43,6 +44,7 @@ final class PdfPreflight {
             "Font", "XObject", "ExtGState", "ColorSpace", "Pattern", "Shading", "Properties");
 
     final PdfLimits limits;
+    private final boolean interactive;
     private final Set<COSStream> decoded = Collections.newSetFromMap(new IdentityHashMap<>());
     private final IdentityHashMap<COSStream, CommandDepth> commands = new IdentityHashMap<>();
     private final Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -59,7 +61,8 @@ final class PdfPreflight {
     int inputIndex;
     int pageIndex = -1;
 
-    PdfPreflight(PdfLimits limits) { this.limits = limits; }
+    PdfPreflight(PdfLimits limits) { this(limits, false); }
+    PdfPreflight(PdfLimits limits, boolean interactive) { this.limits = limits; this.interactive = interactive; }
 
     PdfOperationException failure(PdfOperationException.Code code) {
         return new PdfOperationException(code, inputIndex, pageIndex);
@@ -106,7 +109,12 @@ final class PdfPreflight {
         ExecutionContext.checkpoint();
         if (value == null) { return; }
         if (depth > limits.maxDepth()) { throw failure(PdfOperationException.Code.DEPTH_LIMIT); }
-        if (active.contains(value)) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+        if (active.contains(value)) {
+            COSBase referenced = value instanceof COSObject object ? object.getObject() : value;
+            // Explicit destinations may point back to a page whose annotations are being inspected.
+            if (interactive && referenced instanceof COSDictionary page && COSName.PAGE.equals(page.getCOSName(COSName.TYPE))) { return; }
+            throw failure(PdfOperationException.Code.INVALID_PDF);
+        }
         if (!visited.add(value)) { return; }
         if (++graphNodes > limits.maxObjects()) { throw failure(PdfOperationException.Code.OBJECT_LIMIT); }
         active.add(value);
@@ -127,6 +135,11 @@ final class PdfPreflight {
                 String type = dictionary.getNameAsString(COSName.TYPE, "");
                 for (var entry : dictionary.entrySet()) {
                     if (entry.getKey().equals(COSName.PARENT) && (type.equals("Page") || type.equals("Pages"))) { continue; }
+                    if (interactive && entry.getKey().equals(COSName.P) && (type.equals("Annot") || dictionary.containsKey(COSName.SUBTYPE))) { continue; }
+                    if (interactive && entry.getKey().equals(COSName.PARENT) && (dictionary.containsKey(COSName.FT)
+                            || dictionary.containsKey(COSName.T) || "Widget".equals(dictionary.getNameAsString(COSName.SUBTYPE))
+                            || dictionary.containsKey(COSName.TITLE))) { continue; }
+                    if (interactive && entry.getKey().equals(COSName.PREV) && dictionary.containsKey(COSName.TITLE)) { continue; }
                     if (entry.getKey().equals(COSName.RESOURCES)) { countResources(entry.getValue()); }
                     graph(entry.getValue(), depth + 1);
                 }
@@ -149,13 +162,34 @@ final class PdfPreflight {
     }
 
     private void rejectFeatures(COSDictionary dictionary) throws IOException {
+        if (interactive && dictionary.containsKey(COSName.DA)) {
+            if (!(dictionary.getDictionaryObject(COSName.DA) instanceof COSString appearance)) {
+                throw failure(PdfOperationException.Code.INVALID_PDF);
+            }
+            if (appearance.getBytes().length > Math.min(65_536, limits.maxDecodedStreamBytes())) {
+                throw failure(PdfOperationException.Code.DECODED_STREAM_LIMIT);
+            }
+            PdfContentSyntax.validate(new ByteArrayInputStream(appearance.getBytes()), this);
+        }
         String type = dictionary.getNameAsString(COSName.TYPE, "");
-        if (REJECTED_TYPES.contains(type) || ACTIONS.contains(dictionary.getNameAsString(COSName.S, ""))
+        String action = dictionary.getNameAsString(COSName.S, "");
+        boolean passiveType = interactive && Set.of("Filespec", "EmbeddedFile", "Annot", "Action").contains(type);
+        boolean actionOwner = type.equals("Annot") || Set.of("Text", "Link", "Widget").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))
+                || dictionary.containsKey(COSName.TITLE);
+        if (interactive && (type.equals("Action") || actionOwner && dictionary.containsKey(COSName.A))) {
+            var actionDictionary = dictionary.containsKey(COSName.A) ? dictionary.getCOSDictionary(COSName.A) : dictionary;
+            if (actionDictionary == null || !Set.of("URI", "GoTo").contains(actionDictionary.getNameAsString(COSName.S, ""))) { throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
+        }
+        if (interactive && action.equals("URI")) { new com.mirakyux.export4j.model.ExternalDestination(dictionary.getString(COSName.URI, "")); }
+        if (interactive && type.equals("Annot") && !Set.of("Text", "Link", "Widget").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))) { throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
+        if ("Sig".equals(dictionary.getNameAsString(COSName.FT)) || REJECTED_TYPES.contains(type) && !passiveType
+                || ACTIONS.contains(action) && !(interactive && Set.of("URI", "GoTo").contains(action))
                 || "Type3".equals(dictionary.getNameAsString(COSName.SUBTYPE))) {
             throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE);
         }
         for (var key : dictionary.keySet()) {
-            if (REJECTED_KEYS.contains(key.getName()) || type.equals("Catalog") && !CATALOG_KEYS.contains(key.getName())) {
+            boolean supported = interactive && Set.of("Annots", "AcroForm", "Outlines", "Names", "EmbeddedFiles").contains(key.getName());
+            if (REJECTED_KEYS.contains(key.getName()) && !supported || type.equals("Catalog") && !CATALOG_KEYS.contains(key.getName()) && !supported) {
                 throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE);
             }
         }
@@ -201,7 +235,7 @@ final class PdfPreflight {
         private int depth;
 
         ContentParser(COSStream stream, PdfPreflight budget) throws IOException {
-            super(new PDFormXObject(stream));
+            super(new PdfContentStream(stream));
             this.budget = budget;
         }
 

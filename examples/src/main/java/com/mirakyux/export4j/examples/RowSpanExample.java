@@ -40,7 +40,6 @@ import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.layout.ComponentFragment;
 import com.mirakyux.export4j.layout.TableFragment;
 import com.mirakyux.export4j.layout.core.ComponentSemantics;
-import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.Document;
@@ -88,15 +87,6 @@ public final class RowSpanExample {
         var template = template(image);
         export("templates", engine, Document.builder().pageSettings(PAGE).add(template).build(), template);
         nativeDocx(template);
-        try {
-            var unsupported = new Table(groups.id(), groups.columns(), groups.rows(), groups.headerRows(),
-                    groups.format().toBuilder().allowRowSplit(true).build());
-            engine.layout(Document.builder().pageSettings(PAGE).add(unsupported).build());
-            throw new IllegalStateException("rowSpan with allowRowSplit must be rejected");
-        } catch (DocumentLayoutException expected) {
-            if (expected.code() != DocumentLayoutException.Code.INVALID_GEOMETRY || expected.rowIndex() != 0 || expected.columnIndex() != 0) { throw expected; }
-            Files.writeString(OUTPUT.resolve("row-split-rejected.txt"), "ROWSPAN_ROW_SPLIT_REJECTED\n", StandardCharsets.UTF_8);
-        }
     }
 
     private static Table groups(ImageResource image) {

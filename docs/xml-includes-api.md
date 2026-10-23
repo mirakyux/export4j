@@ -26,7 +26,7 @@ var document = template.render(Map.of("title", "复核记录", "summary", "已�
 
 ## 静态名称与本地 ID
 
-登记名与 include 的 `prefix` 必须匹配 `[A-Za-z_][A-Za-z_0-9-]{0,63}`，区分大小写，不接受 `${...}`。prefix 必填，在主模板的全部分支和循环原型中全局唯一。Builder 最多登记 128 个片段，重复或非法登记名在配置入口失败；`build()` 固定登记快照，后续修改 Builder 不改已构建编译器。
+登记名与 include 的 `prefix` 必须匹配 `[A-Za-z_][A-Za-z_0-9-]{0,63}`，区分大小写，不接受 `${...}`。prefix 必填；嵌套时用 `-` 连接父前缀与局部前缀，组合后的前缀在全部分支和循环原型中全局唯一。不同父片段可使用相同子前缀，组合后的 ID／list-id 仍限 128 字符。Builder 最多登记 128 个片段，重复或非法登记名在配置入口失败；`build()` 固定登记快照，后续修改 Builder 不改已构建编译器。
 
 | 原片段值 | `prefix="first"` 后的模型值 |
 | --- | --- |
@@ -40,9 +40,13 @@ var document = template.render(Map.of("title", "复核记录", "summary", "已�
 
 不同 prefix 的编号列表互相隔离，同一片段里的相同 list-id 继续编号。派生的最终 list-id 若与主模板或另一 include 作用域重名，编译明确拒绝，不能悄悄合并本应隔离的编号。片段位于 each 时仍继承循环的数据别名，既有模板复制添加 `@0` 等块 ID 后缀，并重定位当前副本的内部字段；list-id 不添加迭代后缀，所以同一循环内的编号按文档顺序继续。内部 if 也继承同一词法作用域，不会重新解析数据中的 XML。
 
-## 平面组合与拒绝边界
+## 递归组合与拒绝边界
 
-include 只用于主模板的根、then／else、each 等合法块列表位置。片段内的 include 无条件拒绝；不支持递归片段、include 参数、模板表达式 ref／prefix、片段根元数据或格内 include。格内现有 p／table 仍遵守原子块格规则，不因本能力扩展。
+include 可用于主模板及片段的根、then／else、each 等合法块列表位置。活动 include 链最多 16 层；循环引用在编译阶段拒绝，超过深度预算报告 BUDGET_EXCEEDED。不支持 include 参数、模板表达式 ref／prefix、片段根元数据、行内或格内 include。格内现有 p／table 使用既有块格规则。
+
+例如主模板以 `prefix="outer"` 引入 panel，panel 以 `prefix="leaf"` 引入 child，child 的 `id="target"` 成为 `outer-leaf-target`。panel 中静态 `target="leaf-target"` 指向这个子目标；child 内静态 `target="target"` 指向自身目标。声明收集覆盖子片段及条件分支；没有声明的静态目标保留为主模板外部 ID。不存在 `../` 相对父级语法。
+
+动态 `target="${record.target}"` 直接绑定最终完整 ID，例如 `outer-leaf-target@0`，不再自动添加 include 前缀或 each 后缀。动态 href 在当前词法数据范围绑定，最终地址再次经过协议和凭据校验，详见[XML 模板 API](xml-template-api.md)。
 
 主模板的全部分支、运行时零次 each 原型也会检查 include、prefix 和被引用片段的语法；非法片段不能通过未选择分支隐藏。未引用片段不解析，但其登记源码仍计入输入预算。调用方登记字符串是显式资源白名单；没有 DTD、外部实体、脚本或远程加载的降级路径。
 
@@ -50,7 +54,7 @@ include 只用于主模板的根、then／else、each 等合法块列表位置�
 
 ## 预算与诊断
 
-主模板与全部登记源码的 UTF-16 长度合计受 `maxInputCharacters` 限制，Reader 最多读取扣除登记源码后的余额再加 1 个单元，且不关闭借用 Reader。只解析被引用源码，同一个 ref 只解析一次；解析累计元素／文字、展开累计元素／文字分别受现有 `XmlTemplate.Limits` 限制，每次 include 出现也计元素。所有源树先受 65 层硬上限保护，主模板中保留到最终树的普通节点还会提前按配置 `maxDepth` 检查；片段插入后的最终深度按展开结构检查，不保留 include／fragment 包装。实际 each 复制另受既有 `DocumentTemplate.Limits` 绑定预算约束。
+主模板与全部登记源码的 UTF-16 长度合计受 `maxInputCharacters` 限制，Reader 最多读取扣除登记源码后的余额再加 1 个单元，且不关闭借用 Reader。只解析被引用源码，同一个 ref 只解析一次；解析累计元素／文字、展开累计元素／文字分别受现有 `XmlTemplate.Limits` 限制，每次 include 出现也计元素。子目标预收集同样检查数量及取消，不能通过递归指数展开绕过预算。所有源树先受 65 层硬上限保护，主模板中保留到最终树的普通节点还会提前按配置 `maxDepth` 检查；片段插入后的最终深度按展开结构检查，不保留 include／fragment 包装。16 层 include 链限制独立于最终 XML 树深度。实际 each 复制另受既有 `DocumentTemplate.Limits` 绑定预算约束。
 
 未知 ref 等 include 相关问题和 include 展开预算错误使用主 include 的一基位置；普通主模板语法错误仍定位自身节点。片段内部语法错误保留片段内一基行列，并通过 `TemplateException.fragmentName()` 提供可选登记名；错误 message 不回显登记名、正文或资源路径。名称由调用方登记，应用可选择如何显示，不能把原 XML 当作新的执行指令。
 
@@ -66,3 +70,5 @@ build/verification/python-phase13/Scripts/python.exe scripts/verify_xml_includes
 独立脚本直接核对最终 PDF 的来源顺序、真实字号／字体／颜色、编号值、实际字段页码及链接目的地，再读取 SVG 逻辑原文／矢量和标准 OOXML 的 ID、列表、字段／书签目标。期望值独立声明，不从 Java 值清单导入。Java 小样严格读回 DOCX 并比较完整块模型；只规范化标题、编号项及行内格中单个默认无链接运行的等价省略表示，仍完整比较 ID、格式、富文本、字段、列表与表格层级，不宣称任意 Word 无损互转。
 
 本次成功隔离 Maven 调用方也纳入验收，全部四页由 Poppler 与 PDFium 独立渲染并逐页目视复查。没有新运行依赖，不复制外部文档库实现；自研模板语法与样例采用 Apache-2.0。
+
+[递归样例](../examples/src/main/java/com/mirakyux/export4j/examples/RecursiveIncludesExample.java)与[阶段五十八](verification/phase-58-recursive-includes.md)进一步覆盖父到子目标、两次词法复制、主模板外部目标、动态完整 ID 和图文链接。运行 `:examples:recursiveIncludes` 及 `python scripts/verify_recursive_includes.py`，检查最终 PDF 与标准 OOXML，并双渲染全部新页。

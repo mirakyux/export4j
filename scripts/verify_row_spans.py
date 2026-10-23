@@ -367,8 +367,6 @@ def main():
         result = check_fixture(name)
         render_checked(FIXTURES / f"{name}.pdf", name, result, contacts)
         report[name] = result
-    require((FIXTURES / "row-split-rejected.txt").read_text(encoding="utf-8") == "ROWSPAN_ROW_SPLIT_REJECTED\n",
-            "explicit rowSpan/allowRowSplit rejection missing")
     require((FIXTURES / "docx-standard-read.txt").read_text(encoding="utf-8") == "STANDARD_VMERGE_STRICT_IMPORT_PASSED\n",
             "strict engine metadata-free native DOCX import missing")
     require(json.loads((FIXTURES / "bindings.json").read_text(encoding="utf-8"))

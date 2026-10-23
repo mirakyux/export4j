@@ -4,4 +4,5 @@ description = "Bounded offline PDF inspection, text extraction and static page c
 dependencies {
     api(project(":export4j-model"))
     implementation(libs.pdfbox)
+    implementation(libs.fontbox)
 }

@@ -60,11 +60,11 @@ var result = DocumentEngine.builder(fonts)
 
 ## Java 组合与输出边界
 
-`PageRegionTemplates.from(document.pageRegions())` 返回普通 PageTemplate，可用 `toBuilder` 加入 Java 背景／前景或用 SectionTemplate 组合首页／奇偶变体。随后显式使用 `document.document()` 的语义内容和已有分节入口。PageDocument 便利入口与引擎上配置的 pageTemplate 同时出现时会拒绝冲突。
+`PageRegionTemplates.from(document.pageRegions())` 只接收无变体声明的值，返回普通 PageTemplate；含首页／偶数变体使用 `PageRegionTemplates.sectionFrom` 返回 SectionTemplate。可进一步组合 Java 背景／前景，随后显式使用 `document.document()` 的语义内容和已有分节入口。PageDocument 便利入口自动处理所有变体，与引擎上配置的 pageTemplate 同时出现时会拒绝冲突。
 
 PDF、SVG、PNG 消费最终显示列表；SVG／PNG 继续拒绝非空交互数据。样例中的 PDF 保留目录链接，静态 SVG 预览显式只选择绘制页面。DocxAdapter.write 直接接受 PageDocument／SectionedDocument，映射[标准页眉页脚](docx-page-regions-api.md)；显式取 document() 仍仅选择正文。
 
-[XML 分节](xml-sections-api.md)支持根默认值、各节纸张／边距／页码、页区替换及清空。页区图片使用行内 image，表格使用标准 table／columns／row／cell 语法；表格格样式沿用 cell 默认值，p 使用独立页区默认值。当前未扩展首页奇偶声明、XML 背景前景、页区链接／目标引用或完整品牌级联。
+[XML 分节](xml-sections-api.md)支持根默认值、各节纸张／边距／页码、页区替换及清空。页区图片使用行内 image，表格使用标准 table／columns／row／cell 语法；表格格样式沿用 cell 默认值，p 使用独立页区默认值。静态 `variant="default|first|even"` 支持[首页／奇偶选择](page-variants-api.md)，同类同变体最多声明一次。[XML 背景／前景](page-overlays-api.md)另用固定 box 声明，沿用最终组合路径；页区链接／目标引用和更广品牌组合仍开放。
 
 ## 复现
 
