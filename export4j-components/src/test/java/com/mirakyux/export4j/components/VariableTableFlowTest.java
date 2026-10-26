@@ -178,12 +178,11 @@ class VariableTableFlowTest {
                         context(100, 36), regions, List.of(50.0, 100.0))).code());
     }
 
-    @Test void unsupportedPartialReflowAndImpossibleRegionsFailAndDoNotPoisonLaterCalls() {
+    @Test void partialReflowAndImpossibleRegionsDoNotPoisonLaterCalls() {
         var split = Table.builder("split").cellFormat(CELL).format(format -> format.padding(0).allowRowSplit(true))
                 .row("ONE\nTWO\nTHREE\nFOUR").build();
         var flow = new SemanticTable(split);
-        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, assertThrows(DocumentLayoutException.class,
-                () -> flow.layoutVariableRegions(context(100, 24), new FlowRegions(List.of(), 24), List.of(50.0, 100.0))).code());
+        assertEquals(2, flow.layoutVariableRegions(context(100, 24), new FlowRegions(List.of(), 24), List.of(50.0, 100.0)).size());
         assertEquals(2, flow.layoutVariableRegions(context(100, 24), new FlowRegions(List.of(), 24), List.of(50.0, 50.0)).size());
         var atomic = new SemanticTable(new Table(split.id(), split.columns(), split.rows(), 0,
                 split.format().toBuilder().allowRowSplit(false).build()));

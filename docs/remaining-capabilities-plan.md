@@ -1,6 +1,6 @@
 # 剩余能力执行计划
 
-更新日期：2026-10-23。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
+更新日期：2026-10-26。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
 
 阶段三十八至四十完成组件角色作用域／固定富文本、独立列表标记及 XML 分域默认外观。最终评估认为当前 PDF 报告／静态密集表单已可进入本地业务试用，证据和 API 选择见[首版就绪评估](readiness-assessment.md)。以下更广任务继续保留开放状态，后续按具体业务或复现缺陷选取独立单元，不据本次结论宣称全部 GAP 关闭。
 
@@ -33,7 +33,8 @@ OCR 不在当前范围内。下表保留既有推进单元及状态；编辑、�
 | 并发失败恢复 | [阶段六十九](verification/phase-69-streaming-stability.md)，同一引擎多线程重复 READ／CLOSE／ACCEPT／CANCEL／OUTPUT 失败后恢复 | 有限运行，不扩大为长期无泄漏或 PDF 恒内存 |
 | 单向 PDF 安全配置 | [阶段七十](verification/phase-70-streaming-protection.md)，AES-256、静态 PDF/A-2b 与锚点字体预算 | 最终文件独立合规，仍不提供自动签名或完整 PDF 恒内存 |
 | 行内内表自动列 | [阶段七十四](verification/phase-74-nested-automatic-tables.md)，父格实际宽度、合并锚点、递归续排及 DOCX 声明 | 含块格表 Auto、单向 Auto、Word 通用布局独立 |
-| 变宽语义表格 | [阶段七十一](verification/phase-71-variable-tables.md)，完整行／合并行组、原子嵌套格、实际字段及图文链接 | 变宽半行／递归子树与组件网格独立 |
+| 变宽行内格拆行 | [阶段七十五](verification/phase-75-variable-table-continuation.md)，完整格源、实际行容量、横向合并、图片／字段／链接和最终物理分页 | 变宽纵向合并拆分／递归子树及组件网格独立 |
+| 变宽语义表格 | [阶段七十一](verification/phase-71-variable-tables.md)，完整行／合并行组、原子嵌套格、实际字段及图文链接 | 行内格拆行续排见阶段七十五；纵向合并拆分／递归子树与组件网格独立 |
 | 单向页码字段 | [阶段七十三](verification/phase-73-streaming-fields.md)，实际呈现 PAGE、准确声明 PAGES 及严格完成核对 | 未知总数推断、未来引用／脚注和分节编号独立 |
 | 已有签名字节校验 | [阶段七十二](verification/phase-72-pdf-signature-verification.md)，显式 CMS 回调、准确版本范围、未签追加及篡改区分 | 证书信任／撤销／时间戳、DocMDP 修改符合性和 PAdES／长期验证独立 |
 

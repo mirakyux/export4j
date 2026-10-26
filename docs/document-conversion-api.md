@@ -2,6 +2,19 @@
 
 `DocumentConversion` 将已支持的导入、语义编辑和导出串联起来，统一损失策略与结果报告。它支持 Markdown／HTML／DOCX 输入和[受限 PDF 语义恢复](pdf-semantic-import-api.md)，以及 DOCX／HTML／Markdown 和显式布局后端目标。PDF 原对象／页级编辑仍使用各自的独立入口。
 
+## 转换范围
+
+转换路径为源格式导入、统一语义模型、目标格式导出；编辑为可选步骤。下表表示已有入口可组合，实际转换仍遵循源与目标各自的支持子集及损失处理规则。
+
+| 输入 | 可组合目标 | 导入边界 |
+| --- | --- | --- |
+| HTML／CSS | DOCX、HTML、Markdown、PDF | 离线元素、属性和静态 CSS 子集；资源由调用方明确提供 |
+| Markdown | DOCX、HTML、Markdown、PDF | 通用 Markdown 导入子集，与严格模板语法独立 |
+| DOCX | DOCX、HTML、Markdown、PDF | 语义子集，未建模 OOXML 需明确接受简化；不保留任意原包结构 |
+| PDF | DOCX、HTML、Markdown、重新排版的 PDF | 受限静态 PDF 语义恢复；表格需显式网格，不执行 OCR，不保持原版面 |
+
+PDF 目标需要显式字体和 `DocumentEngine`。SVG／PNG 也可选作布局目标，但继续受对应后端的页数、交互数据等限制；当前没有将任意 SVG／PNG 恢复为可编辑文档的导入入口。图像资源加载与文档语义导入是不同能力。
+
 ## 使用
 
 ```java
@@ -31,6 +44,14 @@ PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget
 ## 动作与实际损失
 
 覆盖顺序为**操作、功能、格式、默认值**，见[共享编辑策略](semantic-editing-api.md)。导入／导出操作键为 `IMPORT`／`EXPORT`，编辑使用具体操作键。默认 ERROR；WARN 和 IGNORE 执行相同的受支持处理，IGNORE 仅不出现在 `warnings()` 中，仍在 `issues()`／`losses()` 中。
+
+| 动作 | 遇到已定义的不兼容内容时 |
+| --- | --- |
+| `ERROR` | 拒绝转换，在准备阶段报错，不写入最终目标 |
+| `WARN` | 按明确规则简化或丢弃，继续转换，并返回警告和实际损失 |
+| `IGNORE` | 使用与 WARN 相同的处理，保留实际损失记录，不将其列为警告 |
+
+动作与处理方式独立：`DEGRADE` 表示简化，例如保留文字但去掉颜色；`DISCARD` 表示丢弃，例如删除没有目标映射的注释。允许简化不自动授权丢弃；必须为相应功能配置该入口支持的处理方式。可只对特定属性放宽，其余保持严格拒绝。
 
 | 目标或来源 | 明确处理 |
 | --- | --- |

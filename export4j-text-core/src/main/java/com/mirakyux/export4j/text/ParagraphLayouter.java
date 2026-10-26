@@ -88,6 +88,18 @@ public final class ParagraphLayouter {
         return layout(spans, width, style, images, fields, Map.of(), false);
     }
 
+    /** Wraps the complete original source and its atomic images/fields at a width per output line.
+     * Positions remain original UTF-16 offsets; fields remain unresolved. The deterministic synchronous
+     * callback must return positive finite point widths fitting {@code width}, as in the text-only overload.
+     * Resources remain borrowed and the ordinary text, object and cancellation budgets apply.
+     */
+    public ParagraphLayout layout(List<StyledSpan> spans, double width, ParagraphStyle style,
+            Map<Integer, com.mirakyux.export4j.model.InlineImage> images,
+            Map<Integer, com.mirakyux.export4j.model.InlineField> fields, IntToDoubleFunction lineWidths) {
+        return layout(spans, width, style, images, fields, Map.of(), false,
+                Objects.requireNonNull(lineWidths, "lineWidths"));
+    }
+
     /** Places bounded atomic vector ink with text, images and deferred fields. Keys are original
      * UTF-16 U+FFFC positions and cannot overlap other inline objects. Requires the default layouter.
      * Graphics contribute ascent/descent to the fixed line frame; oversized objects fail.

@@ -20,13 +20,13 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 | [优化](pdf-optimization-api.md) | 无损流压缩、相同简单图片／字体程序流去重；显式图片降采样／JPEG，返回确切大小与像素统计，不保证更小；[五十三](verification/phase-53-pdf-optimization.md) |
 | [文字替换](pdf-text-editing-api.md) | 同一 Tj／TJ 内命中范围替换、显式字体、容量限制及后续坐标保持；不等于脱敏；[五十四](verification/phase-54-pdf-text-editing.md) |
 | [区域脱敏](pdf-redaction-api.md) | 清除选区像素后新建纯图片 PDF，不复制源对象、文字层、附件、元数据及历史；牺牲全文搜索与矢量编辑；[五十五](verification/phase-55-pdf-redaction.md) |
-| [语义恢复](pdf-semantic-import-api.md) | 逐行段落、字号标题、显式表格网格及流图片，再编辑并转换 DOCX／HTML／Markdown／PDF；近似源框、推断损失及原版重排限制；[五十六](verification/phase-56-pdf-semantic-import.md) |
+| [语义恢复](pdf-semantic-import-api.md) | 逐行段落、字号标题、显式表格网格及流图片，再编辑并转换 DOCX／HTML／Markdown／PDF；普通输出的不可见图片锚点已嵌入字体并验证重新导入；近似源框、推断损失及原版重排限制见[五十六](verification/phase-56-pdf-semantic-import.md) |
 
 不支持任意 PDF 无损编辑或版面恢复，OCR 不在范围内。脱敏区域由调用方完整指定；不是自动发现敏感信息。各坐标系和字体／页面子集以对应 API 为准。
 
 ## HTML 与 Markdown 输出
 
-[Web 适配器](web-export-api.md)直接映射语义文档，支持 HTML5 和 CommonMark/GFM 内容；可全局及逐功能指定 ERROR／WARN／IGNORE。HTML 保留合并／嵌套表格、样式和嵌入图片；Markdown 对格式损失显式降级并保留锚点内容。默认严格，非法输入／超限／取消不能忽略，证据见[阶段四十三](verification/phase-43-web-exports.md)。这不包含 HTML/CSS 输入或 PDF 布局往返。
+[Web 适配器](web-export-api.md)直接映射语义文档，支持 HTML5 和 CommonMark/GFM 内容；可全局及逐功能指定 ERROR／WARN／IGNORE。HTML 保留合并／嵌套表格、样式和嵌入图片；Markdown 对格式损失显式降级并保留锚点内容。默认严格，非法输入／超限／取消不能忽略，证据见[阶段四十三](verification/phase-43-web-exports.md)。HTML/CSS 输入使用下节的独立入口；语义转换不承诺 PDF 布局往返。
 
 ## 离线 HTML／CSS 输入
 
@@ -144,7 +144,7 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 | 范围 | 后续验收目标 |
 | --- | --- |
 | 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、组件内字段、自动字段宽度重排和可访问的结构化阅读顺序 |
-| 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入。变宽半行／递归子树、任意轮廓／跨页浮动锚点、任意递归网格续页、竖排、可变字体轴仍开放；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
+| 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。变宽纵向合并拆分／递归子树、任意轮廓／跨页浮动锚点、任意递归网格续页、竖排、可变字体轴仍开放；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
 | DOCX | 浮动／裁剪等复杂图像、目录／评论／表单完整模型映射；首页／奇偶语义页区已验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已验收，Word 保存兼容单独登记 |
 | PDF | PDF/UA 标签树、更多注释／表单属性、现有签名验证和 PAdES 长期验证 |
 | 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。一般 Word／LibreOffice 外观、其他系统／JDK、多阅读器、持续容量与长期资源释放仍未验收 |

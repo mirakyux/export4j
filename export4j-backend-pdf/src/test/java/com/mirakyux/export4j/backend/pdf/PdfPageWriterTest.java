@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.graphics.DisplayDocument;
@@ -348,10 +349,11 @@ class PdfPageWriterTest {
         }
     }
 
-    @Test
-    void archivalOutlineAnchorCountsTowardFontBytesAndSharesTheEmbeddedFontIdentity() throws IOException {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void outlineAnchorCountsTowardFontBytesAndSharesTheEmbeddedFontIdentity(boolean archival) throws IOException {
         var face = font("LiberationSans-Regular.ttf");
-        var options = PdfOptions.DEFAULT.withArchival(new PdfArchival(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData(), face.data()));
+        var options = archival ? PdfOptions.DEFAULT.withArchival(new PdfArchival(ICC_Profile.getInstance(ColorSpace.CS_sRGB).getData(), face.data())) : PdfOptions.DEFAULT;
         var outline = new DisplayPage(SIZE, List.of(new DrawCommand.OutlineText("AB", List.of(path()), RgbColor.BLACK)));
         var small = PdfLimits.DEFAULT.toBuilder().maxFontBytes(face.data().byteSize() - 1).build();
         var output = new TrackingOutput();
@@ -367,7 +369,39 @@ class PdfPageWriterTest {
         try (var writer = new PdfBackend(exact, options).open(METADATA, output)) {
             writer.accept(glyphPage(face, "SHARED FONT")); writer.accept(outline); writer.finish();
         }
-        try (var pdf = Loader.loadPDF(output.toByteArray())) { assertEquals(2, pdf.getNumberOfPages()); }
+        try (var pdf = Loader.loadPDF(output.toByteArray())) {
+            assertEquals(2, pdf.getNumberOfPages());
+            var resources = pdf.getPage(1).getResources();
+            var anchor = resources.getFont(resources.getFontNames().iterator().next());
+            assertTrue(anchor.isEmbedded());
+            assertSame(anchor.getCOSObject(), pdf.getPage(0).getResources().getFont(
+                    pdf.getPage(0).getResources().getFontNames().iterator().next()).getCOSObject());
+        }
+    }
+
+    @Test
+    void defaultAnchorsAreEmbeddedOnImageOnlyPagesInCompleteAndStreamingOutput() throws IOException {
+        var page = new DisplayListBuilder(SIZE).drawImage(image(), new Rect(20, 20, 10, 10))
+                .drawOutlinedText("\uFFFC", List.of(), RgbColor.BLACK, new Rect(20, 20, 10, 10)).build();
+        for (boolean streaming : List.of(false, true)) {
+            var output = new TrackingOutput(); var backend = new PdfBackend();
+            if (streaming) {
+                try (var writer = backend.open(METADATA, output)) { writer.accept(page); writer.accept(page); writer.finish(); }
+            } else { backend.write(new DisplayDocument(METADATA, List.of(page, page)), output); }
+            assertFalse(output.closed);
+            try (var pdf = Loader.loadPDF(output.toByteArray())) {
+                assertEquals(2, pdf.getNumberOfPages());
+                for (var emitted : pdf.getPages()) {
+                    var resources = emitted.getResources(); int count = 0;
+                    for (var name : resources.getFontNames()) {
+                        var anchor = resources.getFont(name); assertTrue(anchor.isEmbedded(), "invisible image anchor must be embedded");
+                        assertTrue(anchor.getFontDescriptor().getFontFile2().getLength() > 0); count++;
+                    }
+                    assertEquals(1, count);
+                    assertTrue(resources.getPropertiesNames().iterator().hasNext(), "logical image marker must remain in marked content");
+                }
+            }
+        }
     }
 
     @Test

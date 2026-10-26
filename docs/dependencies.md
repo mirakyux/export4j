@@ -1,5 +1,7 @@
 # 依赖与资源管理
 
+PDF 普通输出的不可见逻辑锚点复用既有 PDFBox 3.0.8 JAR 内 `org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf`，与[字体记录](../assets/fonts/README.md)中已审查的 Regular 字节一致。只嵌入锚点使用的子集，不用作可见正文的字体替换；没有新增 Maven 坐标或第三方字体文件。沿用已有 PDFBox 完整 LICENSE／NOTICE 和 Liberation Sans OFL 声明。原始字体字节计入输出字体预算，归档仍使用显式配置的字体。
+
 PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans。PDF 适配器显式声明 FontBox，用于读取嵌入权限及禁止子集标志；没有新增运行坐标、字体或第三方样本。样例图像由 Java 自行生成，源码和检查脚本采用 Apache-2.0。见[阶段四十九](verification/phase-49-pdf-page-editing.md)。
 
 离线 HTML 导入在 Web 适配器内部采用 jsoup 1.21.2。仅调用 String 解析与有限选择器，不调用连接／加载接口；公共 API 不暴露其类型。无传递运行依赖，实际 class major 52，与 Java 21 兼容。MIT 原文来自实际 JAR，JAR／POM 与上游 SHA-1 及 Gradle SHA-256 对照；原始许可、归属和运行 SBOM 同步保留。

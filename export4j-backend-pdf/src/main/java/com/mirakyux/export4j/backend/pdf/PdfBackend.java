@@ -37,6 +37,7 @@ import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.graphics.RgbImage;
 import com.mirakyux.export4j.graphics.VectorPath;
 import com.mirakyux.export4j.font.FontData;
+import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.text.GlyphRun;
 import com.mirakyux.export4j.text.PositionedGlyph;
 import com.mirakyux.export4j.model.DocumentMetadata;
@@ -46,6 +47,8 @@ import com.mirakyux.export4j.model.ExecutionContext;
  * Stateless PDFBox output backend, reusable concurrently with independent output streams.
  * Supports opaque RGB, standard-font Latin text and premeasured embedded TrueType glyph runs.
  * Performs no shaping or automatic layout. Output streams remain caller-owned.
+ * Non-painting logical anchors embed the fixed font bundled with PDFBox; archival
+ * output uses its configured anchor font. Both count toward the font byte budget.
  * Page sessions consume each DisplayPage immediately and do not retain it. PDFBox's
  * document, page tree and COS objects still grow with the number of converted pages;
  * temporary stream storage is not a constant-memory PDF writer.
@@ -218,8 +221,8 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 } else if (command instanceof DrawCommand.StrokePath stroke) {
                     pathSegments = countSegments(stroke.path(), pathSegments, pageIndex, index);
                 } else if (command instanceof DrawCommand.OutlineText text) {
-                    if (options.archival().isPresent() && !text.logicalText().isEmpty()) {
-                        acceptFont(options.archival().orElseThrow().anchor(), pageIndex, index);
+                    if (!text.logicalText().isEmpty()) {
+                        acceptFont(anchorFontData(), pageIndex, index);
                     }
                     int count = text.logicalText().codePointCount(0, text.logicalText().length());
                     if (count > limits.maxTextCodePoints() - textCodePoints) { throw budget(pageIndex, index, "text code point budget exceeded"); }
@@ -376,6 +379,23 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         return count + path.segments().size();
     }
 
+    private FontData anchorFontData() {
+        return options.archival().map(PdfArchival::anchor).orElseGet(() -> LogicalAnchor.DATA);
+    }
+
+    /** Fixed dependency resource for non-painting anchors only; never a visible-text fallback. */
+    private static final class LogicalAnchor {
+        private static final FontData DATA = load();
+        private static FontData load() {
+            try (var input = PdfBackend.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+                if (input == null) { throw new IllegalStateException("bundled PDF logical anchor font is unavailable"); }
+                return TrueTypeFontLoader.load(input, 1024 * 1024).data();
+            } catch (IOException failure) {
+                throw new IllegalStateException("bundled PDF logical anchor font is invalid", failure);
+            }
+        }
+    }
+
     private void renderPage(PDDocument pdf, DisplayPage source, int pageIndex,
             Map<FontFamily, PDType1Font> fonts, Map<String, PDType0Font> embedded) throws IOException {
         PDPage page = new PDPage(new PDRectangle(
@@ -412,13 +432,9 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 if (!text.logicalText().isEmpty()) {
                     // A non-painting text anchor gives readers a selectable region for ActualText over outlines.
                     var bounds = text.logicalBounds();
-                    org.apache.pdfbox.pdmodel.font.PDFont anchorFont;
-                    if (options.archival().isPresent()) {
-                        var data = options.archival().orElseThrow().anchor();
-                        var loaded = embedded.get(data.id());
-                        if (loaded == null) { loaded = PDType0Font.load(pdf, new ByteArrayInputStream(data.bytes()), data.subsetAllowed()); embedded.put(data.id(), loaded); }
-                        anchorFont = loaded;
-                    } else { anchorFont = fonts.computeIfAbsent(FontFamily.SANS_SERIF, PdfBackend::font); }
+                    var data = anchorFontData();
+                    var anchorFont = embedded.get(data.id());
+                    if (anchorFont == null) { anchorFont = PDType0Font.load(pdf, new ByteArrayInputStream(data.bytes()), data.subsetAllowed()); embedded.put(data.id(), anchorFont); }
                     stream.saveGraphicsState();
                     stream.beginText();
                     // A small anchor avoids tall invisible glyph boxes interleaving adjacent logical lines.

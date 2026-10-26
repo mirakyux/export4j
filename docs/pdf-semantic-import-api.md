@@ -50,6 +50,18 @@ assert preview.issues().equals(actual.report().issues());
 
 Form、ExtGState、裁剪、不支持的文字绘制模式、复杂字体等不能直接恢复。可见字形必须具有合法 Unicode、几何及非重叠水平文字。不能恢复的整页只在相应 SKIP_BLOCK 策略下跳过；全部页面无可恢复内容时失败，不返回虚假的空文档成功结果。
 
+## 为什么不能直接还原原文档
+
+PDF 保存的是页面绘制结果，通常只有字形、路径、图片和坐标。表格边框可能与普通装饰线相同，文字对齐也可能来自分栏而非单元格；当前恢复器没有自动表格识别。调用方须用 `.table(page, xEdges, yEdges, headerRows)` 提供已知网格，才会生成可编辑的 Table／TableCell。省略网格时，原表格文字按普通文字行恢复，行列结构不保留；`PDF_LAYOUT` 明确报告几何推断和重排。
+
+未嵌入字体的 PDF 常由阅读器使用本机字体替代，因此能在某台电脑打开，不代表能确定性地恢复 Unicode、字宽和位置。当前恢复预检检查全部字体资源，包括未使用或隐藏文字引用的资源，仅接受嵌入静态 TrueType；不会通过系统字体回退放行。外部 PDF 的不支持字体仍按 `PDF_STRUCTURE` 的 SKIP_BLOCK 规则处理。
+
+Export4j 的行内图片和轮廓文字使用不可见文字锚点承载 ActualText 与选区。普通 PDF 输出现复用 PDFBox 依赖内已固定的 Liberation Sans，仅将锚点实际使用的字形子集嵌入；它不作为可见正文的缺字回退，也不扫描系统字体。完整输出和逐页输出使用同一规则，字体原始字节计入 `PdfLimits.maxFontBytes`，同字节字体只计一次；归档输出继续使用调用方的显式锚点字体。因此，这些不可见锚点不会再因使用未嵌入 Helvetica 而使整页被拒绝。
+
+字体可接受与文字可恢复是两项检查。文字若已绘成路径轮廓，当前恢复器不会把路径或未经验证的 ActualText 当成可编辑正文；文字与图片混排的轮廓行也遵守此规则，损失分别记录为 `PDF_VECTOR_GRAPHICS`／`PDF_LOGICAL_TEXT`，隐藏锚点记录为 `PDF_HIDDEN_TEXT`。需要保留原始可编辑文字时，优先从语义模型或 DOCX／HTML／Markdown 源进行转换。
+
+WARN／IGNORE 只能采用已有的明确降级方式。它们不能补出缺失的表格结构、执行 OCR 或绕过字体检查；若按策略跳过全部页面后没有可恢复内容，转换仍失败并保留旧目标文件。对于支持的输入，IGNORE 仍保留实际损失，只隐藏警告展示。
+
 ## 策略和损失
 
 默认 ERROR，按操作 `RECOVER_PDF`、功能、目标格式 `MODEL`、默认值覆盖。WARN 和 IGNORE 的处理相同；IGNORE 仍返回 `issues()`／`losses()`。只支持下表对应的处理方式，没有原结构保留通道时不能配置 PRESERVE。

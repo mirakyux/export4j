@@ -1,0 +1,38 @@
+# 变宽区域内的表格拆行续排
+
+语义表格显式设置 `allowRowSplit(true)` 后，普通文字、富文本、行内图片及字段可以按完整行在不同宽度的栏之间续排。每个格保持完整原文，按实际所属区域的列宽换行，不把宽栏的行直接搬到窄栏，也不裁切或缩放内容。
+
+```java
+var table = Table.builder("details")
+        .cellFormat(CellFormat.builder().fontSize(10).lineHeight(18).build())
+        .format(format -> format.padding(3).allowRowSplit(true))
+        .header("DETAIL")
+        .row("Content that may continue from a narrow column into a wider column.")
+        .build();
+var flow = FlowColumn.builder().padding(2).semanticTable(table).build();
+var columns = ContinuousColumns.builder(flow)
+        .columnWeights(List.of(1.0, 2.0)).gap(12).build();
+```
+
+使用方式及输出沿用[变宽语义表格 API](variable-tables-api.md)。所有长度为 pt，原文位置为格内 UTF-16；逻辑区域序号、物理页码和来源行号保持独立。
+
+## 内容与推进
+
+- 支持固定／比例／有界 Auto 列和横向合并；列宽在实际区域重新解析。各格可使用不同固定行高，每片段重复格内边距，按最高格片段确定行高。
+- 已完成的邻格在后续片段保持空续接格，不重复原文字。`firstLineIndex` 是该格实际续排行的累计偏移，`continuedRow` 表示同一原始行的后续片段。
+- 图片、字段和字形簇不可拆。图片按实际行宽检查；未在窄栏呈现的图片不会因窄栏的完整正文预排而被拒绝。Auto 首选宽度探测仍遵循自身的有界测量契约。
+- 表头在每个实际占用区域完整重复，按其实际宽度换行。正文必须至少放下每格一个行框；过短初始区域可在起排或同一行续排途中跳过，所有格共同跳过，不消费正文或生成仅含表头的片段，也不计入占用区域预算。完整续区无法推进时返回 `CONTENT_TOO_TALL`。
+- PAGE、PAGES 和引用保持延迟解析，由最终文档物理分页确定。图片及文字链接使用最终格位置；缺字诊断保留原始 UTF-16，未选宽度的准备诊断不混入结果。
+- 支持 `FlowColumn` 内边距、字体作用域及连续栏的有界平衡。重复测量必须使用同一不可变来源，不共享文档级游标状态。
+
+## 预算与失败
+
+源结构、码点和槽预算检查一次。每种宽度的列／表头准备最多一次，最多 16 种；每个正文格再按完整源准备实际行。候选与实际准备累计计入 4,000,000 源 UTF-16 单位的工作上限。最终输出行另计，仅包含已选正文、空续接行和实际重复表头；区域仍受 `maxPages`、100,000 占用片段及 100,016 逻辑区域上限约束。
+
+取消、预算、非法内容及几何错误保持明确异常，不改成文字缺字错误，不返回部分成功。布局不执行 I/O，不拥有字体或图片资源，不启动线程。输出继续遵守引擎原子写入契约。
+
+## 保留边界
+
+不同宽度下，允许拆行的表格仍拒绝纵向合并及 Paragraph／Table 块格；递归子树和组件 `GridTable` 的变宽续排需要单独契约。默认原子行／合并行组路径及等宽递归续排保持独立。本项不扩大单向 `StreamingTable` 的内容范围，也不承诺 DOCX 与 PDF 同分页。
+
+运行 `:examples:variableSplitTables` 及新隔离调用方，再执行 `python scripts/verify_variable_split_tables.py`。设计见 [ADR-0082](adr/0082-variable-width-inline-continuation.md)。

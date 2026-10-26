@@ -533,6 +533,7 @@ public final class Consumer {
         StreamingProtectionConsumer.verify(engine, font.data(), output);
         StreamingFieldsConsumer.verify(engine, output);
         NestedAutomaticTablesConsumer.verify(engine, output);
+        VariableSplitTablesConsumer.verify(engine, output);
         System.out.println("Consumer outputs: " + output.toAbsolutePath());
     }
 }

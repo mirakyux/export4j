@@ -2,7 +2,7 @@
 
 `export4j-adapter-web` 直接将 `Document`、`PageDocument` 或 `SectionedDocument` 转为 HTML5 或 Markdown。两种输出均为 UTF-8，不需要浏览器、字体文件或第三方 Java 运行依赖。浏览器／Markdown 阅读器负责显示与换行；该适配器不复用 PDF 坐标或承诺相同分页。
 
-这与[Markdown 模板输入](markdown-template-api.md)是独立方向。导出的 GFM 表格、图片与安全生成标签不保证能由严格模板输入语法重新导入。HTML/CSS 输入仍未实现。设计见 [ADR-0050](adr/0050-semantic-web-exports.md)，完整样例见 [WebExportsExample](../examples/src/main/java/com/mirakyux/export4j/examples/WebExportsExample.java)，证据见[阶段四十三](verification/phase-43-web-exports.md)。
+这与[Markdown 模板输入](markdown-template-api.md)是独立方向。导出的 GFM 表格、图片与安全生成标签不保证能由严格模板输入语法重新导入。通用文档输入使用[Markdown 导入器](markdown-import-api.md)或[离线 HTML/CSS 导入器](html-import-api.md)；跨格式串联与完整损失报告见[统一转换](document-conversion-api.md)。设计见 [ADR-0050](adr/0050-semantic-web-exports.md)，完整样例见 [WebExportsExample](../examples/src/main/java/com/mirakyux/export4j/examples/WebExportsExample.java)，证据见[阶段四十三](verification/phase-43-web-exports.md)。
 
 ## 依赖与调用
 

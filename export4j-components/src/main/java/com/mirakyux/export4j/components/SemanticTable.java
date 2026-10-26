@@ -54,9 +54,9 @@ public record SemanticTable(Table table) implements WidthAwareRegionFlow {
     }
 
     /**
-     * Reflows complete rows and merged-row groups at their actual cyclic region widths.
-     * Unequal widths require atomic rows; equal widths also support explicit complete-line splitting.
-     * Preparation is bounded to 16 widths and 4,000,000 cumulative source UTF-16 units.
+     * Reflows complete rows/groups at their actual cyclic region widths. Explicit row splitting
+     * also supports inline cells across unequal widths; split vertical spans/block cells remain unsupported.
+     * Preparation is bounded to 16 widths and 4,000,000 cumulative source UTF-16 units, including split-cell work.
      * Source identity, fields, links and font policy are retained for final pagination.
      */
     @Override

@@ -78,4 +78,4 @@ var columns = ContinuousColumns.builder(FlowText.builder(text)
         .columnWeights(List.of(1.0, 3.0)).gap(20).build();
 ~~~
 
-`SemanticTable` 已接入变宽区域：完整行／合并行组按实际栏宽测量，支持原子嵌套格、最终字段和图文外链，见[语义表格变宽 API](variable-tables-api.md)。不同宽度的半行／递归子树续排、组件网格和其他旧分页组件仍明确拒绝；等宽路径保持。自定义宽度实现须保持每个片段适应自己的栏宽，非法结果不能通过平衡试排隐藏。文字基础实现与输出证据见[ADR-0067](adr/0067-width-aware-continuous-columns.md)及[阶段五十九](verification/phase-59-variable-columns.md)。
+`SemanticTable` 已接入变宽区域：完整行／合并行组按实际栏宽测量，支持原子嵌套格、最终字段和图文外链，见[语义表格变宽 API](variable-tables-api.md)。不同宽度的行内格完整行续排见[拆行指南](variable-table-continuation-api.md)；纵向合并拆分／递归子树续排、组件网格和其他旧分页组件仍明确拒绝；等宽路径保持。自定义宽度实现须保持每个片段适应自己的栏宽，非法结果不能通过平衡试排隐藏。文字基础实现与输出证据见[ADR-0067](adr/0067-width-aware-continuous-columns.md)及[阶段五十九](verification/phase-59-variable-columns.md)。

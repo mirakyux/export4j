@@ -37,6 +37,12 @@ import java.util.Objects;
 import java.util.Set;
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColor;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorN;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingColorSpace;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceCMYKColor;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceGrayColor;
+import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceRGBColor;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
@@ -105,6 +111,15 @@ public final class PdfSemanticImporter {
                     if (new PdfRasterResources().check(page) != null || complex(page)) { state.loss("PDF_STRUCTURE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_NOT_RECOVERED", index); continue; }
                     var glyphs = new ArrayList<Glyph>(); int pageIndex = index;
                     var stripper = new PDFTextStripper() {
+                        {
+                            // PDFTextStripper does not track colors unless these operators are registered.
+                            addOperator(new SetNonStrokingColorSpace(this));
+                            addOperator(new SetNonStrokingColor(this));
+                            addOperator(new SetNonStrokingColorN(this));
+                            addOperator(new SetNonStrokingDeviceRGBColor(this));
+                            addOperator(new SetNonStrokingDeviceGrayColor(this));
+                            addOperator(new SetNonStrokingDeviceCMYKColor(this));
+                        }
                         @Override protected void processOperator(Operator operator, List<COSBase> operands) throws IOException { state.operator(); super.processOperator(operator, operands); }
                         @Override protected void operatorException(Operator operator, List<COSBase> operands, IOException failure) throws IOException { throw failure; }
                         @Override public void beginMarkedContentSequence(COSName tag, org.apache.pdfbox.cos.COSDictionary properties) {

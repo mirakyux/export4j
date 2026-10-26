@@ -64,6 +64,39 @@ class PdfSemanticImporterTest {
         assertTrue(result.preview().issues().stream().noneMatch(issue -> issue.feature().equals("PDF_FONT_MAPPING")));
         assertEquals("body", ((Heading) result.document().sections().getFirst().blocks().getFirst()).inlines().getFirst().style().fontRole());
     }
+    @Test void recoversTextColorsAcrossOperatorsSavedStatesAndPageBoundaries() throws Exception {
+        // Full CMYK key black maps to #231f20 through the bundled CMYK profile.
+        var commands = List.of("", "1 0 0 rg", "q 0 1 0 rg", "Q", "0.5 g", "0 0 0 1 k",
+                "/ProbeRGB cs 0 0 1 sc", "0 1 0 scn", "/DeviceGray cs 1 sc");
+        var expected = List.of(0x000000, 0xFF0000, 0x00FF00, 0xFF0000, 0x808080, 0x231F20,
+                0x0000FF, 0x00FF00, 0xFFFFFF);
+        byte[] bytes;
+        try (var pdf = new PDDocument()) {
+            var font = PDType0Font.load(pdf, new ByteArrayInputStream(Files.readAllBytes(Path.of("../assets/fonts/LiberationSans-Regular.ttf"))), false);
+            for (int pageIndex = 0; pageIndex < 2; pageIndex++) {
+                var page = new PDPage(new PDRectangle(300, 320)); pdf.addPage(page);
+                var resources = new org.apache.pdfbox.pdmodel.PDResources(); page.setResources(resources);
+                String name = resources.add(font).getName();
+                resources.put(org.apache.pdfbox.cos.COSName.getPDFName("ProbeRGB"), org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB.INSTANCE);
+                var stream = new org.apache.pdfbox.pdmodel.common.PDStream(pdf); page.setContents(stream);
+                var content = new StringBuilder(); int count = pageIndex == 0 ? commands.size() : 1;
+                for (int i = 0; i < count; i++) {
+                    content.append(commands.get(i)).append("\nBT /").append(name).append(" 12 Tf 20 ")
+                            .append(290 - i * 25).append(" Td <").append(java.util.HexFormat.of().formatHex(font.encode("COLOR-" + i))).append("> Tj ET\n");
+                }
+                try (var output = stream.createOutputStream()) { output.write(content.toString().getBytes(StandardCharsets.US_ASCII)); }
+            }
+            var output = new ByteArrayOutputStream(); pdf.save(output); bytes = output.toByteArray();
+        }
+        var adapter = new PdfAdapter(); var result = adapter.importDocument(adapter.input(bytes, "")).policy(POLICY).prepare().execute();
+        var blocks = result.document().sections().getFirst().blocks(); assertEquals(commands.size(), blocks.size());
+        for (int i = 0; i < commands.size(); i++) {
+            var paragraph = assertInstanceOf(Paragraph.class, blocks.get(i)); assertEquals("COLOR-" + i, paragraph.text());
+            assertEquals(expected.get(i).intValue(), paragraph.inlines().getFirst().style().rgb(), "color operator " + commands.get(i));
+        }
+        var nextPage = assertInstanceOf(Paragraph.class, result.document().sections().get(1).blocks().getFirst());
+        assertEquals(0x000000, nextPage.inlines().getFirst().style().rgb(), "page graphics state must start at black");
+    }
     @Test void tableEdgesAreSnapshotsAndInvalidCutsAndOverlapAreRejected() throws Exception {
         var adapter = new PdfAdapter(); var input = adapter.input(source(), ""); var x = new java.util.ArrayList<>(List.of(20d, 140d, 260d));
         var request = adapter.importDocument(input).table(0, x, List.of(80d, 120d, 150d), 1).policy(POLICY); x.set(1, 21d);

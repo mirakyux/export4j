@@ -38,6 +38,7 @@
 - PDF 已有签名校验另运行 `:examples:verifyPdfSignatures`、新隔离调用方和 `scripts/verify_pdf_signatures.py`；由独立解析器重建准确 ByteRange／DER 并用真实离线 CMS 验证完整性、未签追加及最新版本篡改。校验器回调不得冒充证书信任／修改符合性，不能把单元协议夹具称为真实 CMS；全部新增页双渲染并逐页复查。
 - 单向字段另运行 `:examples:streamingFields`、新隔离调用方及 `scripts/verify_streaming_fields.py`；检查重复表头、移页正文和拆行字段的实际页码、准确声明总数、源／生成预算和失败原子性。共享字段绘制变更回归完整文档字段、变宽表格、图文、生产及进阶路径，不刷新视觉基线；全部新增页双渲染并逐页复查。
 - 行内内表 Auto 另运行 `:examples:nestedAutomaticTables`、新隔离调用方及 `scripts/verify_nested_automatic_tables.py`；核对父格实际宽度、最小值收缩、合并锚点、递归字段／链接和探测异常祖先路径。回归块格、递归表格、普通 Auto、变宽区域和双跨度；DOCX 单独检查真实网格、Auto 声明及原生字段，不扩大为 Word 通用布局一致。
+- 变宽行内格拆行另运行 `:examples:variableSplitTables`、新隔离调用方和 `scripts/verify_variable_split_tables.py`；核对完整源跨宽度换行、实际行容量、不同格行高、横向合并及空续接格、短区、UTF-16、最终字段、图片像素与链接。分别验证工作／呈现预算和取消恢复，回归原子变宽表格、递归／自动列、语义区域、混合栏及最低行数；全部新增页双渲染并逐页查看。
 - 混合分栏／表格区域变更额外运行 `:examples:mixedColumns :examples:tablePdf` 和 `python scripts/verify_mixed_columns.py`，核对每栏剩余高度、内边距／间距、图片仅一次、逐栏表头、合并行组不拆开、正文唯一性和原子片段回退。全部新页须独立渲染并人工复查；验证隔离 Maven 调用方的混合 API、重复表头及图片。
 - 行内字段／注释锚点变更运行 `build sbom publishLocalBundle :examples:inlineFields :examples:production :examples:advancedPdf` 与 `python scripts/verify_inline_fields.py`，核对最终目录偏移、分节页码、引用链接、原文来源、宽度失败及脚注实际归属。全部新页须独立渲染并人工复查；同时验证隔离 Maven 调用方、原脚注续页和图文／表格回归，不自动刷新基线。
 

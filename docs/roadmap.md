@@ -61,7 +61,7 @@
 
 多浮动组件已扩展为同一首片段内多个左右矩形的逐行避让、封闭行带跳过和整体移页，并保持全文原文顺序与续页全宽，见[调用指南](multi-floats-api.md)及[独立验收](verification/phase-7-multi-floats.md)。任意轮廓／跨页浮动锚点仍未覆盖。
 
-当前页连续文字分栏已支持剩余高度、完整续栏、两栏／三栏、最低行数移页和后续正文接续，见[调用指南](continuous-columns-api.md)及[独立验收](verification/phase-8-continuous-columns.md)。混合组件、嵌套流与表格后续已接入区域 SPI，支持图片整块移动、逐栏表头和完整合并行组，见[混合分栏指南](mixed-columns-api.md)及[验收](verification/phase-9-mixed-columns.md)。文字／混合流变栏宽与平衡见[阶段五十九](verification/phase-59-variable-columns.md)，变宽最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；表格跨变宽区域仍需独立续排契约。
+当前页连续文字分栏已支持剩余高度、完整续栏、两栏／三栏、最低行数移页和后续正文接续，见[调用指南](continuous-columns-api.md)及[独立验收](verification/phase-8-continuous-columns.md)。混合组件、嵌套流与表格后续已接入区域 SPI，支持图片整块移动、逐栏表头和完整合并行组，见[混合分栏指南](mixed-columns-api.md)及[验收](verification/phase-9-mixed-columns.md)。文字／混合流变栏宽与平衡见[阶段五十九](verification/phase-59-variable-columns.md)，变宽最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义表格](variable-tables-api.md)及[行内格完整行续排](variable-table-continuation-api.md)已接入变宽区域；纵向合并拆分／递归子树与组件网格继续独立。
 
 正文行内动态字段、页码／编号引用和注释锚点已实现。字段固定宽度，最终分页后解析；脚注跟随标记实际所在行，见[字段指南](inline-fields-api.md)及[验收](verification/phase-10-inline-fields.md)。语义表格单元格进一步支持页码和引用字段、逐页重复表头及拆行来源，见[表格字段验收](verification/phase-11-table-fields.md)。DOCX 原生四类字段及显式宽度导入已补齐，见[DOCX 字段验收](verification/phase-12-docx-fields.md)。单元格注释标记、任意组件字段、长表区域流、自动字段宽度重排和结构化可访问性仍属后续范围。
 

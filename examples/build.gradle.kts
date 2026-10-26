@@ -746,3 +746,12 @@ tasks.register<JavaExec>("nestedAutomaticTables") {
     workingDir = rootProject.projectDir
     systemProperty("java.awt.headless", "true")
 }
+
+tasks.register<JavaExec>("variableSplitTables") {
+    group = "application"
+    description = "Generates complete-line cell continuations over unequal-width columns."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.VariableSplitTablesExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}

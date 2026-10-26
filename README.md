@@ -38,7 +38,7 @@ Export4j is an open-source Java engine for generating reports and structured doc
 | Document authoring | Fluent builders, headings, paragraphs, rich text, lists, reusable themes with global/domain font and color defaults, named styles |
 | Text and fonts | Explicit font groups and real variants, missing-glyph policies, OpenType shaping through the JDK, bidirectional text, justification and an optional strict CJK line-break subset |
 | Layout | Automatic pagination, sections, headers and footers, page backgrounds, balanced equal/unequal text columns, rectangular text wrapping and page-flow components |
-| Tables | Repeated headers, supported automatic column widths, row/column spans, explicit row splitting, multi-paragraph cells, bounded recursive tables with inline automatic columns, vertical continuations and atomic semantic rows across unequal columns |
+| Tables | Repeated headers, supported automatic column widths, row/column spans, explicit row splitting, multi-paragraph cells, bounded recursive tables with inline automatic columns, vertical continuations, atomic semantic rows and inline-cell line continuations across unequal columns |
 | Images and graphics | Inline PNG/JPEG, vector paths, shapes, watermarks and a restricted offline SVG input subset |
 | Navigation and forms | Contents, bookmarks, links, comments, page/reference fields, continued footnotes, static form components and four basic editable PDF field types |
 | Templates | Offline XML with variables, conditions, loops, dynamic rows, themes, static page settings, image/table headers/footers, sections, bounded recursive includes, dynamic links and fields; strict lightweight Markdown |
@@ -89,6 +89,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | `:examples:staticForms` | `examples/build/static-forms/` | Dense static forms and vector controls |
 | `:examples:streamingTable` | `examples/build/streaming-table/` | Single-pass large-table output |
 | `:examples:variableTables` | `examples/build/variable-tables/` | Semantic rows, merged owners and atomic nested cells at actual column widths |
+| `:examples:variableSplitTables` | `examples/build/variable-split-tables/` | Complete-line cell continuations across unequal columns, with final fields, images and links |
 | `:examples:verifyPdfSignatures` | `examples/build/pdf-signature-verification/` | Explicit offline CMS verification, unsigned append detection and signed-byte tamper rejection |
 
 The examples use bundled, explicitly loaded fonts; no font download is required at runtime. The core libraries do not bundle the example fonts. See [font sources and licenses](assets/fonts/README.md).
@@ -193,7 +194,9 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 | Input and editing | Offline XML/strict Markdown templates; general Markdown, HTML/CSS, DOCX subsets and bounded PDF recovery; [shared conversion](docs/document-conversion-api.md) includes editing and loss reports |
 
 - General Word documents are not guaranteed to round-trip without loss or paginate identically to PDF.
-- PDF recovery infers line paragraphs/headings and requires explicit table grids. Redaction rasterizes all pages and removes source objects, sacrificing text search and vector editing; callers identify every sensitive region.
+- PDFs commonly store glyphs, paths and coordinates without reliable table row/cell relationships. Recovery infers line paragraphs/headings and requires explicit table grids; without a grid, table text is treated as ordinary lines.
+- PDF recovery requires every font resource to be embedded static TrueType, avoiding machine-dependent font substitution and measurements. Invisible inline-image/outline anchors now use a fixed embedded font. Outlined text and external PDFs retain their own limits; see [PDF recovery boundaries](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档).
+- Redaction rasterizes all pages and removes source objects, sacrificing text search and vector editing; callers identify every sensitive region.
 - Complex-text coverage, text extraction, search and selection depend on the tested scripts and readers. Full OpenType, Unicode segmentation and PDF/UA compliance are not claimed.
 - PDF/A output needs independent compliance validation. Signing requires a caller-provided external signer; no private key is bundled.
 - Fixed-size fields and atomic content must fit their reserved area. The engine does not silently shrink or clip unsupported content.
@@ -205,7 +208,7 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 The following areas remain open; they are not current features:
 
 - Broader page-layer composition, DOCX layer mappings and cross-reader acceptance.
-- Partial-row and component-grid continuation across unequal columns, plus broader floating page layouts.
+- Split vertical spans, recursive cell subtrees and component-grid continuation across unequal columns, plus broader floating page layouts.
 - Broader complex-script and reader interoperability, including search and text selection.
 - Broader HTML/CSS compatibility and a visual template designer.
 - Stable public API and Maven Central distribution, with repeatable cross-platform release validation.

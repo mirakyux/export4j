@@ -98,3 +98,4 @@
 | 0079 | [显式 CMS 校验与 PDF 字节覆盖分离](0079-explicit-pdf-signature-verification.md) | 已采纳；有界快照、准确 ByteRange、完整性及未签追加分别报告 |
 | 0080 | [单向长表实际页码与准确声明总数](0080-single-pass-page-fields.md) | 已采纳；实际呈现解析、总数严格核对、来源及生成预算分开 |
 | 0081 | [行内内容内表复用有界自动列宽](0081-nested-inline-automatic-columns.md) | 已采纳；父格实际宽度、完整探测来源及原生 DOCX 声明 |
+| 0082 | [完整格源按实际变宽区域续排行](0082-variable-width-inline-continuation.md) | 已采纳；完整来源、实际区域容量、图片字段及独立工作／呈现预算 |
