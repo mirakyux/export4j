@@ -330,12 +330,24 @@ final class HtmlImportMapper {
                 }
                 var style = css.get(cell); var format = new CellFormat(style.size, style.lineHeight(), style.alignment);
                 var own = new Context(context.block(), List.copyOf(path), 0); TableCell value;
-                if (cell.children().stream().anyMatch(child -> Set.of("p", "table").contains(child.normalName()))) {
+                if (cell.children().stream().anyMatch(child -> Set.of("p", "table", "div").contains(child.normalName()))) {
                     var blocks = new ArrayList<Block>();
                     for (var child : cell.children()) {
                         if (child.normalName().equals("table")) { String childId = id(child); attributes(child, childId, path); blocks.add(table(child, new Context(childId, List.copyOf(path), 0), depth + 1)); }
                         else if (child.normalName().equals("p")) { block(child, blocks, own); }
-                        else { throw new IllegalArgumentException("HTML block cell supports p/table only"); }
+                        else if (child.normalName().equals("div")) {
+                            attributes(child, context.block(), path);
+                            if (!child.className().equals("table-scroll") || child.childrenSize() != 1
+                                    || !child.child(0).normalName().equals("table")
+                                    || child.textNodes().stream().anyMatch(text -> !text.isBlank()) || css.get(child).hidden) {
+                                throw new IllegalArgumentException("HTML cell table wrapper requires one visible table");
+                            }
+                            if (loss(child, "TABLE_CELL_CONTAINER", "scroll wrapper geometry has no block-cell mapping",
+                                    "CELL_TABLE_WRAPPER_REMOVED", context.block(), path) == Treatment.DEGRADE) {
+                                var nested = child.child(0); String childId = id(nested); attributes(nested, childId, path);
+                                blocks.add(table(nested, new Context(childId, List.copyOf(path), 0), depth + 1));
+                            }
+                        } else { throw new IllegalArgumentException("HTML block cell supports paragraphs and tables only"); }
                     }
                     if (cell.textNodes().stream().anyMatch(text -> !text.isBlank())) { throw new IllegalArgumentException("HTML block cell has uncontained text"); }
                     if (rowIndex < headers) {
@@ -346,7 +358,8 @@ final class HtmlImportMapper {
                                 "HEADER_PARAGRAPH_FLATTENED", context.block(), path);
                         value = TableCell.mixed(treatment == Treatment.DISCARD ? List.of() : paragraph.content(), format)
                                 .toBuilder().columnSpan(width).rowSpan(height).build();
-                    } else { value = TableCell.builder().format(format).blocks(blocks).columnSpan(width).rowSpan(height).build(); }
+                    } else if (blocks.isEmpty()) { value = TableCell.mixed(List.of(), format).toBuilder().columnSpan(width).rowSpan(height).build(); }
+                    else { value = TableCell.builder().format(format).blocks(blocks).columnSpan(width).rowSpan(height).build(); }
                 } else { value = TableCell.mixed(content(cell.childNodes(), cell, own), format).toBuilder().columnSpan(width).rowSpan(height).build(); }
                 cells.add(value); column += width;
             }

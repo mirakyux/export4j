@@ -19,6 +19,15 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+tasks.register<JavaExec>("sectionRecovery") {
+    group = "application"
+    description = "Checks sections, page variants, shared overlays and nested tables through standard-file recovery."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.SectionRecoveryExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 tasks.register<JavaExec>("complexRecovery") {
     group = "application"
     description = "Checks complex recovery, explicit lossy current-file reimport and cross-format cycles."

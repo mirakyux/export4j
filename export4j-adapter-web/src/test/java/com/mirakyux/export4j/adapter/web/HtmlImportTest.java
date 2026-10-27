@@ -33,6 +33,48 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HtmlImportTest {
+    @Test void exportedNestedTableWrapperKeepsCellOrderAndRequiresExplicitLoss() throws Exception {
+        String source = "<table id='outer'><tr><td><p id='before'>BEFORE</p>"
+                + "<div class='table-scroll'><table id='inner'><tr><td>INNER</td></tr></table></div>"
+                + "<p id='after'>AFTER</p></td></tr></table>";
+        var failure = assertThrows(ProcessingException.class, () -> new HtmlImporter().read(source).execute());
+        assertEquals("TABLE_CELL_CONTAINER", failure.issue().feature());
+        for (var action : List.of(Action.WARN, Action.IGNORE)) {
+            var imported = lenient(action).read(source).execute();
+            var cell = ((Table) imported.document().blocks().getFirst()).rows().getFirst().cells().getFirst();
+            assertEquals(List.of("before", "inner", "after"), cell.blocks().stream().map(block -> block.id()).toList());
+            assertEquals("INNER", ((Table) cell.blocks().get(1)).rows().getFirst().cells().getFirst().text());
+            var issue = imported.report().issues().getFirst();
+            assertEquals("CELL_TABLE_WRAPPER_REMOVED", issue.effects().getFirst());
+            assertEquals("outer", issue.location().cellPath().getFirst().tableId());
+            var bytes = new ByteArrayOutputStream();
+            DocumentConversion.from(imported.document()).prepare(new HtmlAdapter().conversionTarget()).to(bytes);
+            var policy = ProcessingPolicy.builder().defaultRule(action, Treatment.DEGRADE).feature("HTML_METADATA", action, Treatment.DISCARD).build();
+            var reopened = HtmlImporter.builder().policy(policy).build().read(bytes.toString(StandardCharsets.UTF_8)).execute();
+            assertEquals(3, ((Table) reopened.document().blocks().getFirst()).rows().getFirst().cells().getFirst().blocks().size());
+            var discard = HtmlImporter.builder().policy(ProcessingPolicy.builder().feature("TABLE_CELL_CONTAINER", action, Treatment.DISCARD).build())
+                    .build().read("<table><tr><td><div class='table-scroll'><table><tr><td>REMOVED</td></tr></table></div></td></tr></table>").execute();
+            assertEquals("", ((Table) discard.document().blocks().getFirst()).rows().getFirst().cells().getFirst().text());
+        }
+    }
+    @Test void malformedHiddenAndOverdeepCellTableWrappersRemainRejected() {
+        for (String wrapper : List.of("<div class='table-scroll'>TEXT<table><tr><td>T</td></tr></table></div>",
+                "<div class='table-scroll'><p>T</p></div>",
+                "<div class='other'><table><tr><td>T</td></tr></table></div>",
+                "<div class='table-scroll' style='display:none'><table><tr><td>T</td></tr></table></div>",
+                "<div class='table-scroll'><table><tr><td>T<script>x</script></td></tr></table></div>")) {
+            for (var treatment : List.of(Treatment.DEGRADE, Treatment.DISCARD)) {
+                var policy = ProcessingPolicy.builder().defaultRule(Action.IGNORE, Treatment.DEGRADE)
+                        .feature("TABLE_CELL_CONTAINER", Action.IGNORE, treatment).build();
+                assertThrows(IllegalArgumentException.class, () -> HtmlImporter.builder().policy(policy).build()
+                        .read("<table><tr><td>" + wrapper + "</td></tr></table>").execute());
+            }
+        }
+        String nested = "<table><tr><td>T</td></tr></table>";
+        for (int level = 0; level < 16; level++) { nested = "<table><tr><td><div class='table-scroll'>" + nested + "</div></td></tr></table>"; }
+        String source = nested;
+        assertThrows(IllegalArgumentException.class, () -> lenient(Action.IGNORE).read(source).execute());
+    }
     @Test void ownExplicitListMarkersNeverBecomeBodyTextAcrossThreeCycles() throws Exception {
         for (var action : List.of(Action.WARN, Action.IGNORE)) {
             var document = new HtmlImporter().read("<ul><li>BULLET</li></ul><ol start='7'><li>NUMBER</li></ol>").execute().document();

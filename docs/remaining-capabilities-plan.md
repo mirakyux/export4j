@@ -6,7 +6,7 @@
 
 ## 后续扩展推进顺序
 
-[阶段八十七](verification/phase-87-complex-lossy-recovery.md)已推进 GAP-24.4：完成表格／图片／列表的七格式复杂往返、有损当前输出重导入及四方向编号引用边界。下一切面优先扩大多节页区／变体、嵌套表、注释和图层在标准恢复中的组合验收；真实应用另存独立处理，不从本轮语义结果推断支持。
+[阶段八十八](verification/phase-88-section-recovery.md)已推进 GAP-24.4 的多节组合：两节四页、共享页区／变体／图层、嵌套表／纵向合并格的六格式三轮及 36 组 A→B→A；HTML 格内滚动容器重导入已修复。前一阶段的七格式复杂表格／图片／列表及编号引用证据继续有效。下一切面优先扩大注释、引用和目录与这些语义的组合；真实应用另存独立处理，不从本轮语义结果推断支持。
 
 [缺口表](capability-gaps.md#后续扩展的独立缺口)将后续工作拆为可独立关闭的扩展项，状态以该表为准。以下顺序用于选择下一交付单元，具体字体、结构、标准等级和格式方向仍须先定义接受范围；没有实现及独立证据的条目不得标为已完成。
 
@@ -32,7 +32,7 @@ GAP-09 的长期容量、GAP-14.2 的兼容矩阵及 GAP-14.3 的 API／发布�
 | 1. 模型与资源保存 | GAP-24.1 | 有限完整语义 XML 保存已验收；[八十二](verification/phase-82-model-recovery.md)补齐编辑后字体／许可传递和已删图片不复制。编写主题意图保留原源码，运行时组件／句柄不从展开模型反推；更广可持久化组件按真实模型扩展 |
 | 2. 标准文件恢复信息 | GAP-24.2 | [显式伴随包](model-recovery-api.md)、[HTML](verification/phase-83-embedded-html-recovery.md)、[Markdown／SVG](verification/phase-84-embedded-comment-recovery.md)、[单 PNG](verification/phase-85-embedded-png-recovery.md)及 [PDF／DOCX／PNG 页 ZIP](verification/phase-86-standard-container-recovery.md) 可选内嵌均已实现并独立检查。格式键、版本、资源摘要、缺失／过期／冲突及当前文件回退有明确边界；普通文件无内嵌开销。外部应用重存保留恢复信息不保证，Word 本轮只完成打开检查；不自动发现文件或恢复旧内容 |
 | 3. 原文档保留编辑 | GAP-24.3 | [八十二](verification/phase-82-model-recovery.md)验收 DOCX 无编辑字节／改字后原条目、PDF 原页面改字／脱敏及旧模型失效；新模型只来自当前文件。更广结构与签名边界随 GAP-10／12 扩展，不能把覆盖当删除 |
-| 4. 每步同步往返矩阵 | GAP-24.4 | [八十二](verification/phase-82-model-recovery.md)验收七格式简单语义三轮／实际编辑／49 组 A→B→A／外部工具重写失效与历史损失保留；复杂语义 XML 证据继续有效；[八十四](verification/phase-84-embedded-comment-recovery.md)和[八十五](verification/phase-85-embedded-png-recovery.md)补齐 Markdown／SVG／单 PNG 的单文件三轮、编辑及外部改动。[八十六](verification/phase-86-standard-container-recovery.md)补 PDF／DOCX／PNG 页 ZIP 内嵌三轮与实际编辑；[八十七](verification/phase-87-complex-lossy-recovery.md)扩大到标题／列表／合并格／图片的七格式三轮、49 组复杂 A→B→A 及有损当前输出重导入。下一层是多节页区／嵌套表等更广组合及真实应用重存；无匹配恢复信息时，SVG／PNG 仍无通用语义导入 |
+| 4. 每步同步往返矩阵 | GAP-24.4 | [八十二](verification/phase-82-model-recovery.md)验收七格式简单语义三轮／实际编辑／49 组 A→B→A／外部工具重写失效与历史损失保留；复杂语义 XML 证据继续有效；[八十四](verification/phase-84-embedded-comment-recovery.md)和[八十五](verification/phase-85-embedded-png-recovery.md)补齐 Markdown／SVG／单 PNG 的单文件三轮、编辑及外部改动。[八十六](verification/phase-86-standard-container-recovery.md)补 PDF／DOCX／PNG 页 ZIP 内嵌；[八十七](verification/phase-87-complex-lossy-recovery.md)验收标题／列表／合并格／图片七格式及有损当前输出重导入；[八十八](verification/phase-88-section-recovery.md)补充多节共享页区／变体／图层和嵌套纵向合并表六格式三轮及 36 组矩阵。下一层是注释／引用／目录等更广组合及真实应用重存；无匹配恢复信息时，SVG／PNG 仍无通用语义导入 |
 
 ## 范围与既有单元
 

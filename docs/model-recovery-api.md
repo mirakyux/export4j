@@ -74,6 +74,8 @@ Markdown 使用 `MarkdownImporter`；其他格式须由调用方提供对应当�
 
 实现与复杂七格式样例见 [ComplexRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/ComplexRecoveryExample.java)、[ADR-0092](adr/0092-reimport-lossy-output-for-recovery.md)和[阶段八十七](verification/phase-87-complex-lossy-recovery.md)。
 
+[SectionRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/SectionRecoveryExample.java)与[阶段八十八](verification/phase-88-section-recovery.md)进一步覆盖两节四页、共享页区、FIRST／EVEN／显式空变体、显示页码重启、重叠图层及嵌套表／纵向合并格。六种多页目标的 36 组 A→B→A 中，PDF／SVG／PNG 页 ZIP 之间的 9 组保留完整模型；DOCX 显式丢弃图层，HTML／Markdown 按当前文件流式重建并累计真实损失。单 PNG 拒绝多页输入。DOCX 原生导入会把默认样式格运行规范化为普通文字，规范化后的 XML、分节与实际内容另行对照；不据此保证一般应用重存无损。
+
 ## HTML 单文件恢复
 
 ```java

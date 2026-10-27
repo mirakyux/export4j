@@ -36,7 +36,8 @@ var actualLosses = imported.report().losses();
 | table／thead／tbody／tfoot／tr／td／th | 正整数 colspan／rowspan、真实锚点及完整矩形覆盖；首个 thead 或连续全 th 前缀成为重复表头；至少一行正文 |
 | colgroup／col | 只接受行之前的有限列声明与正整数 span；`TABLE_COLUMNS` 显式降级／丢弃列组几何，实际列宽采用等份。CSS width／calc 等仍按 CSS 子集报损；声明超过实际格网、非法 span 或隐藏列结构失败 |
 | 重复表头中的单个 p | `TABLE_HEADER_PARAGRAPH` 显式降级为行内内容，报告段落几何及标识丢失；显式 DISCARD 清除该内容。多块／内表表头仍拒绝 |
-| 格内 p／table | 顺序块格及两层原子内表；混入未包裹文字或其他结构失败，不扁平化隐藏内容 |
+| 格内 p／table | 顺序块格，根表计第一层，最多 16 层；混入未包裹文字或其他结构失败，不扁平化隐藏内容 |
+| 格内 div.table-scroll | 只接受准确 class、单个直接 table 子元素和空白直接文字；`TABLE_CELL_CONTAINER` + DEGRADE 去除容器几何，保持 p／table／p 顺序并继续累计表深。DISCARD 去除整张内表；格内无其他块时保留空行内格。隐藏、其他 class、混入文字或多子元素拒绝 |
 | div 及文档分组容器 | 按源码顺序进入正文；容器锚点和无法映射的盒几何另报损失 |
 | blockquote、pre、code、其他元素 | 默认拒绝未建模语义；明确降级可保留缩进／预格式文字或平铺子内容，明确丢弃可去对应内容 |
 
@@ -73,3 +74,5 @@ var actualLosses = imported.report().losses();
 共用 `ImportLimits` 的输入、行长、树／深度、文字、表格槽、报告和工作预算。脚本不会执行，资源不会外联；这些限制仍不等于硬 RSS、第三方解析内部硬中断或恶意输入沙箱。
 
 完整样例见 [HtmlImportExample](../examples/src/main/java/com/mirakyux/export4j/examples/HtmlImportExample.java)；运行 `:examples:htmlImport` 和 `scripts/verify_html_import.py`，证据见[阶段四十六](verification/phase-46-html-import.md)。项目导出的列表标记、表格列组及单段表头经明确损失策略重导入见[阶段八十七](verification/phase-87-complex-lossy-recovery.md)，与[有损输出模型恢复](model-recovery-api.md#有损转换后保存当前文件模型)共用真实导入器。不保证导出的任意 HTML 能在默认严格输入模式下无损重新导入。
+
+[阶段八十八](verification/phase-88-section-recovery.md)补齐导出内表的滚动容器重导入。容器变化报告 `CELL_TABLE_WRAPPER_REMOVED` 和真实嵌套格路径；默认 ERROR，WARN／IGNORE 均保留实际损失，PRESERVE 无保留通道。全源安全检查、16 层表深、预算和取消边界继续执行。
