@@ -45,6 +45,7 @@ Export4j 是用于生成报告和结构化文档的开源 Java 引擎。通过�
 | 输出格式 | PDF、自包含 SVG、PNG 单页／ZIP、DOCX 语义子集、HTML 和 Markdown |
 | PDF 处理 | 页级编辑／叠加、被动表单／评论／导航／附件、对象关系重映射合并、PNG／JPEG 渲染、图片提取、实测优化、受限文字替换及新建图片 PDF 脱敏；各有明确输入子集 |
 | 导入与编辑 | Markdown／HTML/CSS／DOCX 子集、显式表格网格的 PDF 几何恢复、不可变语义编辑、DOCX 原包文字编辑及结构化损失预检／结果报告 |
+| 模板保存 | 普通 ZIP 中的可编辑 XML 源码／资源；支持的语义模型也可保存为同一 XML，再重开、编辑和导出，不兼容内容明确报损 |
 | PDF 安全与标准 | AES-256 输出、PDF/A-2b 子集、外部 detached CMS 签名、三档 DocMDP 认证及显式签名字节完整性校验 |
 | 长表与执行控制 | 单向普通／富文本／图片行源、被动外链、横向合并、完整行续页、实际页码／准确总数校验和同步逐页输出、资源预算、取消、超时、结构化诊断和原子路径写入 |
 
@@ -77,6 +78,9 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java 编写、文字排版与语义 DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告模板与数据绑定 |
+| `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | 编辑、保存和重开普通 ZIP 中的 XML 源码／资源，再绑定不同数据 |
+| `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | 语义模型保存为 XML，再重开编辑导出；三轮无编辑控制及明确损失报告 |
+| `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | 共享页区、变体／图层及保存／重开／编辑控制 |
 | `:examples:pageOverlays` | `examples/build/page-overlays/` | XML 背景／前景、可见遮挡关系及明确转换损失 |
 | `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | XML 页眉页脚主题，以及含目录的最终页码 |
 | `:examples:xmlSections` | `examples/build/xml-sections/` | 图片／表格页区、分节纸张／页码和原生 DOCX 严格往返 |
@@ -162,6 +166,10 @@ public class QuickStart {
 
 XML 支持独立主题的图文／表格页眉页脚及最终页码字段。单节使用 `template.renderWithPageRegions(data)`，分节使用 `template.renderSections(data)`，可配置各节纸张、页码和页区继承／覆盖。静态默认／首页／偶数页区按显示页码选择，包含显式空首页，见[页区变体](docs/page-variants-api.md)。[XML 背景／前景框](docs/page-overlays-api.md)支持固定位置、独立主题和最终字段。两者均可交给 `engine.export(document)`，也能导出原生 DOCX 页眉页脚。见[页区](docs/xml-page-regions-api.md)、[分节](docs/xml-sections-api.md)和 [DOCX 映射](docs/docx-page-regions-api.md)。
 
+使用 [XML 模板资源包](docs/xml-template-bundle-api.md)编辑、保存和重开主源及显式资源，打包使用普通 ZIP；单份 XML 仍可直接编译。保存的是模板源码，不从已渲染的 PDF／DOCX 反推模板。
+
+[XmlTemplateWriter](docs/xml-model-saving-api.md) 还可将支持的 Java 语义文档保存为同一 XML／ZIP，重开后继续编辑和导出，`${literal}` 等正文按原文保留。页眉页脚、首页／偶数变体及背景／前景框保留共享来源和位置，见[页区保存验收](docs/verification/phase-79-xml-region-saving.md)。注释、未映射块及标题／列表外链须明确配置损失策略；字体和许可由调用方提供。三轮保存及实际输出见[阶段七十八验收](docs/verification/phase-78-xml-model-saving.md)。
+
 参阅 [XML 指南](docs/xml-template-api.md)、[纸张与边距](docs/xml-page-settings-api.md)、[完整报告模板](examples/src/main/resources/templates/report.xml)和[Java 调用](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java)。
 
 ## HTML 与 Markdown 导出
@@ -195,7 +203,7 @@ HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出
 
 - 不保证一般 Word 文档无损往返，也不保证 DOCX 与 PDF 分页相同。
 - PDF 通常保存字形、线条和坐标，不能据此确定原表格的行列关系。恢复按文字行推断段落／标题，表格须显式提供网格；未提供时按普通文字行处理。
-- PDF 恢复要求全部字体资源为嵌入的静态 TrueType，以避免依赖本机字体而改变内容或测量结果。行内图片／轮廓输出的不可见锚点现使用固定嵌入字体；轮廓文字、任意外部 PDF 仍受各自限制，原因和处理方式见 [PDF 恢复边界](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档)。
+- PDF 恢复接受有效嵌入的静态 TrueType 和 [CFF 子集](docs/pdf-font-compatibility-api.md)，以避免依赖本机字体而改变内容或测量结果。行内图片／轮廓输出的不可见锚点使用固定嵌入字体；轮廓文字、任意外部 PDF 仍受各自限制，原因和处理方式见 [PDF 恢复边界](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档)。
 - 脱敏会将全页光栅化并移除源对象，损失文字搜索及矢量编辑；调用方须列出全部敏感区域。
 - 复杂文字、提取、搜索与选择受已测脚本和阅读器范围约束，不宣称完整 OpenType、完整 Unicode 分段或 PDF/UA 合规。
 - PDF/A 文件需要独立合规验证；签名要求调用方提供外部签名器，项目不捆绑私钥。

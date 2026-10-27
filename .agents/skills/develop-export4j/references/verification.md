@@ -80,6 +80,12 @@
 
 ## 编辑、导入与转换
 
+XML 模板源码／资源包变更先运行 `:examples:xmlTemplateBundle` 和 `scripts/create_xml_template_bundle_fixture.py`，再以新的 Maven 调用方构建目录运行 `xmlTemplateBundle`，执行 `scripts/verify_xml_template_bundle.py`。核对原源码、占位符、CRLF、图片／字体／许可字节、普通 ZIP 独立输入、编辑后重新绑定、包预算及取消／失败原子性；全部新 PDF 页双渲染并查看，DOCX 检查标准结构。回归平面及递归 XML include，不将模板包保存算作任意文档模型恢复。
+
+语义模型保存为既有 XML 的变更另运行 `:examples:xmlModelSaving`、新 Maven 调用方的 `xmlModelSaving` 及 `scripts/verify_xml_model_saving.py`。核对完整格式、分节／页码、原文文字模式、表格／列表／字段、图片及显式字体／许可，三轮源码／模型控制、实际定点编辑、PREVIEW／ACTUAL 和三动作损失。标题／列表外链、注释及未映射块未实现保留时必须明确拒绝或报损；仅规范化精确相同样式的相邻运行，不删几何／ID／内容断言。全部新 PDF 页双渲染并逐页查看，控制组同引擎像素一致、DOCX 独立检查标准结构；回归 XML 默认外观、多级编号、片段和既有源码包。
+
+页区模型保存另运行 `:examples:xmlRegionSaving`、新 Maven 调用方的 `xmlRegionSaving` 及 `scripts/verify_xml_region_saving.py`。核对同类静态来源／向后引用、跨节与同源多位置、默认／FIRST／EVEN／显式空对、正高度空区、整层清空、唯一源预算及真实区域诊断。三轮保存、共享编辑、全部新页双渲染及逐页查看；无编辑像素一致，编辑只改变命中页。DOCX 保留标准页区，图层按显式损失处理；回归既有 XML 保存／分节／变体／图层及 include，不据此关闭一般复杂模型恢复。
+
 各批均运行 `build sbom publishLocalBundle` 和新的隔离 Maven 调用方，再执行下表中的实际样例与独立验证器。依赖已缓存且刷新网络不可用时，可以离线新建隔离构建目录；成功后才更新调用方指针，保留是否联网的真实边界。
 
 | 变更 | 示例任务（`:examples:` 前缀） | 独立验证器（`scripts/verify_` 前缀） |

@@ -12,6 +12,9 @@
 | Markdown | DOCX、HTML、Markdown、PDF | 通用 Markdown 导入子集，与严格模板语法独立 |
 | DOCX | DOCX、HTML、Markdown、PDF | 语义子集，未建模 OOXML 需明确接受简化；不保留任意原包结构 |
 | PDF | DOCX、HTML、Markdown、重新排版的 PDF | 受限静态 PDF 语义恢复；表格需显式网格，不执行 OCR，不保持原版面 |
+| 静态 XML 模板包 | XML 模板包、DOCX、HTML、Markdown、PDF | `XmlTemplateBundle.conversion()`；只用于无需绑定数据的模板，沿用现有 XML 编译／绑定预算 |
+
+上述语义输入均可选择 [XmlTemplateWriter.conversionTarget()](xml-model-saving-api.md) 保存为既有 XML／普通 ZIP。目标独立检查不支持的页区、注释、块及属性，按明确策略拒绝或报损；字体／许可由调用方另行传入，不随转换源隐式复制。原动态模板应保存源码，需要绑定数据时先显式 render。
 
 PDF 目标需要显式字体和 `DocumentEngine`。SVG／PNG 也可选作布局目标，但继续受对应后端的页数、交互数据等限制；当前没有将任意 SVG／PNG 恢复为可编辑文档的导入入口。图像资源加载与文档语义导入是不同能力。
 
@@ -39,7 +42,7 @@ assert preview.issues().equals(result.report().issues());
 
 导入器上的 `.conversion(source)`、DOCX 的 `.conversion(packageBytes)` 和 `DocumentConversion.from(document)` 返回同一请求类型。DOCX 输入字节在入口复制；Web 导入器保留显式资源快照。预检时读取一次源，调用一次编辑回调，编码一次目标。请求和回调均限当前任务线程使用。
 
-PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget("PDF", new PdfBackend())` 作为目标。字体、角色、页区和导航来自引擎快照；注释从转换输入传入，引擎预配置注释会冲突并被拒绝。后端中立的格式键由调用方如实指定；适配器内置键为 HTML、MARKDOWN 和 DOCX。
+PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget("PDF", new PdfBackend())` 作为目标。字体、角色、页区和导航来自引擎快照；注释从转换输入传入，引擎预配置注释会冲突并被拒绝。后端中立的格式键由调用方如实指定；适配器内置键为 HTML、MARKDOWN、DOCX 和 XML_TEMPLATE。
 
 ## 动作与实际损失
 

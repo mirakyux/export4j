@@ -12,4 +12,6 @@
 
 ## 验证
 
-见 [API](../pdf-text-editing-api.md)及[阶段五十四](../verification/phase-54-pdf-text-editing.md)。不承诺跨指令查找、任意字体编码或通用编辑器行为。
+初始证据见[阶段五十四](../verification/phase-54-pdf-text-editing.md)。[阶段七十六](../verification/phase-76-pdf-font-compatibility.md)将来源扩展到嵌入静态 CFF，并允许同一字体／状态下连续 Tj／TJ 之间查找；任何其他操作符均结束序列。保留原编码字形范围与 advance，未命中或全部跳过不改内容流。连续多次替换在下一次读取前完成本次字体子集嵌入，避免把尚无程序流的候选当作源。
+
+当前契约以 [API](../pdf-text-editing-api.md) 为准；跨字体／定位／状态边界、任意字体编码和通用编辑器行为仍未提供。

@@ -47,6 +47,7 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -122,6 +123,10 @@ public final class PdfSemanticImporter {
                         }
                         @Override protected void processOperator(Operator operator, List<COSBase> operands) throws IOException { state.operator(); super.processOperator(operator, operands); }
                         @Override protected void operatorException(Operator operator, List<COSBase> operands, IOException failure) throws IOException { throw failure; }
+                        @Override protected void showGlyph(org.apache.pdfbox.util.Matrix matrix, PDFont font, int code, org.apache.pdfbox.util.Vector displacement) throws IOException {
+                            PdfRasterResources.requireGlyph(font, code);
+                            super.showGlyph(matrix, font, code, displacement);
+                        }
                         @Override public void beginMarkedContentSequence(COSName tag, org.apache.pdfbox.cos.COSDictionary properties) {
                             if (properties != null && (properties.containsKey(COSName.ACTUAL_TEXT) || properties.containsKey(COSName.ALT) || properties.containsKey(COSName.E))) {
                                 state.loss("PDF_LOGICAL_TEXT", ProcessingPolicy.Treatment.DISCARD, "UNVERIFIED_ALTERNATE_TEXT_NOT_SUBSTITUTED", pageIndex);

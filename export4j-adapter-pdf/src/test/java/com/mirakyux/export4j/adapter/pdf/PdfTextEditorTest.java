@@ -23,6 +23,7 @@ import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -85,6 +86,83 @@ class PdfTextEditorTest {
         var bounded = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxTextCharacters(2).build()).build();
         assertEquals(PdfOperationException.Code.TEXT_LIMIT, assertThrows(PdfOperationException.class, () -> bounded.editText(input).replace(0, "S", "P", font()).policy(POLICY).prepare()).code());
     }
+    @Test void matchesAcrossConsecutiveTjAndTjArrayWithoutMovingUnmatchedGlyphs() throws Exception {
+        var adapter = new PdfAdapter();
+        for (boolean kerned : java.util.List.of(false, true)) {
+            byte[] source = splitSource("", kerned); var before = positions(source);
+            var prepared = adapter.editText(adapter.input(source, "")).replace(0, "SECRET", "HI", font()).policy(POLICY).prepare();
+            byte[] output = write(prepared); var after = positions(output);
+            assertFalse(text(output).contains("SECRET")); assertTrue(text(output).contains("HI"));
+            assertEquals(before.subList(6, before.size()), after.subList(2, after.size()));
+            assertEquals(1, prepared.to(new ByteArrayOutputStream()).changes());
+            assertEquals(kerned ? 2 : 1, prepared.preview().issues().size());
+        }
+    }
+    @Test void multipleCrossShowMatchesAreCountedAndFailedMatchesPreserveOriginalBytes() throws Exception {
+        var adapter = new PdfAdapter(); byte[] source = splitSource("", false);
+        var input = adapter.input(source, "");
+        var twice = adapter.editText(input).replace(0, "RET K", "I", font()).replace(0, "SEC", "A", font()).policy(POLICY).prepare();
+        assertEquals(2, twice.to(new ByteArrayOutputStream()).changes()); assertEquals("AIEEP", positions(write(twice)).stream().map(item -> item.substring(0, item.indexOf(':'))).collect(java.util.stream.Collectors.joining()));
+        var unchanged = adapter.editText(input).replace(0, "SECRET", "TOO LONG TO FIT THE ORIGINAL RANGE", font()).policy(POLICY).prepare();
+        assertEquals(0, unchanged.to(new ByteArrayOutputStream()).changes()); assertEquals(positions(source), positions(write(unchanged)));
+        assertTrue(text(write(unchanged)).contains("SECRET")); assertEquals("TEXT_CAPACITY", unchanged.preview().issues().getFirst().feature());
+        try (var before = Loader.loadPDF(source); var after = Loader.loadPDF(write(unchanged));
+                var first = before.getPage(0).getContents(); var second = after.getPage(0).getContents()) {
+            assertArrayEquals(first.readAllBytes(), second.readAllBytes());
+        }
+    }
+    @Test void twoMatchesAcrossFourShowOperatorsKeepTheFinalOriginalTextInPlace() throws Exception {
+        byte[] source = splitSource("", false, 2); var adapter = new PdfAdapter();
+        var prepared = adapter.editText(adapter.input(source, "")).replace(0, "SECRET", "HI", font()).policy(POLICY).prepare();
+        byte[] output = write(prepared);
+        assertEquals(2, prepared.to(new ByteArrayOutputStream()).changes());
+        assertEquals(positions(source).subList(12, 17), positions(output).subList(4, 9));
+        assertFalse(text(output).contains("SECRET")); assertEquals(2, prepared.preview().issues().size());
+    }
+    @Test void positioningStyleAndTextObjectBoundariesCannotCreateCrossShowMatches() throws Exception {
+        var adapter = new PdfAdapter();
+        for (String barrier : java.util.List.of("0 -20 Td", "/Original 14 Tf", "0 g", "ET BT /Original 14 Tf 20 60 Td")) {
+            byte[] source = splitSource(barrier, false);
+            var result = adapter.editText(adapter.input(source, "")).replace(0, "SECRET", "HI", font()).policy(POLICY).prepare();
+            assertEquals(0, result.to(new ByteArrayOutputStream()).changes()); assertEquals(positions(source), positions(write(result)));
+            assertTrue(result.preview().issues().isEmpty());
+        }
+    }
+    @Test void crossShowStrictWarnIgnoreBudgetsAndCancellationKeepTheirContracts() throws Exception {
+        var adapter = new PdfAdapter(); var input = adapter.input(splitSource("", false), "");
+        assertThrows(ProcessingException.class, () -> adapter.editText(input).replace(0, "SECRET", "HI", font()).prepare());
+        var ignore = ProcessingPolicy.builder().feature("TEXT_FONT", ProcessingPolicy.Action.IGNORE, ProcessingPolicy.Treatment.DEGRADE).build();
+        var silent = adapter.editText(input).replace(0, "SECRET", "HI", font()).policy(ignore).prepare();
+        assertEquals(1, silent.to(new ByteArrayOutputStream()).changes()); assertEquals(1, silent.preview().losses().size()); assertTrue(silent.preview().warnings().isEmpty());
+        // Eleven source glyphs are charged once as glyphs and once as UTF-16, plus two replacement units.
+        var exact = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxTextCharacters(24).build()).build();
+        assertEquals(1, exact.editText(input).replace(0, "SECRET", "HI", font()).policy(POLICY).prepare().to(new ByteArrayOutputStream()).changes());
+        var bounded = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxTextCharacters(23).build()).build();
+        assertEquals(PdfOperationException.Code.TEXT_LIMIT, assertThrows(PdfOperationException.class,
+                () -> bounded.editText(input).replace(0, "SECRET", "HI", font()).policy(POLICY).prepare()).code());
+        var cancelled = new AtomicBoolean(); var candidate = adapter.editText(input).replace(0, "SECRET", "HI", font()).policy(POLICY)
+                .execution(ExecutionOptions.builder().cancelled(cancelled::get).build()).prepare();
+        Path target = directory.resolve("split.pdf"); Files.writeString(target, "OLD"); cancelled.set(true);
+        assertThrows(ExecutionException.class, () -> candidate.to(target)); assertEquals("OLD", Files.readString(target));
+    }
+    private static byte[] splitSource(String barrier, boolean kerned) throws Exception {
+        return splitSource(barrier, kerned, 1);
+    }
+    private static byte[] splitSource(String barrier, boolean kerned, int copies) throws Exception {
+        try (var pdf = new PDDocument()) {
+            var page = new PDPage(new PDRectangle(240, 120)); pdf.addPage(page);
+            var original = PDType0Font.load(pdf, new ByteArrayInputStream(Files.readAllBytes(Path.of("../assets/fonts/LiberationSans-Regular.ttf"))), false);
+            page.setResources(new org.apache.pdfbox.pdmodel.PDResources()); page.getResources().put(org.apache.pdfbox.cos.COSName.getPDFName("Original"), original);
+            String left = java.util.HexFormat.of().formatHex(original.encode("SEC"));
+            String right = java.util.HexFormat.of().formatHex(original.encode("RET"));
+            String keep = java.util.HexFormat.of().formatHex(original.encode(" KEEP"));
+            var content = new org.apache.pdfbox.pdmodel.common.PDStream(pdf); page.setContents(content);
+            String sequence = "<" + left + "> Tj " + barrier + " [" + (kerned ? "-50 " : "") + "<" + right + ">] TJ ";
+            String commands = "BT /Original 14 Tf 20 80 Td " + sequence.repeat(copies) + "<" + keep + "> Tj ET";
+            try (var output = content.createOutputStream()) { output.write(commands.getBytes(StandardCharsets.US_ASCII)); }
+            var output = new ByteArrayOutputStream(); pdf.save(output); return output.toByteArray();
+        }
+    }
     static PdfFont font() throws Exception { return PdfFont.of(Files.readAllBytes(Path.of("../assets/fonts/LiberationSans-Regular.ttf"))); }
     static byte[] source(boolean marked, boolean array) throws Exception {
         try (var pdf = new PDDocument()) {
@@ -101,7 +179,7 @@ class PdfTextEditorTest {
         }
     }
     private static String text(byte[] bytes) throws Exception { try (var pdf = Loader.loadPDF(bytes)) { return new PDFTextStripper().getText(pdf); } }
-    private static java.util.List<String> positions(byte[] bytes) throws Exception {
+    static java.util.List<String> positions(byte[] bytes) throws Exception {
         var values = new ArrayList<String>();
         var stripper = new PDFTextStripper() { @Override protected void processTextPosition(TextPosition position) { values.add(position.getUnicode() + ":" + Math.round(position.getXDirAdj() * 100) + ":" + Math.round(position.getYDirAdj() * 100)); super.processTextPosition(position); } };
         try (var pdf = Loader.loadPDF(bytes)) { stripper.getText(pdf); } return values;

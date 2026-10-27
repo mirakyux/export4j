@@ -34,6 +34,7 @@ import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.LineBreakPolicy;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.PageBreak;
 import com.mirakyux.export4j.model.PageMargins;
@@ -46,6 +47,7 @@ import com.mirakyux.export4j.model.PageRegionStyle;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
 import com.mirakyux.export4j.model.ParagraphFormat;
+import com.mirakyux.export4j.model.PaginationPolicy;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableFormat;
@@ -83,9 +85,10 @@ public final class XmlTemplate {
     private static final String LINK_REFERENCE_PREFIX = "https://export4j.invalid/.template-link/";
     private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "page-break", "table", "rows");
     private static final Set<String> PARAGRAPH_ATTRIBUTES = Set.of("id", "size", "line-height", "align",
-            "keep-together", "space-before", "space-after");
-    private static final Set<String> INLINE_STYLE_ATTRIBUTES = Set.of("role", "color", "size", "underline", "strike");
-    private static final Set<String> SPAN_ATTRIBUTES = Set.of("style", "role", "color", "size", "underline", "strike");
+            "keep-together", "space-before", "space-after", "first-indent", "subsequent-indent", "line-break",
+            "keep-with-next", "page-break-before", "min-lines-before", "min-lines-after");
+    private static final Set<String> INLINE_STYLE_ATTRIBUTES = Set.of("role", "color", "size", "underline", "strike", "baseline-shift");
+    private static final Set<String> SPAN_ATTRIBUTES = Set.of("style", "role", "color", "size", "underline", "strike", "baseline-shift");
     private final PageSettings pageSettings;
     private final DocumentTheme theme;
     private final ParagraphFormat bodyFormat;
@@ -326,7 +329,7 @@ public final class XmlTemplate {
         private Element expand(String source) {
             var root = read(source, "", sourceBudget, null);
             requireName(root, "document");
-            attributes(root, Set.of("version", "title", "author"));
+            attributes(root, Set.of("version", "title", "author", "literal-text"));
             if (!required(root, "version").equals("1")) { throw error(root, Code.INVALID_VALUE); }
             pagePlacement(root, true);
             return element(root, 1, true, false, "", Set.of(), null);
@@ -498,16 +501,19 @@ public final class XmlTemplate {
     }
 
     private final class Compiler {
+        private boolean literalText;
         private final Map<String, String> hyperlinkTemplates = new HashMap<>();
         private final Set<String> ids = new HashSet<>();
         private final Set<String> explicitIds = new HashSet<>();
         private final Map<String, String> listOwners = new HashMap<>();
+        private final Map<String, Map<String, PageRegion>> regionSources = new HashMap<>();
         private int nextId;
 
         private DocumentTemplate compile(Element root) {
             requireName(root, "document");
-            attributes(root, Set.of("version", "title", "author"));
+            attributes(root, Set.of("version", "title", "author", "literal-text"));
             if (!required(root, "version").equals("1")) { throw error(root, Code.INVALID_VALUE); }
+            literalText = flag(root, "literal-text", false);
             reserveIds(root);
             var metadata = new DocumentMetadata(expression(root, value(root, "title", "")), expression(root, value(root, "author", "")));
             var content = children(root);
@@ -540,9 +546,13 @@ public final class XmlTemplate {
                     sections.add(new DocumentTemplate.SectionNode(sectionId, sectionSettings,
                             nodes(children.subList(selected.end(), children.size())), first, selected.regions()));
                 }
-                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates);
+                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText);
             }
-            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates);
+            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates, literalText);
+        }
+
+        private String expression(Element element, String text) {
+            return literalText ? text : XmlTemplate.expression(element, text);
         }
 
         private record RegionPrefix(PageRegions regions, int end) { }
@@ -587,13 +597,13 @@ public final class XmlTemplate {
             for (var box : children(element)) {
                 requireName(box, "box");
                 if (!box.fragmentName().isEmpty()) { throw error(box, Code.UNSUPPORTED_ELEMENT); }
-                attributes(box, Set.of("x", "y", "width", "height"));
-                for (var key : List.of("x", "y", "width", "height")) {
+                attributes(box, Set.of("x", "y", "width", "height", "source-id", "source-ref"));
+                for (var key : List.of("x", "y", "width")) {
                     if (required(box, key).contains("${")) { throw error(box, Code.INVALID_EXPRESSION); }
                 }
                 result.add(validated(box, () -> {
                     var value = new PageOverlay(length(box, "x", 0), length(box, "y", 0), length(box, "width", 0),
-                            new PageRegion(length(box, "height", 0), 0, regionBlocks(box, defaults)));
+                            regionSource(box, element.name(), defaults, true));
                     value.requireContained(settings.size()); return value;
                 }));
                 if (result.size() > 64) { throw error(box, Code.BUDGET_EXCEEDED); }
@@ -603,12 +613,33 @@ public final class XmlTemplate {
 
         private PageRegion region(Element element, PageRegionStyle defaults) {
             if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
-            attributes(element, Set.of("height", "gap", "variant"));
-            required(element, "height");
+            attributes(element, Set.of("height", "gap", "variant", "source-id", "source-ref"));
+            return regionSource(element, element.name(), defaults, false);
+        }
+
+        // References are static, backward-only and scoped by kind. They reuse the complete
+        // immutable source (including IDs and geometry), never copy or re-expand its blocks.
+        private PageRegion regionSource(Element element, String kind, PageRegionStyle defaults, boolean overlay) {
             for (var value : element.attributes().values()) {
                 if (value.contains("${")) { throw error(element, Code.INVALID_EXPRESSION); }
             }
-            return validated(element, () -> new PageRegion(length(element, "height", 0), length(element, "gap", 0), regionBlocks(element, defaults)));
+            var sources = regionSources.computeIfAbsent(kind, ignored -> new HashMap<>());
+            if (element.attributes().containsKey("source-ref")) {
+                if (element.attributes().containsKey("source-id") || element.attributes().containsKey("height")
+                        || element.attributes().containsKey("gap")) { throw error(element, Code.INVALID_STRUCTURE); }
+                empty(element);
+                var source = sources.get(literalId(element, "source-ref"));
+                if (source == null) { throw error(element, Code.INVALID_VALUE); }
+                return source;
+            }
+            required(element, "height");
+            var source = validated(element, () -> new PageRegion(length(element, "height", 0),
+                    overlay ? 0 : length(element, "gap", 0), regionBlocks(element, defaults)));
+            if (element.attributes().containsKey("source-id")
+                    && sources.putIfAbsent(literalId(element, "source-id"), source) != null) {
+                throw error(element, Code.INVALID_VALUE);
+            }
+            return source;
         }
 
         private List<Block> regionBlocks(Element element, PageRegionStyle defaults) {
@@ -749,13 +780,17 @@ public final class XmlTemplate {
             var allowed = new HashSet<>(PARAGRAPH_ATTRIBUTES);
             allowed.addAll(Set.of("role", "color"));
             if (element.name().equals("p")) { allowed.add("style"); }
-            if (element.name().equals("heading") || element.name().equals("numbered")) { allowed.add("level"); }
+            if (Set.of("heading", "numbered", "bullet").contains(element.name())) { allowed.add("level"); }
             if (element.name().equals("numbered")) { allowed.addAll(Set.of("list-id", "restart")); }
+            if (element.name().equals("bullet")) { allowed.add("marker"); }
+            if (element.name().equals("numbered") || element.name().equals("bullet")) {
+                allowed.addAll(Set.of("marker-role", "marker-size", "marker-color", "marker-shift", "marker-underline", "marker-strike"));
+            }
             attributes(element, element.name().equals("page-break") ? Set.of("id") : allowed);
             String id = id(element);
             if (element.name().equals("page-break")) { empty(element); return new PageBreak(id); }
             int level = element.name().equals("heading") ? integer(element, "level")
-                    : element.name().equals("numbered") && element.attributes().containsKey("level") ? integer(element, "level") : 1;
+                    : element.attributes().containsKey("level") ? integer(element, "level") : 1;
             if (element.name().equals("numbered") && (level < 1 || level > 9)) { throw error(element, Code.INVALID_VALUE); }
             var base = element.name().equals("heading") ? theme.headingFormat(level) : defaults;
             if (element.name().equals("p") && element.attributes().containsKey("style")) {
@@ -767,12 +802,21 @@ public final class XmlTemplate {
             var content = inline(element, appearance, element.name().equals("p"));
             if (element.name().equals("p")) { return Paragraph.mixed(id, content, format); }
             var runs = content.stream().map(item -> (InlineText) item).toList();
+            var marker = markerStyle(element, appearance);
             if (element.name().equals("numbered")) {
                 return NumberedItem.rich(id, literalId(element, "list-id"), runs,
-                        element.attributes().containsKey("restart") ? integer(element, "restart") : 0, format, level, appearance);
+                        element.attributes().containsKey("restart") ? integer(element, "restart") : 0, format, level, marker);
             }
             return element.name().equals("heading") ? Heading.rich(id, runs, level, format)
-                    : BulletItem.rich(id, runs, "•", 1, format, appearance);
+                    : BulletItem.rich(id, runs, value(element, "marker", "•"), level, format, marker);
+        }
+
+        private InlineStyle markerStyle(Element element, InlineStyle fallback) {
+            String role = value(element, "marker-role", fallback.fontRole());
+            if (!role.isEmpty() && !IDENTIFIER.matcher(role).matches()) { throw error(element, Code.INVALID_VALUE); }
+            return new InlineStyle(role, number(element, "marker-size", fallback.fontSize()), color(element, "marker-color", fallback.rgb()),
+                    number(element, "marker-shift", fallback.baselineShift()), flag(element, "marker-underline", fallback.underline()),
+                    flag(element, "marker-strike", fallback.strikeThrough()));
         }
 
         private DocumentTemplate.Node table(Element element) {
@@ -786,17 +830,22 @@ public final class XmlTemplate {
         private ParsedTable tableParts(Element element, int tableDepth) {
             if (tableDepth > com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH) { throw error(element, Code.INVALID_STRUCTURE); }
             boolean dynamic = element.name().equals("rows");
-            attributes(element, dynamic ? Set.of("id", "row-split", "items", "as") : Set.of("id", "row-split"));
+            var allowed = new HashSet<>(Set.of("id", "row-split", "padding-top", "padding-right", "padding-bottom", "padding-left", "space-before", "space-after"));
+            if (dynamic) { allowed.addAll(Set.of("items", "as")); }
+            attributes(element, allowed);
             String id = id(element);
             var children = children(element);
             if (children.isEmpty()) { throw error(element, Code.INVALID_STRUCTURE); }
             var columnList = children.getFirst(); requireName(columnList, "columns"); attributes(columnList, Set.of());
             List<ColumnWidth> columns = new ArrayList<>();
             for (var column : children(columnList)) {
-                requireName(column, "column"); attributes(column, Set.of("weight", "width")); empty(column);
-                if (column.attributes().size() != 1) { throw error(column, Code.INVALID_STRUCTURE); }
-                columns.add(validated(column, () -> column.attributes().containsKey("width")
-                        ? new ColumnWidth.Fixed(number(column, "width", 0)) : new ColumnWidth.Fraction(number(column, "weight", 0))));
+                requireName(column, "column"); attributes(column, Set.of("weight", "width", "min-width", "max-width")); empty(column);
+                boolean auto = column.attributes().keySet().equals(Set.of("min-width", "max-width"));
+                if (!auto && (column.attributes().size() != 1 || !column.attributes().containsKey("width") && !column.attributes().containsKey("weight"))) {
+                    throw error(column, Code.INVALID_STRUCTURE);
+                }
+                columns.add(validated(column, () -> auto ? new ColumnWidth.Auto(number(column, "min-width", 0), number(column, "max-width", 0))
+                        : column.attributes().containsKey("width") ? new ColumnWidth.Fixed(number(column, "width", 0)) : new ColumnWidth.Fraction(number(column, "weight", 0))));
             }
             if (columns.isEmpty()) { throw error(columnList, Code.INVALID_STRUCTURE); }
             List<TableRow> headers = new ArrayList<>(), rows = new ArrayList<>();
@@ -808,7 +857,11 @@ public final class XmlTemplate {
             }
             if (rows.isEmpty() || dynamic && rows.size() != 1) { throw error(element, Code.INVALID_STRUCTURE); }
             var defaults = theme.tableFormat();
-            var format = defaults.toBuilder().allowRowSplit(flag(element, "row-split", defaults.allowRowSplit())).build();
+            var padding = defaults.padding();
+            var format = validated(element, () -> defaults.toBuilder().allowRowSplit(flag(element, "row-split", defaults.allowRowSplit()))
+                    .padding(new PageMargins(number(element, "padding-top", padding.top()), number(element, "padding-right", padding.right()),
+                            number(element, "padding-bottom", padding.bottom()), number(element, "padding-left", padding.left())))
+                    .spaceBefore(number(element, "space-before", defaults.spaceBefore())).spaceAfter(number(element, "space-after", defaults.spaceAfter())).build());
             if (dynamic && rows.getFirst().cells().stream().anyMatch(cell -> cell.rowSpan() > 1)) {
                 throw error(element, Code.INVALID_VALUE);
             }
@@ -820,13 +873,13 @@ public final class XmlTemplate {
             List<TableCell> cells = new ArrayList<>();
             int covered = 0;
             for (var cell : children(element)) {
-                requireName(cell, "cell"); attributes(cell, Set.of("size", "line-height", "align", "column-span", "row-span", "role", "color"));
+                requireName(cell, "cell"); attributes(cell, Set.of("size", "line-height", "align", "column-span", "row-span", "role", "color", "line-break"));
                 var value = validated(cell, () -> {
                     int span = cell.attributes().containsKey("column-span") ? positiveInteger(cell, "column-span") : 1;
                     int rowSpan = cell.attributes().containsKey("row-span") ? positiveInteger(cell, "row-span") : 1;
                     double size = number(cell, "size", cellFormat.fontSize());
                     double height = number(cell, "line-height", cell.attributes().containsKey("size") ? size * 1.5 : cellFormat.lineHeight());
-                    var format = new CellFormat(size, height, alignment(cell, cellFormat.alignment()), cellFormat.lineBreakPolicy());
+                    var format = new CellFormat(size, height, alignment(cell, cellFormat.alignment()), lineBreak(cell, cellFormat.lineBreakPolicy()));
                     var builder = TableCell.builder().format(format).columnSpan(span).rowSpan(rowSpan);
                     var appearance = appearance(cell, size, cellText);
                     boolean blockContent = cell.content().stream().anyMatch(part -> part instanceof Element child
@@ -865,7 +918,19 @@ public final class XmlTemplate {
                     .lineHeight(number(element, "line-height", element.attributes().containsKey("size") ? size * 1.5 : defaults.lineHeight()))
                     .alignment(alignment(element, defaults.alignment())).keepTogether(flag(element, "keep-together", defaults.keepTogether()))
                     .spaceBefore(number(element, "space-before", defaults.spaceBefore()))
-                    .spaceAfter(number(element, "space-after", defaults.spaceAfter())).build();
+                    .spaceAfter(number(element, "space-after", defaults.spaceAfter()))
+                    .firstLineIndent(number(element, "first-indent", defaults.firstLineIndent()))
+                    .subsequentLineIndent(number(element, "subsequent-indent", defaults.subsequentLineIndent()))
+                    .lineBreakPolicy(lineBreak(element, defaults.lineBreakPolicy()))
+                    .pagination(new PaginationPolicy(
+                            flag(element, "keep-with-next", defaults.pagination().keepWithNext()),
+                            flag(element, "page-break-before", defaults.pagination().pageBreakBefore()),
+                            element.attributes().containsKey("min-lines-before") ? positiveInteger(element, "min-lines-before") : defaults.pagination().minLinesBeforeBreak(),
+                            element.attributes().containsKey("min-lines-after") ? positiveInteger(element, "min-lines-after") : defaults.pagination().minLinesAfterBreak())).build();
+        }
+
+        private LineBreakPolicy lineBreak(Element element, LineBreakPolicy fallback) {
+            return LineBreakPolicy.valueOf(value(element, "line-break", fallback.name()));
         }
 
         private InlineStyle appearance(Element element, double size, TextDefaults defaults) {
@@ -891,18 +956,18 @@ public final class XmlTemplate {
                     }
                     case "image" -> {
                         if (!allowObjects) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
-                        attributes(child, Set.of("ref", "width", "height", "alt")); empty(child);
+                        attributes(child, Set.of("ref", "width", "height", "alt", "baseline-shift")); empty(child);
                         String key = identifier(child, "ref");
                         var resource = images.get(key);
                         if (resource == null) { throw error(child, Code.UNKNOWN_RESOURCE); }
-                        result.add(validated(child, () -> new InlineImage(resource, number(child, "width", 0), number(child, "height", 0), 0,
+                        result.add(validated(child, () -> new InlineImage(resource, number(child, "width", 0), number(child, "height", 0), number(child, "baseline-shift", 0),
                                 expression(child, value(child, "alt", "")), hyperlink)));
                     }
                     case "link" -> {
                         if (!allowObjects || !hyperlink.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         attributes(child, Set.of("href"));
                         String destination = required(child, "href");
-                        if (destination.contains("${")) {
+                        if (!literalText && destination.contains("${")) {
                             String template = expression(child, destination);
                             destination = LINK_REFERENCE_PREFIX + hyperlinkTemplates.size();
                             hyperlinkTemplates.put(destination, template);
@@ -940,7 +1005,7 @@ public final class XmlTemplate {
             if (targeted) { allowed.add("target"); }
             attributes(element, allowed); empty(element);
             String target = targeted ? required(element, "target") : "";
-            String targetValue = target.contains("${") ? expression(element, target) : targeted ? literalId(element, "target") : "";
+            String targetValue = !literalText && target.contains("${") ? expression(element, target) : targeted ? literalId(element, "target") : "";
             return validated(element, () -> new InlineField(kind, targetValue,
                     number(element, "width", 0), inlineStyle(element, defaults)));
         }
@@ -957,7 +1022,7 @@ public final class XmlTemplate {
                 throw error(element, Code.INVALID_VALUE);
             }
             return new InlineStyle(role, number(element, "size", defaults.fontSize()), color(element, defaults.rgb()),
-                    defaults.baselineShift(), flag(element, "underline", defaults.underline()),
+                    number(element, "baseline-shift", defaults.baselineShift()), flag(element, "underline", defaults.underline()),
                     flag(element, "strike", defaults.strikeThrough()));
         }
 
@@ -1131,7 +1196,10 @@ public final class XmlTemplate {
         catch (IllegalArgumentException invalid) { throw error(element, Code.INVALID_VALUE); }
     }
     private static int color(Element element, int fallback) {
-        String value = element.attributes().get("color");
+        return color(element, "color", fallback);
+    }
+    private static int color(Element element, String attribute, int fallback) {
+        String value = element.attributes().get(attribute);
         if (value == null) { return fallback; }
         if (!value.matches("#[0-9a-fA-F]{6}")) { throw error(element, Code.INVALID_VALUE); }
         return Integer.parseInt(value.substring(1), 16);

@@ -43,6 +43,8 @@ engine.export(document).backend(new PdfBackend()).to(pdfPath);
 
 节继承根声明。覆盖某个变体的一边保留根中该变体的另一边；根中没有该变体时，未声明的一边为空。`height="0"` 空声明明确清空，不能解释成继承。XML 当前没有移除根 FIRST selector 并恢复奇偶选择的语法；Java 可用 `inherit(FIRST)`。调用使用 `renderWithPageRegions` 或 `renderSections`，旧正文 `render` 不丢弃页区。
 
+同类变体或跨节可用静态 `source-id`／`source-ref` 复用完整页区，详见[共享来源](xml-page-regions-api.md#共享来源)。引用不补齐未声明的变体对，也不改变 FIRST 优先级。`XmlTemplateWriter` 已保存这些声明及显式空对，见[模型保存](xml-model-saving-api.md)。
+
 ## 适配器与兼容
 
 DOCX 使用标准 default／first／even 引用、各节 `titlePg` 及全局 `evenAndOddHeaders`。全局偶数页开关启用时，没有 EVEN 的节也显式引用默认对，避免继承前节偶数页内容；可忽略扩展只保存“未声明覆盖”的意图，导入先验证它确实与默认对相同。普通 Word 区域没有固定高度时仍需显式 `RegionGeometry`。未激活的显式变体在 STRICT 下拒绝，ALLOW_LOSS 返回实际损失；错误关系、重复引用和无效几何始终失败。详见 [DOCX 页区](docx-page-regions-api.md)。

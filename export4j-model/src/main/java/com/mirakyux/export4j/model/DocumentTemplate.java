@@ -10,9 +10,11 @@ import java.util.Objects;
 /** Immutable, strict data binding for business documents. Expressions are dot paths only, never executable code.
  * Values are non-null strings, booleans, exact standard numeric classes, lists or string-keyed maps.
  * Input is snapshotted per render; caller-supplied collection implementations remain trusted Java code.
+ * literalText disables interpolation in text/metadata/links while leaving condition and iteration data paths active.
+ * Existing constructors default to interpolation; the canonical constructor explicitly selects this mode.
  */
 public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
-        PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates) {
+        PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText) {
     private static final double LOG10_2 = 0.3010299956639812;
 
     public DocumentTemplate {
@@ -32,6 +34,12 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             }
         }
         if (!sections.isEmpty() && !nodes.isEmpty()) { throw new IllegalArgumentException("sections cannot mix with root body nodes"); }
+    }
+
+    /** Compatibility constructor: existing templates continue to interpolate text. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
+            PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates) {
+        this(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, false);
     }
 
     /** Compatibility constructor for templates with static hyperlinks. */
@@ -449,6 +457,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         }
         private String text(String template, Scope scope) {
             ExecutionContext.checkpoint();
+            if (literalText) { consume(template); return template; }
             StringBuilder result = new StringBuilder();
             for (int cursor = 0; cursor < template.length();) {
                 int start = cursor;

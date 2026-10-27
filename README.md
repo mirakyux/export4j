@@ -45,6 +45,7 @@ Export4j is an open-source Java engine for generating reports and structured doc
 | Output | PDF, self-contained SVG, PNG pages/ZIP, a semantic DOCX subset, HTML and Markdown |
 | PDF processing | Page edits/overlays, passive forms/comments/navigation/attachments, object-preserving composition, PNG/JPEG rendering, image extraction, measured optimization, bounded text replacement and fresh-raster redaction; each has a defined input subset |
 | Import and editing | Markdown/HTML/CSS/DOCX subsets, geometric PDF recovery with explicit table grids, immutable semantic edits, package-preserving DOCX text edits and structured loss previews/reports |
+| Template saving | Editable XML sources/resources in ordinary ZIP files; save supported semantic models as the same XML, reopen, edit and export with explicit loss policies |
 | PDF security and standards | AES-256 output, a PDF/A-2b subset, external detached CMS signing and three DocMDP certification permissions and explicit signed-byte verification |
 | Large tables and execution | Single-pass text/rich-text/image table sources, passive links, horizontal spans, whole-line row continuation, actual page fields with checked declared totals, and synchronous page output, resource budgets, cancellation, timeouts, structured diagnostics and atomic path writes |
 
@@ -77,6 +78,9 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java authoring, typography and semantic DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML report templates and data binding |
+| `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | Edit, save and reopen XML sources/resources in ordinary ZIP files, then bind different data |
+| `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | Save semantic models as XML, reopen/edit and export; three-cycle unchanged controls and explicit loss reports |
+| `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | Shared page-region sources, variants, overlays and save/reopen/edit controls |
 | `:examples:pageOverlays` | `examples/build/page-overlays/` | Fixed XML backgrounds/foregrounds, visible occlusion and explicit conversion losses |
 | `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | Themed XML headers/footers and final page numbers, including contents |
 | `:examples:xmlSections` | `examples/build/xml-sections/` | Image/table page bands, section paper/numbering and strict native DOCX round trip |
@@ -162,6 +166,10 @@ Templates compile to the existing document model. Resources are explicitly regis
 
 XML supports image/table headers and footers with independent themes and final page fields. Use `template.renderWithPageRegions(data)` for a uniform document, or `template.renderSections(data)` for per-section paper, numbering and inherited or overridden bands. Static default/first/even variants follow displayed section numbering, including blank first pages. Fixed XML background/foreground boxes preserve their paint order and final fields; see [page overlays](docs/page-overlays-api.md). Both work with `engine.export(document)` and native DOCX header/footer export. See [page variants](docs/page-variants-api.md). See [page regions](docs/xml-page-regions-api.md), [sections](docs/xml-sections-api.md) and [DOCX page regions](docs/docx-page-regions-api.md).
 
+Use [XML template bundles](docs/xml-template-bundle-api.md) to edit, save and reopen the XML sources and explicit resources in an ordinary ZIP. Plain XML remains supported. This preserves templates, rather than reconstructing them from rendered PDF or DOCX files.
+
+[XmlTemplateWriter](docs/xml-model-saving-api.md) also saves supported Java semantic documents as this XML/ZIP for reopening, editing and export. Text such as `${literal}` stays literal. Headers/footers, first/even variants and ordered background/foreground boxes retain shared sources and placement; see [page-region saving verification](docs/verification/phase-79-xml-region-saving.md). Notes, unmapped blocks and heading/list links require explicit loss policies; fonts and licenses remain caller supplied. See the [three-cycle and output verification](docs/verification/phase-78-xml-model-saving.md).
+
 See the [XML guide](docs/xml-template-api.md), [page settings](docs/xml-page-settings-api.md), [report template](examples/src/main/resources/templates/report.xml) and [complete Java call](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java).
 
 ## HTML and Markdown export
@@ -195,7 +203,7 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 
 - General Word documents are not guaranteed to round-trip without loss or paginate identically to PDF.
 - PDFs commonly store glyphs, paths and coordinates without reliable table row/cell relationships. Recovery infers line paragraphs/headings and requires explicit table grids; without a grid, table text is treated as ordinary lines.
-- PDF recovery requires every font resource to be embedded static TrueType, avoiding machine-dependent font substitution and measurements. Invisible inline-image/outline anchors now use a fixed embedded font. Outlined text and external PDFs retain their own limits; see [PDF recovery boundaries](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档).
+- PDF recovery accepts valid embedded static TrueType and [CFF subsets](docs/pdf-font-compatibility-api.md), avoiding machine-dependent font substitution and measurements. Invisible inline-image/outline anchors use a fixed embedded font. Outlined text and external PDFs retain their own limits; see [PDF recovery boundaries](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档).
 - Redaction rasterizes all pages and removes source objects, sacrificing text search and vector editing; callers identify every sensitive region.
 - Complex-text coverage, text extraction, search and selection depend on the tested scripts and readers. Full OpenType, Unicode segmentation and PDF/UA compliance are not claimed.
 - PDF/A output needs independent compliance validation. Signing requires a caller-provided external signer; no private key is bundled.

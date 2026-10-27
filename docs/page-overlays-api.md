@@ -25,6 +25,8 @@ box 只接受既有 p／table，支持有界段落、注册 PNG／JPEG、递归�
 
 节未声明某层时继承根层，声明时整层替换；`<background/>`／`<foreground/>` 明确清空。继承框也须放入该节纸张。所有框在绑定时检查数据、ID 和共享预算，不等到绘制时遗漏缺失值。调用 `renderWithPageRegions` 或 `renderSections`，再交给 `DocumentEngine.export`；旧 `render` 拒绝丢弃图层。
 
+box 可通过 `source-id`／`source-ref` 在同层复用完整内容，每个位置仍独立声明 x／y／width，高度来自来源。禁止跨类、前向或外部引用，详见[共享来源](xml-page-regions-api.md#共享来源)。`XmlTemplateWriter` 保留来源、位置、顺序与显式清空，见[模型保存](xml-model-saving-api.md)。
+
 ## Java、主题和编辑
 
 ```java

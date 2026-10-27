@@ -14,12 +14,44 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-web")
 }
 application { mainClass.set("consumer.Consumer") }
+
 dependencyLocking { lockAllConfigurations() }
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
 }
 tasks.named<JavaExec>("run") {
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+tasks.register<JavaExec>("pdfFontCompatibility") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.PdfFontCompatibilityConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("xmlRegionSaving") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.XmlRegionSavingConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("xmlModelSaving") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.XmlModelSavingConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("xmlTemplateBundle") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.XmlTemplateBundleConsumer")
     workingDir = projectDir
     systemProperty("java.awt.headless", "true")
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)

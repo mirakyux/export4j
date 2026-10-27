@@ -29,6 +29,8 @@ try (var stream = Files.newOutputStream(docxPath)) {
 
 `data` 是字符串键 Map，`fonts` 是显式 FontGroup；输出路径由调用方提供。完整资源、主题和调用见 [XmlSectionsExample](../examples/src/main/java/com/mirakyux/export4j/examples/XmlSectionsExample.java)。无 section 的模板也能使用 `renderSections`，得到单节文档。旧 `render` 和 `renderWithPageRegions` 遇到分节声明均明确失败，不只返回第一节。
 
+各节也可用[静态共享来源](xml-page-regions-api.md#共享来源)引用前文同类页区；来源复用不改变根继承规则。`XmlTemplateWriter` 保存各节完整页区、变体和图层位置，见[模型保存](xml-model-saving-api.md)。
+
 ## 契约
 
 - document 在可选 page/header/footer 后只含 section，不能与普通正文混写。section 只在主源根的这一层出现，不能放在循环、条件或片段声明中。

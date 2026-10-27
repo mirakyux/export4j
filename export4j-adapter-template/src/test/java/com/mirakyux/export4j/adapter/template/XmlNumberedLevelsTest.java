@@ -67,7 +67,7 @@ class XmlNumberedLevelsTest {
                 "<number-reference target='parent' width='20'/>", "<image ref='logo' width='10' height='10'/>", "<p>Text</p>")) {
             rejected(compiler(), xml("<numbered id='item' list-id='steps' level='2'>" + content + "</numbered>"), TemplateException.Code.UNSUPPORTED_ELEMENT);
         }
-        rejected(compiler(), xml("<bullet level='2'>Text</bullet>"), TemplateException.Code.UNSUPPORTED_ATTRIBUTE);
+        rejected(compiler(), xml("<bullet level='10'>Text</bullet>"), TemplateException.Code.INVALID_VALUE);
         rejected(compiler(), xml("<table><columns><column weight='1'/></columns><row><cell>"
                 + item("2", "0") + "</cell></row></table>"), TemplateException.Code.UNSUPPORTED_ELEMENT);
     }

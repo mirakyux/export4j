@@ -46,7 +46,9 @@ public final class PdfTextEditor {
     private ProcessingPolicy policy = ProcessingPolicy.STRICT;
     private ExecutionOptions execution = ExecutionOptions.DEFAULT;
     PdfTextEditor(PdfAdapter adapter, PdfInput input, PdfLimits limits) { this.adapter = adapter; this.input = input; this.limits = limits; }
-    /** Zero-based page; matches cannot cross a show operator. Empty replacement is allowed. */
+    /** Zero-based page; matches can cross consecutive Tj/TJ operators with unchanged text state.
+     * Other operators, including positioning/font changes, end a matchable sequence. Empty replacement is allowed.
+     */
     public PdfTextEditor replace(int page, String search, String replacement, PdfFont font) {
         if (page < 0 || text(search).isEmpty()) { throw new IllegalArgumentException("invalid text replacement selection"); }
         text(replacement); Objects.requireNonNull(font, "font");
@@ -66,8 +68,11 @@ public final class PdfTextEditor {
                     ExecutionContext.checkpoint();
                     if (edit.page() >= document.getNumberOfPages()) { throw new PdfOperationException(PdfOperationException.Code.INVALID_SELECTION, 0, edit.page()); }
                     state.edit(document.getPage(edit.page()), edit);
+                    // A later replacement reads this candidate as a new source. Complete its
+                    // explicit embedded programs before that read; a pending subset has no bytes yet.
+                    for (var font : state.usedFonts) { if (font.willBeSubset()) { font.subset(); } }
+                    state.usedFonts.clear(); state.fonts.clear();
                 }
-                for (var font : state.usedFonts) { if (font.willBeSubset()) { font.subset(); } }
                 new PdfPreflight(limits).inspect(document);
                 return PreparedPdf.encode(document, state.changes, state.issues, limits, control);
             }
@@ -107,7 +112,8 @@ public final class PdfTextEditor {
             var output = new ArrayList<Object>(); var operands = new ArrayList<COSBase>(); var stack = new ArrayDeque<TextState>();
             var state = new TextState(); boolean inText = false; int pageChanges = 0;
             PDResources resources = copy(page.getResources());
-            for (var token : tokens) {
+            for (int tokenIndex = 0; tokenIndex < tokens.size(); tokenIndex++) {
+                var token = tokens.get(tokenIndex);
                 ExecutionContext.checkpoint();
                 if (!(token instanceof Operator operator)) { operands.add((COSBase) token); continue; }
                 String name = operator.getName();
@@ -125,15 +131,17 @@ public final class PdfTextEditor {
                     if (!inText || state.name == null || operands.size() != 1 || page.getResources() == null) { throw PdfObjects.invalid(); }
                     var font = page.getResources().getFont(state.name);
                     if (font == null || !font.isEmbedded()) { throw PdfObjects.invalid(); }
-                    var shown = decode(operands.getFirst(), font, name.equals("TJ"));
+                    var group = shows(tokens, tokenIndex, operands.getFirst(), font);
+                    var shown = group.shown();
                     if (shown.text().contains(edit.search())) {
                         if (font.isVertical() || !state.simple() || !PdfPageEditor.simpleText(shown.text()) || !PdfPageEditor.simpleText(edit.replacement())) {
-                            loss("TEXT_SHAPING", ProcessingPolicy.Treatment.SKIP_MATCH, "SHOW_OPERATOR_UNCHANGED", edit.page());
+                            loss("TEXT_SHAPING", ProcessingPolicy.Treatment.SKIP_MATCH, "SHOW_SEQUENCE_UNCHANGED", edit.page());
                         } else {
                             int replaced = replaceShown(shown, edit, state, resources, output);
-                            if (replaced > 0) { pageChanges += replaced; operands.clear(); continue; }
+                            if (replaced > 0) { pageChanges += replaced; operands.clear(); tokenIndex = group.lastIndex(); continue; }
                         }
                     }
+                    output.addAll(group.originals()); operands.clear(); tokenIndex = group.lastIndex(); continue;
                 }
                 output.addAll(operands); output.add(operator); operands.clear();
             }
@@ -143,6 +151,21 @@ public final class PdfTextEditor {
                 try (var target = stream.createOutputStream(COSName.FLATE_DECODE)) { target.write(data.data()); }
                 page.setContents(stream); page.setResources(resources); changes = Math.addExact(changes, pageChanges);
             }
+        }
+        ShowGroup shows(List<Object> tokens, int index, COSBase first, PDFont font) throws IOException {
+            var text = new StringBuilder(); var atoms = new ArrayList<Atom>(); var originals = new ArrayList<Object>();
+            COSBase value = first;
+            while (true) {
+                var operator = (Operator) tokens.get(index); var shown = decode(value, font, operator.getName().equals("TJ"));
+                int offset = text.length(); text.append(shown.text());
+                for (var atom : shown.atoms()) { atoms.add(new Atom(atom.value(), offset + atom.start(), offset + atom.end(), atom.advance())); }
+                originals.add(value); originals.add(operator);
+                if (index + 2 >= tokens.size() || !(tokens.get(index + 1) instanceof COSBase next)
+                        || !(tokens.get(index + 2) instanceof Operator following)
+                        || !(following.getName().equals("Tj") || following.getName().equals("TJ"))) { break; }
+                value = next; index += 2;
+            }
+            return new ShowGroup(new Shown(text.toString(), List.copyOf(atoms)), index, List.copyOf(originals));
         }
         PDType0Font font(PdfFont source) throws IOException {
             var existing = fonts.get(source); if (existing != null) { return existing; }
@@ -194,7 +217,8 @@ public final class PdfTextEditor {
                     try (var input = new ByteArrayInputStream(bytes)) {
                         while (input.available() > 0) {
                             int byteStart = bytes.length - input.available(); int start = text.length();
-                            int code = font.readCode(input); String unicode = font.toUnicode(code); count(1);
+                            int code = font.readCode(input); PdfRasterResources.requireGlyph(font, code);
+                            String unicode = font.toUnicode(code); count(1);
                             if (unicode == null || unicode.isEmpty()) { throw PdfObjects.invalid(); }
                             text.append(text(unicode)); double advance = font.getWidth(code);
                             if (!Double.isFinite(advance)) { throw PdfObjects.invalid(); }
@@ -214,6 +238,7 @@ public final class PdfTextEditor {
     }
     private record Atom(COSBase value, int start, int end, double advance) { }
     private record Shown(String text, List<Atom> atoms) { }
+    private record ShowGroup(Shown shown, int lastIndex, List<Object> originals) { }
     private static final class TextState {
         COSName name; double size; final Map<String, Double> values = new java.util.HashMap<>();
         TextState copy() { var copy = new TextState(); copy.name = name; copy.size = size; copy.values.putAll(values); return copy; }

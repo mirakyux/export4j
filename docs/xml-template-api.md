@@ -1,5 +1,9 @@
 # 声明式 XML 模板
 
+模板源码可直接编辑；需要一起保存主源、片段、图片和字体时，使用普通 ZIP 的 [XmlTemplateBundle](xml-template-bundle-api.md)。重开后仍编译为同一 `DocumentTemplate`，不改变已有 XML 语法或绑定方式。
+
+已有 Java 语义文档可用 [XmlTemplateWriter](xml-model-saving-api.md) 按支持子集保存为同一 XML／ZIP，再重开编辑；无法映射的内容使用共享动作与损失策略。
+
 主源支持固定 header/footer、[首页／奇偶变体](page-variants-api.md)与独立主题，放在可选 page 后、正文前。使用 `DocumentTemplate.renderWithPageRegions` 和 `DocumentEngine.export(PageDocument)` 保留页区及最终页码；旧 render 遇到页区会明确拒绝。图片／语义表格和最终字段均保留；分节使用 renderSections，包含各节纸张／页码、页区继承／覆盖和清空。语法、限制及完整调用见[页区指南](xml-page-regions-api.md)、[分节指南](xml-sections-api.md)和[固定页面图层](page-overlays-api.md)。
 
 正文／列表、六级标题和单元格可分别设置默认字体角色与颜色，局部 `role`／`color` 按存在性覆盖，链接与四类字段继承所在范围。使用 `.bodyText(...)`／`.headingText(...)`／`.cellText(...)`，完整规则见[文字默认值指南](xml-text-defaults-api.md)。字体资源仍由 Java 显式注册，模板不加载系统或网络字体。
@@ -32,14 +36,14 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 
 ## 结构语法
 
-所有元素均无命名空间，根为 `<document version="1">`，可选 `title`、`author`。结构之间允许空白和注释；正文、span 和单元格内的空白原样保留，因此正文不要为美化 XML 而额外缩进换行。
+所有元素均无命名空间，根为 `<document version="1">`，可选 `title`、`author`、`literal-text`。结构之间允许空白和注释；正文、span 和单元格内的空白原样保留，因此正文不要为美化 XML 而额外缩进换行。
 
 | 元素 | 内容和属性 |
 | --- | --- |
 | `page` | 仅主根首个可选空节点；静态纸张／宽高／方向／边距，不生成正文块，详见页面指南 |
 | `p` | 普通文字、span、image、link 和四类行内字段；普通段落可自然跨页 |
 | `heading` | 必填 `level="1"`～`"6"`；仅文字、span |
-| `bullet` | 一级无序列表；仅文字、span，标记为 `•` |
+| `bullet` | 1～9 级无序列表；可选 level（默认 1）、marker（默认 `•`）；仅文字、span |
 | `numbered` | 1～9级十进制列表；必填静态 list-id，可选level（默认1）、restart；仅文字、span |
 | `page-break` | 空元素；显式换页 |
 | `if` | 必填 `test="flag"`；先且仅一个 then，随后可选一个 else；分支内为块 |
@@ -52,13 +56,21 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 
 `${customer.name}` 是唯一插值语法。路径使用 ASCII 标识符及点，最多 256 个 UTF-16 单元。条件／循环属性直接写路径，不加 `${}`。所有分支的语法都会编译检查，只有选中分支执行数据查找。数据中的 `<p>`、`${x}` 等内容作为普通文本插入，不再次解析为 XML 或表达式。
 
+根显式 `literal-text="true"` 时，标题／作者、正文、替代文字和外链按原文处理，`${...}` 及未闭合 `${` 不插值；默认 false 保持现有行为。if／each／rows 的控制数据路径继续读取所传数据。静态字段目标仍须满足 ID 语法，资源名称／样式属性仍静态校验；该模式不关闭安全、预算或类型检查。保存已有模型时 writer 自动启用它，编写动态模板时通常使用默认模式。
+
 p、heading、bullet、numbered、table、rows、page-break 可选 id。显式 ID 匹配 `[A-Za-z_][A-Za-z_0-9-]{0,127}`，不能插值或含 `@`，在两分支和循环原型之间也须唯一。省略时生成 `xml-N` 并避开全部显式 ID；循环渲染附加 `@0` 等索引。
 
 ## 样式、表格与图片
 
 p、heading、bullet、numbered 支持 `size`、`line-height`、`align`、`keep-together`、`space-before`、`space-after`。长度均为 point；align 为 LEFT／CENTER／RIGHT／JUSTIFY；布尔值只接受 true／false。bodyFormat 配置段落／列表默认值，标题使用既有 Heading 默认格式。显式设置 size 且不设置 line-height 时采用字号的 1.5 倍；否则保留对应默认行距。
 
+段落／标题／列表还支持 `first-indent`、`subsequent-indent`（非负 pt）、`line-break`（STANDARD／CJK_STRICT）、`keep-with-next`、`page-break-before`、`min-lines-before`／`min-lines-after`（正整数）。未声明项沿用当前完整格式；这些属性映射到既有 ParagraphFormat／PaginationPolicy，布局能力边界不变。
+
+bullet／numbered 的 `marker-role`、`marker-size`、`marker-color`、`marker-shift`、`marker-underline`、`marker-strike` 可分别覆盖标记的完整样式，未声明项沿用所在块默认文字外观，正文 span 不影响标记。marker-shift 单位为 pt，正值下移；自定义 bullet 须非空白、无控制字符、最多 8 个 Unicode 码点。
+
 `<span role="bold" color="#224488" size="12" underline="true" strike="false">文字</span>` 只容纳文字。属性均可省略；默认继承当前块字号，颜色为黑色、角色为空、不加装饰。role 只选择调用方字体组里的真实角色，不加载或合成字体。
+
+span 和四类字段另支持 `baseline-shift`，单位为 pt，正值下移；image 也支持该属性，默认 0。固定行框必须容纳字号／图片及位移，不自动缩小。
 
 ~~~xml
 <rows items="records" as="record" row-split="true">
@@ -68,13 +80,13 @@ p、heading、bullet、numbered 支持 `size`、`line-height`、`align`、`keep-
 </rows>
 ~~~
 
-column 恰好指定 width（固定 point）或 weight（正比例），均须正且有限。每个 header／row 经 column-span／row-span 解析后必须完整覆盖网格，真实 cell 只在锚点行声明。cell 支持 size、line-height、align、column-span、row-span，以及文字、span、image、link 和四类行内字段。无纵向合并的普通行内 table／rows 可选 `row-split="true"`，默认 false；它调用既有语义表格分页，表头逐页重复，显式拆行按完整文字行续页。静态行合并和两层原子块格的限制见下文及对应指南。
+column 恰好指定 width（正且有限的固定 pt）、weight（正且有限的比例），或成对 min-width／max-width（有界 Auto 的 pt 下／上限）；三种形式互斥，边界调用既有 ColumnWidth.Auto 校验。Auto 不放宽含块格表格的布局限制。每个 header／row 经 column-span／row-span 解析后必须完整覆盖网格，真实 cell 只在锚点行声明。cell 支持 size、line-height、align、line-break、column-span、row-span，以及文字、span、image、link 和四类行内字段。table／rows 可显式指定 padding-top／right／bottom／left、space-before／after（非负 pt），未声明项沿用主题值。普通行内 table／rows 可选 `row-split="true"`，默认 false；它调用既有语义表格分页，表头逐页重复，显式拆行按完整文字行续页，纵向／递归边界见对应指南。
 
 图片先由调用方有界解码为 ImageResource，再通过 `.image("logo", resource)` 注册。模板只写 `<image ref="logo" width="12" height="12" alt="标记"/>`。ref 不可插值，名字使用 ASCII 标识符。width、height 为正 point；alt 可插值。图片仅用于 p／cell，固定行框须容纳图像，否则由布局明确失败。编译器不解码图片、不扫描字体、不访问文件和网络。
 
 ## 多段单元格与原子内表
 
-`cell` 支持直接有序 `p`／静态 `table`／`p`，生成既有 `TableCell.blocks`，已通过[阶段二十八验收](verification/phase-28-xml-block-cells.md)。根表计第一层、内表第二层，第三层在编译时拒绝。完整可读示例、默认格式和复制来源见[XML 块格指南](xml-block-cells-api.md)。
+`cell` 支持直接有序 `p`／静态 `table`／`p`，生成既有 `TableCell.blocks`，初始切面见[阶段二十八验收](verification/phase-28-xml-block-cells.md)，后续已扩展到含根表最多 16 层的[递归表格](block-cells-api.md)。完整可读示例、默认格式和复制来源见[XML 块格指南](xml-block-cells-api.md)。
 
 ~~~xml
 <table id="report">
@@ -146,3 +158,5 @@ cell 可用固定正整数 column-span／row-span 声明语义矩形合并；静
 运行 `:examples:xmlTemplates` 生成原有 PDF、DOCX 和 SVG；独立检查使用 `scripts/verify_xml_templates.py`。新字段／外链按上述后端边界另外验收，不能由旧样例推断通过。本模块与自研样例采用 Apache-2.0，仅使用 JDK XML 和既有模型，不新增第三方运行依赖。设计依据见 [ADR-0025](adr/0025-safe-declarative-templates.md)及 [ADR-0029](adr/0029-xml-fields-and-links.md)。
 
 字段与图文外链的完整例子见 [references.xml](../examples/src/main/resources/templates/references.xml)、[原生 Word 字段模板](../examples/src/main/resources/templates/references-word.xml)及 [XmlReferencesExample](../examples/src/main/java/com/mirakyux/export4j/examples/XmlReferencesExample.java)。运行 `:examples:xmlReferences` 与 `python scripts/verify_xml_references.py`，检查目录偏移、四次实际表头值、静态编号目标、被动链接矩形及原生 OOXML；证据见[阶段二十二](verification/phase-22-text-and-adapters.md)。
+
+页区还支持同类静态共享来源 `source-id`／`source-ref`，用于保留跨节、变体和多位置复用关系；详见[共享来源](xml-page-regions-api.md#共享来源)及[模型保存](xml-model-saving-api.md)。

@@ -1,5 +1,9 @@
 # 模板、复杂文本与受控导出
 
+[XML 模板源码编辑与资源 ZIP](xml-template-bundle-api.md)复用现有模板适配器：保留可编辑主源、片段、图片、显式字体及许可文本，普通 ZIP 保存／重开后继续使用 `XmlTemplate → DocumentTemplate`。不是任意已渲染文档的模型恢复入口。
+
+[语义模型保存为 XML](xml-model-saving-api.md)支持正文／分节、富文本／独立列表标记、表格／递归块格、四类字段和图片，保留现有格式与原文字面值，并接入统一转换。[页区保存](verification/phase-79-xml-region-saving.md)进一步保留默认／首页／偶数页眉页脚、共享来源及有序图层位置，验收 20 页 PDF 与 4 份标准 DOCX。注释、未映射块及标题／列表外链默认拒绝，显式策略才报损继续；字体／许可由调用方明确提供。三轮保存、实际编辑、10 页 PDF 双渲染及 5 份标准 DOCX 见[阶段七十八](verification/phase-78-xml-model-saving.md)。
+
 XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-settings.md)验收：主根首个可选 `page` 支持纸张／成对宽高／方向／四边边距，页面长度支持 pt／mm／cm／in。未声明项保留 Java 默认，详见[页面指南](xml-page-settings-api.md)。[阶段四十一](verification/phase-41-xml-page-regions.md)补齐[固定页眉页脚](xml-page-regions-api.md)、独立主题及最终页码；[阶段四十二](verification/phase-42-sections-and-docx-regions.md)补齐页区图片／表格、XML 分节与 DOCX 默认页区。全局字体角色／颜色已由[阶段六十](verification/phase-60-theme-appearance.md)接入；首页／奇偶页区已由[阶段六十一](verification/phase-61-page-variants.md)验收；[XML 背景／前景](page-overlays-api.md)已由[阶段六十二](verification/phase-62-page-overlays.md)验收；完整 CSS 级联仍开放。
 
 [固定页区字体角色](page-region-fonts-api.md)保留引擎注册角色、缺字策略及最终页上下文。标准组件现在可用 [FontRoleScope／RichTextComponent](component-text-api.md) 直接选择字体组和编写固定富文本，无需自定义委托；延迟 SemanticTable 仍不能进入固定页区。XML 页区通过 PageDocument 和 PageRegionTemplates 接入相同预留／最终组合路径，主题不向正文级联。
@@ -18,11 +22,13 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 | [对象编辑](pdf-object-editing-api.md)／[组合](pdf-object-composition-api.md) | 四类字段／外观／扁平化、被动批注／链接／书签／附件／Info；选页及跨来源关系／命名空间重映射；[五十](verification/phase-50-pdf-object-editing.md)／[五十一](verification/phase-51-pdf-object-composition.md) |
 | [渲染与图片](pdf-raster-api.md) | CropBox／旋转／UserUnit、明确 DPI／背景、PNG／JPEG 及去重资源提取；字体必须嵌入，未知外观可明确跳页；[五十二](verification/phase-52-pdf-raster.md) |
 | [优化](pdf-optimization-api.md) | 无损流压缩、相同简单图片／字体程序流去重；显式图片降采样／JPEG，返回确切大小与像素统计，不保证更小；[五十三](verification/phase-53-pdf-optimization.md) |
-| [文字替换](pdf-text-editing-api.md) | 同一 Tj／TJ 内命中范围替换、显式字体、容量限制及后续坐标保持；不等于脱敏；[五十四](verification/phase-54-pdf-text-editing.md) |
+| [文字替换](pdf-text-editing-api.md) | 同一指令及同状态连续 Tj／TJ 间的范围匹配、显式字体、容量限制及后续坐标保持；不等于脱敏；[七十六](verification/phase-76-pdf-font-compatibility.md) |
 | [区域脱敏](pdf-redaction-api.md) | 清除选区像素后新建纯图片 PDF，不复制源对象、文字层、附件、元数据及历史；牺牲全文搜索与矢量编辑；[五十五](verification/phase-55-pdf-redaction.md) |
 | [语义恢复](pdf-semantic-import-api.md) | 逐行段落、字号标题、显式表格网格及流图片，再编辑并转换 DOCX／HTML／Markdown／PDF；普通输出的不可见图片锚点已嵌入字体并验证重新导入；近似源框、推断损失及原版重排限制见[五十六](verification/phase-56-pdf-semantic-import.md) |
 
 不支持任意 PDF 无损编辑或版面恢复，OCR 不在范围内。脱敏区域由调用方完整指定；不是自动发现敏感信息。各坐标系和字体／页面子集以对应 API 为准。
+
+外部 PDF 的[嵌入静态 CFF 字体](pdf-font-compatibility-api.md)已贯通渲染、文字替换、光栅脱敏及语义恢复；新建 PDF 的 CFF 正文仍使用既有轮廓输出。未嵌入字体没有隐式系统替代，复杂内容流和交互结构的入口边界保持独立。
 
 ## HTML 与 Markdown 输出
 
@@ -148,7 +154,6 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 | DOCX | 浮动／裁剪等复杂图像、目录／评论／表单完整模型映射；首页／奇偶语义页区已验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已验收，Word 保存兼容单独登记 |
 | PDF | PDF/UA 标签树、更多注释／表单属性、现有签名验证和 PAdES 长期验证 |
 | 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。一般 Word／LibreOffice 外观、其他系统／JDK、多阅读器、持续容量与长期资源释放仍未验收 |
-
 
 [编写时主题](themes-api.md)已接入 Java Document／Documents，集中管理正文、六级标题、便利语义表格和有界命名完整样式。加入时快照、显式完整值优先、组件六项继承及默认输出兼容见[阶段三十验收](verification/phase-30-authoring-themes.md)。XML 静态名称与四类可编辑字段显式外观分别见[XML 主题](xml-themes-api.md)和[FormStyle](form-styles-api.md)。页眉页脚独立默认值见[页区主题](xml-page-regions-api.md)；全局颜色／字体角色与分域覆盖已由[阶段六十](verification/phase-60-theme-appearance.md)验收；背景／前景的独立主题与固定框已由[阶段六十二](verification/phase-62-page-overlays.md)验收。
 

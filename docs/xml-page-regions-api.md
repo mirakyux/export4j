@@ -66,6 +66,29 @@ PDF、SVG、PNG 消费最终显示列表；SVG／PNG 继续拒绝非空交互数
 
 [XML 分节](xml-sections-api.md)支持根默认值、各节纸张／边距／页码、页区替换及清空。页区图片使用行内 image，表格使用标准 table／columns／row／cell 语法；表格格样式沿用 cell 默认值，p 使用独立页区默认值。静态 `variant="default|first|even"` 支持[首页／奇偶选择](page-variants-api.md)，同类同变体最多声明一次。[XML 背景／前景](page-overlays-api.md)另用固定 box 声明，沿用最终组合路径；页区链接／目标引用和更广品牌组合仍开放。
 
+## 共享来源
+
+header／footer 和图层 box 支持静态 `source-id` 定义与 `source-ref` 引用，用于跨节、同类变体或同层多个位置复用完整内容：
+
+```xml
+<document version="1">
+  <header source-id="brand" height="24" gap="4"><p id="brand-text">${company}</p></header>
+  <header variant="even" source-ref="brand"/>
+  <background>
+    <box source-id="logo" x="20" y="100" width="140" height="24"><p id="logo-text">Brand</p></box>
+    <box source-ref="logo" x="180" y="100" width="140"/>
+  </background>
+  <section id="first"><p>Body</p></section>
+  <section id="next"><header variant="first" source-ref="brand"/><p>Next</p></section>
+</document>
+```
+
+四类来源（header、footer、background、foreground）分别在本次主源编译中全局命名，来源名遵循 `[A-Za-z_][A-Za-z_0-9-]{0,127}`，与语义块 ID 独立。只引用前文同类定义，不能前向引用、跨类引用、声明别名或访问外部资源。section 内首次定义也可供后续节同类引用，不改变节间根继承规则。
+
+引用必须为空，不能同时声明 source-id、height、gap 或子内容；页眉页脚保留本次 variant，box 必须声明自己的 x／y／width。被引用的完整来源提供 height／gap 和已经解析的块／运行；引用处不重新应用主题。每个放置位置仍独立检查纸张包含关系与布局容量；source-id 定义处仍要满足原有 height 和区域内容限制。
+
+同类相等来源共享绑定、编辑和源块／码点计费，引用元素本身继续占解析元素／源码预算，放置和每页绘制分别计费。普通块 ID 仍全文档唯一，不通过复制块或重命名隐藏共享关系。旧编译器不识别这两个新属性。模型保存见 [XmlTemplateWriter](xml-model-saving-api.md)，设计与独立验收见 [ADR-0085](adr/0085-shared-xml-page-region-sources.md)和[阶段七十九](verification/phase-79-xml-region-saving.md)。
+
 ## 复现
 
 ```powershell

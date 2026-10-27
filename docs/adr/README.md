@@ -99,3 +99,6 @@
 | 0080 | [单向长表实际页码与准确声明总数](0080-single-pass-page-fields.md) | 已采纳；实际呈现解析、总数严格核对、来源及生成预算分开 |
 | 0081 | [行内内容内表复用有界自动列宽](0081-nested-inline-automatic-columns.md) | 已采纳；父格实际宽度、完整探测来源及原生 DOCX 声明 |
 | 0082 | [完整格源按实际变宽区域续排行](0082-variable-width-inline-continuation.md) | 已采纳；完整来源、实际区域容量、图片字段及独立工作／呈现预算 |
+| 0083 | [可编辑 XML 源码与普通资源 ZIP](0083-editable-xml-template-bundles.md) | 已采纳；复用现有模板编译／绑定、源码保留、显式资源及原子保存 |
+| 0084 | [将语义模型映射到既有 XML 模板](0084-semantic-model-to-existing-xml.md) | 已采纳；可读 XML、文字原样模式、显式报损、资源所有权及多轮编辑 |
+| 0085 | [XML 页区共享来源与模型保存](0085-shared-xml-page-region-sources.md) | 已采纳；同类静态引用、唯一源预算及变体／图层保存 |

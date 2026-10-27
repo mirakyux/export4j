@@ -19,6 +19,33 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+tasks.register<JavaExec>("xmlRegionSaving") {
+    group = "application"
+    description = "Saves shared page regions to XML and verifies reopened and edited output."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.XmlRegionSavingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("xmlModelSaving") {
+    group = "application"
+    description = "Saves semantic models using existing XML, reopens/edits them and verifies PDF/DOCX controls."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.XmlModelSavingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("xmlTemplateBundle") {
+    group = "application"
+    description = "Edits and reopens ordinary ZIP XML template sources and resources, then binds PDF/DOCX outputs."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.XmlTemplateBundleExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 tasks.register<JavaExec>("semanticEditing") {
     group = "application"
     description = "Edits semantic content and exports PDF, DOCX, HTML and Markdown with a reconciled loss report."

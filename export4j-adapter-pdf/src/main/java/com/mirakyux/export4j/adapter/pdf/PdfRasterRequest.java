@@ -17,7 +17,6 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PageDrawer;
 import org.apache.pdfbox.rendering.PageDrawerParameters;
@@ -28,7 +27,7 @@ import org.apache.pdfbox.util.Vector;
 
 /** Task-confined page rasterization. CropBox, viewer rotation and UserUnit define output geometry.
  * DPI is physical pixels per inch. PNG supports transparency; JPEG uses an explicit opaque RGB background.
- * Fonts must be valid, embedded static TrueType programs; no system discovery or substitution occurs.
+ * Fonts must be valid, embedded static TrueType or CFF programs; no system discovery or substitution occurs.
  */
 public final class PdfRasterRequest {
     public enum Format { PNG, JPEG }
@@ -125,7 +124,7 @@ public final class PdfRasterRequest {
                 @Override protected void showFontGlyph(Matrix matrix, PDFont font, int code, Vector displacement) throws IOException {
                     ExecutionContext.checkpoint();
                     if (++glyphs > limits.maxTextCharacters()) { throw new PdfOperationException(PdfOperationException.Code.TEXT_LIMIT, 0, -1); }
-                    if (!font.isEmbedded() || font instanceof PDVectorFont vector && !vector.hasGlyph(code)) { throw PdfObjects.unsupported(); }
+                    PdfRasterResources.requireGlyph(font, code);
                     super.showFontGlyph(matrix, font, code, displacement);
                 }
                 @Override protected void operatorException(Operator operator, List<COSBase> operands, IOException exception) throws IOException { throw exception; }
