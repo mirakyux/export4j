@@ -112,3 +112,7 @@ XML 模板源码／资源包变更先运行 `:examples:xmlTemplateBundle` 和 `s
 | PDF 语义恢复与转换 | `pdfSemanticImport` | `pdf_semantic_import.py` |
 
 检查 PREVIEW／ACTUAL 对账、IGNORE 实际损失、配置快照、未编辑内容及取消／失败原子性。全部新 PDF 页双渲染并查看；DOCX／HTML／Markdown 验证真实标准结构、文字和图片字节／像素。PDF 文字替换验证未命中位置，脱敏检查所有对象／解码流和区域像素，不能以矩形覆盖代替删除。恢复模型允许已声明的重排，不能要求像素恒等或声称任意无损恢复。Word 打开、更新、保存和导出各自登记；控制组也超时后不无假设重试。
+
+单页 PNG 内嵌恢复另运行 `:examples:embeddedPngRecovery`、本次新隔离调用方的 `embeddedPngRecovery`，再执行 `scripts/verify_embedded_png_recovery.py --prepare-external`、`:examples:embeddedPngRecoveryExternal` 和验证器主入口。独立检查 PNG 签名／块顺序／CRC、唯一 exJM、去块准确原始字节、ZIP／模型／字体／许可摘要及 Pillow 全像素解码；三轮准确文件、真实改字、外部改像素及移除恢复块的六行三动作不得返回旧模型。覆盖单页后端多页／extras／像素拒绝、总字节／新增块数／ZIP 预算、取消、借用流和失败原子性。3 页 PDF 双渲染并逐页查看；核对当前分发 ZIP 的 15 个自研 JAR 与 SBOM，回归 HTML、Markdown／SVG 及七格式伴随恢复。单 PNG 与 PNG 页 ZIP 分开，不将块 framing 校验说成完整像素解码，不宣称任意编辑器重存已验收。
+
+PDF／DOCX／PNG 页 ZIP 可选内嵌恢复另运行 `:examples:embeddedPdfRecovery :examples:embeddedZipRecovery`、独立调用方的 `embeddedContainerRecovery`、`scripts/verify_embedded_containers.py --prepare-external`、两个 `embedded*RecoveryExternal` 样例和验证器主入口。核对 PDF 附件／原文件前缀、DOCX 与页 ZIP 成员／准确去包、三轮模型和字体／许可摘要、实际编辑、外部重写与移除恢复的三动作、预算／取消／原子失败；以 pypdf、python-docx、Pillow 和 Poppler／PDFium 检查页面。Windows 有 Word 时运行 `scripts/verify_embedded_containers_word.ps1` 核对本轮 DOCX 打开和文字；Word 另存须独立完成才能宣称保存回读兼容。记录七格式普通／内嵌文件的实际字节增量，不把样例比例当固定成本。回归旧内嵌和伴随恢复，见[阶段八十六](../../../../docs/verification/phase-86-standard-container-recovery.md)。

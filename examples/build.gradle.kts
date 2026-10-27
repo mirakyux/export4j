@@ -19,6 +19,42 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+for (external in listOf(false, true)) {
+    tasks.register<JavaExec>(if (external) "embeddedPdfRecoveryExternal" else "embeddedPdfRecovery") {
+        group = "application"
+        description = "Reopens and edits PDF with an optional standard recovery attachment."
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set("com.mirakyux.export4j.examples.EmbeddedPdfRecoveryExample")
+        workingDir = rootProject.projectDir
+        systemProperty("java.awt.headless", "true")
+        if (external) args("--external")
+    }
+}
+
+for (external in listOf(false, true)) {
+    tasks.register<JavaExec>(if (external) "embeddedZipRecoveryExternal" else "embeddedZipRecovery") {
+        group = "application"
+        description = "Reopens and edits standard DOCX and PNG page ZIP files with optional embedded XML/resources."
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set("com.mirakyux.export4j.examples.EmbeddedZipRecoveryExample")
+        workingDir = rootProject.projectDir
+        systemProperty("java.awt.headless", "true")
+        if (external) args("--external")
+    }
+}
+
+for (external in listOf(false, true)) {
+    tasks.register<JavaExec>(if (external) "embeddedPngRecoveryExternal" else "embeddedPngRecovery") {
+        group = "application"
+        description = "Reopens and edits a standard single PNG with a bounded private recovery chunk."
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set("com.mirakyux.export4j.examples.EmbeddedPngRecoveryExample")
+        workingDir = rootProject.projectDir
+        systemProperty("java.awt.headless", "true")
+        if (external) args("--external")
+    }
+}
+
 tasks.register<JavaExec>("embeddedCommentRecovery") {
     group = "application"
     description = "Reopens and edits standard Markdown/SVG with bounded embedded XML/resources."

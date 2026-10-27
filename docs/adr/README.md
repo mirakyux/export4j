@@ -106,3 +106,5 @@
 | 0087 | [标准文件与准确绑定的 XML 恢复伴随包](0087-bound-standard-output-recovery.md) | 已采纳；准确字节及资源绑定、当前文件回退、有损导出禁止源快照和历史损失累计 |
 | 0088 | [HTML 内嵌有界模型恢复包](0088-embedded-html-model-recovery.md) | 已采纳；单文件注释封装、准确当前 HTML 绑定、显式回退和总编码预算 |
 | 0089 | [Markdown 与 SVG 共用有界恢复注释](0089-markdown-svg-embedded-recovery.md) | 已采纳；复用封装及清单、通用单文件 API、当前 Markdown 回退及 SVG 无读取器拒绝 |
+| 0090 | [单页 PNG 使用私有辅助块恢复模型](0090-embedded-png-model-recovery.md) | 已采纳；准确像素字节绑定、有界私有块、单页后端及无读取器拒绝 |
+| 0091 | [标准容器中的恢复信息按调用显式写入](0091-optional-standard-container-recovery.md) | 已采纳；DOCX／PNG 页 ZIP 成员、PDF 附件、准确绑定与显式体积代价 |

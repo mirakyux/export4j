@@ -78,6 +78,19 @@ public final class RasterBackend implements DocumentBackend {
         try { writePng(image, output); } finally { image.flush(); }
     }
 
+    /** A reusable backend for exactly one laid-out page as a standard PNG, using this DPI/fonts.
+     * Rejects multiple pages, interactive extras and pixel overflow before writing any bytes.
+     * Output is borrowed and is neither closed nor flushed. No pagination occurs in this backend. */
+    public DocumentBackend singlePage() {
+        return (document, output) -> {
+            Objects.requireNonNull(document, "document"); Objects.requireNonNull(output, "output");
+            if (document.pages().size() != 1) { throw new IllegalArgumentException("single PNG requires exactly one page"); }
+            com.mirakyux.export4j.model.ExecutionContext.progress("PNG_PAGE", "", 0, 0, 1);
+            var image = render(prepare(document).getFirst());
+            try { writePng(image, new Borrowed(output)); } finally { image.flush(); }
+        };
+    }
+
     private List<DisplayPage> prepare(DisplayDocument document) {
         long pixels = 0;
         for (var page : document.pages()) {
@@ -137,5 +150,6 @@ public final class RasterBackend implements DocumentBackend {
         Borrowed(OutputStream output) { super(output); }
         @Override public void write(byte[] bytes, int start, int length) throws IOException { out.write(bytes, start, length); }
         @Override public void close() { }
+        @Override public void flush() { }
     }
 }
