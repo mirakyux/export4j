@@ -4,6 +4,8 @@
 
 模块为 `export4j-adapter-template`，仅依赖模型模块。布局后端及各适配器仍各自提供标准输出；恢复层不反向依赖它们、不执行脚本、不自动查找伴随文件或系统字体。
 
+HTML 另提供显式[单文件内嵌](#html-单文件恢复)，把同一普通 XML ZIP 放入 HTML 末尾注释。其他格式仍使用伴随包；两条入口不混用。
+
 ## 保存、恢复和编辑
 
 ```java
@@ -33,6 +35,34 @@ var next = XmlModelRecovery.capture(edited)
 `capture` 读取预检已固定的编码和编辑后的 candidate，不重新执行导入、编辑或目标编码。完整语义子集沿用 [XML 模型保存](xml-model-saving-api.md)：正文、分节、页区／变体／图层、表格、列表、字段、ID／引用、注释、题注与图片。没有编辑时模型和资源可以保持一致；重新布局外观仍要求相同字体、字体角色映射、引擎和配置。未注册的角色、缺少字体或不支持的布局不会由恢复入口补造。
 
 `resources(bundle)` 仅复制显式字体字节及许可；保存图片重新遍历当前模型。旧模板、片段和已删除图片不会进入新的恢复包。`XmlTemplateWriter.from(...).resources(bundle)` 与 `conversionTarget(bundle)` 提供同样的资源传递方式。模板编写意图应直接用 `XmlTemplateBundle` 保存原 XML 和片段；展开后的模型不能推回主题、原变量、条件或循环。运行时组件代码、字体句柄和配置回调不持久化；自定义块继续按已验证的 ERROR 或 WARN／IGNORE + DISCARD 处理。
+
+## HTML 单文件恢复
+
+```java
+var saved = XmlModelRecovery.capture(
+        DocumentConversion.from(document, notes).prepare(htmlAdapter.conversionTarget()))
+        .resources(explicitResourceBundle)
+        .prepare();
+saved.writeEmbeddedHtml(Path.of("report.html"));
+
+var request = XmlModelRecovery.openEmbeddedHtml(Files.readAllBytes(Path.of("report.html")));
+var opened = request.prepare();
+var edited = request.conversion()
+        .edit(editor -> editor.replaceText("草稿", "已复核"))
+        .prepare(htmlAdapter.conversionTarget());
+XmlModelRecovery.capture(edited).resources(opened.resources().orElseThrow())
+        .prepare().writeEmbeddedHtml(Path.of("reviewed.html"));
+```
+
+`embeddedHtmlBytes()` 返回防御性副本；`writeEmbeddedHtml(OutputStream)` 借用输出，`Path` 重载原子出版。只接受 HTML 捕获，普通 `documentBytes()`／`writeDocument` 仍输出原标准文件。没有恢复包的有损捕获写出普通 HTML，不能将已丢弃内容藏入注释。
+
+末尾唯一的 `export4j-model-recovery` 注释携带 Base64 ZIP，清单仍为 version 1。长度／SHA-256 绑定移除这一准确封装后的**全部 HTML 字节**；模型和资源摘要独立校验。不是对 DOM 归一化内容求摘要。重复、截断、错误封装、非法 Base64、损坏 ZIP 或摘要冲突无条件失败；不能由三动作放行，也不能同时使用 `companion(...)` 覆盖内嵌来源。
+
+文件被外部改字／重排后默认拒绝。缺少注释、未知清单版本或绑定过期时，可显式设置与伴随包相同的 `MODEL_RECOVERY` + DEGRADE 和 fallback；fallback 只接收去除准确封装后的当前 HTML 字节，返回实际导入损失，不读取旧模型。普通 HTML 导入器不会自动进入这一恢复通道。
+
+整个 HTML **含 Base64 注释**受 `maxDocumentBytes` 限制；解码 ZIP 另受 bundle 编码／展开预算，Base64 相比原 ZIP 的体积约增加三分之一。内嵌内容和字体许可仍可直接读取，不加密、不认证作者。浏览器显示不使用恢复包中的字体；恢复后布局才通过显式字体加载使用这些资源。外部工具可能移除／改写注释，不承诺任意编辑器重存后恢复。
+
+设计见 [ADR-0088](adr/0088-embedded-html-model-recovery.md)，样例见 [EmbeddedHtmlRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/EmbeddedHtmlRecoveryExample.java)，验收见[阶段八十三](verification/phase-83-embedded-html-recovery.md)。
 
 ## 一致性与三动作策略
 

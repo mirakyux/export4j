@@ -80,6 +80,8 @@
 
 ## 编辑、导入与转换
 
+HTML 内嵌恢复变更另运行 `:examples:embeddedHtmlRecovery`、新 Maven 调用方的 `embeddedHtmlRecovery` 与 `scripts/verify_embedded_html_recovery.py --consumer-build-directory <本次成功目录>`。核对单文件三轮、HTML 注释外准确字节／模型及资源摘要、实际编辑、缺失／未知版本／外部改字、三动作和不保留已丢弃内容；重复／损坏封装不得进入 fallback。核对总编码及解码预算、取消／借用流／原子失败，全部新 PDF 页双渲染并查看，浏览器检查宽窄显示及注释不可见。回归既有伴随包矩阵，不将浏览器打开称为编辑器保存回读。
+
 标准文件恢复变更运行 `:examples:modelRecovery`，再执行 `scripts/verify_model_recovery.py --prepare-external` 和 `:examples:modelRecoveryExternal`，最后用新 Maven 调用方的 `modelRecovery` 及验证器的 `--consumer-build-directory` 检查本次结果。分别核对七种输出的三轮、49 组 A→B→A、真实编辑、资源摘要、旧包失效、目标损失不隐藏源模型、历史／新增损失累计和借用流／失败原子性。DOCX 无编辑准确字节及未修改包条目、PDF 原页面改字的未修改区域、脱敏无源对象与伴随包拒绝分别验收；外部文件库重写与 Word 等应用保存不能混称。全部新 PDF 页双渲染并逐页查看，不以简单语料关闭一般复杂往返。
 
 XML 模板源码／资源包变更先运行 `:examples:xmlTemplateBundle` 和 `scripts/create_xml_template_bundle_fixture.py`，再以新的 Maven 调用方构建目录运行 `xmlTemplateBundle`，执行 `scripts/verify_xml_template_bundle.py`。核对原源码、占位符、CRLF、图片／字体／许可字节、普通 ZIP 独立输入、编辑后重新绑定、包预算及取消／失败原子性；全部新 PDF 页双渲染并查看，DOCX 检查标准结构。回归平面及递归 XML include，不将模板包保存算作任意文档模型恢复。

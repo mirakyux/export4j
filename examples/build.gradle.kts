@@ -19,6 +19,15 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+tasks.register<JavaExec>("embeddedHtmlRecovery") {
+    group = "application"
+    description = "Reopens and edits standard HTML with bounded embedded XML/resources."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.EmbeddedHtmlRecoveryExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 for (external in listOf(false, true)) {
     tasks.register<JavaExec>(if (external) "modelRecoveryExternal" else "modelRecovery") {
         group = "application"
