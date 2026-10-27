@@ -32,6 +32,7 @@ final class SemanticBlocks {
 
     static Result compile(SectionedDocument document, List<Note> notes) {
         notes = List.copyOf(notes);
+        Note.validate(document, notes);
         Map<String, String> labels = new HashMap<>();
         Map<String, Integer> counters = new HashMap<>();
         Map<String, int[]> lists = new HashMap<>();

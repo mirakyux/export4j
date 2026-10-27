@@ -20,11 +20,14 @@ import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
+import com.mirakyux.export4j.model.Caption;
+import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.DocumentTemplate;
 import com.mirakyux.export4j.model.DocumentTheme;
+import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExternalDestination;
 import com.mirakyux.export4j.model.Heading;
@@ -69,9 +72,13 @@ import com.mirakyux.export4j.adapter.template.TemplateException.Code;
  * Static root sections inherit root settings/regions, start on new pages and may override/clear bands.
  * Use DocumentTemplate.renderSections for section declarations; body-only render never drops them.
  * Templates with bands require DocumentTemplate.renderWithPageRegions(); render() refuses to discard them.
+ * Root notes follow page regions and precede body/sections. Static IDs/anchors and root-bound text
+ * require renderComplete(), which returns both document and notes and validates their relationships.
+ * Captions retain original kind/text; heading/list links remain text-only (no images or fields).
  * Numbered levels are static integers from 1 through 9, defaulting to 1; all branches are checked.
  * Parent-level completeness is validated after binding by component layout or DOCX export, not by this compiler.
- * Compilation throws {@link TemplateException}; rendering uses {@link DocumentTemplate.BindingException}.
+ * Compilation throws {@link TemplateException}; binding uses {@link DocumentTemplate.BindingException}
+ * and final model/relationship validation may throw IllegalArgumentException.
  * Both operations observe the caller's synchronous ExecutionContext. No font or backend is retained.
  */
 public final class XmlTemplate {
@@ -83,7 +90,7 @@ public final class XmlTemplate {
     private static final Pattern PATH = Pattern.compile("[A-Za-z_][A-Za-z_0-9]*(\\.[A-Za-z_][A-Za-z_0-9]*)*");
     private static final Pattern LENGTH = Pattern.compile("([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(pt|mm|cm|in)?");
     private static final String LINK_REFERENCE_PREFIX = "https://export4j.invalid/.template-link/";
-    private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "page-break", "table", "rows");
+    private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break", "table", "rows");
     private static final Set<String> PARAGRAPH_ATTRIBUTES = Set.of("id", "size", "line-height", "align",
             "keep-together", "space-before", "space-after", "first-indent", "subsequent-indent", "line-break",
             "keep-with-next", "page-break-before", "min-lines-before", "min-lines-after");
@@ -464,7 +471,7 @@ public final class XmlTemplate {
             if (source.name().equals("numbered") && attributes.containsKey("list-id")) {
                 attributes.put("list-id", qualifiedId(source, namespace, attributes.get("list-id")));
             }
-            if ((source.name().equals("page-reference") || source.name().equals("number-reference"))
+            if ((source.name().equals("page-reference") || source.name().equals("number-reference") || source.name().equals("cross-reference"))
                     && attributes.containsKey("target") && localIds.contains(attributes.get("target"))) {
                 attributes.put("target", qualifiedId(source, namespace, attributes.get("target")));
             }
@@ -525,6 +532,19 @@ public final class XmlTemplate {
             var prefix = regionPrefix(root, content, 0, PageRegions.EMPTY, settings);
             var regions = prefix.regions();
             var body = content.subList(prefix.end(), content.size());
+            var notes = new ArrayList<Note>();
+            if (!body.isEmpty() && body.getFirst().name().equals("notes")) {
+                var declarations = body.getFirst(); attributes(declarations, Set.of());
+                if (!declarations.fragmentName().isEmpty()) { throw error(declarations, Code.UNSUPPORTED_ELEMENT); }
+                for (var declaration : children(declarations)) {
+                    requireName(declaration, "note"); attributes(declaration, Set.of("id", "paragraph", "kind"));
+                    String noteId = literalId(declaration, "id");
+                    if (!ids.add(noteId)) { throw error(declaration, Code.INVALID_VALUE); }
+                    notes.add(validated(declaration, () -> new Note(noteId, literalId(declaration, "paragraph"),
+                            expression(declaration, plain(declaration)), Note.Kind.valueOf(required(declaration, "kind")))));
+                }
+                body = body.subList(1, body.size());
+            }
             if (body.stream().anyMatch(element -> element.name().equals("section"))) {
                 var sections = new ArrayList<DocumentTemplate.SectionNode>();
                 var sectionIds = new HashSet<String>();
@@ -546,9 +566,9 @@ public final class XmlTemplate {
                     sections.add(new DocumentTemplate.SectionNode(sectionId, sectionSettings,
                             nodes(children.subList(selected.end(), children.size())), first, selected.regions()));
                 }
-                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText);
+                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText, notes);
             }
-            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates, literalText);
+            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates, literalText, notes);
         }
 
         private String expression(Element element, String text) {
@@ -706,7 +726,7 @@ public final class XmlTemplate {
             while (!pending.isEmpty()) {
                 ExecutionContext.checkpoint();
                 var element = pending.pop();
-                if (BLOCK_ELEMENTS.contains(element.name())
+                if ((BLOCK_ELEMENTS.contains(element.name()) || element.name().equals("note"))
                         && element.attributes().containsKey("id")) {
                     String id = element.attributes().get("id");
                     if (!ID.matcher(id).matches() || !explicitIds.add(id)) { throw error(element, Code.INVALID_VALUE); }
@@ -741,7 +761,7 @@ public final class XmlTemplate {
         private DocumentTemplate.Node node(Element element) {
             try {
                 return switch (element.name()) {
-                    case "p", "heading", "bullet", "numbered", "page-break" -> new DocumentTemplate.ValueBlock(block(element));
+                    case "p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break" -> new DocumentTemplate.ValueBlock(block(element));
                     case "if" -> conditional(element);
                     case "each" -> {
                         attributes(element, Set.of("items", "as"));
@@ -783,6 +803,10 @@ public final class XmlTemplate {
             if (Set.of("heading", "numbered", "bullet").contains(element.name())) { allowed.add("level"); }
             if (element.name().equals("numbered")) { allowed.addAll(Set.of("list-id", "restart")); }
             if (element.name().equals("bullet")) { allowed.add("marker"); }
+            if (element.name().equals("caption")) { allowed.add("kind"); allowed.remove("role"); allowed.remove("color"); }
+            if (element.name().equals("cross-reference")) {
+                allowed.addAll(Set.of("kind", "target")); allowed.remove("role"); allowed.remove("color");
+            }
             if (element.name().equals("numbered") || element.name().equals("bullet")) {
                 allowed.addAll(Set.of("marker-role", "marker-size", "marker-color", "marker-shift", "marker-underline", "marker-strike"));
             }
@@ -797,6 +821,13 @@ public final class XmlTemplate {
                 base = validated(element, () -> theme.paragraphStyle(styleName(element)));
             }
             var format = paragraphFormat(element, base);
+            if (element.name().equals("caption")) {
+                return new Caption(id, expression(element, required(element, "kind")), expression(element, plain(element)), format);
+            }
+            if (element.name().equals("cross-reference")) {
+                return new CrossReference(id, expression(element, plain(element)), target(element),
+                        CrossReference.Kind.valueOf(required(element, "kind")), format);
+            }
             var appearance = appearance(element, format.fontSize(), element.name().equals("heading")
                     ? headingText.getOrDefault(level, TextDefaults.DEFAULT) : textDefaults);
             var content = inline(element, appearance, element.name().equals("p"));
@@ -964,7 +995,7 @@ public final class XmlTemplate {
                                 expression(child, value(child, "alt", "")), hyperlink)));
                     }
                     case "link" -> {
-                        if (!allowObjects || !hyperlink.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
+                        if (!hyperlink.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         attributes(child, Set.of("href"));
                         String destination = required(child, "href");
                         if (!literalText && destination.contains("${")) {
@@ -977,9 +1008,9 @@ public final class XmlTemplate {
                             validated(child, () -> new ExternalDestination(literal));
                         }
                         if (child.content().isEmpty()) { throw error(child, Code.INVALID_STRUCTURE); }
-                        result.addAll(inline(child, defaults, true, destination));
+                        result.addAll(inline(child, defaults, allowObjects, destination));
                     }
-                    case "page-number", "page-count", "page-reference", "number-reference" -> {
+                    case "page-number", "page-count", "page-reference", "number-reference", "note-marker" -> {
                         if (!allowObjects || !hyperlink.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         result.add(field(child, defaults));
                     }
@@ -997,17 +1028,22 @@ public final class XmlTemplate {
                 case "page-count" -> InlineField.Kind.PAGES;
                 case "page-reference" -> InlineField.Kind.REFERENCE_PAGE;
                 case "number-reference" -> InlineField.Kind.REFERENCE_NUMBER;
+                case "note-marker" -> InlineField.Kind.NOTE_MARKER;
                 default -> throw error(element, Code.UNSUPPORTED_ELEMENT);
             };
-            boolean targeted = kind == InlineField.Kind.REFERENCE_PAGE || kind == InlineField.Kind.REFERENCE_NUMBER;
+            boolean targeted = kind == InlineField.Kind.REFERENCE_PAGE || kind == InlineField.Kind.REFERENCE_NUMBER || kind == InlineField.Kind.NOTE_MARKER;
             var allowed = new HashSet<>(INLINE_STYLE_ATTRIBUTES);
             allowed.add("width");
             if (targeted) { allowed.add("target"); }
             attributes(element, allowed); empty(element);
-            String target = targeted ? required(element, "target") : "";
-            String targetValue = !literalText && target.contains("${") ? expression(element, target) : targeted ? literalId(element, "target") : "";
+            String targetValue = targeted ? target(element) : "";
             return validated(element, () -> new InlineField(kind, targetValue,
                     number(element, "width", 0), inlineStyle(element, defaults)));
+        }
+
+        private String target(Element element) {
+            String value = required(element, "target");
+            return !literalText && value.contains("${") ? expression(element, value) : literalId(element, "target");
         }
 
         private InlineStyle spanStyle(Element element, InlineStyle inherited) {

@@ -161,7 +161,7 @@ class XmlTemplateBlockCellsTest {
                     : TemplateException.Code.UNSUPPORTED_ELEMENT, table("outer", content));
         }
         reject(TemplateException.Code.UNSUPPORTED_ATTRIBUTE, table("outer", "<p unknown='x'>Block</p>"));
-        reject(TemplateException.Code.UNSUPPORTED_ELEMENT, table("outer", "<p><note-marker width='20'/></p>"));
+        reject(TemplateException.Code.INVALID_VALUE, table("outer", "<p><note-marker target='n' width='20'/></p>"));
     }
 
     @Test void deeperTablesAndRowSplittingCompileWhileUnsupportedHeadersAndDynamicSpansFail() {

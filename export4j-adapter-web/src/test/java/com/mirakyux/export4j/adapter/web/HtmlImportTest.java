@@ -12,6 +12,7 @@ import com.mirakyux.export4j.model.ParagraphAlignment;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.edit.DocumentEditor;
 import com.mirakyux.export4j.model.processing.ProcessingException;
+import com.mirakyux.export4j.model.processing.DocumentConversion;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy.Action;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy.Treatment;
@@ -19,6 +20,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.imageio.ImageIO;
@@ -30,6 +32,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HtmlImportTest {
+    @Test void ownExportRestrictiveCspCanBeExplicitlyDiscardedButActiveHttpDirectivesStayRejected() throws Exception {
+        var source = new HtmlImporter().read("<p id='p'>VISIBLE-ROUNDTRIP</p>").execute().document();
+        var encoded = new ByteArrayOutputStream();
+        DocumentConversion.from(source).prepare(new HtmlAdapter().conversionTarget()).to(encoded);
+        String html = encoded.toString(StandardCharsets.UTF_8);
+        assertTrue(html.contains("Content-Security-Policy"));
+        for (var action : List.of(Action.WARN, Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().defaultRule(action, Treatment.DEGRADE).feature("HTML_METADATA", action, Treatment.DISCARD).build();
+            var result = HtmlImporter.builder().policy(policy).build().read(html).execute();
+            assertEquals("VISIBLE-ROUNDTRIP", result.document().paragraphs().getFirst().text());
+            assertTrue(result.report().losses().stream().anyMatch(issue -> issue.feature().equals("HTML_METADATA")));
+            assertEquals(action == Action.IGNORE, result.report().warnings().isEmpty());
+            for (String active : List.of("<meta http-equiv='refresh' content='0;url=https://example.org'>",
+                    "<meta http-equiv='Content-Security-Policy' content=\"default-src *; report-uri https://example.org\">",
+                    "<div http-equiv='Content-Security-Policy' content=\"default-src 'none'\">x</div>")) {
+                assertThrows(IllegalArgumentException.class, () -> HtmlImporter.builder().policy(policy).build().read(active).execute());
+            }
+        }
+        assertThrows(ProcessingException.class, () -> new HtmlImporter().read(html).execute());
+    }
     private static HtmlImporter lenient(Action action) {
         return HtmlImporter.builder().policy(ProcessingPolicy.builder().defaultRule(action, Treatment.DEGRADE).build()).build();
     }

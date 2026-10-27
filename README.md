@@ -5,9 +5,11 @@ Java 文档排版与生成引擎
 
 **English** | [简体中文](README.zh-CN.md)
 
-Export4j is an open-source Java engine for generating reports and structured documents. Write documents with a fluent Java API or offline XML templates, then use a shared layout engine to produce PDF, SVG and PNG. Separate adapters map the semantic model to a DOCX subset, self-contained HTML and CommonMark/GFM Markdown.
+Export4j is an open-source **Java PDF generation and document export library** for reports and structured documents. Generate PDF, export DOCX, HTML and Markdown, or render SVG and PNG from a fluent Java API or offline XML templates. PDF, SVG and PNG share a layout engine; separate adapters map the semantic model to a DOCX subset, self-contained HTML and CommonMark/GFM Markdown.
 
 [Document conversion](docs/document-conversion-api.md) combines supported Markdown, HTML/CSS, DOCX and [PDF semantic recovery](docs/pdf-semantic-import-api.md) with editing, loss previews and export. DOCX also supports [style inheritance](docs/docx-style-import-api.md) and [package-preserving text edits](docs/docx-editing-api.md) within explicit limits.
+
+[Model recovery](docs/model-recovery-api.md) pairs a standard output with an ordinary XML/resource ZIP bound to its exact bytes. Reopen and edit the saved model with explicit fonts; changed files require rejection or an explicit restricted import. Lossy exports cannot retain a richer hidden source model.
 
 **Early development:** no stable artifacts have been published, and APIs may change. Supported PDF reports and dense static forms are ready for scoped trials; see the [readiness assessment](docs/readiness-assessment.md) and [capability matrix](docs/capabilities-api.md) for the evidence and limits.
 
@@ -81,6 +83,8 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | Edit, save and reopen XML sources/resources in ordinary ZIP files, then bind different data |
 | `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | Save semantic models as XML, reopen/edit and export; three-cycle unchanged controls and explicit loss reports |
 | `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | Shared page-region sources, variants, overlays and save/reopen/edit controls |
+| `:examples:xmlCrossReferenceSaving` | `examples/build/xml-cross-reference-saving/` | Independent reference round trips, section page/number resolution, retargeting and Web losses |
+| `:examples:xmlSemanticSaving` | `examples/build/xml-semantic-saving/` | Complete note/caption/text-link binding, three-cycle controls, caption editing and explicit Web losses |
 | `:examples:pageOverlays` | `examples/build/page-overlays/` | Fixed XML backgrounds/foregrounds, visible occlusion and explicit conversion losses |
 | `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | Themed XML headers/footers and final page numbers, including contents |
 | `:examples:xmlSections` | `examples/build/xml-sections/` | Image/table page bands, section paper/numbering and strict native DOCX round trip |
@@ -168,7 +172,7 @@ XML supports image/table headers and footers with independent themes and final p
 
 Use [XML template bundles](docs/xml-template-bundle-api.md) to edit, save and reopen the XML sources and explicit resources in an ordinary ZIP. Plain XML remains supported. This preserves templates, rather than reconstructing them from rendered PDF or DOCX files.
 
-[XmlTemplateWriter](docs/xml-model-saving-api.md) also saves supported Java semantic documents as this XML/ZIP for reopening, editing and export. Text such as `${literal}` stays literal. Headers/footers, first/even variants and ordered background/foreground boxes retain shared sources and placement; see [page-region saving verification](docs/verification/phase-79-xml-region-saving.md). Notes, unmapped blocks and heading/list links require explicit loss policies; fonts and licenses remain caller supplied. See the [three-cycle and output verification](docs/verification/phase-78-xml-model-saving.md).
+[XmlTemplateWriter](docs/xml-model-saving-api.md) also saves supported Java semantic documents as this XML/ZIP for reopening, editing and export. Text such as `${literal}` stays literal. Headers/footers, first/even variants and ordered background/foreground boxes retain shared sources and placement. Footnotes/endnotes, explicit markers, captions and heading/list text links are preserved; use `renderComplete(data)` to retrieve both document and notes. Unmapped blocks require explicit loss policies; fonts and licenses remain caller supplied. See the [complete binding verification](docs/verification/phase-80-xml-semantic-saving.md) and [independent reference saving](docs/verification/phase-81-xml-cross-reference-saving.md), including page/number targets, retargeting and final PDF links. Other output formats retain their own limits and loss policies.
 
 See the [XML guide](docs/xml-template-api.md), [page settings](docs/xml-page-settings-api.md), [report template](examples/src/main/resources/templates/report.xml) and [complete Java call](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java).
 

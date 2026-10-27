@@ -5,9 +5,11 @@ A Java Document Layout and Generation Engine
 
 [English](README.md) | **简体中文**
 
-Export4j 是用于生成报告和结构化文档的开源 Java 引擎。通过链式 Java API 或离线 XML 模板编写内容，由共享布局引擎生成 PDF、SVG 和 PNG；独立适配器将文档语义映射为 DOCX 子集、自包含 HTML 和 CommonMark/GFM Markdown。
+Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档导出库**。通过链式 Java API 或离线 XML 模板编写内容，生成 PDF、导出 DOCX、HTML、Markdown，或渲染 SVG、PNG。PDF、SVG 和 PNG 使用共享布局引擎；独立适配器将文档语义映射为 DOCX 子集、自包含 HTML 和 CommonMark/GFM Markdown。
 
 [统一转换](docs/document-conversion-api.md)串联受支持的 Markdown、HTML/CSS、DOCX 导入和 [PDF 语义恢复](docs/pdf-semantic-import-api.md)，再编辑、预检损失并导出。DOCX 另有[样式级联](docs/docx-style-import-api.md)及[保留原包的文字编辑](docs/docx-editing-api.md)，具体边界分别登记。
+
+[模型恢复](docs/model-recovery-api.md)使用与标准文件准确绑定的普通 XML／资源 ZIP，重新打开并编辑已保存模型及显式字体资源。文件修改后须拒绝旧恢复数据或显式受限导入当前内容；有损导出不能隐藏更丰富的源模型。
 
 **当前处于早期开发阶段，尚未发布稳定制品，API 可能调整。** 受支持的 PDF 报告和密集静态表单已具备限定范围的试用条件，具体证据与限制见[就绪评估](docs/readiness-assessment.md)和[能力矩阵](docs/capabilities-api.md)。
 
@@ -81,6 +83,8 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | 编辑、保存和重开普通 ZIP 中的 XML 源码／资源，再绑定不同数据 |
 | `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | 语义模型保存为 XML，再重开编辑导出；三轮无编辑控制及明确损失报告 |
 | `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | 共享页区、变体／图层及保存／重开／编辑控制 |
+| `:examples:xmlCrossReferenceSaving` | `examples/build/xml-cross-reference-saving/` | 独立引用三轮保存、跨节页码／编号、目标改写和 Web 损失 |
+| `:examples:xmlSemanticSaving` | `examples/build/xml-semantic-saving/` | 注释／题注／文字外链完整绑定、三轮控制、实际题注编辑及 Web 损失 |
 | `:examples:pageOverlays` | `examples/build/page-overlays/` | XML 背景／前景、可见遮挡关系及明确转换损失 |
 | `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | XML 页眉页脚主题，以及含目录的最终页码 |
 | `:examples:xmlSections` | `examples/build/xml-sections/` | 图片／表格页区、分节纸张／页码和原生 DOCX 严格往返 |
@@ -168,7 +172,7 @@ XML 支持独立主题的图文／表格页眉页脚及最终页码字段。单�
 
 使用 [XML 模板资源包](docs/xml-template-bundle-api.md)编辑、保存和重开主源及显式资源，打包使用普通 ZIP；单份 XML 仍可直接编译。保存的是模板源码，不从已渲染的 PDF／DOCX 反推模板。
 
-[XmlTemplateWriter](docs/xml-model-saving-api.md) 还可将支持的 Java 语义文档保存为同一 XML／ZIP，重开后继续编辑和导出，`${literal}` 等正文按原文保留。页眉页脚、首页／偶数变体及背景／前景框保留共享来源和位置，见[页区保存验收](docs/verification/phase-79-xml-region-saving.md)。注释、未映射块及标题／列表外链须明确配置损失策略；字体和许可由调用方提供。三轮保存及实际输出见[阶段七十八验收](docs/verification/phase-78-xml-model-saving.md)。
+[XmlTemplateWriter](docs/xml-model-saving-api.md) 还可将支持的 Java 语义文档保存为同一 XML／ZIP，重开后继续编辑和导出，`${literal}` 等正文按原文保留。页眉页脚、首页／偶数变体及背景／前景框保留共享来源和位置。脚注／尾注、显式标记、Caption 和标题／列表文字外链也可保存；使用 `renderComplete(data)` 同时取回文档和注释。未映射块须明确配置损失策略；字体和许可由调用方提供。完整绑定见[阶段八十验收](docs/verification/phase-80-xml-semantic-saving.md)；[阶段八十一](docs/verification/phase-81-xml-cross-reference-saving.md)进一步支持独立页码／编号引用保存、目标改写和最终跳转。其他输出格式仍按各自能力和损失策略处理。
 
 参阅 [XML 指南](docs/xml-template-api.md)、[纸张与边距](docs/xml-page-settings-api.md)、[完整报告模板](examples/src/main/resources/templates/report.xml)和[Java 调用](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java)。
 

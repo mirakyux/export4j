@@ -2,7 +2,7 @@
 
 [XML 模板源码编辑与资源 ZIP](xml-template-bundle-api.md)复用现有模板适配器：保留可编辑主源、片段、图片、显式字体及许可文本，普通 ZIP 保存／重开后继续使用 `XmlTemplate → DocumentTemplate`。不是任意已渲染文档的模型恢复入口。
 
-[语义模型保存为 XML](xml-model-saving-api.md)支持正文／分节、富文本／独立列表标记、表格／递归块格、四类字段和图片，保留现有格式与原文字面值，并接入统一转换。[页区保存](verification/phase-79-xml-region-saving.md)进一步保留默认／首页／偶数页眉页脚、共享来源及有序图层位置，验收 20 页 PDF 与 4 份标准 DOCX。注释、未映射块及标题／列表外链默认拒绝，显式策略才报损继续；字体／许可由调用方明确提供。三轮保存、实际编辑、10 页 PDF 双渲染及 5 份标准 DOCX 见[阶段七十八](verification/phase-78-xml-model-saving.md)。
+[语义模型保存为 XML](xml-model-saving-api.md)支持正文／分节、富文本／独立列表标记、表格／递归块格、四类字段和图片，保留现有格式与原文字面值，并接入统一转换。[页区保存](verification/phase-79-xml-region-saving.md)保留默认／首页／偶数页眉页脚、共享来源及有序图层位置。[阶段八十](verification/phase-80-xml-semantic-saving.md)进一步保留显式注释及标记、Caption 和标题／列表文字外链，`renderComplete(data)` 同时返回文档与注释，三轮控制、编辑、10 页 PDF 双渲染及 Web 损失对账通过。[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)补齐独立 CrossReference 的完整 XML 保存／绑定，覆盖跨节 PAGE／NUMBER、多行引用、片段／循环目标与实际改写。未映射块默认拒绝，显式策略才报损继续；字体／许可由调用方明确提供。XML 保留范围不扩大 DOCX／Web 适配器能力。
 
 XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-settings.md)验收：主根首个可选 `page` 支持纸张／成对宽高／方向／四边边距，页面长度支持 pt／mm／cm／in。未声明项保留 Java 默认，详见[页面指南](xml-page-settings-api.md)。[阶段四十一](verification/phase-41-xml-page-regions.md)补齐[固定页眉页脚](xml-page-regions-api.md)、独立主题及最终页码；[阶段四十二](verification/phase-42-sections-and-docx-regions.md)补齐页区图片／表格、XML 分节与 DOCX 默认页区。全局字体角色／颜色已由[阶段六十](verification/phase-60-theme-appearance.md)接入；首页／奇偶页区已由[阶段六十一](verification/phase-61-page-variants.md)验收；[XML 背景／前景](page-overlays-api.md)已由[阶段六十二](verification/phase-62-page-overlays.md)验收；完整 CSS 级联仍开放。
 
@@ -13,6 +13,8 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 17 个模块。最初能力扩展的可编译样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)，其范围见[阶段五验收](verification/phase-5-capabilities.md)；后续扩展按各节所列验收判断。
 
 ## 已有 PDF 处理与语义恢复
+
+[标准文件伴随包恢复](model-recovery-api.md)使用现有 XML／普通 ZIP 保存当前模型、注释及显式资源，绑定准确输出字节。七种输出三轮、49 组 A→B→A、真实编辑、DOCX 原包／PDF 原页面改字、脱敏及独立工具重写见[阶段八十二](verification/phase-82-model-recovery.md)。文件修改后旧模型拒绝或显式受限导入，有损导出不携带更丰富的源副本；此入口不等于标准格式内嵌、无伴随包识别或任意应用无损重存。
 
 [PdfAdapter](pdf-adapter-api.md)提供各自独立的静态复制、页级编辑、被动对象编辑／组合、渲染／提取、优化、文字替换、区域脱敏和语义恢复入口；公共签名不暴露第三方类型。所有入口保留权限、签名、安全解析、预算、取消和原子路径输出边界，不能因另一入口支持某对象而自动放宽。
 
@@ -71,7 +73,7 @@ var cff = TrueTypeFontLoader.load(otfBytes);                 // 静态 OTF/CFF �
 
 外部文本入口提供[安全 XML 模板子集](xml-template-api.md)和[严格 Markdown](markdown-template-api.md)，由独立适配器编译到下列既有节点。XML 可声明固定宽字段、1～9 级十进制编号及被动图文外链；Markdown 面向标题／段落／一级条目和强调。未知内容明确拒绝，资源仅由调用方显式注册。它们不支持任意 HTML/CSS。
 
-[XML 多级编号](xml-numbering-api.md)复用既有父计数、重启与完整编号引用，each／include 保留列表身份及当前副本目标；全部分支检查静态层级，实际父完整性在布局／导出验证。[阶段三十五](verification/phase-35-xml-numbering.md)完成九级边界、原生 DOCX 规则及最终 PDF 检查；不扩展编号内字段／link／图片。
+[XML 多级编号](xml-numbering-api.md)复用既有父计数、重启与完整编号引用，each／include 保留列表身份及当前副本目标；全部分支检查静态层级，实际父完整性在布局／导出验证。[阶段三十五](verification/phase-35-xml-numbering.md)完成九级边界、原生 DOCX 规则及最终 PDF 检查；后续[阶段八十](verification/phase-80-xml-semantic-saving.md)支持编号正文文字外链，字段／图片仍拒绝。
 
 XML 的[多段格／内表](xml-block-cells-api.md)直接映射有界递归块模型，Each／Rows 保留后代格式、来源及同副本引用；所有分支在编译阶段检查几何、深度和内容互斥，见[阶段二十八](verification/phase-28-xml-block-cells.md)。
 
@@ -88,7 +90,7 @@ XML 可用[主题与静态名称](xml-themes-api.md)复用完整正文、六级�
 
 数据只接受非空值的字符串键 Map、List、字符串、布尔值及标准有限数值；不反射任意对象。BigInteger／BigDecimal 须为精确标准类。快照与展开均有深度、访问次数和文字预算，展开另有块及表格行预算。文字预算包括 Map 键、数据字符串与生成字符串；访问次数也计循环、单元格与行内工作项。追加和大数转换前检查预算，未引用的超限大数也拒绝。缺路径、类型错误、非法表达式、未知块和预算超限具有稳定 `BindingException.Code` 与安全路径；超长或非法表达式定位为 `expression`。
 
-模板不提供代码执行或隐式格式化。日期、金额、国际化格式由调用方先准备。XML 的静态引用目标按当前词法复制作用域重定位，外部静态目标保持；循环外不推测某次迭代。动态 target 由数据提供完整最终 ID，不自动添加前缀或后缀。动态 href 在每个副本中绑定并校验最终地址，非法协议／凭据脱敏失败。[离线 include](xml-includes-api.md)只选择显式登记字符串，支持最多 16 层无循环引用、父子组合命名与父到子静态引用，见[阶段五十八](verification/phase-58-recursive-includes.md)。组件及注释仍拒绝。
+模板不提供代码执行或隐式格式化。日期、金额、国际化格式由调用方先准备。XML 的静态引用目标按当前词法复制作用域重定位，外部静态目标保持；循环外不推测某次迭代。动态 target 由数据提供完整最终 ID，不自动添加前缀或后缀。动态 href 在每个副本中绑定并校验最终地址，非法协议／凭据脱敏失败。[离线 include](xml-includes-api.md)只选择显式登记字符串，支持最多 16 层无循环引用、父子组合命名与父到子静态引用，见[阶段五十八](verification/phase-58-recursive-includes.md)。根级静态注释使用完整绑定入口，组件及动态注释声明仍拒绝。
 
 ## 布局扩展
 

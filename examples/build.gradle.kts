@@ -19,6 +19,36 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+for (external in listOf(false, true)) {
+    tasks.register<JavaExec>(if (external) "modelRecoveryExternal" else "modelRecovery") {
+        group = "application"
+        description = "Verifies explicit recovery companions, standard-file edits and format round trips."
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set("com.mirakyux.export4j.examples.ModelRecoveryExample")
+        workingDir = rootProject.projectDir
+        systemProperty("java.awt.headless", "true")
+        if (external) args("--external")
+    }
+}
+
+tasks.register<JavaExec>("xmlCrossReferenceSaving") {
+    group = "application"
+    description = "Saves and retargets independent XML reference blocks with final page and number resolution."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.XmlCrossReferenceSavingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("xmlSemanticSaving") {
+    group = "application"
+    description = "Saves complete notes, captions and linked text blocks using existing XML."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.XmlSemanticSavingExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 tasks.register<JavaExec>("xmlRegionSaving") {
     group = "application"
     description = "Saves shared page regions to XML and verifies reopened and edited output."

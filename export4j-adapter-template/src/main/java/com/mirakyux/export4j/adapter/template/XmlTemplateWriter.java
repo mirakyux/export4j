@@ -3,8 +3,10 @@ package com.mirakyux.export4j.adapter.template;
 
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
+import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CellLocation;
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
@@ -48,7 +50,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /** Saves supported semantic content as editable version-1 XML and explicit images in an ordinary ZIP.
- * Uses the existing XML compiler/binder; runtime components and notes require an explicit
+ * Uses the existing XML compiler/binder; unsupported runtime components require an explicit
  * discard policy. Fonts/licenses are provided by the caller, never discovered. Requests are task-confined;
  * prepared values are immutable except for caller execution callbacks. No layout or implicit I/O occurs.
  */
@@ -81,6 +83,15 @@ public final class XmlTemplateWriter {
                 from(document).notes(notes).policy(policy).prepare().to(output));
     }
 
+    /** Saves the edited model while retaining explicitly supplied font bytes and license notices.
+     * Old XML, fragments and pictures are not copied: pictures are collected from the current model,
+     * so a removed picture cannot reappear through a stale source resource. */
+    public static DocumentConversion.Target conversionTarget(XmlTemplateBundle resources) {
+        Objects.requireNonNull(resources, "resources");
+        return new DocumentConversion.Target(FORMAT, (document, notes, policy, output) ->
+                from(document).notes(notes).resources(resources).policy(policy).prepare().to(output));
+    }
+
     public static final class Request {
         private final SectionedDocument document;
         private final boolean sections;
@@ -99,6 +110,12 @@ public final class XmlTemplateWriter {
         public Request execution(ExecutionOptions value) { execution = Objects.requireNonNull(value, "execution"); return this; }
         public Request font(String name, byte[] bytes) { fonts.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(bytes, "bytes").clone()); return this; }
         public Request license(String name, String text) { licenses.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(text, "text")); return this; }
+        /** Snapshots explicit portable fonts/notices, without retaining the old model or unused images.
+         * Later font/license calls can replace individual resources. No font discovery or loading occurs. */
+        public Request resources(XmlTemplateBundle source) {
+            Objects.requireNonNull(source, "source");
+            source.fonts().forEach(this::font); source.licenses().forEach(this::license); return this;
+        }
         /** Validates all supported content and policies, compiles the produced XML and encodes the ZIP once.
          * No final destination is touched. Mutating this request later cannot change the prepared result. */
         public Prepared prepare() throws IOException {
@@ -106,7 +123,7 @@ public final class XmlTemplateWriter {
             var fontSnapshot = Map.copyOf(fonts); var licenseSnapshot = Map.copyOf(licenses); var options = execution;
             return ExecutionContext.execute(options, () -> {
                 var bundle = renderer.render(fontSnapshot, licenseSnapshot);
-                bundle.compile();
+                bundle.compile().renderComplete(Map.of());
                 return new Prepared(bundle, bundle.encode(), List.copyOf(renderer.issues), options);
             });
         }
@@ -157,7 +174,6 @@ public final class XmlTemplateWriter {
             this.limits = limits; this.bundleLimits = bundleLimits; this.execution = execution;
         }
         private XmlTemplateBundle render(Map<String, byte[]> fonts, Map<String, String> licenses) throws IOException {
-            if (!notes.isEmpty()) { loss("NOTES", ProcessingPolicy.Treatment.DISCARD, "NOTE_CONTENT_REMOVED"); }
             for (var section : document.sections()) {
                 reserve(section.blocks());
                 section.pageRegions().map((name, region) -> {
@@ -168,9 +184,16 @@ public final class XmlTemplateWriter {
                 });
                 reserved.add(section.id());
             }
+            for (var note : notes) {
+                ExecutionContext.checkpoint();
+                if (++blocks > limits.maxBlocks()) { throw new IllegalArgumentException("XML writer block/note budget exceeded"); }
+                reserved.add(note.id());
+            }
+            Note.validate(document, notes);
             regionSources.clear();
             add("<document version=\"1\" literal-text=\"true\""); attr("title", document.metadata().title()); attr("author", document.metadata().author()); add(">");
             if (sections) {
+                notes();
                 for (var section : document.sections()) {
                     location = new ProcessingIssue.Location(section.id(), "BODY", "", List.of(), -1, -1);
                     add("<section"); attr("id", identifier(section.id())); attr("first-page-number", section.firstPageNumber()); add(">");
@@ -186,8 +209,19 @@ public final class XmlTemplateWriter {
             location = new ProcessingIssue.Location(section.id(), "BODY", "", List.of(), -1, -1);
             page(section.pageSettings());
             regions(section.pageRegions());
+            if (!sections) { notes(); }
             location = new ProcessingIssue.Location(section.id(), "BODY", "", List.of(), -1, -1);
             for (var block : section.blocks()) { block(block, List.of()); }
+        }
+        private void notes() {
+            if (notes.isEmpty()) { return; }
+            add("<notes>");
+            for (var note : notes) {
+                location = new ProcessingIssue.Location("", "NOTES", note.id(), List.of(), -1, -1);
+                add("<note"); attr("id", identifier(note.id())); attr("paragraph", identifier(note.paragraphId())); attr("kind", note.kind());
+                add(">"); escaped(note.text()); add("</note>");
+            }
+            add("</notes>");
         }
         private void reserve(List<Block> values) {
             SemanticTree.walk(values, visit -> {
@@ -243,6 +277,15 @@ public final class XmlTemplateWriter {
             location = new ProcessingIssue.Location(location.sectionId(), location.region(), value.id(), path, -1, -1);
             if (value instanceof Table table) { table(table, path); return; }
             if (value instanceof PageBreak) { add("<page-break"); attr("id", identifier(value.id())); add("/>"); return; }
+            if (value instanceof Caption caption) {
+                add("<caption"); attr("id", identifier(caption.id())); attr("kind", caption.kind()); format(caption.format());
+                add(">"); escaped(caption.text()); add("</caption>"); return;
+            }
+            if (value instanceof CrossReference reference) {
+                add("<cross-reference"); attr("id", identifier(reference.id())); attr("kind", reference.kind());
+                attr("target", identifier(reference.targetId())); format(reference.format());
+                add(">"); escaped(reference.prefix()); add("</cross-reference>"); return;
+            }
             String tag; ParagraphFormat format; List<InlineContent> content;
             if (value instanceof Paragraph paragraph) { tag = "p"; format = paragraph.format(); content = paragraph.content(); }
             else if (value instanceof Heading heading) { tag = "heading"; format = heading.format(); content = runs(heading.text(), heading.inlines(), format.fontSize()); }
@@ -255,7 +298,7 @@ public final class XmlTemplateWriter {
             if (value instanceof NumberedItem numbered) {
                 attr("list-id", identifier(numbered.listId())); attr("level", numbered.level()); attr("restart", numbered.restartAt()); marker(numbered.markerStyle());
             }
-            add(">"); inline(content, value instanceof Paragraph); add("</" + tag + ">");
+            add(">"); inline(content); add("</" + tag + ">");
         }
         private static List<InlineContent> runs(String text, List<InlineText> runs, double size) {
             return runs.isEmpty() ? List.of(new InlineText(text, InlineStyle.of(size))) : List.copyOf(runs);
@@ -280,16 +323,13 @@ public final class XmlTemplateWriter {
             if (role.isEmpty() || role.matches("[A-Za-z_][A-Za-z_0-9]{0,255}")) { return role; }
             loss("FONT_ROLE", ProcessingPolicy.Treatment.DEGRADE, "FONT_ROLE_REMOVED"); return "";
         }
-        private void inline(List<InlineContent> values, boolean links) {
+        private void inline(List<InlineContent> values) {
             var owner = location; int offset = 0;
             for (var value : values) {
                 ExecutionContext.checkpoint();
                 int length = value instanceof InlineText text ? text.text().length() : 1;
                 location = owner.range(offset, offset + length); offset += length;
                 String link = value instanceof InlineText text ? text.hyperlink() : value instanceof InlineImage image ? image.hyperlink() : "";
-                if (!links && !link.isEmpty()) {
-                    loss("TEXT_BLOCK_LINK", ProcessingPolicy.Treatment.DISCARD, "HYPERLINK_REMOVED"); link = "";
-                }
                 if (!link.isEmpty()) { add("<link"); attr("href", link); add(">"); }
                 if (value instanceof InlineText text) { add("<span"); style(text.style()); add(">"); escaped(text.text()); add("</span>"); }
                 else if (value instanceof InlineImage image) {
@@ -297,13 +337,10 @@ public final class XmlTemplateWriter {
                     add("<image"); attr("ref", name); attr("width", image.width()); attr("height", image.height());
                     attr("baseline-shift", image.baselineShift()); attr("alt", image.altText()); add("/>");
                 } else if (value instanceof InlineField field) {
-                    if (field.kind() == InlineField.Kind.NOTE_MARKER) { loss("NOTE_MARKER", ProcessingPolicy.Treatment.DISCARD, "NOTE_MARKER_REMOVED"); }
-                    else {
-                        String tag = switch (field.kind()) { case PAGE -> "page-number"; case PAGES -> "page-count";
-                            case REFERENCE_PAGE -> "page-reference"; case REFERENCE_NUMBER -> "number-reference"; default -> throw new AssertionError(); };
-                        add("<" + tag); attr("width", field.width()); style(field.style());
-                        if (!field.targetId().isEmpty()) { attr("target", identifier(field.targetId())); } add("/>");
-                    }
+                    String tag = switch (field.kind()) { case PAGE -> "page-number"; case PAGES -> "page-count";
+                        case REFERENCE_PAGE -> "page-reference"; case REFERENCE_NUMBER -> "number-reference"; case NOTE_MARKER -> "note-marker"; };
+                    add("<" + tag); attr("width", field.width()); style(field.style());
+                    if (!field.targetId().isEmpty()) { attr("target", identifier(field.targetId())); } add("/>");
                 }
                 if (!link.isEmpty()) { add("</link>"); }
             }
@@ -338,7 +375,7 @@ public final class XmlTemplateWriter {
                             block(cell.blocks().get(index), childPath);
                         }
                     } else {
-                        inline(new Paragraph("cell", cell.text(), ParagraphFormat.of(cell.format().fontSize()), cell.inlines(), cell.images(), cell.fields()).content(), true);
+                        inline(new Paragraph("cell", cell.text(), ParagraphFormat.of(cell.format().fontSize()), cell.inlines(), cell.images(), cell.fields()).content());
                     }
                     add("</cell>"); location = owner;
                 }

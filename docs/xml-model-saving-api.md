@@ -38,11 +38,13 @@ request.prepare().to(Path.of("edited.zip"));
 | --- | --- |
 | 文档／分节 | 标题、作者、节 ID／顺序、每节纸张／四边边距、显示页码起点 |
 | 页区 | 默认／FIRST／EVEN 页眉页脚、显式空对及正高度空区；背景／前景的固定位置、尺寸及顺序；共享图文／表格源、PAGE／PAGES 与完整样式 |
-| 正文 | 段落、六级标题、无序／十进制列表、显式换页、原文与 ID |
+| 正文 | 段落、六级标题、无序／十进制列表、Caption、显式换页、原文与 ID；标题／列表文字外链 |
 | 段落格式 | 字号、行高、对齐、前后间距、两种缩进、断行策略、整段保持、跟随下一块、段前分页、分页前后最少行数 |
 | 富文本／列表标记 | 完整字体角色、字号、颜色、基线位移、下划线／删除线；列表标记的样式独立于正文，保留级别、自定义 bullet 及编号重启 |
 | 表格 | 固定／比例／有界 Auto 列、重复表头、行列跨度、递归块格、拆行开关、四边 padding／前后间距、格格式与物理锚点 |
 | 行内对象 | 段落／行内格的原 PNG／JPEG、尺寸／位移／替代文字／外链；PAGE、PAGES、页码引用、编号引用及其宽度／样式 |
+| 独立交叉引用 | CrossReference 的 PAGE／NUMBER、原始前缀、目标 ID 和完整格式；最终分页后解析跨节显示页码、题注／列表标签及跳转，多行预留沿用既有布局 |
+| 注释／题注 | 显式传入的脚注／尾注顺序、正文、种类、ID／锚点；段落显式标记宽度／样式或旧段末标记；Caption 原始 kind／text／format，编号仍在布局阶段计算 |
 | 显式资源 | 原图片字节去重；字体原字节及许可文本，文件名由调用方指定 |
 
 所有几何单位为 pt。原文 UTF-16 顺序、字段／图片的 U+FFFC 位置保留。保存的 XML 使用 `literal-text="true"`，`${...}`、未闭合 `${`、CR／LF／TAB 和补充平面字符均按正文保存；XML 特殊字符安全转义，换行／制表使用数字实体避免属性归一化。非法 XML 1.0 Unicode 无条件失败。
@@ -57,26 +59,39 @@ XML 能表示的 Auto／递归结构不等于所有布局组合可用；含块�
 
 相等来源在同类页区内只保存和绑定一次；所有源块 ID 与正文共同避让，实际放置与绘制仍分别计费。完整值包含已经解析的格式，不会在引用处重新应用主题。旧编译器不能读取新增属性，重开方需要支持该语法的版本。三轮模型／源码控制、共享编辑和实际图层输出见[阶段七十九](verification/phase-79-xml-region-saving.md)及 [ADR-0085](adr/0085-shared-xml-page-region-sources.md)。
 
+## 完整绑定与注释
+
+注释仍是显式独立数据，保存时调用 `.notes(notes)`；不会从正文猜测。重开包含注释的模板必须使用完整入口：
+
+```java
+var bound = bundle.compile().renderComplete(Map.of());
+var edited = DocumentEditor.edit(bound.document()).notes(bound.notes())
+        .replaceText("summary", "草稿", "已复核").execute();
+var request = XmlTemplateWriter.from(edited.document()).notes(edited.notes());
+bundle.fonts().forEach(request::font);
+bundle.licenses().forEach(request::license);
+request.prepare().to(Path.of("edited.zip"));
+```
+
+`DocumentTemplate.Rendered` 返回 `document()` 和不可变 `notes()`，支持分节及页区。旧 `render`／`renderWithPageRegions`／`renderSections` 遇到非空注释声明明确拒绝，避免静默丢失。`bundle.conversion()` 使用完整入口，传递注释到编辑器和目标；PDF 目标使用相同脚注／尾注布局。
+
+ID 必须在注释与正文／页区块之间唯一；锚点只允许顶层正文段落、列表或 Caption。显式标记只允许普通正文段落，须唯一匹配同段 Note；未显式标记的注释继续使用段末标记。缺失、重复、错位标记或条件展开后消失的锚点无条件失败。表格和页区不放宽原限制。静态根级注释语法及数据绑定边界见[XML 指南](xml-template-api.md#注释与题注)。
+
 ## 不支持内容与动作策略
 
 默认 `ProcessingPolicy.STRICT` 遇到不支持内容即失败。规则使用目标格式 `XML_TEMPLATE`、操作 `EXPORT`，通过 `.policy(...)` 配置共享 ERROR／WARN／IGNORE。必须选择当前功能真实支持的 treatment；要求 PRESERVE 而没有保留通道时仍失败。
 
 | feature | 允许的 treatment | 实际损失 |
 | --- | --- | --- |
-| `NOTES` | `DISCARD` | `.notes(...)` 传入的脚注／尾注内容被移除 |
-| `NOTE_MARKER` | `DISCARD` | 对应行内注释标记被移除 |
-| `UNSUPPORTED_BLOCK` | `DISCARD` | 不在映射表内的块整体移除，包括未映射的 Caption／自定义运行时组件 |
-| `TEXT_BLOCK_LINK` | `DISCARD` | 标题／列表正文的外链移除，文字与样式保留；现有 XML 在这些位置只接受文字／span |
+| `UNSUPPORTED_BLOCK` | `DISCARD` | 不在映射表内的块整体移除，例如自定义运行时组件；独立 CrossReference 与行内编号／页码引用均已支持 |
 | `IDENTIFIER` | `DEGRADE` | XML 无法表达的块／节／列表／目标 ID 稳定改为 `saved-N`，已有名称避让、引用同步改名 |
 | `FONT_ROLE` | `DEGRADE` | XML 无法表达的字体角色清空，其他样式保持；重导出将使用默认字体组 |
 
-例如，允许移除注释但保持其他功能严格：
+例如，允许移除未映射块但保持其他功能严格：
 
 ```java
 var policy = ProcessingPolicy.builder()
-        .feature("NOTES",
-                ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
-        .feature("NOTE_MARKER",
+        .feature("UNSUPPORTED_BLOCK",
                 ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
         .build();
 var prepared = XmlTemplateWriter.from(sectionedDocument).notes(notes).policy(policy).prepare();
@@ -91,20 +106,24 @@ WARN 返回 warnings 和实际 losses；IGNORE 只隐藏警告，losses 仍保�
 ```java
 bundle.conversion()
         .edit(editor -> editor.replaceText("summary", "草稿", "已复核"))
-        .prepare(XmlTemplateWriter.conversionTarget())
+        .prepare(XmlTemplateWriter.conversionTarget(bundle))
         .to(Path.of("edited-model.zip"));
 ```
 
-转换目标保存模型和图片，不从源适配器／引擎搜集字体及许可。需要再次分发字体时，按首个例子显式传入。需要数据的模板必须先调用 `compile().renderSections(data)`，再使用 `DocumentConversion.from(document, notes)`；不得用空数据掩盖缺值。转换到 PDF／DOCX 等目标仍按对应适配器检查全部损失。
+无参数转换目标保存模型、注释和当前图片；`conversionTarget(bundle)` 及 `Request.resources(bundle)` 另复制指定包的字体字节和许可，不复制旧 XML／片段或已经移除的图片，也不从适配器／引擎搜集字体。单项 font／license 可继续显式覆盖。需要数据的模板先调用 `compile().renderComplete(data)`，再使用 `DocumentConversion.from(bound.document(), bound.notes())`；不得用空数据掩盖缺值。XML 的保留不扩大其他适配器范围：DOCX 当前不导出注释／Caption／独立 CrossReference，HTML／Markdown 对注释、题注、独立引用和字段仍按各自真实损失处理。
 
 ## 预算、取消和输出
 
-Writer 默认最多 10,000 个语义块（正文及按同类去重的页区源）、100,000 个真实格、10,000 条 issue；`.limits(...)` 可配置。XML 源累计长度和图片／字体仍受 `.bundleLimits(...)` 控制，编译／绑定另受现有 [XML 预算](xml-template-api.md)限制。达到预算、取消、非法输入或损坏资源直接失败，WARN／IGNORE 不放宽它们。
+Writer 默认最多 10,000 个语义块及注释（正文及按同类去重的页区源）、100,000 个真实格、10,000 条 issue；`.limits(...)` 可配置。XML 源累计长度和图片／字体仍受 `.bundleLimits(...)` 控制，编译／绑定另受现有 [XML 预算](xml-template-api.md)限制。prepare 同时编译并完整绑定生成的静态 XML，检查注释关系后才编码。达到预算、取消、非法输入或损坏资源直接失败，WARN／IGNORE 不放宽它们。
 
 `.execution(...)` 接受同步取消／超时／字节预算。准备和出版都有检查点；借用输出流不关闭或刷新，物理写失败可能已写出部分字节。路径出版用同目录临时文件和原子替换，无非原子回退；发布前失败保留旧目标并清理临时文件。父目录由调用方创建。
 
 ## 兼容性与验收
 
-`DocumentTemplate` 新增 `literalText` record component，旧 4／5／6／7 参数构造器保留且默认插值行为不变；record component 数量、反射形状、equals／hashCode／toString 契约增加这一项，不能据旧构造器保留声称所有反射或序列化消费者完全兼容。现有 XML 默认仍插值，只有根显式声明才关闭文本插值；if／each／rows 的控制数据路径继续有效。
+`DocumentTemplate` 的 record component 在 `literalText` 后新增 `notes`；旧 4／5／6／7／8 参数构造器均保留，默认注释为空，旧插值行为不变。record component 数量、反射形状及 equals／hashCode／toString 包含这些值，不能据旧构造器保留声称所有反射或序列化消费者完全兼容。Builder 支持 `.literalText(...)`／`.notes(...)`，`toBuilder` 保留完整模式与注释快照。现有 XML 默认仍插值，只有根显式声明才关闭文本插值；if／each／rows 的控制数据路径继续有效。
 
-设计见 [ADR-0084](adr/0084-semantic-model-to-existing-xml.md)，可运行样例见 [XmlModelSavingExample](../examples/src/main/java/com/mirakyux/export4j/examples/XmlModelSavingExample.java)，独立结构、三轮控制与实际编辑输出见[阶段七十八验收](verification/phase-78-xml-model-saving.md)。标准输出内嵌恢复、任意复杂模型恢复和更广往返仍见 [GAP-24](capability-gaps.md#自生成文档的恢复与往返编辑)。
+独立 CrossReference 保存与绑定见[XML 语法](xml-template-api.md#独立交叉引用块)和[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)。支持 replaceBlock 改写前缀／目标后再保存；动态展开后的非法 ID 必须显式报损重命名，目标同步更新。未绑定或悬空引用不生成缓存值，统一转换／布局仍执行关系验证。
+
+注释、Caption 和标题／列表外链保存设计见 [ADR-0086](adr/0086-complete-xml-semantic-binding.md)，实际保存、三轮完整控制、编辑和输出见[阶段八十](verification/phase-80-xml-semantic-saving.md)。
+
+设计见 [ADR-0084](adr/0084-semantic-model-to-existing-xml.md)，可运行样例见 [XmlModelSavingExample](../examples/src/main/java/com/mirakyux/export4j/examples/XmlModelSavingExample.java)，独立结构、三轮控制与实际编辑输出见[阶段七十八验收](verification/phase-78-xml-model-saving.md)。标准文件的显式伴随包恢复与编辑后资源传递见[恢复指南](model-recovery-api.md)及[阶段八十二](verification/phase-82-model-recovery.md)；标准输出内嵌恢复、任意复杂模型恢复和更广往返仍见 [GAP-24](capability-gaps.md#自生成文档的恢复与往返编辑)。

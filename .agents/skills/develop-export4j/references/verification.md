@@ -80,9 +80,15 @@
 
 ## 编辑、导入与转换
 
+标准文件恢复变更运行 `:examples:modelRecovery`，再执行 `scripts/verify_model_recovery.py --prepare-external` 和 `:examples:modelRecoveryExternal`，最后用新 Maven 调用方的 `modelRecovery` 及验证器的 `--consumer-build-directory` 检查本次结果。分别核对七种输出的三轮、49 组 A→B→A、真实编辑、资源摘要、旧包失效、目标损失不隐藏源模型、历史／新增损失累计和借用流／失败原子性。DOCX 无编辑准确字节及未修改包条目、PDF 原页面改字的未修改区域、脱敏无源对象与伴随包拒绝分别验收；外部文件库重写与 Word 等应用保存不能混称。全部新 PDF 页双渲染并逐页查看，不以简单语料关闭一般复杂往返。
+
 XML 模板源码／资源包变更先运行 `:examples:xmlTemplateBundle` 和 `scripts/create_xml_template_bundle_fixture.py`，再以新的 Maven 调用方构建目录运行 `xmlTemplateBundle`，执行 `scripts/verify_xml_template_bundle.py`。核对原源码、占位符、CRLF、图片／字体／许可字节、普通 ZIP 独立输入、编辑后重新绑定、包预算及取消／失败原子性；全部新 PDF 页双渲染并查看，DOCX 检查标准结构。回归平面及递归 XML include，不将模板包保存算作任意文档模型恢复。
 
-语义模型保存为既有 XML 的变更另运行 `:examples:xmlModelSaving`、新 Maven 调用方的 `xmlModelSaving` 及 `scripts/verify_xml_model_saving.py`。核对完整格式、分节／页码、原文文字模式、表格／列表／字段、图片及显式字体／许可，三轮源码／模型控制、实际定点编辑、PREVIEW／ACTUAL 和三动作损失。标题／列表外链、注释及未映射块未实现保留时必须明确拒绝或报损；仅规范化精确相同样式的相邻运行，不删几何／ID／内容断言。全部新 PDF 页双渲染并逐页查看，控制组同引擎像素一致、DOCX 独立检查标准结构；回归 XML 默认外观、多级编号、片段和既有源码包。
+语义模型保存为既有 XML 的变更另运行 `:examples:xmlModelSaving`、新 Maven 调用方的 `xmlModelSaving` 及 `scripts/verify_xml_model_saving.py`。核对完整格式、分节／页码、原文文字模式、表格／列表／字段、图片及显式字体／许可，三轮源码／模型控制、实际定点编辑、PREVIEW／ACTUAL 和三动作损失。未映射块必须明确拒绝或按真实处理报损；仅规范化精确相同样式的相邻运行，不删几何／ID／内容断言。全部新 PDF 页双渲染并逐页查看，控制组同引擎像素一致、DOCX 独立检查标准结构；回归 XML 默认外观、多级编号、片段和既有源码包。
+
+注释／Caption／标题列表外链保存另运行 `:examples:xmlSemanticSaving`、新 Maven 调用方的 `xmlSemanticSaving` 及 `scripts/verify_xml_semantic_saving.py`。核对完整 document／notes 绑定、旧入口拒绝丢弃注释、静态锚点及条件／循环错误、ID 避让和字段关系、Caption 原始值／编号引用、文字链接的容器权限、共享预算及取消。三轮完整值／源码／资源控制、实际编辑及全部新增页双渲染／逐页查看；无编辑像素一致，编辑仅改变命中页。其他适配器按实际损失对账，不能把 XML 保留说成 DOCX／Web 无损支持。
+
+独立 CrossReference 保存另运行 `:examples:xmlCrossReferenceSaving`、新 Maven 调用方的 `xmlCrossReferenceSaving` 和 `scripts/verify_xml_cross_reference_saving.py`。核对完整类型／目标／前缀／格式、跨节显示页码与实际物理跳转、题注／列表标签、多行预留、静态与动态副本目标、非法容器／关系拒绝、预算和取消。三轮源码／资源及同引擎像素控制、实际改写仅改变命中页；全部新页双渲染并逐页查看，Web 三动作按实际未解析标记对账。
 
 页区模型保存另运行 `:examples:xmlRegionSaving`、新 Maven 调用方的 `xmlRegionSaving` 及 `scripts/verify_xml_region_saving.py`。核对同类静态来源／向后引用、跨节与同源多位置、默认／FIRST／EVEN／显式空对、正高度空区、整层清空、唯一源预算及真实区域诊断。三轮保存、共享编辑、全部新页双渲染及逐页查看；无编辑像素一致，编辑只改变命中页。DOCX 保留标准页区，图层按显式损失处理；回归既有 XML 保存／分节／变体／图层及 include，不据此关闭一般复杂模型恢复。
 

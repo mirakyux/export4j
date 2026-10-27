@@ -14,7 +14,8 @@ import java.util.Objects;
  * Existing constructors default to interpolation; the canonical constructor explicitly selects this mode.
  */
 public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
-        PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText) {
+        PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText,
+        List<Note> notes) {
     private static final double LOG10_2 = 0.3010299956639812;
 
     public DocumentTemplate {
@@ -25,6 +26,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         Objects.requireNonNull(pageRegions, "pageRegions");
         pageRegions.requireContained(pageSettings.size());
         sections = List.copyOf(sections);
+        notes = List.copyOf(notes);
+        if (notes.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("note template budget exceeded"); }
         hyperlinkTemplates = Map.copyOf(hyperlinkTemplates);
         if (hyperlinkTemplates.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("hyperlink template budget exceeded"); }
         for (var entry : hyperlinkTemplates.entrySet()) {
@@ -34,6 +37,12 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             }
         }
         if (!sections.isEmpty() && !nodes.isEmpty()) { throw new IllegalArgumentException("sections cannot mix with root body nodes"); }
+    }
+
+    /** Compatibility constructor for templates without note declarations. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
+            PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText) {
+        this(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, List.of());
     }
 
     /** Compatibility constructor: existing templates continue to interpolate text. */
@@ -84,7 +93,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         }
         private List<Node> snapshot() { return List.copyOf(values); }
     }
-    /** Supports paragraphs (including styled runs), headings, lists, page breaks and semantic tables with
+    /** Supports paragraphs (including styled runs), headings, lists, captions, cross references, page breaks and semantic tables with
      * bounded Paragraph/Table block cells. Descendants share expansion budgets and retain their formats. */
     public record ValueBlock(Block prototype) implements Node {
         public ValueBlock { Objects.requireNonNull(prototype, "prototype"); }
@@ -179,15 +188,10 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      */
     public PageDocument renderWithPageRegions(Map<String, ?> data) {
         if (!sections.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "sections"); }
-        var state = new Binding();
-        Object frozen = state.freeze(Objects.requireNonNull(data, "data"), 0);
-        if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
-        var root = new Scope(map, null);
-        state.expand(nodes, root, "", 0, Map.of());
-        var bands = new HashMap<PageRegion, PageRegion>();
-        var regions = pageRegions.map((name, value) -> bands.computeIfAbsent(value, band -> state.band(band, root)));
-        return new PageDocument(new Document(new DocumentMetadata(state.text(metadata.title(), root),
-                state.text(metadata.author(), root)), pageSettings, state.blocks), regions);
+        requireNoNotes();
+        var bound = renderComplete(data).document();
+        var section = bound.sections().getFirst();
+        return new PageDocument(new Document(bound.metadata(), section.pageSettings(), section.blocks()), section.pageRegions());
     }
 
     /** Binds static sections and their regions using one input snapshot and shared counters.
@@ -195,6 +199,27 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * Templates without section declarations produce a single document section.
      */
     public SectionedDocument renderSections(Map<String, ?> data) {
+        requireNoNotes();
+        return renderComplete(data).document();
+    }
+
+    private void requireNoNotes() {
+        if (!notes.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "notes"); }
+    }
+
+    /** Complete immutable binding result. Note IDs/anchors are static; note text binds in root scope.
+     * Relationships are validated against the final expanded body, never inferred or silently dropped.
+     * Legacy render methods reject note declarations; pass both values to editing/layout/export.
+     */
+    public record Rendered(SectionedDocument document, List<Note> notes) {
+        public Rendered {
+            Objects.requireNonNull(document, "document"); notes = List.copyOf(notes);
+            Note.validate(document, notes);
+        }
+    }
+
+    /** Binds sections, page regions and notes under one snapshot and shared work/text budgets. */
+    public Rendered renderComplete(Map<String, ?> data) {
         var state = new Binding();
         Object frozen = state.freeze(Objects.requireNonNull(data, "data"), 0);
         if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
@@ -211,7 +236,13 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             values.add(new Section(declaration.id(), declaration.pageSettings(), state.blocks,
                     declaration.firstPageNumber(), resolved));
         }
-        return new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values);
+        var boundNotes = new ArrayList<Note>();
+        for (var note : notes) {
+            state.visit("notes");
+            state.consume(note.id()); state.consume(note.paragraphId());
+            boundNotes.add(new Note(note.id(), note.paragraphId(), state.text(note.text(), root), note.kind()));
+        }
+        return new Rendered(new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values), boundNotes);
     }
 
     /** One immutable lexical declaration; iteration does not copy the entire outer data snapshot. */
@@ -390,6 +421,9 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                     yield new Heading(id, p.text(), h.level(), h.format(), p.inlines());
                 }
                 case PageBreak ignored -> new PageBreak(id);
+                case Caption c -> new Caption(id, text(c.kind(), scope), text(c.text(), scope), c.format());
+                case CrossReference r -> new CrossReference(id, text(r.prefix(), scope),
+                        fieldTarget(r.targetId(), scope, relocations), r.kind(), r.format());
                 case BulletItem b -> {
                     var p = bindParagraph(b.paragraph(), id, scope, relocations);
                     yield new BulletItem(id, p.text(), b.marker(), b.level(), b.format(), p.inlines(), b.markerStyle());
@@ -589,7 +623,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }
     /** Starts an independent builder from this value; referenced resources remain borrowed. */
-    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates); }
+    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates).literalText(literalText).notes(notes); }
 
     /** Mutable, task-confined construction state; built values do not retain this builder. */
     public static final class Builder {
@@ -600,6 +634,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private PageRegions pageRegions = PageRegions.EMPTY;
         private List<SectionNode> sections = List.of();
         private Map<String, String> hyperlinkTemplates = Map.of();
+        private boolean literalText;
+        private List<Note> notes = List.of();
 
         private Builder() { }
         public Builder metadata(DocumentMetadata value) { metadata = java.util.Objects.requireNonNull(value, "metadata"); return this; }
@@ -608,6 +644,9 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder limits(Limits value) { limits = java.util.Objects.requireNonNull(value, "limits"); return this; }
         public Builder pageRegions(PageRegions value) { pageRegions = Objects.requireNonNull(value, "pageRegions"); return this; }
         public Builder sections(List<SectionNode> values) { sections = List.copyOf(values); return this; }
+        public Builder literalText(boolean value) { literalText = value; return this; }
+        /** Static global IDs/anchors; text is bound in root scope and shares the render budget. */
+        public Builder notes(List<Note> values) { notes = List.copyOf(values); return this; }
         /** Maps passive prototype URI keys to expressions bound in the link's lexical scope.
          * Keys are valid ExternalDestination URIs; final values undergo the same validation after binding.
          * Does not fetch resources. Copies the map immediately; each render uses independent state.
@@ -622,6 +661,6 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder each(String path, String variable, java.util.function.Consumer<Nodes> configure) {
             var value = new Nodes(); configure.accept(value); return node(new Each(path, variable, value.snapshot()));
         }
-        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates); }
+        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes); }
     }
 }

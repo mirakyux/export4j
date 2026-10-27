@@ -159,21 +159,20 @@ class XmlTemplateWriterTest {
         assertTrue(prepared.preview().issues().isEmpty());
     }
 
-    @Test void unsupportedNotesAndHeadingLinksRequireExplicitLossPolicies() throws IOException {
+    @Test void notesMarkersAndHeadingLinksSurviveStrictSaving() throws IOException {
         var heading = Heading.rich("h", List.of(new InlineText("Linked", STYLE, "https://example.com/heading")), 1, FORMAT);
         var source = new Document(DocumentMetadata.EMPTY, PAGE, List.of(heading,
                 Paragraph.mixed("p", List.of(new InlineText("Body", InlineStyle.of(11)),
                         new InlineField(InlineField.Kind.NOTE_MARKER, "note", 12, STYLE)), FORMAT)));
-        assertEquals("TEXT_BLOCK_LINK", assertThrows(ProcessingException.class, () -> XmlTemplateWriter.from(source).prepare()).issue().feature());
+        assertThrows(IllegalArgumentException.class, () -> XmlTemplateWriter.from(source).prepare());
         var notes = List.of(new Note("note", "p", "Note body", Note.Kind.FOOTNOTE));
-        assertEquals("NOTES", assertThrows(ProcessingException.class, () -> XmlTemplateWriter.from(source).notes(notes).prepare()).issue().feature());
-        var prepared = XmlTemplateWriter.from(source).notes(notes)
-                .policy(rule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)).prepare();
-        assertEquals(List.of("NOTES", "TEXT_BLOCK_LINK", "NOTE_MARKER"), prepared.preview().issues().stream().map(issue -> issue.feature()).toList());
-        var restored = prepared.bundle().compile().render(Map.of());
-        assertEquals("", assertInstanceOf(Heading.class, restored.blocks().getFirst()).inlines().getFirst().hyperlink());
-        assertEquals("Body", restored.paragraphs().getFirst().text());
-        assertEquals(3, prepared.preview().losses().size());
+        var prepared = XmlTemplateWriter.from(source).notes(notes).prepare();
+        var template = prepared.bundle().compile();
+        assertThrows(DocumentTemplate.BindingException.class, () -> template.render(Map.of()));
+        var restored = template.renderComplete(Map.of());
+        assertEquals(source.blocks(), restored.document().sections().getFirst().blocks());
+        assertEquals(notes, restored.notes());
+        assertTrue(prepared.preview().issues().isEmpty());
     }
 
     @Test void plainAuthoringAndAllFourFieldsKeepSemanticContentAndGeometry() throws IOException {

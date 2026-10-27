@@ -59,7 +59,12 @@ final class TemplateBundleIO {
     }
 
     static Map<String, byte[]> unzip(byte[] encoded, XmlTemplateBundle.Limits limits) throws IOException {
-        var central = centralDirectory(encoded, limits);
+        return unzip(encoded, limits, false);
+    }
+
+    /** The recovery companion adds exactly one manifest to the ordinary template ZIP namespace. */
+    static Map<String, byte[]> unzip(byte[] encoded, XmlTemplateBundle.Limits limits, boolean recovery) throws IOException {
+        var central = centralDirectory(encoded, limits, recovery);
         var seen = new HashSet<String>(); var files = new LinkedHashMap<String, byte[]>(); int expanded = 0;
         try (var zip = new ZipInputStream(new ByteArrayInputStream(encoded), StandardCharsets.UTF_8)) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
@@ -87,7 +92,7 @@ final class TemplateBundleIO {
     /** Checks the directory as well as the local streams: ZipInputStream alone accepts missing end records.
      * Single-disk classic ZIP, STORED/DEFLATED, optional directory entries/comments/extras are supported.
      * ZIP64, encrypted and trailing data are rejected; normal template budgets are well below ZIP64 sizes. */
-    private static Map<String, Entry> centralDirectory(byte[] encoded, XmlTemplateBundle.Limits limits) throws IOException {
+    private static Map<String, Entry> centralDirectory(byte[] encoded, XmlTemplateBundle.Limits limits, boolean recovery) throws IOException {
         if (encoded.length < 22 || encoded.length > limits.maxEncodedBytes()) { throw new IOException("invalid template ZIP size"); }
         var data = ByteBuffer.wrap(encoded).order(ByteOrder.LITTLE_ENDIAN); int end = -1;
         for (int pos = encoded.length - 22; pos >= Math.max(0, encoded.length - 65557); pos--) {
@@ -114,7 +119,7 @@ final class TemplateBundleIO {
                 throw new IOException("unsupported or truncated template ZIP entry");
             }
             String name = new String(encoded, offset + 46, nameSize, StandardCharsets.US_ASCII);
-            if (!directory(name)) { fileName(name); }
+            if (!directory(name) && !(recovery && name.equals("recovery.xml"))) { fileName(name); }
             expanded += unpacked;
             if (expanded > limits.maxExpandedBytes() || entries.size() >= limits.maxEntries()
                     || entries.putIfAbsent(name, new Entry(unpacked, compressed, u32(data, offset + 16), method)) != null) {
@@ -144,7 +149,7 @@ final class TemplateBundleIO {
     private static int u16(ByteBuffer bytes, int offset) { return Short.toUnsignedInt(bytes.getShort(offset)); }
     private static long u32(ByteBuffer bytes, int offset) { return Integer.toUnsignedLong(bytes.getInt(offset)); }
 
-    private static java.io.OutputStream bounded(ByteArrayOutputStream target, int maximum) {
+    static java.io.OutputStream bounded(ByteArrayOutputStream target, int maximum) {
         return new java.io.OutputStream() {
             private void reserve(int size) throws IOException {
                 ExecutionContext.checkpoint();

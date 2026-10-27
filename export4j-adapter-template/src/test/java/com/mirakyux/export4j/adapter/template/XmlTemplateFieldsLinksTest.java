@@ -187,14 +187,13 @@ class XmlTemplateFieldsLinksTest {
                 "<bullet><page-count width='20'/></bullet>",
                 "<numbered list-id='steps'><page-number width='20'/></numbered>",
                 "<numbered list-id='steps'><image ref='logo' width='12' height='12'/></numbered>",
-                "<numbered list-id='steps'><link href='https://example.com'>text</link></numbered>",
                 "<p><span><page-number width='20'/></span></p>",
-                "<p><note-marker width='20'/></p>",
                 "<p><field kind='PAGE' width='20'/></p>",
                 "<p><link href='https://example.com'><page-number width='20'/></link></p>",
                 "<p><link href='https://example.com'><link href='https://example.org'>nested</link></link></p>")) {
             assertRejected(TemplateException.Code.UNSUPPORTED_ELEMENT, xml(content));
         }
+        assertRejected(TemplateException.Code.INVALID_STRUCTURE, xml("<p><note-marker width='20'/></p>"));
         assertRejected(TemplateException.Code.INVALID_STRUCTURE, xml("<p><link href='https://example.com'/></p>"));
         assertRejected(TemplateException.Code.UNSUPPORTED_ATTRIBUTE, xml("<p><link href='https://example.com' onclick='execute'>text</link></p>"));
     }

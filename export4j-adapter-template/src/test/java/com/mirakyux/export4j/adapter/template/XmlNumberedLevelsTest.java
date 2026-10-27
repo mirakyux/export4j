@@ -63,10 +63,13 @@ class XmlNumberedLevelsTest {
     }
 
     @Test void multiLevelNumberedContentRetainsItsExistingInlineAndContainerWhitelist() {
-        for (String content : List.of("<link href='https://example.com'>Text</link>", "<page-number width='20'/>",
+        for (String content : List.of("<page-number width='20'/>",
                 "<number-reference target='parent' width='20'/>", "<image ref='logo' width='10' height='10'/>", "<p>Text</p>")) {
             rejected(compiler(), xml("<numbered id='item' list-id='steps' level='2'>" + content + "</numbered>"), TemplateException.Code.UNSUPPORTED_ELEMENT);
         }
+        var linked = (NumberedItem) compiler().compile(xml("<numbered list-id='steps'><link href='https://example.com'>Text</link></numbered>"))
+                .render(Map.of()).blocks().getFirst();
+        assertEquals("https://example.com", linked.inlines().getFirst().hyperlink());
         rejected(compiler(), xml("<bullet level='10'>Text</bullet>"), TemplateException.Code.INVALID_VALUE);
         rejected(compiler(), xml("<table><columns><column weight='1'/></columns><row><cell>"
                 + item("2", "0") + "</cell></row></table>"), TemplateException.Code.UNSUPPORTED_ELEMENT);

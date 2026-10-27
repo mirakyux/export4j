@@ -42,6 +42,7 @@ final class HtmlImportMapper {
     private static final Set<String> CONTAINERS = Set.of("html", "body", "div", "section", "article", "main", "header", "footer", "nav", "aside");
     private static final Set<String> INLINE = Set.of("span", "strong", "b", "em", "i", "u", "s", "del", "strike", "br", "a", "img", "code");
     private static final Set<String> GLOBAL = Set.of("id", "class", "style");
+    private static final String PASSIVE_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
     private record Frame(Node node, int depth) { }
     private record Context(String block, List<CellLocation> cells, double indent) { }
     private final HtmlImporter importer;
@@ -64,7 +65,9 @@ final class HtmlImportMapper {
                 if (element.hasAttr("id") && (!element.id().isEmpty() && !reserved.add(element.id()))) { throw new IllegalArgumentException("duplicate HTML id"); }
                 for (var attribute : element.attributes()) {
                     String name = attribute.getKey().toLowerCase(Locale.ROOT);
-                    if (name.startsWith("on") || name.equals("srcdoc") || name.equals("http-equiv")) { throw new IllegalArgumentException("active HTML attributes are not accepted"); }
+                    if (name.startsWith("on") || name.equals("srcdoc") || name.equals("http-equiv") && !passiveCsp(element)) {
+                        throw new IllegalArgumentException("active HTML attributes are not accepted");
+                    }
                     if (name.equals("href")) { safeLink(attribute.getValue()); }
                     if (name.equals("src") && attribute.getValue().matches("(?is)\\s*(?:javascript|vbscript):.*")) { throw new IllegalArgumentException("executable HTML resource is not accepted"); }
                     if (name.equals("style")) { HtmlCss.safety(attribute.getValue()); }
@@ -76,6 +79,12 @@ final class HtmlImportMapper {
             }
             for (int index = node.childNodeSize() - 1; index >= 0; index--) { pending.push(new Frame(node.childNode(index), frame.depth() + 1)); }
         }
+    }
+    /** The self-contained export's restrictive declaration is data, removed with HTML_METADATA loss.
+     * No refresh, resource preload, report endpoint or arbitrary HTTP directive is accepted. */
+    private static boolean passiveCsp(Element element) {
+        return element.normalName().equals("meta") && element.attr("http-equiv").equalsIgnoreCase("Content-Security-Policy")
+                && element.attr("content").equals(PASSIVE_CSP);
     }
     Document map(org.jsoup.nodes.Document tree) {
         // Stylesheet validation covers unmatched rules, too; no network loading is available.

@@ -106,9 +106,11 @@ public final class XmlTemplateBundle {
     /** Reopens a self-contained static source for the shared conversion pipeline. Sources requiring
      * data must instead be explicitly compiled/rendered with that data before conversion. */
     public DocumentConversion.Request conversion() {
-        return DocumentConversion.from(XmlTemplateWriter.FORMAT, ignored ->
-                new DocumentConversion.Input(compile().renderSections(Map.of()), List.of(),
-                        new ProcessingReport(ProcessingReport.Phase.ACTUAL, List.of())));
+        return DocumentConversion.from(XmlTemplateWriter.FORMAT, ignored -> {
+            var bound = compile().renderComplete(Map.of());
+            return new DocumentConversion.Input(bound.document(), bound.notes(),
+                    new ProcessingReport(ProcessingReport.Phase.ACTUAL, List.of()));
+        });
     }
     /** Applies trusted runtime defaults to a fresh compiler, then compiles the retained XML sources.
      * Runtime defaults are not written into the ZIP; persist portable formatting in XML itself.

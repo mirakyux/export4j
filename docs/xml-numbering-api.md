@@ -70,7 +70,7 @@ DOCX 写标准零基 `w:ilvl`、各级完整 decimal `w:lvlText` 和有效祖先
 
 编号引用保留原生 `REF bookmark \w \h`，`\w` 请求完整段落编号。书签位于实际目标段落，引用不依赖缓存数字。本项目生成的文件支持既有严格语义子集往返；外部 Word 文档的任意起点、覆盖或定制标签仍按 STRICT 拒绝，或由 ALLOW_LOSS 返回诊断。PDF 与 Word 分页、通用 Word 编号恢复和阅读器字段更新不属于本能力。
 
-XML `numbered` 正文仍仅接受普通文字和 `span`。字段、图像、`link` 和块内容保持拒绝；外链继续放在合法 `p`／`cell` 中。标题仍为 1～6 级，`bullet` 仍为一级；Markdown、多格式编号、动态层级和格内块白名单均未扩展。
+XML `numbered` 正文接受普通文字、`span` 和文字 `link`；[阶段八十](verification/phase-80-xml-semantic-saving.md)保留标题／列表的被动外链。字段、图像和块内容保持拒绝，link 内也不能绕过此限制。标题仍为 1～6 级，bullet 的静态 level 为 1～9；Markdown、多格式编号、动态层级和格内块白名单不因此扩展。
 
 ## 样例与独立验收
 

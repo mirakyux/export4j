@@ -15,6 +15,14 @@ dependencies {
 }
 application { mainClass.set("consumer.Consumer") }
 
+tasks.register<JavaExec>("modelRecovery") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.ModelRecoveryConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
 dependencyLocking { lockAllConfigurations() }
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
@@ -28,6 +36,22 @@ tasks.named<JavaExec>("run") {
 tasks.register<JavaExec>("pdfFontCompatibility") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.PdfFontCompatibilityConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("xmlCrossReferenceSaving") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.XmlCrossReferenceSavingConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("xmlSemanticSaving") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.XmlSemanticSavingConsumer")
     workingDir = projectDir
     systemProperty("java.awt.headless", "true")
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)

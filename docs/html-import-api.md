@@ -65,7 +65,7 @@ var actualLosses = imported.report().losses();
 
 复用 [ProcessingPolicy](semantic-editing-api.md)，格式键 `HTML`、操作键 `IMPORT`，优先级 operation → feature → format → default；默认 ERROR。WARN／IGNORE 均保留实际 `issues()`／`losses()`，后者只隐藏警告。HTML_REPAIR 只允许明确 DEGRADE；隐藏内容只允许 DISCARD；无原样保留通道时 PRESERVE 失败。
 
-脚本、事件／srcdoc／http-equiv、iframe／object／embed、SVG／MathML、外部样式、CSS url／import／font-face／expression／转义及危险链接，无论损失策略如何都拒绝。完整源树先检查，隐藏／丢弃不绕过这些限制。
+脚本、事件／srcdoc、主动 http-equiv、iframe／object／embed、SVG／MathML、外部样式、CSS url／import／font-face／expression／转义及危险链接，无论损失策略如何都拒绝。唯一允许的 http-equiv 是项目自包含输出的准确限制型 Content-Security-Policy 声明：`default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'`，只作为 head 元数据经 `HTML_METADATA` + DISCARD 明确移除，不执行或修改导入器的安全策略。refresh、报告端点、其他策略文本及非 meta 容器继续拒绝。完整源树先检查，隐藏／丢弃不绕过这些限制。
 
 共用 `ImportLimits` 的输入、行长、树／深度、文字、表格槽、报告和工作预算。脚本不会执行，资源不会外联；这些限制仍不等于硬 RSS、第三方解析内部硬中断或恶意输入沙箱。
 

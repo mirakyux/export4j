@@ -102,3 +102,5 @@
 | 0083 | [可编辑 XML 源码与普通资源 ZIP](0083-editable-xml-template-bundles.md) | 已采纳；复用现有模板编译／绑定、源码保留、显式资源及原子保存 |
 | 0084 | [将语义模型映射到既有 XML 模板](0084-semantic-model-to-existing-xml.md) | 已采纳；可读 XML、文字原样模式、显式报损、资源所有权及多轮编辑 |
 | 0085 | [XML 页区共享来源与模型保存](0085-shared-xml-page-region-sources.md) | 已采纳；同类静态引用、唯一源预算及变体／图层保存 |
+| 0086 | [XML 完整语义绑定与注释保存](0086-complete-xml-semantic-binding.md) | 已采纳；完整文档／注释结果、关系校验、Caption 及文字外链保存 |
+| 0087 | [标准文件与准确绑定的 XML 恢复伴随包](0087-bound-standard-output-recovery.md) | 已采纳；准确字节及资源绑定、当前文件回退、有损导出禁止源快照和历史损失累计 |

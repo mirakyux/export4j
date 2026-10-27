@@ -117,7 +117,7 @@ public final class DocumentConversion {
                 ExecutionContext.progress("PREPARED", "", -1, 3, 3);
                 var result = new Result(edited.document(), edited.notes(), edited.changes(),
                         new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues), bytes.size());
-                return new Prepared(sourceFormat, target.format(), bytes.toByteArray(), result, executionSnapshot);
+                return new Prepared(sourceFormat, target.format(), bytes.toByteArray(), result, exported, executionSnapshot);
             });
         }
     }
@@ -129,14 +129,18 @@ public final class DocumentConversion {
         private final String targetFormat;
         private final byte[] bytes;
         private final Result result;
+        private final ProcessingReport exportReport;
         private final ExecutionOptions execution;
-        private Prepared(String sourceFormat, String targetFormat, byte[] bytes, Result result, ExecutionOptions execution) {
-            this.sourceFormat = sourceFormat; this.targetFormat = targetFormat; this.bytes = bytes; this.result = result; this.execution = execution;
+        private Prepared(String sourceFormat, String targetFormat, byte[] bytes, Result result, ProcessingReport exportReport, ExecutionOptions execution) {
+            this.sourceFormat = sourceFormat; this.targetFormat = targetFormat; this.bytes = bytes; this.result = result; this.exportReport = exportReport; this.execution = execution;
         }
         public String sourceFormat() { return sourceFormat; }
         public String targetFormat() { return targetFormat; }
         public SectionedDocument candidate() { return result.document(); }
         public ProcessingReport preview() { return new ProcessingReport(ProcessingReport.Phase.PREVIEW, result.report().issues()); }
+        /** Actual diagnostics of this target encoding only, excluding inherited import/edit history.
+         * This does not imply successful publication to a final destination. */
+        public ProcessingReport exportReport() { return exportReport; }
         /** Borrowed stream is not flushed/closed. Physical I/O failure may leave partial stream bytes. */
         public Result to(OutputStream output) throws IOException {
             Objects.requireNonNull(output, "output");

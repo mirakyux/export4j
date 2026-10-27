@@ -326,9 +326,10 @@ class XmlTemplateTest {
     }
 
     @Test void refusesUnsupportedVocabularyAndAttributesInsteadOfSilentlyDroppingContent() {
-        for (String element : List.of("html", "markdown", "caption", "link", "field", "unknown")) {
+        for (String element : List.of("html", "markdown", "link", "field", "unknown")) {
             assertCode(TemplateException.Code.UNSUPPORTED_ELEMENT, documentXml("<" + element + ">text</" + element + ">"));
         }
+        assertCode(TemplateException.Code.INVALID_STRUCTURE, documentXml("<caption>text</caption>"));
         for (String attribute : List.of("href", "class", "src", "onclick")) {
             var failure = assertCode(TemplateException.Code.UNSUPPORTED_ATTRIBUTE,
                     documentXml("<p " + attribute + "='SECRET_VALUE'>SECRET_BODY</p>"));
