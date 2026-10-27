@@ -19,6 +19,15 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+tasks.register<JavaExec>("embeddedCommentRecovery") {
+    group = "application"
+    description = "Reopens and edits standard Markdown/SVG with bounded embedded XML/resources."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.EmbeddedCommentRecoveryExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 tasks.register<JavaExec>("embeddedHtmlRecovery") {
     group = "application"
     description = "Reopens and edits standard HTML with bounded embedded XML/resources."

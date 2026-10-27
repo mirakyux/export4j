@@ -27,7 +27,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /** Explicit model recovery from a standard file and an ordinary XML/resource ZIP companion,
- * or from the same ZIP embedded in an inert trailing HTML comment.
+ * or from the same ZIP embedded in an inert trailing HTML, Markdown or SVG comment.
  * The companion is bound to the exact standard-file bytes, including metadata. External resaves
  * conservatively invalidate it. No implicit file lookup, HTML execution, font loading or I/O
  * occurs. A digest detects accidental mismatch; it is not authentication of an untrusted author.
@@ -54,11 +54,20 @@ public final class XmlModelRecovery {
 
     public static SaveRequest capture(DocumentConversion.Prepared conversion) { return new SaveRequest(Objects.requireNonNull(conversion, "conversion")); }
     public static OpenRequest open(String format, byte[] current) { return new OpenRequest(format, current); }
+    /** Opens HTML, MARKDOWN or SVG with an optional trailing recovery comment. The caller explicitly
+     * selects the format; no content sniffing, execution or file lookup occurs. Exact bytes outside
+     * the comment must match. Missing/stale recovery needs DEGRADE and a current-file fallback;
+     * corrupt/duplicate comments always fail. SVG has no built-in semantic fallback importer. */
+    public static OpenRequest openEmbedded(String format, byte[] current) {
+        String key = format(format);
+        if (!supportsComment(key)) { throw new IllegalArgumentException("embedded recovery requires HTML, MARKDOWN or SVG"); }
+        return new OpenRequest(key, current, true);
+    }
     /** Opens an explicitly supplied HTML file with an optional inert trailing recovery comment.
      * All HTML bytes outside the exact comment must match the manifest. The total file is bounded;
      * malformed/duplicate envelopes cannot be ignored. Missing/stale recovery requires an explicit
      * current-HTML fallback and DEGRADE policy. No HTML rendering or script execution occurs. */
-    public static OpenRequest openEmbeddedHtml(byte[] current) { return new OpenRequest("HTML", current, true); }
+    public static OpenRequest openEmbeddedHtml(byte[] current) { return openEmbedded("HTML", current); }
 
     public static final class SaveRequest {
         private final DocumentConversion.Prepared conversion;
@@ -133,22 +142,31 @@ public final class XmlModelRecovery {
             ExecutionContext.execute(execution, () -> { ExecutionContext.output(output).write(bytes); return null; });
         }
         public void writeCompanion(Path output) throws IOException { TemplateBundleIO.publish(required(), output, execution); }
-        /** HTML only: an ordinary HTML file with the same ZIP in an inert trailing Base64 comment.
-         * The document budget includes the comment. Lossy captures return plain HTML with no hidden
-         * source. Resources remain plaintext; this provides neither encryption nor authentication. */
-        public byte[] embeddedHtmlBytes() throws IOException {
-            if (!format.equals("HTML")) { throw new IllegalStateException("embedded HTML requires HTML output"); }
-            return ExecutionContext.execute(execution, () -> HtmlRecoveryEnvelope.encode(document, companion, limits.maxDocumentBytes()));
+        /** HTML, MARKDOWN or SVG only: defensive bytes with the ZIP in a trailing Base64 comment.
+         * The total document budget includes the comment. Lossy captures return the plain standard
+         * output with no hidden source. Plaintext resources provide no encryption/authentication. */
+        public byte[] embeddedBytes() throws IOException {
+            if (!supportsComment(format)) { throw new IllegalStateException("embedded recovery requires HTML, MARKDOWN or SVG output"); }
+            return ExecutionContext.execute(execution, () -> CommentRecoveryEnvelope.encode(document, companion, limits.maxDocumentBytes()));
         }
         /** Borrowed output, never closed/flushed; preparation completes before the first write. */
-        public ProcessingReport writeEmbeddedHtml(OutputStream output) throws IOException {
+        public ProcessingReport writeEmbedded(OutputStream output) throws IOException {
             Objects.requireNonNull(output, "output");
-            byte[] bytes = embeddedHtmlBytes();
+            byte[] bytes = embeddedBytes();
             return ExecutionContext.execute(execution, () -> { ExecutionContext.output(output).write(bytes); return actual(); });
         }
-        /** Atomically publishes one HTML file, retaining the old target on preparation/cancellation failure. */
-        public ProcessingReport writeEmbeddedHtml(Path output) throws IOException {
-            TemplateBundleIO.publish(embeddedHtmlBytes(), output, execution); return actual();
+        /** Atomically publishes one standard file, retaining the old target on preparation/cancellation failure. */
+        public ProcessingReport writeEmbedded(Path output) throws IOException {
+            TemplateBundleIO.publish(embeddedBytes(), output, execution); return actual();
+        }
+        /** HTML-only convenience for {@link #embeddedBytes()}; retains the original format check. */
+        public byte[] embeddedHtmlBytes() throws IOException { requireHtml(); return embeddedBytes(); }
+        /** HTML-only borrowed-output convenience; never closes or flushes. */
+        public ProcessingReport writeEmbeddedHtml(OutputStream output) throws IOException { requireHtml(); return writeEmbedded(output); }
+        /** HTML-only atomic-path convenience. */
+        public ProcessingReport writeEmbeddedHtml(Path output) throws IOException { requireHtml(); return writeEmbedded(output); }
+        private void requireHtml() {
+            if (!format.equals("HTML")) { throw new IllegalStateException("embedded HTML requires HTML output"); }
         }
         private byte[] required() { if (companion == null) { throw new IllegalStateException("model recovery was not saved"); } return companion; }
         private ProcessingReport actual() { return new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues); }
@@ -157,7 +175,7 @@ public final class XmlModelRecovery {
     public static final class OpenRequest {
         private final String format;
         private final byte[] current;
-        private final boolean embeddedHtml;
+        private final boolean embedded;
         private byte[] companion;
         private FallbackReader fallback;
         private ProcessingPolicy policy = ProcessingPolicy.STRICT;
@@ -166,12 +184,12 @@ public final class XmlModelRecovery {
         private OpenRequest(String format, byte[] current) {
             this(format, current, false);
         }
-        private OpenRequest(String format, byte[] current, boolean embeddedHtml) {
+        private OpenRequest(String format, byte[] current, boolean embedded) {
             this.format = format(format); this.current = Objects.requireNonNull(current, "current").clone();
-            this.embeddedHtml = embeddedHtml;
+            this.embedded = embedded;
         }
         public OpenRequest companion(byte[] value) {
-            if (embeddedHtml) { throw new IllegalStateException("embedded HTML cannot also use a companion"); }
+            if (embedded) { throw new IllegalStateException("embedded recovery cannot also use a companion"); }
             companion = Objects.requireNonNull(value, "companion").clone(); return this;
         }
         public OpenRequest fallback(FallbackReader value) { fallback = Objects.requireNonNull(value, "fallback"); return this; }
@@ -187,7 +205,7 @@ public final class XmlModelRecovery {
                 return new DocumentConversion.Input(result.document(), result.notes(), result.report());
             }).policy(policy).execution(execution);
         }
-        private Opening snapshot() { return new Opening(format, current, companion, fallback, limits, execution, embeddedHtml); }
+        private Opening snapshot() { return new Opening(format, current, companion, fallback, limits, execution, embedded); }
     }
 
     /** recovered=false means actual restricted import of the current file; resources is then empty.
@@ -199,11 +217,11 @@ public final class XmlModelRecovery {
             Objects.requireNonNull(report, "report");
         }
     }
-    private record Opening(String format, byte[] current, byte[] companion, FallbackReader fallback, Limits limits, ExecutionOptions execution, boolean embeddedHtml) {
+    private record Opening(String format, byte[] current, byte[] companion, FallbackReader fallback, Limits limits, ExecutionOptions execution, boolean embedded) {
         private Opened read(ProcessingPolicy policy) throws IOException {
             return ExecutionContext.execute(execution, () -> {
                 if (current.length > limits.maxDocumentBytes()) { throw new IOException("recovery document byte budget exceeded"); }
-                var parts = embeddedHtml ? HtmlRecoveryEnvelope.decode(current, limits) : new HtmlRecoveryEnvelope.Parts(current, companion);
+                var parts = embedded ? CommentRecoveryEnvelope.decode(current, limits) : new CommentRecoveryEnvelope.Parts(current, companion);
                 byte[] standard = parts.document(), archive = parts.companion();
                 String problem = "MISSING_COMPANION";
                 if (archive != null) {
@@ -254,6 +272,7 @@ public final class XmlModelRecovery {
         for (var value : entries.values()) { total += value.length; }
         if (total > limits.bundle().maxExpandedBytes()) { throw new IOException("recovery expanded byte budget exceeded"); }
     }
+    private static boolean supportsComment(String format) { return format.equals("HTML") || format.equals("MARKDOWN") || format.equals("SVG"); }
     private static String format(String value) {
         if (!Objects.requireNonNull(value, "format").matches("[A-Z][A-Z0-9_]{0,63}")) { throw new IllegalArgumentException("invalid recovery format key"); }
         return value;

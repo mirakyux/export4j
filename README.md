@@ -11,7 +11,7 @@ Export4j is an open-source **Java PDF generation and document export library** f
 
 [Model recovery](docs/model-recovery-api.md) pairs a standard output with an ordinary XML/resource ZIP bound to its exact bytes. Reopen and edit the saved model with explicit fonts; changed files require rejection or an explicit restricted import. Lossy exports cannot retain a richer hidden source model.
 
-HTML can also [embed the same recovery package](docs/model-recovery-api.md#html-单文件恢复) in an inert trailing comment for single-file reopening and editing. External edits invalidate the binding; explicit loss policies still apply.
+HTML, Markdown and SVG can [embed the same recovery package](docs/model-recovery-api.md#markdown-与-svg-单文件恢复) in an inert trailing comment for single-file reopening and editing. External edits invalidate the binding; explicit loss policies still apply. SVG requires valid recovery data or an explicitly supplied current-file reader.
 
 **Early development:** no stable artifacts have been published, and APIs may change. Supported PDF reports and dense static forms are ready for scoped trials; see the [readiness assessment](docs/readiness-assessment.md) and [capability matrix](docs/capabilities-api.md) for the evidence and limits.
 

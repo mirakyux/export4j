@@ -4,7 +4,7 @@
 
 模块为 `export4j-adapter-template`，仅依赖模型模块。布局后端及各适配器仍各自提供标准输出；恢复层不反向依赖它们、不执行脚本、不自动查找伴随文件或系统字体。
 
-HTML 另提供显式[单文件内嵌](#html-单文件恢复)，把同一普通 XML ZIP 放入 HTML 末尾注释。其他格式仍使用伴随包；两条入口不混用。
+HTML、Markdown 和 SVG 另提供显式单文件内嵌，把同一普通 XML ZIP 放入末尾注释。HTML 的原便利入口见[下文](#html-单文件恢复)，通用入口及格式边界见 [Markdown 与 SVG](#markdown-与-svg-单文件恢复)。其他格式仍使用伴随包；两条入口不混用。
 
 ## 保存、恢复和编辑
 
@@ -64,6 +64,43 @@ XmlModelRecovery.capture(edited).resources(opened.resources().orElseThrow())
 
 设计见 [ADR-0088](adr/0088-embedded-html-model-recovery.md)，样例见 [EmbeddedHtmlRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/EmbeddedHtmlRecoveryExample.java)，验收见[阶段八十三](verification/phase-83-embedded-html-recovery.md)。
 
+## Markdown 与 SVG 单文件恢复
+
+`openEmbedded(format, bytes)`、`Saved.embeddedBytes()` 和两个 `writeEmbedded` 重载提供统一入口，格式键仅接受 `HTML`、`MARKDOWN`、`SVG`。原 HTML 便利方法保留，输出封装字节兼容，且仍拒绝其他格式误用。
+
+```java
+var saved = XmlModelRecovery.capture(
+        DocumentConversion.from(document, notes).prepare(markdownAdapter.conversionTarget()))
+        .resources(explicitResourceBundle)
+        .prepare();
+saved.writeEmbedded(Path.of("report.md"));
+
+var request = XmlModelRecovery.openEmbedded("MARKDOWN", Files.readAllBytes(Path.of("report.md")));
+var opened = request.prepare();
+var edited = request.conversion().edit(editor -> editor.replaceText("草稿", "已复核"))
+        .prepare(markdownAdapter.conversionTarget());
+XmlModelRecovery.capture(edited).resources(opened.resources().orElseThrow())
+        .prepare().writeEmbedded(Path.of("reviewed.md"));
+
+var svg = XmlModelRecovery.capture(
+        DocumentConversion.from(document, notes).prepare(engine.conversionTarget("SVG", new SvgBackend())))
+        .resources(explicitResourceBundle).prepare();
+svg.writeEmbedded(Path.of("report.svg"));
+var recovered = XmlModelRecovery.openEmbedded("SVG", svg.embeddedBytes()).prepare();
+```
+
+同一 version 1 清单绑定去除准确末尾注释后的全部标准文件字节；不规范化 Markdown 空白或 SVG 树。CommonMark 将封装识别为一个 HTML 注释块；SVG 将其识别为根元素之后的 XML 注释。原文件字节保持不变，注释不参与正文或轮廓绘制，但源码查看仍可读到它。标准阅读器无需理解恢复数据。
+
+| 格式 | 匹配恢复信息 | 外部修改或恢复信息缺失 |
+| --- | --- | --- |
+| HTML | 恢复已保存模型、注释及资源 | 显式 WARN／IGNORE + DEGRADE，并用 `HtmlImporter` 等读取当前字节 |
+| MARKDOWN | 同上；标准 `.md` 可直接渲染 | 显式 WARN／IGNORE + DEGRADE，并用 `MarkdownImporter` 等读取当前字节；重新保存只包含当前内容 |
+| SVG | 同上；标准 `.svg` 仍按原轮廓显示 | 没有内置 SVG→语义模型导入。三动作均不能凭空恢复；除非显式提供符合契约的当前文件读取器，否则失败 |
+
+通用入口沿用 HTML 的总文件／Base64／ZIP／展开预算、同步取消、资源与旧内容校验、借用流及原子路径契约。损坏封装不能被忽略，有损捕获仅写原标准文件而不隐藏源模型。不能给内嵌入口再传 `companion(...)`；格式冲突按既有三动作处理，不能把一个格式的模型默认为另一个格式。
+
+没有内嵌恢复的任意 SVG 不能由此识别为可编辑文字、段落或表格；外部工具删除注释或改写任意字节后，原绑定也不会继续被当作有效。PDF、DOCX 和 PNG 页包内嵌仍未提供。设计见 [ADR-0089](adr/0089-markdown-svg-embedded-recovery.md)，运行样例见 [EmbeddedCommentRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/EmbeddedCommentRecoveryExample.java)，验收见[阶段八十四](verification/phase-84-embedded-comment-recovery.md)。
+
 ## 一致性与三动作策略
 
 清单 version 1 保存格式键、文件长度、SHA-256，以及模型／资源条目的独立摘要。格式键为至多 64 位的大写字母、数字和下划线，以字母开头。相同模型而文件元数据不同，也视为过期；这项保守规则避免猜测外部修改是否影响可见内容。摘要只检测不一致，不认证提供者；应用仍须决定是否信任所提供的文件及伴随包。
@@ -94,7 +131,7 @@ var current = XmlModelRecovery.open("DOCX", currentDocxBytes)
         .prepare();
 ```
 
-fallback 必须解析传入的当前字节快照，遵守所选适配器的权限、安全及损失契约。没有 fallback 时，WARN／IGNORE 也不能凭空返回文档。SVG 和 PNG 页包可从匹配伴随包恢复模型；缺失或过期时，没有通用矢量／像素语义导入，须明确拒绝，不能把原图或 OCR 当成等价模型。
+fallback 必须解析传入的当前字节快照，遵守所选适配器的权限、安全及损失契约。没有 fallback 时，WARN／IGNORE 也不能凭空返回文档。SVG 可从匹配的内嵌包或伴随包恢复模型，PNG 页包使用匹配伴随包；缺失或过期时，没有通用矢量／像素语义导入，须明确拒绝，不能把原图或 OCR 当成等价模型。
 
 ## 原包／原页面与删除
 

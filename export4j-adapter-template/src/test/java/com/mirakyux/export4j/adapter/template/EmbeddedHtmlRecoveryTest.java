@@ -86,7 +86,7 @@ class EmbeddedHtmlRecoveryTest {
         assertFalse(plain.recovered()); assertEquals("MISSING_COMPANION", plain.report().issues().getFirst().reason());
         var entries = TemplateBundleIO.unzip(saved.companionBytes().orElseThrow(), XmlTemplateBundle.Limits.DEFAULT, true);
         entries.put("recovery.xml", utf8(new String(entries.get("recovery.xml"), StandardCharsets.UTF_8).replace("version=\"1\"", "version=\"2\"")));
-        byte[] unknown = HtmlRecoveryEnvelope.encode(saved.documentBytes(), TemplateBundleIO.zip(entries, XmlTemplateBundle.Limits.DEFAULT), 1_000_000);
+        byte[] unknown = CommentRecoveryEnvelope.encode(saved.documentBytes(), TemplateBundleIO.zip(entries, XmlTemplateBundle.Limits.DEFAULT), 1_000_000);
         var failure = assertThrows(ProcessingException.class, () -> XmlModelRecovery.openEmbeddedHtml(unknown).prepare());
         assertEquals("UNSUPPORTED_RECOVERY_VERSION", failure.issue().reason());
         assertThrows(IllegalStateException.class, () -> XmlModelRecovery.openEmbeddedHtml(unknown).companion(saved.companionBytes().orElseThrow()));
@@ -104,10 +104,10 @@ class EmbeddedHtmlRecoveryTest {
                     .fallback((bytes, policy) -> { called.set(true); return new DocumentConversion.Input(document("BAD"), List.of(), EMPTY); }).prepare());
         }
         assertFalse(called.get());
-        assertThrows(IOException.class, () -> HtmlRecoveryEnvelope.encode(saved.embeddedHtmlBytes(), saved.companionBytes().orElseThrow(), 1_000_000));
+        assertThrows(IOException.class, () -> CommentRecoveryEnvelope.encode(saved.embeddedHtmlBytes(), saved.companionBytes().orElseThrow(), 1_000_000));
         var entries = TemplateBundleIO.unzip(saved.companionBytes().orElseThrow(), XmlTemplateBundle.Limits.DEFAULT, true);
         entries.put("template.xml", utf8(new String(entries.get("template.xml"), StandardCharsets.UTF_8).replace("CURRENT", "HIDDEN")));
-        byte[] corrupt = HtmlRecoveryEnvelope.encode(saved.documentBytes(), TemplateBundleIO.zip(entries, XmlTemplateBundle.Limits.DEFAULT), 1_000_000);
+        byte[] corrupt = CommentRecoveryEnvelope.encode(saved.documentBytes(), TemplateBundleIO.zip(entries, XmlTemplateBundle.Limits.DEFAULT), 1_000_000);
         assertThrows(IOException.class, () -> XmlModelRecovery.openEmbeddedHtml(corrupt).policy(rule(ProcessingPolicy.Action.IGNORE, ProcessingPolicy.Treatment.DEGRADE))
                 .fallback((bytes, policy) -> { called.set(true); return new DocumentConversion.Input(document("BAD"), List.of(), EMPTY); }).prepare());
         assertFalse(called.get());

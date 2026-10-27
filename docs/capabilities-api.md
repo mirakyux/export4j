@@ -14,7 +14,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 ## 已有 PDF 处理与语义恢复
 
-[标准文件伴随包恢复](model-recovery-api.md)使用现有 XML／普通 ZIP 保存当前模型、注释及显式资源，绑定准确输出字节。七种输出三轮、49 组 A→B→A、真实编辑、DOCX 原包／PDF 原页面改字、脱敏及独立工具重写见[阶段八十二](verification/phase-82-model-recovery.md)。[阶段八十三](verification/phase-83-embedded-html-recovery.md)增加显式 HTML 末尾注释内嵌，同一 `.html` 可恢复模型／资源并编辑；摘要准确绑定注释外 HTML。文件修改后旧模型拒绝或显式受限导入，有损导出不携带更丰富的源副本；其他格式内嵌、无恢复信息识别及任意应用无损重存仍未提供。
+[标准文件伴随包恢复](model-recovery-api.md)使用现有 XML／普通 ZIP 保存当前模型、注释及显式资源，绑定准确输出字节。七种输出三轮、49 组 A→B→A、真实编辑、DOCX 原包／PDF 原页面改字、脱敏及独立工具重写见[阶段八十二](verification/phase-82-model-recovery.md)。[阶段八十三](verification/phase-83-embedded-html-recovery.md)增加显式 HTML 末尾注释内嵌，同一 `.html` 可恢复模型／资源并编辑；摘要准确绑定注释外 HTML；[阶段八十四](verification/phase-84-embedded-comment-recovery.md)通过通用入口将同一封装扩至 Markdown／SVG，分别验收当前 Markdown 回退及 SVG 无读取器拒绝。文件修改后旧模型拒绝或显式受限导入，有损导出不携带更丰富的源副本；PDF／DOCX／PNG 内嵌、无恢复信息识别及任意应用无损重存仍未提供。
 
 [PdfAdapter](pdf-adapter-api.md)提供各自独立的静态复制、页级编辑、被动对象编辑／组合、渲染／提取、优化、文字替换、区域脱敏和语义恢复入口；公共签名不暴露第三方类型。所有入口保留权限、签名、安全解析、预算、取消和原子路径输出边界，不能因另一入口支持某对象而自动放宽。
 
