@@ -63,10 +63,13 @@ PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget
 | PDF 输入 | `PdfAdapter.importDocument(input).conversion()`；阅读顺序／逐行段落等推断必须接受 PDF_LAYOUT／DEGRADE，表格显式提供网格，其他损失见[恢复矩阵](pdf-semantic-import-api.md) |
 | Web 输出 | 延续[Web 支持表](web-export-api.md)；CUSTOM_BLOCK／METADATA／PAGE_NUMBERING 为 DISCARD，其他已有简化映射为 DEGRADE |
 | DOCX 输出 | 自定义 `FONT_ROLE` 为 DEGRADE，保留字号、颜色、链接及对象位置；标准空角色／bold／italic／boldItalic 保留 |
-| DOCX／Web 注释 | 外部 Note 内容没有目标映射，`NOTES` 必须明确 DISCARD；源候选仍保留注释 |
+| DOCX 题注／独立引用 | `CAPTION` + DEGRADE 保留 ID、文字和格式，去掉题注类别／自动编号；`CROSS_REFERENCE` + DEGRADE 保留 ID、前缀和格式，目标改为明确的 `[unresolved reference]` 文字，不生成动态引用 |
+| DOCX／Web 注释 | 外部 Note 内容没有目标映射，`NOTES` 必须明确 DISCARD；源候选仍保留注释。DOCX 同时删除显式 NOTE_MARKER，按原文一个 UTF-16 单元单独报告 `NOTE_MARKER_REMOVED`；Web 的标记继续按 `INLINE_FIELD` 明确降级为未解析文字 |
 | 布局输出 | `MISSING_GLYPH_REPLACED` 必须明确 DEGRADE，并保留原文 UTF-16、块和格路径；显式字体栈回退不视为内容损失 |
 
 未编辑内容同样完整检查。导出位置为原文已知点位或范围；没有可确定范围时不伪造字符区间。要求不可用处理会失败，例如没有源包通道的 PRESERVE、把样式降级配置为 DISCARD。非法结构、宏、安全限制、权限、预算、取消、超时和 I/O 不受动作策略压制。
+
+上述 DOCX 处理仅适用于 `conversionTarget()`；直接 `DocxAdapter.write` 仍严格拒绝题注、独立引用及未映射标记。原生行内 PAGEREF／REF 继续遵守[字段子集](docx-fields-api.md)，不能把题注降为文本后仍声称保留其自动编号引用。注释／引用的实际文件重导入及三动作证据见[阶段八十九](verification/phase-89-navigation-recovery.md)。
 
 ## 预检、预算与输出
 

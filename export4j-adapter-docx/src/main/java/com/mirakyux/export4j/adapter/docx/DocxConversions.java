@@ -3,9 +3,12 @@ package com.mirakyux.export4j.adapter.docx;
 
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
+import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CellLocation;
+import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineContent;
+import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.NumberedItem;
@@ -85,6 +88,15 @@ final class DocxConversions {
                 else if (block instanceof Heading heading) { result.add(Heading.rich(heading.id(), paragraph(heading.paragraph(), at).inlines(), heading.level(), heading.format())); }
                 else if (block instanceof BulletItem item) { result.add(BulletItem.rich(item.id(), paragraph(item.paragraph(), at).inlines(), item.marker(), item.level(), item.format(), style(item.markerStyle(), at))); }
                 else if (block instanceof NumberedItem item) { result.add(NumberedItem.rich(item.id(), item.listId(), paragraph(item.paragraph(), at).inlines(), item.restartAt(), item.format(), item.level(), style(item.markerStyle(), at))); }
+                else if (block instanceof Caption caption) {
+                    add(issues, policy, "EXPORT", "MODEL", "DOCX", "CAPTION", at,
+                            "caption numbering has no DOCX semantic mapping", "CAPTION_REPLACED_WITH_UNNUMBERED_TEXT", ProcessingPolicy.Treatment.DEGRADE);
+                    result.add(new Paragraph(caption.id(), caption.text(), caption.format()));
+                } else if (block instanceof CrossReference reference) {
+                    add(issues, policy, "EXPORT", "MODEL", "DOCX", "CROSS_REFERENCE", at,
+                            "independent reference has no DOCX semantic mapping", "REFERENCE_REPLACED_WITH_UNRESOLVED_TEXT", ProcessingPolicy.Treatment.DEGRADE);
+                    result.add(new Paragraph(reference.id(), reference.prefix() + "[unresolved reference]", reference.format()));
+                }
                 else if (block instanceof Table table) {
                     var rows = new ArrayList<TableRow>();
                     for (var row : table.grid().anchorRows()) {
@@ -111,6 +123,10 @@ final class DocxConversions {
                 if (value instanceof InlineText run) {
                     var location = new ProcessingIssue.Location(at.sectionId(), at.region(), at.blockId(), at.cellPath(), offset, offset + run.text().length());
                     content.add(new InlineText(run.text(), style(run.style(), location), run.hyperlink())); offset += run.text().length();
+                } else if (value instanceof InlineField field && field.kind() == InlineField.Kind.NOTE_MARKER) {
+                    add(issues, policy, "EXPORT", "MODEL", "DOCX", "NOTES", at.range(offset, offset + 1),
+                            "inline note marker has no DOCX export mapping", "NOTE_MARKER_REMOVED", ProcessingPolicy.Treatment.DISCARD);
+                    offset++;
                 } else { content.add(value); offset++; }
             }
             return Paragraph.mixed(source.id(), content, source.format());

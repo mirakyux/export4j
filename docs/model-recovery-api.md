@@ -36,6 +36,31 @@ var next = XmlModelRecovery.capture(edited)
 
 `resources(bundle)` 仅复制显式字体字节及许可；保存图片重新遍历当前模型。旧模板、片段和已删除图片不会进入新的恢复包。`XmlTemplateWriter.from(...).resources(bundle)` 与 `conversionTarget(bundle)` 提供同样的资源传递方式。模板编写意图应直接用 `XmlTemplateBundle` 保存原 XML 和片段；展开后的模型不能推回主题、原变量、条件或循环。运行时组件代码、字体句柄和配置回调不持久化；自定义块继续按已验证的 ERROR 或 WARN／IGNORE + DISCARD 处理。
 
+### 注释编辑与目录重建
+
+匹配恢复信息可保留已保存的 Note ID、锚点、脚注／尾注类型及文字，显式 NOTE_MARKER、Caption 和独立 CrossReference 同样沿用 XML 模型契约。正文 `replaceText` 不修改外部注释集合；编辑注释时显式提供 `editor.notes(revisedNotes)`，再从新的模型／注释捕获恢复包。
+
+`Navigation`／`TableOfContents` 是引擎运行时配置，没有写入上述模型。需要恢复后继续生成目录时，调用方应在每次 PDF 编码中从**当前候选**重建标题书签，再显式提供目录样式与其他导航选项：
+
+```java
+var target = new DocumentConversion.Target("PDF", (current, notes, policy, output) -> {
+    var navigation = new Navigation(Navigation.fromHeadings(current).bookmarks(),
+            TableOfContents.builder().title("Contents")
+                    .style(ParagraphStyle.of(10)).build(), List.of(), List.of());
+    return DocumentEngine.builder(explicitFonts).navigation(navigation).build()
+            .conversionTarget("PDF", new PdfBackend()).writer()
+            .write(current, notes, policy, output);
+});
+var edited = openRequest.conversion()
+        .edit(editor -> editor.notes(revisedNotes)
+                .replaceText("heading-a", "Draft", "Final"))
+        .prepare(target);
+```
+
+该调用会在最终分页后解析目录页码和链接；没有提供运行时导航时，只重排正文及模型中的注释／引用，不会自动恢复原目录配置。[NavigationRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/NavigationRecoveryExample.java)验证两节、脚注／尾注、题注、行内／独立引用和标题改名后的目录重建；三页无导航对照与四页显式目录分别验收。原目录的标题、样式、过滤规则、评论及其他运行时设置仍须由调用方保留，不能从标题模型反推。
+
+PDF 恢复可保留该组合的完整模型；DOCX 须明确丢弃注释与标记、降级题注／独立引用，Web 还会丢失原分页和动态字段。实际当前文件重导入后保存的恢复包只含降级结果，不会恢复已丢注释，详见[阶段八十九](verification/phase-89-navigation-recovery.md)。
+
 ## 有损转换后保存当前文件模型
 
 `capture(prepared)` 默认拒绝为有损目标保留较丰富的候选。接受损失后，可以显式选择 `MODEL_RECOVERY` + DISCARD，仅输出普通文件；也可以选择 DEGRADE 并提供 `reimportOnLoss`，从**本次实际生成的标准字节**重建恢复模型。

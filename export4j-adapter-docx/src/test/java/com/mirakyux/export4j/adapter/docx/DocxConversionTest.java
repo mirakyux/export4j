@@ -2,9 +2,13 @@
 package com.mirakyux.export4j.adapter.docx;
 
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.Caption;
+import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Table;
@@ -25,6 +29,51 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocxConversionTest {
+    @Test void captionAndIndependentReferenceRequireExplicitTextDegradation() throws Exception {
+        var format = ParagraphFormat.of(12);
+        var source = Document.builder().add(new Caption("figure", "Figure", "CAPTION", format))
+                .add(new CrossReference("reference", "SEE=", "figure", CrossReference.Kind.NUMBER, format)).build();
+        var target = new DocxAdapter().conversionTarget();
+        var strict = assertThrows(ProcessingException.class, () -> DocumentConversion.from(source).prepare(target));
+        assertEquals("CAPTION", strict.issue().feature());
+        for (var action : List.of(ProcessingPolicy.Action.WARN, ProcessingPolicy.Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().defaultRule(action, ProcessingPolicy.Treatment.DEGRADE).build();
+            var prepared = DocumentConversion.from(source).policy(policy).prepare(target);
+            var output = new ByteArrayOutputStream(); var actual = prepared.to(output);
+            assertEquals(List.of("CAPTION", "CROSS_REFERENCE"), actual.report().losses().stream().map(issue -> issue.feature()).toList());
+            assertEquals(prepared.preview().issues(), actual.report().issues());
+            assertEquals(action == ProcessingPolicy.Action.WARN ? 2 : 0, actual.report().warnings().size());
+            var read = new DocxAdapter().read(new ByteArrayInputStream(output.toByteArray()), DocxAdapter.Policy.STRICT).document();
+            assertEquals(List.of("CAPTION", "SEE=[unresolved reference]"), read.sections().getFirst().blocks().stream().map(block -> ((Paragraph) block).text()).toList());
+            assertTrue(actual.document().sections().getFirst().blocks().getFirst() instanceof Caption);
+        }
+        var preserve = ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.PRESERVE).build();
+        assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(source).policy(preserve).prepare(target));
+    }
+
+    @Test void discardedNoteRemovesItsExplicitMarkerAndRetainsSurroundingText() throws Exception {
+        var paragraph = Paragraph.mixed("body", List.of(new InlineText("BEFORE", InlineStyle.of(12)),
+                new InlineField(InlineField.Kind.NOTE_MARKER, "foot", 16, InlineStyle.of(12)),
+                new InlineText("AFTER", InlineStyle.of(12))), ParagraphFormat.of(12));
+        var source = Document.builder().add(paragraph).build();
+        var notes = List.of(new Note("foot", "body", "REMOVED-NOTE", Note.Kind.FOOTNOTE));
+        for (var action : List.of(ProcessingPolicy.Action.WARN, ProcessingPolicy.Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().feature("NOTES", action, ProcessingPolicy.Treatment.DISCARD).build();
+            var output = new ByteArrayOutputStream();
+            var result = DocumentConversion.from(source).edit(editor -> editor.notes(notes)).policy(policy)
+                    .prepare(new DocxAdapter().conversionTarget()).to(output);
+            assertEquals(2, result.report().losses().size());
+            var marker = result.report().losses().get(1);
+            assertEquals("NOTES", marker.feature()); assertEquals(List.of("NOTE_MARKER_REMOVED"), marker.effects());
+            assertEquals(6, marker.location().startUtf16()); assertEquals(7, marker.location().endUtf16());
+            assertEquals("body", marker.location().blockId()); assertEquals(notes, result.notes());
+            var reopened = new DocxAdapter().read(new ByteArrayInputStream(output.toByteArray()), DocxAdapter.Policy.STRICT).document();
+            var body = (Paragraph) reopened.sections().getFirst().blocks().getFirst();
+            assertEquals("BEFOREAFTER", body.text()); assertTrue(body.fields().isEmpty());
+        }
+        assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(source).policy(IGNORE).prepare(new DocxAdapter().conversionTarget()));
+    }
+
     @Test void pageOverlayDiscardRequiresPolicyAndReportsContentAndPositionLoss() throws Exception {
         var content = new com.mirakyux.export4j.model.PageRegion(20, 0, List.of(new Paragraph("overlay", "SECRET-OVERLAY", ParagraphFormat.of(10))));
         var regions = com.mirakyux.export4j.model.PageRegions.builder()
