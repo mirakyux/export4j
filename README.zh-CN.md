@@ -11,6 +11,8 @@ Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档�
 
 [模型恢复](docs/model-recovery-api.md)使用与标准文件准确绑定的普通 XML／资源 ZIP，重新打开并编辑已保存模型及显式字体资源。文件修改后须拒绝旧恢复数据或显式受限导入当前内容；有损导出不能隐藏更丰富的源模型。
 
+接受导出损失后，可显式使用 [`reimportOnLoss`](docs/model-recovery-api.md#有损转换后保存当前文件模型) 从实际输出字节重建恢复模型，保留真实导入损失报告；被丢弃的源内容和未使用图片不会夹带回来。复杂转换样例见[阶段八十七](docs/verification/phase-87-complex-lossy-recovery.md)。
+
 单文件恢复由调用方显式选择：HTML、Markdown、SVG 使用末尾注释，[单页 PNG](docs/model-recovery-api.md#单页-png-内嵌恢复) 使用私有辅助块，[PDF、DOCX 与 PNG 页 ZIP](docs/model-recovery-api.md#pdfdocx-与-png-页-zip-可选内嵌恢复) 使用标准附件或包成员。普通导出没有这部分体积。外部修改会使旧绑定失效，第三方另存也可能移除恢复信息；见[兼容与体积实测](docs/verification/phase-86-standard-container-recovery.md)。
 
 **当前处于早期开发阶段，尚未发布稳定制品，API 可能调整。** 受支持的 PDF 报告和密集静态表单已具备限定范围的试用条件，具体证据与限制见[就绪评估](docs/readiness-assessment.md)和[能力矩阵](docs/capabilities-api.md)。

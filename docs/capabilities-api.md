@@ -16,6 +16,8 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 [标准文件恢复](model-recovery-api.md)可选择普通文件、准确字节绑定的 XML／资源 ZIP 伴随包，或显式单文件内嵌。七种输出三轮、49 组 A→B→A 和实际编辑见[阶段八十二](verification/phase-82-model-recovery.md)；[八十三](verification/phase-83-embedded-html-recovery.md)与[八十四](verification/phase-84-embedded-comment-recovery.md)提供 HTML／Markdown／SVG 注释封装，[八十五](verification/phase-85-embedded-png-recovery.md)提供单页 PNG 辅助块，[八十六](verification/phase-86-standard-container-recovery.md)提供 PDF 附件、DOCX 与 PNG 页 ZIP 成员，并记录标准读取器、外部改写和体积实测。文件修改后旧模型拒绝或显式受限导入；有损导出不隐藏源副本。无恢复信息的任意文件语义识别和第三方应用无损重存仍未提供。
 
+[阶段八十七](verification/phase-87-complex-lossy-recovery.md)将表格／图片／列表的往返扩大到七种输出及 49 组复杂 A→B→A。`reimportOnLoss` 允许在显式 DEGRADE 下从本次准确输出字节重建恢复模型，保存实际导入损失；不会夹带较丰富源候选。HTML 列组和单段表头支持明确降级，显式列表标记与正文分离以避免多轮前缀叠加；原生编号引用按 PDF／DOCX 保留及 Web 静态降级分别验收，静态后端拒绝交互链接。更广语义组合及应用另存仍未据此完成。
+
 [PdfAdapter](pdf-adapter-api.md)提供各自独立的静态复制、页级编辑、被动对象编辑／组合、渲染／提取、优化、文字替换、区域脱敏和语义恢复入口；公共签名不暴露第三方类型。所有入口保留权限、签名、安全解析、预算、取消和原子路径输出边界，不能因另一入口支持某对象而自动放宽。
 
 | 能力 | 实际子集及证据 |

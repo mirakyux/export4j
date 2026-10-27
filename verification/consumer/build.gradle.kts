@@ -14,6 +14,14 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-web")
 }
 application { mainClass.set("consumer.Consumer") }
+
+tasks.register<JavaExec>("lossyRecovery") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.LossyRecoveryConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
 tasks.register<JavaExec>("embeddedContainerRecovery") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.EmbeddedContainerRecoveryConsumer")

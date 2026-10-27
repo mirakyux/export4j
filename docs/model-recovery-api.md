@@ -36,6 +36,44 @@ var next = XmlModelRecovery.capture(edited)
 
 `resources(bundle)` 仅复制显式字体字节及许可；保存图片重新遍历当前模型。旧模板、片段和已删除图片不会进入新的恢复包。`XmlTemplateWriter.from(...).resources(bundle)` 与 `conversionTarget(bundle)` 提供同样的资源传递方式。模板编写意图应直接用 `XmlTemplateBundle` 保存原 XML 和片段；展开后的模型不能推回主题、原变量、条件或循环。运行时组件代码、字体句柄和配置回调不持久化；自定义块继续按已验证的 ERROR 或 WARN／IGNORE + DISCARD 处理。
 
+## 有损转换后保存当前文件模型
+
+`capture(prepared)` 默认拒绝为有损目标保留较丰富的候选。接受损失后，可以显式选择 `MODEL_RECOVERY` + DISCARD，仅输出普通文件；也可以选择 DEGRADE 并提供 `reimportOnLoss`，从**本次实际生成的标准字节**重建恢复模型。
+
+```java
+var policy = ProcessingPolicy.builder()
+        .defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+        .feature("METADATA", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
+        .feature("PAGE_NUMBERING", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
+        .feature("NOTES", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
+        .build();
+var prepared = DocumentConversion.from(document, notes).policy(policy)
+        .prepare(htmlAdapter.conversionTarget());
+var saved = XmlModelRecovery.capture(prepared).policy(policy)
+        .resources(explicitResourceBundle)
+        .reimportOnLoss((bytes, shared) -> {
+            var imported = HtmlImporter.builder().policy(shared).build()
+                    .read(new String(bytes, StandardCharsets.UTF_8)).execute();
+            return DocumentConversion.Input.of(imported.document(), imported.report());
+        }).prepare();
+saved.writeEmbedded(Path.of("converted.html"));
+```
+
+Markdown 使用 `MarkdownImporter`；其他格式须由调用方提供对应当前文件读取器，没有隐式跨格式回退。读取器属于可信调用代码，必须只读取传入的当前字节，不从旧模型重建内容；返回实际模型、注释和 ACTUAL 报告，不能用预检报告代替。
+
+| `MODEL_RECOVERY` 策略 | 本次目标导出报损时的行为 |
+| --- | --- |
+| ERROR | 读取前拒绝，不写文件 |
+| WARN／IGNORE + DISCARD | 只保留普通输出，不调用已配置读取器 |
+| WARN／IGNORE + DEGRADE | 调用一次显式读取器，保存受限导入后的当前模型；缺少读取器失败 |
+| PRESERVE 或其他没有实现的处理 | 拒绝，不将旧候选藏入恢复包 |
+
+原标准输出字节不变。损失报告累计原导入／编辑／导出、`TARGET_EXPORT_LOSS / CURRENT_FILE_REIMPORT` 和本次实际重导入损失；IGNORE 同样保留可查询损失。历史损失不会触发当前无损编码的重导入，也不会在后续 XML 无损轮次中重复计入。解析、I/O、权限、超预算和取消直接传播；当前模型不能由 XML 表达时同样失败。`prepare()` 不接触最终路径。
+
+例如未登记图片的 Web 导入器会将图片降为替代文字，此损失记入报告；新恢复包不再包含该图片，但原 HTML／Markdown 仍保持本次导出字节。显式字体／许可按原契约保留，旧 XML 源码、片段和未使用图片不复制。需要保留图片时，应在所选导入器中显式登记准确资源；不能把旧图片静默塞回导入结果。已有 XML 对普通文字和显式运行的等价表示会进行规范化，不承诺 Java 构造形式逐字段相同。
+
+实现与复杂七格式样例见 [ComplexRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/ComplexRecoveryExample.java)、[ADR-0092](adr/0092-reimport-lossy-output-for-recovery.md)和[阶段八十七](verification/phase-87-complex-lossy-recovery.md)。
+
 ## HTML 单文件恢复
 
 ```java
@@ -97,7 +135,7 @@ var recovered = XmlModelRecovery.openEmbedded("SVG", svg.embeddedBytes()).prepar
 | MARKDOWN | 同上；标准 `.md` 可直接渲染 | 显式 WARN／IGNORE + DEGRADE，并用 `MarkdownImporter` 等读取当前字节；重新保存只包含当前内容 |
 | SVG | 同上；标准 `.svg` 仍按原轮廓显示 | 没有内置 SVG→语义模型导入。三动作均不能凭空恢复；除非显式提供符合契约的当前文件读取器，否则失败 |
 
-注释封装沿用 HTML 的总文件／Base64／ZIP／展开预算；各内嵌格式均保持同步取消、资源与旧内容校验、借用流及原子路径契约。损坏封装不能被忽略，有损捕获仅写原标准文件而不隐藏源模型。不能给内嵌入口再传 `companion(...)`；格式冲突按既有三动作处理，不能把一个格式的模型默认为另一个格式。
+注释封装沿用 HTML 的总文件／Base64／ZIP／展开预算；各内嵌格式均保持同步取消、资源与旧内容校验、借用流及原子路径契约。损坏封装不能被忽略。有损捕获可以丢弃恢复包，或按上节显式重导入当前文件；两者均不隐藏源模型。不能给内嵌入口再传 `companion(...)`；格式冲突按既有三动作处理，不能把一个格式的模型默认为另一个格式。
 
 没有内嵌恢复的任意 SVG 不能由此识别为可编辑文字、段落或表格；外部工具删除注释或改写任意字节后，原绑定也不会继续被当作有效。设计见 [ADR-0089](adr/0089-markdown-svg-embedded-recovery.md)，运行样例见 [EmbeddedCommentRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/EmbeddedCommentRecoveryExample.java)，验收见[阶段八十四](verification/phase-84-embedded-comment-recovery.md)。
 

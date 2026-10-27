@@ -79,31 +79,53 @@ public final class XmlModelRecovery {
     public static final class SaveRequest {
         private final DocumentConversion.Prepared conversion;
         private XmlTemplateBundle resources;
+        private FallbackReader reimport;
         private ProcessingPolicy policy = ProcessingPolicy.STRICT;
         private Limits limits = Limits.DEFAULT;
         private ExecutionOptions execution = ExecutionOptions.DEFAULT;
         private SaveRequest(DocumentConversion.Prepared conversion) { this.conversion = conversion; }
         /** Only explicit fonts/notices are retained; old source and unused images are excluded. */
         public SaveRequest resources(XmlTemplateBundle value) { resources = Objects.requireNonNull(value, "resources"); return this; }
+        /** Explicitly reads the actual target bytes when this export loses content and MODEL_RECOVERY
+         * selects WARN/IGNORE + DEGRADE. The trusted reader runs once on a defensive snapshot under
+         * this request's execution scope and policy; its current-file model, notes and actual losses
+         * replace the richer candidate for recovery only. It must not read an earlier source model.
+         * Lossless exports and DISCARD never call it. Parsing, permission, I/O, budget and cancellation
+         * failures propagate; no recovery or standard file is published by prepare(). */
+        public SaveRequest reimportOnLoss(FallbackReader value) { reimport = Objects.requireNonNull(value, "reimport"); return this; }
         public SaveRequest policy(ProcessingPolicy value) { policy = Objects.requireNonNull(value, "policy"); return this; }
         public SaveRequest limits(Limits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
         public SaveRequest execution(ExecutionOptions value) { execution = Objects.requireNonNull(value, "execution"); return this; }
 
-        /** Captures the prepared edited candidate, never an earlier source model. If the target or XML
-         * saving loses content, ERROR refuses recovery; WARN/IGNORE + DISCARD emits only the standard
-         * document. Lost source content is never hidden in a companion. Preparation touches no path. */
+        /** Captures the prepared edited candidate, never an earlier source model. Target loss requires
+         * ERROR refusal, WARN/IGNORE + DISCARD (plain output), or WARN/IGNORE + DEGRADE with an explicit
+         * {@link #reimportOnLoss(FallbackReader)}. XML saving loss still requires DISCARD. Lost source
+         * content is never hidden in a companion. Preparation touches no path. */
         public Saved prepare() throws IOException {
-            var strategy = policy; var budgets = limits; var control = execution; var assets = resources;
+            var strategy = policy; var budgets = limits; var control = execution; var assets = resources; var reader = reimport;
             return ExecutionContext.execute(control, () -> {
                 var bytes = new ByteArrayOutputStream();
                 var result = conversion.to(TemplateBundleIO.bounded(bytes, budgets.maxDocumentBytes()));
                 String format = format(conversion.targetFormat());
                 var issues = new ArrayList<ProcessingIssue>(); append(issues, result.report(), budgets);
+                byte[] standard = bytes.toByteArray();
+                var model = result.document(); var notes = result.notes();
                 byte[] companion = null;
+                boolean recoverable = true;
                 if (conversion.exportReport().issues().stream().anyMatch(issue -> issue.treatment() != ProcessingPolicy.Treatment.PRESERVE)) {
-                    unavailable(issues, strategy, format, "TARGET_EXPORT_LOSS", "RECOVERY_NOT_SAVED", "EXPORT", ProcessingPolicy.Treatment.DISCARD, budgets);
-                } else {
-                    var writer = XmlTemplateWriter.from(result.document()).notes(result.notes()).policy(strategy)
+                    if (strategy.resolve(format, FEATURE, "EXPORT").treatment() == ProcessingPolicy.Treatment.DEGRADE) {
+                        unavailable(issues, strategy, format, "TARGET_EXPORT_LOSS", "CURRENT_FILE_REIMPORT", "EXPORT", ProcessingPolicy.Treatment.DEGRADE, budgets);
+                        if (reader == null) { throw new IllegalArgumentException("lossy recovery requires an explicit current-file reader"); }
+                        var imported = Objects.requireNonNull(reader.read(standard.clone(), strategy), "reimport result");
+                        append(issues, imported.report(), budgets);
+                        model = imported.document(); notes = imported.notes();
+                    } else {
+                        unavailable(issues, strategy, format, "TARGET_EXPORT_LOSS", "RECOVERY_NOT_SAVED", "EXPORT", ProcessingPolicy.Treatment.DISCARD, budgets);
+                        recoverable = false;
+                    }
+                }
+                if (recoverable) {
+                    var writer = XmlTemplateWriter.from(model).notes(notes).policy(strategy)
                             .bundleLimits(budgets.bundle()).execution(control);
                     if (assets != null) { writer.resources(assets); }
                     var saved = writer.prepare(); append(issues, new ProcessingReport(ProcessingReport.Phase.ACTUAL, saved.preview().issues()), budgets);
@@ -111,13 +133,13 @@ public final class XmlModelRecovery {
                         unavailable(issues, strategy, format, "XML_SAVE_LOSS", "RECOVERY_NOT_SAVED", "EXPORT", ProcessingPolicy.Treatment.DISCARD, budgets);
                     } else {
                         var entries = TemplateBundleIO.unzip(saved.bundle().encode(), budgets.bundle());
-                        var manifest = new RecoveryManifest(VERSION, format, bytes.size(), digest(bytes.toByteArray()), digest(entries), issues);
+                        var manifest = new RecoveryManifest(VERSION, format, standard.length, digest(standard), digest(entries), issues);
                         entries.put("recovery.xml", manifest.encode(budgets.maxManifestBytes()));
                         checkEntries(entries, budgets);
                         companion = TemplateBundleIO.zip(entries, budgets.bundle());
                     }
                 }
-                return new Saved(format, bytes.toByteArray(), companion, issues, control, budgets);
+                return new Saved(format, standard, companion, issues, control, budgets);
             });
         }
     }
@@ -150,8 +172,8 @@ public final class XmlModelRecovery {
         }
         public void writeCompanion(Path output) throws IOException { TemplateBundleIO.publish(required(), output, execution); }
         /** HTML/MARKDOWN/SVG use a Base64 comment; single PNG a private chunk; DOCX/PNG_ZIP a ZIP member.
-         * Defensive bytes; the total document budget includes the envelope. Lossy captures return the plain standard
-         * output with no hidden source. Plaintext resources provide no encryption/authentication. */
+         * Defensive bytes; the total document budget includes the envelope. DISCARD captures return plain
+         * output; reimported recovery contains only the current-file model. Plaintext resources provide no encryption/authentication. */
         public byte[] embeddedBytes() throws IOException {
             if (!supportsEmbedded(format)) { throw new IllegalStateException("unsupported embedded recovery format"); }
             return ExecutionContext.execute(execution, () -> switch (format) {

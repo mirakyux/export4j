@@ -203,7 +203,8 @@ final class WebRenderer {
         if (html) {
             out.add(numbered ? "<ol style=\"list-style:none;margin-left:" : "<ul style=\"list-style:none;margin-left:");
             out.add((level - 1) * 18 + "pt\"><li"); attributes(location);
-            out.add(" style=\""); escaped(paragraphCss(paragraph.format()), false); out.add("\"><span class=\"marker\" style=\"");
+            out.add(" style=\""); escaped(paragraphCss(paragraph.format()), false);
+            out.add("\"><span class=\"marker\" data-export4j-marker=\"1\" data-export4j-level=\"" + level + "\" style=\"");
             escaped(inlineCss(markerStyle, location), false); out.add("\">"); escaped(marker, false); out.add("</span>");
             inlines(paragraph, location); out.add(numbered ? "</li></ol>\n" : "</li></ul>\n");
         } else {

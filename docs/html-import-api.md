@@ -32,7 +32,10 @@ var actualLosses = imported.report().losses();
 | a | 被动 HTTP／HTTPS／mailto；相对链接需要显式 HTTP(S) base，内部锚点另报目标损失 |
 | img | 按精确 src 从 `.image(src, InlineImage)` 获取；源 alt 保留，整数 width／height 按 CSS px 换算，单一尺寸按登记资源比例缩放 |
 | ol／ul／li | 最多九层，正整数起始编号及混合嵌套；有序子级使用模型完整点分编号。复杂多块条目需明确降级；无法支持的结构失败 |
+| Export4j 显式列表标记 | 首个行内元素为 `span.marker[data-export4j-marker="1"][data-export4j-level]` 时，验证纯文字标记与 1～9 层级。一级简单条目保留标记、编号重启及独立样式，标记不进入正文；复杂标记按 `LIST_MARKER` 显式降级为含原标记的普通段落，或 DISCARD 条目正文。普通 `class="marker"` 不触发识别；非法版本、空标记、隐藏标记或嵌套标记元素拒绝 |
 | table／thead／tbody／tfoot／tr／td／th | 正整数 colspan／rowspan、真实锚点及完整矩形覆盖；首个 thead 或连续全 th 前缀成为重复表头；至少一行正文 |
+| colgroup／col | 只接受行之前的有限列声明与正整数 span；`TABLE_COLUMNS` 显式降级／丢弃列组几何，实际列宽采用等份。CSS width／calc 等仍按 CSS 子集报损；声明超过实际格网、非法 span 或隐藏列结构失败 |
+| 重复表头中的单个 p | `TABLE_HEADER_PARAGRAPH` 显式降级为行内内容，报告段落几何及标识丢失；显式 DISCARD 清除该内容。多块／内表表头仍拒绝 |
 | 格内 p／table | 顺序块格及两层原子内表；混入未包裹文字或其他结构失败，不扁平化隐藏内容 |
 | div 及文档分组容器 | 按源码顺序进入正文；容器锚点和无法映射的盒几何另报损失 |
 | blockquote、pre、code、其他元素 | 默认拒绝未建模语义；明确降级可保留缩进／预格式文字或平铺子内容，明确丢弃可去对应内容 |
@@ -69,4 +72,4 @@ var actualLosses = imported.report().losses();
 
 共用 `ImportLimits` 的输入、行长、树／深度、文字、表格槽、报告和工作预算。脚本不会执行，资源不会外联；这些限制仍不等于硬 RSS、第三方解析内部硬中断或恶意输入沙箱。
 
-完整样例见 [HtmlImportExample](../examples/src/main/java/com/mirakyux/export4j/examples/HtmlImportExample.java)；运行 `:examples:htmlImport` 和 `scripts/verify_html_import.py`，证据见[阶段四十六](verification/phase-46-html-import.md)。不保证导出的任意 HTML 能在默认严格输入模式下无损重新导入。
+完整样例见 [HtmlImportExample](../examples/src/main/java/com/mirakyux/export4j/examples/HtmlImportExample.java)；运行 `:examples:htmlImport` 和 `scripts/verify_html_import.py`，证据见[阶段四十六](verification/phase-46-html-import.md)。项目导出的列表标记、表格列组及单段表头经明确损失策略重导入见[阶段八十七](verification/phase-87-complex-lossy-recovery.md)，与[有损输出模型恢复](model-recovery-api.md#有损转换后保存当前文件模型)共用真实导入器。不保证导出的任意 HTML 能在默认严格输入模式下无损重新导入。

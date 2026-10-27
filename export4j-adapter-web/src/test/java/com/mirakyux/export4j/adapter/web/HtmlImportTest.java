@@ -3,6 +3,7 @@ package com.mirakyux.export4j.adapter.web;
 
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.ExecutionOptions;
+import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineImage;
@@ -32,6 +33,91 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HtmlImportTest {
+    @Test void ownExplicitListMarkersNeverBecomeBodyTextAcrossThreeCycles() throws Exception {
+        for (var action : List.of(Action.WARN, Action.IGNORE)) {
+            var document = new HtmlImporter().read("<ul><li>BULLET</li></ul><ol start='7'><li>NUMBER</li></ol>").execute().document();
+            var policy = ProcessingPolicy.builder().defaultRule(action, Treatment.DEGRADE).feature("HTML_METADATA", action, Treatment.DISCARD).build();
+            for (int round = 0; round < 3; round++) {
+                var bytes = new ByteArrayOutputStream(); DocumentConversion.from(document).policy(policy).prepare(new HtmlAdapter().conversionTarget()).to(bytes);
+                document = HtmlImporter.builder().policy(policy).build().read(bytes.toString(StandardCharsets.UTF_8)).execute().document();
+                var bullet = (BulletItem) document.blocks().getFirst(); var number = (NumberedItem) document.blocks().getLast();
+                assertEquals("BULLET", bullet.text()); assertEquals("•", bullet.marker());
+                assertEquals("NUMBER", number.text()); assertEquals(7, number.restartAt());
+            }
+        }
+    }
+    @Test void ordinaryMarkerClassStaysLiteralAndComplexExplicitMarkerRequiresRealLoss() throws Exception {
+        var ordinary = new HtmlImporter().read("<ul><li><span class='marker'>PREFIX</span>BODY</li></ul>").execute();
+        assertEquals("PREFIXBODY", ((BulletItem) ordinary.document().blocks().getFirst()).text());
+        String complex = "<ol><li><span class='marker' data-export4j-marker='1' data-export4j-level='2'>1.2.</span>BODY</li></ol>";
+        var failure = assertThrows(ProcessingException.class, () -> new HtmlImporter().read(complex).execute());
+        assertEquals("LIST_MARKER", failure.issue().feature());
+        var lowered = lenient(Action.WARN).read(complex).execute();
+        assertEquals("1.2.BODY", ((Paragraph) lowered.document().blocks().getFirst()).text());
+        assertTrue(lowered.report().issues().stream().anyMatch(issue -> issue.effects().contains("LIST_STRUCTURE_FLATTENED")));
+        for (String marker : List.of("<span class='marker' data-export4j-marker='2' data-export4j-level='1'>1.</span>",
+                "<span class='marker' data-export4j-marker='1' data-export4j-level='0'>1.</span>",
+                "<span class='marker' data-export4j-marker='1' data-export4j-level='1'><b>1.</b></span>")) {
+            assertThrows(IllegalArgumentException.class, () -> lenient(Action.IGNORE).read("<ol><li>" + marker + "BODY</li></ol>").execute());
+        }
+    }
+    @Test void columnGroupsUseExplicitLossAndKeepTheRealCellGrid() throws Exception {
+        String source = "<table id='t'><colgroup><col span='2'></colgroup><tbody><tr><td>A</td><td>B</td></tr></tbody></table>";
+        var failure = assertThrows(ProcessingException.class, () -> new HtmlImporter().read(source).execute());
+        assertEquals("TABLE_COLUMNS", failure.issue().feature());
+        for (var action : List.of(Action.WARN, Action.IGNORE)) {
+            var result = lenient(action).read(source).execute();
+            var table = (Table) result.document().blocks().getFirst();
+            assertEquals(List.of("A", "B"), table.rows().getFirst().cells().stream().map(cell -> cell.text()).toList());
+            assertEquals(List.of(new com.mirakyux.export4j.model.ColumnWidth.Fraction(1), new com.mirakyux.export4j.model.ColumnWidth.Fraction(1)), table.columns());
+            assertEquals(1, result.report().losses().size());
+            assertEquals("COLUMNS_REPLACED_WITH_EQUAL_FRACTIONS", result.report().issues().getFirst().effects().getFirst());
+            assertEquals(action == Action.IGNORE, result.report().warnings().isEmpty());
+        }
+    }
+    @Test void exportedTableColumnGroupsCanBeReimportedWithoutDroppingCellsOrSpans() throws Exception {
+        var source = new HtmlImporter().read("<table id='t'><tr><td>A</td><td>B</td></tr><tr><td colspan='2'>MERGED</td></tr></table>").execute();
+        var bytes = new ByteArrayOutputStream(); DocumentConversion.from(source.document()).prepare(new HtmlAdapter().conversionTarget()).to(bytes);
+        var policy = ProcessingPolicy.builder().defaultRule(Action.WARN, Treatment.DEGRADE).feature("HTML_METADATA", Action.WARN, Treatment.DISCARD).build();
+        var result = HtmlImporter.builder().policy(policy).build().read(bytes.toString(StandardCharsets.UTF_8)).execute();
+        var table = result.document().blocks().stream().filter(Table.class::isInstance).map(Table.class::cast).findFirst().orElseThrow();
+        assertEquals("MERGED", ((Paragraph) table.rows().get(1).cells().getFirst().blocks().getFirst()).text());
+        assertEquals(2, table.rows().get(1).cells().getFirst().columnSpan());
+        assertEquals(2, table.columns().size());
+        assertTrue(result.report().losses().stream().anyMatch(issue -> issue.feature().equals("TABLE_COLUMNS")));
+    }
+    @Test void singleParagraphHeaderCellsRequireExplicitFlatteningAndRetainInlineText() throws Exception {
+        String source = "<table><thead><tr><td><p id='header'>HEADER</p></td></tr></thead><tbody><tr><td>BODY</td></tr></tbody></table>";
+        var failure = assertThrows(ProcessingException.class, () -> new HtmlImporter().read(source).execute());
+        assertEquals("TABLE_HEADER_PARAGRAPH", failure.issue().feature());
+        for (var action : List.of(Action.WARN, Action.IGNORE)) {
+            var result = lenient(action).read(source).execute();
+            var table = (Table) result.document().blocks().getFirst();
+            assertEquals(1, table.headerRows()); assertFalse(table.rows().getFirst().cells().getFirst().hasBlocks());
+            assertEquals("HEADER", table.rows().getFirst().cells().getFirst().text());
+            assertEquals("BODY", table.rows().get(1).cells().getFirst().text());
+            assertEquals(1, result.report().losses().size());
+            var discard = HtmlImporter.builder().policy(ProcessingPolicy.builder().feature("TABLE_HEADER_PARAGRAPH", action, Treatment.DISCARD).build())
+                    .build().read(source).execute();
+            assertEquals("", ((Table) discard.document().blocks().getFirst()).rows().getFirst().cells().getFirst().text());
+        }
+    }
+    @Test void invalidOrOverBudgetColumnDeclarationsCannotBeIgnored() {
+        String rows = "<tbody><tr><td>A</td><td>B</td></tr></tbody>";
+        for (String group : List.of("<colgroup span='0'></colgroup>", "<colgroup span='2147483647'></colgroup>",
+                "<colgroup span='3'></colgroup>", "<colgroup span='1'><col></colgroup>",
+                "<colgroup><col span='-1'></colgroup>")) {
+            assertThrows(IllegalArgumentException.class, () -> lenient(Action.IGNORE).read("<table>" + group + rows + "</table>").execute());
+        }
+        var defaults = ImportLimits.DEFAULT;
+        var limits = new ImportLimits(defaults.maxInputUtf16(), defaults.maxLineUtf16(), defaults.maxNodes(), defaults.maxDepth(),
+                defaults.maxTextUtf16(), 1, defaults.maxIssues(), defaults.maxWork());
+        assertThrows(IllegalArgumentException.class, () -> HtmlImporter.builder().limits(limits)
+                .policy(ProcessingPolicy.builder().defaultRule(Action.IGNORE, Treatment.DEGRADE).build()).build()
+                .read("<table><colgroup span='2'></colgroup>" + rows + "</table>").execute());
+        assertThrows(IllegalArgumentException.class, () -> lenient(Action.IGNORE)
+                .read("<table><colgroup><col onload='x'></colgroup>" + rows + "</table>").execute());
+    }
     @Test void ownExportRestrictiveCspCanBeExplicitlyDiscardedButActiveHttpDirectivesStayRejected() throws Exception {
         var source = new HtmlImporter().read("<p id='p'>VISIBLE-ROUNDTRIP</p>").execute().document();
         var encoded = new ByteArrayOutputStream();

@@ -78,6 +78,8 @@ var markdown = MarkdownAdapter.builder().policy(policy).build()
 
 HTML 的 CSS 是显示提示：浏览器决定实际字体可用性、列宽、塑形、禁则与打印分页。不会嵌入或扫描系统字体，也不会获取网络字体。`FontStyle("Arial", 700, false)` 是明确的网页字体族与粗体映射，不等于 PDF 的真实字体字节。Markdown 只使用映射中的 `weight >= 600` 和 `italic`，不保留字体族。
 
+HTML 的显式列表标记使用 `span.marker`，并写入 `data-export4j-marker="1"` 与 `data-export4j-level="1"`～`"9"`。这些被动属性不改变显示，用于[HTML 导入器](html-import-api.md)准确区分标记与正文；一级简单条目可保留标记及独立样式，复杂条目仍按明确损失策略处理，不承诺一般列表无损往返。
+
 Markdown 目标为 CommonMark 加 GFM 表格／删除线。为保留换行和相邻样式边界，会生成固定的 `br/strong/em/del` 行内标签；源码中的 HTML 始终转义。禁用原始 HTML 的阅读器可能不显示这些样式，禁用 data URI 的阅读器可能不显示图片。嵌入图片会增大文件，不额外生成旁车资源目录。
 
 ## 安全、预算与执行

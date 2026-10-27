@@ -19,6 +19,15 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+tasks.register<JavaExec>("complexRecovery") {
+    group = "application"
+    description = "Checks complex recovery, explicit lossy current-file reimport and cross-format cycles."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.ComplexRecoveryExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 for (external in listOf(false, true)) {
     tasks.register<JavaExec>(if (external) "embeddedPdfRecoveryExternal" else "embeddedPdfRecovery") {
         group = "application"

@@ -248,20 +248,50 @@ final class HtmlImportMapper {
                 else if (nested.isEmpty()) { inline.add(child); }
             }
             var own = new Context(id, context.cells(), context.indent());
+            Element marker = !inline.isEmpty() && inline.getFirst() instanceof Element first && first.hasAttr("data-export4j-marker") ? first : null;
+            String markerText = ""; int markerLevel = 1;
+            if (marker != null) {
+                if (!marker.normalName().equals("span") || !marker.attr("data-export4j-marker").equals("1")
+                        || !marker.className().equals("marker") || marker.childNodes().stream().anyMatch(node -> !(node instanceof TextNode))) {
+                    throw new IllegalArgumentException("invalid explicit HTML list marker");
+                }
+                attributes(marker, id, context.cells());
+                markerLevel = positiveInteger(marker.attr("data-export4j-level"));
+                if (markerLevel > 9) { throw new IllegalArgumentException("HTML marker level exceeds model limit"); }
+                markerText = marker.wholeText();
+                if (markerText.isEmpty() || css.get(marker).hidden) { throw new IllegalArgumentException("empty or hidden explicit HTML list marker"); }
+                if (markerLevel != 1 || !nested.isEmpty() || ordered && !markerText.matches("[1-9][0-9]*\\.")) {
+                    if (loss(marker, "LIST_MARKER", "complex explicit marker has no native list mapping", "LIST_STRUCTURE_FLATTENED", id, context.cells()) == Treatment.DEGRADE) {
+                        output.add(Paragraph.mixed(id, content(inline, item, own), css.get(item).paragraph(importer.format, context.indent())));
+                    }
+                    for (var child : nested) { attributes(child, id(child), context.cells()); list(child, output, context, depth + 1, listId, ordered ? level : numberDepth); }
+                    index++; continue;
+                }
+                state.text(markerText.length());
+                inline.removeFirst();
+            }
             var runs = textOnly(content(inline, item, own), item, own);
             var format = css.get(item).paragraph(importer.format, context.indent() + (ordered ? depth - level : 0) * 18);
-            if (ordered) { output.add(NumberedItem.rich(id, listId, runs, Math.addExact(start, index), format, level, css.get(item).inline())); }
-            else { output.add(BulletItem.rich(id, runs, "•", level, format, css.get(item).inline())); }
+            var markerStyle = css.get(marker == null ? item : marker).inline();
+            if (ordered) {
+                int number = marker == null ? Math.addExact(start, index) : positiveInteger(markerText.substring(0, markerText.length() - 1));
+                output.add(NumberedItem.rich(id, listId, runs, number, format, level, markerStyle));
+            } else { output.add(BulletItem.rich(id, runs, marker == null ? "•" : markerText, level, format, markerStyle)); }
             for (var child : nested) { attributes(child, id(child), context.cells()); list(child, output, context, depth + 1, listId, ordered ? level : numberDepth); }
             index++;
         }
     }
     private Table table(Element source, Context context, int depth) {
         if (depth > com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH) { throw new IllegalArgumentException("HTML table nesting exceeds model limit"); }
-        var inputRows = new ArrayList<Element>(); int headers = 0;
+        var inputRows = new ArrayList<Element>(); int headers = 0; int declaredColumns = 0;
         for (var child : source.children()) {
             String tag = child.normalName();
-            if (tag.equals("tr")) { inputRows.add(child); }
+            if (tag.equals("colgroup")) {
+                if (!inputRows.isEmpty()) { throw new IllegalArgumentException("HTML column groups must precede rows"); }
+                int count = columnGroup(child, context);
+                if (count > state.limits.maxTableSlots() - declaredColumns) { throw new IllegalArgumentException("HTML column declaration budget exceeded"); }
+                declaredColumns += count;
+            } else if (tag.equals("tr")) { inputRows.add(child); }
             else if (Set.of("thead", "tbody", "tfoot").contains(tag)) {
                 attributes(child, context.block(), context.cells());
                 if (css.get(child).hidden) { throw new IllegalArgumentException("hidden HTML row groups cannot preserve table coverage"); }
@@ -308,15 +338,48 @@ final class HtmlImportMapper {
                         else { throw new IllegalArgumentException("HTML block cell supports p/table only"); }
                     }
                     if (cell.textNodes().stream().anyMatch(text -> !text.isBlank())) { throw new IllegalArgumentException("HTML block cell has uncontained text"); }
-                    value = TableCell.builder().format(format).blocks(blocks).columnSpan(width).rowSpan(height).build();
+                    if (rowIndex < headers) {
+                        if (blocks.size() != 1 || !(blocks.getFirst() instanceof Paragraph paragraph)) {
+                            throw new IllegalArgumentException("HTML header block cell requires one paragraph");
+                        }
+                        var treatment = loss(cell, "TABLE_HEADER_PARAGRAPH", "repeating header cannot retain paragraph block geometry and identity",
+                                "HEADER_PARAGRAPH_FLATTENED", context.block(), path);
+                        value = TableCell.mixed(treatment == Treatment.DISCARD ? List.of() : paragraph.content(), format)
+                                .toBuilder().columnSpan(width).rowSpan(height).build();
+                    } else { value = TableCell.builder().format(format).blocks(blocks).columnSpan(width).rowSpan(height).build(); }
                 } else { value = TableCell.mixed(content(cell.childNodes(), cell, own), format).toBuilder().columnSpan(width).rowSpan(height).build(); }
                 cells.add(value); column += width;
             }
             columns = Math.max(columns, occupied.getOrDefault(rowIndex, Set.of()).size()); rows.add(new TableRow(cells));
         }
         if (headers >= rows.size()) { throw new IllegalArgumentException("HTML table requires body rows"); }
+        if (declaredColumns > columns) { throw new IllegalArgumentException("HTML column declarations exceed cell grid"); }
         var widths = new ArrayList<ColumnWidth>(); for (int column = 0; column < columns; column++) { widths.add(new ColumnWidth.Fraction(1)); }
         return new Table(context.block(), widths, rows, headers, TableFormat.DEFAULT);
+    }
+    private int columnGroup(Element group, Context context) {
+        attributes(group, context.block(), context.cells());
+        if (css.get(group).hidden || group.textNodes().stream().anyMatch(text -> !text.isBlank())) {
+            throw new IllegalArgumentException("hidden or textual HTML column groups are not supported");
+        }
+        int count = 0;
+        if (group.children().isEmpty()) { count = group.hasAttr("span") ? positiveInteger(group.attr("span")) : 1; }
+        else {
+            if (group.hasAttr("span")) { throw new IllegalArgumentException("HTML column group cannot combine span and children"); }
+            for (var column : group.children()) {
+                state.work(1);
+                if (!column.normalName().equals("col") || column.childNodeSize() != 0) { throw new IllegalArgumentException("invalid HTML column group"); }
+                attributes(column, context.block(), context.cells());
+                if (css.get(column).hidden) { throw new IllegalArgumentException("hidden HTML columns are not supported"); }
+                int span = column.hasAttr("span") ? positiveInteger(column.attr("span")) : 1;
+                if (span > state.limits.maxTableSlots() - count) { throw new IllegalArgumentException("HTML column declaration budget exceeded"); }
+                count += span;
+            }
+        }
+        if (count > state.limits.maxTableSlots()) { throw new IllegalArgumentException("HTML column declaration budget exceeded"); }
+        state.work(count);
+        loss(group, "TABLE_COLUMNS", "column-group geometry has no supported model mapping", "COLUMNS_REPLACED_WITH_EQUAL_FRACTIONS", context.block(), context.cells());
+        return count;
     }
     private void attributes(Element element, String id, List<CellLocation> cells) {
         if (element == null || !checkedAttributes.add(element)) { return; }
@@ -329,6 +392,8 @@ final class HtmlImportMapper {
             boolean allowed = switch (tag) {
                 case "a" -> name.equals("href"); case "img" -> Set.of("src", "alt", "width", "height").contains(name);
                 case "ol" -> name.equals("start"); case "td", "th" -> Set.of("rowspan", "colspan").contains(name);
+                case "colgroup", "col" -> name.equals("span");
+                case "span" -> Set.of("data-export4j-marker", "data-export4j-level").contains(name);
                 default -> false;
             };
             if (!allowed) { loss(element, "HTML_ATTRIBUTE", "HTML attribute has no supported semantic mapping", "ATTRIBUTE_REMOVED", id, cells); }
