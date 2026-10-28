@@ -81,7 +81,7 @@ var member = FontCollectionLoader.load(collectionBytes, 1); // TTC/OTC，明确�
 var cff = TrueTypeFontLoader.load(otfBytes);                 // 静态 OTF/CFF 或 TTF
 ~~~
 
-集合和提取成员分别受字节预算控制。可变字体、CFF2、竖排和彩色字体尚未支持。CFF 正文以轮廓绘制；PDF 可编辑字段需要显式 TrueType 字体。
+集合和提取成员分别受字节预算控制。[VerticalText](vertical-text-api.md)提供显式字格的逐字形竖排子集；通用 OpenType 竖排、可变字体、CFF2 和彩色字体尚未支持。CFF 正文以轮廓绘制；PDF 可编辑字段需要显式 TrueType 字体。
 
 `TableCell.rich(inlines, cellFormat)` 保留真实字体角色、颜色、上下标、下划线和删除线。`InlineText(text, style, uri)` 增加被动外链，允许 HTTP、HTTPS、mailto，禁止脚本、文件链接和带用户信息的 HTTP URL。外链按最终行片段解析，包括跨页段落与表格；不获取链接内容。SVG／PNG 仍拒绝交互对象，调用方须显式提供无交互版本。
 
@@ -138,7 +138,7 @@ engine.writeAtomically(document, backend, targetPath, options);
 
 固定列普通／纯富文本长表可采用独立的 [单向源 API](streaming-table-api.md)，同步逐页测量和输出，返回扁平计数。[阶段二十四](verification/phase-24-streaming-tables.md)已验收 7 组独立 JVM：布局丢弃页和真实 PDF 各 1k／10k／100k 行，另有 64 MiB 堆的 100k 行布局控制；退出临时文件数／字节均为 0。[阶段二十九](verification/phase-29-streaming-rich-text.md)进一步验收纯富文本／真实字体角色和空运行额度，9 组普通／富文本独立 JVM 包含 64 MiB 布局控制；[指南](streaming-rich-text-api.md)说明明确拒绝的语义。单向路径不保留完整 IR／Display List，但 PDFBox 页树仍随页数增长；不支持未来引用或可编辑交互，也不代表一般文档恒内存。
 
-单向固定列横向合并已由[阶段六十四](verification/phase-64-streaming-column-spans.md)验收：表头／正文完整覆盖，按真实物理列测量与呈现，锚点和覆盖槽分别计数，单行预读及原子输出保护保持；图片和被动链接已由[阶段六十五](verification/phase-65-streaming-media.md)验收；完整行续排见[阶段六十七](verification/phase-67-streaming-row-split.md)；实际页码及准确总数见[单向字段 API](streaming-fields-api.md)；纵向合并仍独立。
+单向固定列横向合并已由[阶段六十四](verification/phase-64-streaming-column-spans.md)验收：表头／正文完整覆盖，按真实物理列测量与呈现，锚点和覆盖槽分别计数，单行预读及原子输出保护保持；图片和被动链接已由[阶段六十五](verification/phase-65-streaming-media.md)验收；完整行续排见[阶段六十七](verification/phase-67-streaming-row-split.md)；实际页码及准确总数见[单向字段 API](streaming-fields-api.md)；[显式有界纵向合并](streaming-row-spans-api.md)现已接入，默认单行路径保持；它与完整行拆分不能组合。
 
 直接输出 Display List 可使用 `backend.write(display, stream, options)`。直接布局自定义流程可由 `ExecutionContext.execute(options, operation)` 包围，内部检查点共享该范围。
 
@@ -168,8 +168,8 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 
 | 范围 | 后续验收目标 |
 | --- | --- |
-| 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、组件内字段、自动字段宽度重排和可访问的结构化阅读顺序 |
-| 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。变宽纵向合并拆分／递归子树、任意轮廓／跨页浮动锚点、任意递归网格续页、竖排、可变字体轴仍开放；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
+| 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、任意组件内字段、自动字段宽度重排及未支持节点的无障碍映射 |
+| 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。变宽行内格纵向 owner 续排现已支持；递归块子树、任意轮廓／跨页浮动锚点、任意递归网格续页、通用竖排与可变字体轴仍开放；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
 | DOCX | 浮动／裁剪等复杂图像、目录／评论／表单完整模型映射；首页／奇偶语义页区已验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已验收，Word 保存兼容单独登记 |
 | PDF | 现有编辑、恢复、PDF/UA-1、选定 PDF/A 及 PAdES 的子集见对应 API；任意外部结构、任意标准等级与通用阅读器兼容不由有限样例保证 |
 | 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。一般 Word／LibreOffice 外观、其他系统／JDK、多阅读器、持续容量与长期资源释放仍未验收 |
@@ -187,3 +187,7 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 [统一入口](document-conversion-api.md)支持已验收 Markdown／HTML／DOCX 输入→语义编辑→Web／DOCX／显式布局后端。准备时完成一次真实编码，预检绑定确切结果；共享策略覆盖操作／功能／格式／默认值，IGNORE 仍保留损失，未编辑内容也检查。原包保留和 PDF 语义恢复不由策略自动获得，验证见[阶段四十七](verification/phase-47-document-conversion.md)。
 
 单向 PDF 后端支持[加密及静态归档](streaming-protection-api.md)，复用完整文档的 AES-256 权限及 PDF/A-2b 限制；独立合规与密码／链接／图片验收见[阶段七十](verification/phase-70-streaming-protection.md)。有限并发失败恢复见[阶段六十九](verification/phase-69-streaming-stability.md)，不证明长期无泄漏或恒内存。
+
+## 矢量透明度与 SVG 变换
+
+[绘制透明度](graphics-opacity-api.md)以显式填充／描边 alpha 贯通 PDF、SVG 和 PNG，嵌套 save／restore 保持，PDF/A-1b 拒绝非不透明状态。静态 SVG 输入支持继承 fill-opacity／stroke-opacity 及有界仿射变换；group opacity、混合模式、CMYK／专色、渐变、图案和滤镜仍拒绝或保持未提供，不把图片 alpha 等同于完整矢量合成。

@@ -2,6 +2,7 @@
 package com.mirakyux.export4j.backend.raster;
 
 import java.awt.BasicStroke;
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -107,6 +108,9 @@ public final class RasterBackend implements DocumentBackend {
         var image = new BufferedImage((int) Math.ceil(page.size().width() * dpi / 72), (int) Math.ceil(page.size().height() * dpi / 72), BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = image.createGraphics();
         var saved = new ArrayDeque<Graphics2D>();
+        var savedOpacity = new ArrayDeque<double[]>();
+        double fillOpacity = 1;
+        double strokeOpacity = 1;
         try {
             graphics.setColor(Color.WHITE);
             graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
@@ -116,15 +120,23 @@ public final class RasterBackend implements DocumentBackend {
             for (var command : page.commands()) {
                 com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                 switch (command) {
-                    case DrawCommand.Save ignored -> { saved.push(graphics); graphics = (Graphics2D) graphics.create(); }
-                    case DrawCommand.Restore ignored -> { graphics.dispose(); graphics = saved.pop(); }
+                    case DrawCommand.Save ignored -> {
+                        saved.push(graphics); graphics = (Graphics2D) graphics.create();
+                        savedOpacity.push(new double[] {fillOpacity, strokeOpacity});
+                    }
+                    case DrawCommand.Restore ignored -> {
+                        graphics.dispose(); graphics = saved.pop();
+                        var opacity = savedOpacity.pop(); fillOpacity = opacity[0]; strokeOpacity = opacity[1];
+                    }
+                    case DrawCommand.Opacity opacity -> { fillOpacity = opacity.fill(); strokeOpacity = opacity.stroke(); }
                     case DrawCommand.Transform t -> { var m = t.matrix(); graphics.transform(new java.awt.geom.AffineTransform(m.a(), m.b(), m.c(), m.d(), m.e(), m.f())); }
                     case DrawCommand.Clip c -> { var r = c.bounds(); graphics.clip(new Rectangle2D.Double(r.x(), r.y(), r.width(), r.height())); }
-                    case DrawCommand.FillRect f -> { var r = f.bounds(); graphics.setColor(color(f.color())); graphics.fill(new Rectangle2D.Double(r.x(), r.y(), r.width(), r.height())); }
-                    case DrawCommand.FillPath f -> { graphics.setColor(color(f.color())); graphics.fill(StaticBackendSupport.path(f.path())); }
-                    case DrawCommand.StrokePath s -> { graphics.setColor(color(s.color())); graphics.setStroke(new BasicStroke((float) s.width(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER)); graphics.draw(StaticBackendSupport.path(s.path())); }
-                    case DrawCommand.OutlineText t -> { graphics.setColor(color(t.color())); for (var p : t.paths()) { graphics.fill(StaticBackendSupport.path(p)); } }
+                    case DrawCommand.FillRect f -> { var r = f.bounds(); graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity)); graphics.setColor(color(f.color())); graphics.fill(new Rectangle2D.Double(r.x(), r.y(), r.width(), r.height())); }
+                    case DrawCommand.FillPath f -> { graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity)); graphics.setColor(color(f.color())); graphics.fill(StaticBackendSupport.path(f.path())); }
+                    case DrawCommand.StrokePath s -> { graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) strokeOpacity)); graphics.setColor(color(s.color())); graphics.setStroke(new BasicStroke((float) s.width(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER)); graphics.draw(StaticBackendSupport.path(s.path())); }
+                    case DrawCommand.OutlineText t -> { graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity)); graphics.setColor(color(t.color())); for (var p : t.paths()) { graphics.fill(StaticBackendSupport.path(p)); } }
                     case DrawCommand.Image i -> {
+                        graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity));
                         var r = i.bounds();
                         var transform = new java.awt.geom.AffineTransform();
                         transform.translate(r.x(), r.y());

@@ -33,4 +33,10 @@ public interface DrawingSurface {
     DrawingSurface transform(AffineTransform matrix);
 
     DrawingSurface clip(Rect bounds);
+
+    /** Replaces fill/text/image and stroke alpha in [0,1]. Save/Restore scope this state.
+     * Paints composite individually; this does not create an isolated transparency group. */
+    default DrawingSurface opacity(double fill, double stroke) {
+        throw new UnsupportedOperationException("surface does not support paint opacity");
+    }
 }

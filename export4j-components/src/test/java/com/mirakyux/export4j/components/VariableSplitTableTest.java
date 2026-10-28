@@ -186,17 +186,76 @@ class VariableSplitTableTest {
     }
 
     @Test void unsupportedRecursiveSplitAndImpossibleLineFailWithoutAffectingLaterLayout() {
-        var merged = table("merged").row(TableCell.builder().text("A").format(CELL).rowSpan(2).build()).coveredRow().build();
         var nested = Table.builder("inner").cellFormat(CELL).row("A").build();
         var blocks = table("blocks").row(TableCell.builder().blocks(List.of(nested)).build()).build();
-        for (var table : List.of(merged, blocks)) {
-            assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, assertThrows(DocumentLayoutException.class,
-                    () -> new DocumentLayouter().layoutTableRegions(table, context(100, 36), new FlowRegions(List.of(), 36), List.of(50.0, 100.0))).code());
-        }
+        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, assertThrows(DocumentLayoutException.class,
+                () -> new DocumentLayouter().layoutTableRegions(blocks, context(100, 36), new FlowRegions(List.of(), 36), List.of(50.0, 100.0))).code());
         var ordinary = table("ordinary").header("H").row("A").build();
         assertEquals(DocumentLayoutException.Code.CONTENT_TOO_TALL, assertThrows(DocumentLayoutException.class,
                 () -> new DocumentLayouter().layoutTableRegions(ordinary, context(100, 12), new FlowRegions(List.of(), 12), List.of(50.0, 100.0))).code());
         assertFalse(new DocumentLayouter().layoutTableRegions(ordinary, context(100, 36), new FlowRegions(List.of(), 36), List.of(50.0, 100.0)).isEmpty());
+    }
+
+    @Test void verticalOwnersRewrapAtActualWidthAndRetainOriginalAnchorAcrossCoveredRows() {
+        String source = "alpha beta gamma delta ".repeat(12);
+        var table = table("vertical").columns(new ColumnWidth.Fraction(1), new ColumnWidth.Fraction(1))
+                .header("H1", "H2")
+                .row(TableCell.builder().text(source).format(CELL).rowSpan(3).build(), new TableCell("FIRST", CELL))
+                .row("SECOND").row("THIRD").row("END", "AFTER").build();
+        var parts = new DocumentLayouter().layoutTableRegions(table, context(200, 60),
+                new FlowRegions(List.of(1.0), 60), List.of(100.0, 200.0));
+        var ownerText = new StringBuilder();
+        int expectedLine = 0;
+        boolean narrow = false, wide = false, emptyOwner = false;
+        var labels = new java.util.ArrayList<String>();
+        for (var part : parts) {
+            double width = part.regionIndex() % 2 == 0 ? 100 : 200;
+            for (var row : part.fragment().rows()) {
+                if (row.header()) { continue; }
+                for (var cell : row.cells()) {
+                    assertTrue(cell.bounds().x() + cell.bounds().width() <= Math.nextUp(width));
+                    assertTrue(cell.bounds().y() + cell.bounds().height() <= Math.nextUp(part.fragment().height()));
+                    if (row.rowIndex() == 1 && cell.columnIndex() == 0) {
+                        assertEquals(width / 2, cell.bounds().width());
+                        if (cell.hasBlocks()) { assertTrue(cell.blocks().isEmpty()); emptyOwner = true; continue; }
+                        assertEquals(expectedLine, cell.firstLineIndex());
+                        for (var line : cell.layout().lines()) {
+                            ownerText.append(source, line.sourceStart(), line.sourceEnd());
+                            narrow |= width == 100; wide |= width == 200;
+                        }
+                        expectedLine += cell.layout().lines().size();
+                    } else if (!cell.hasBlocks()) {
+                        labels.add(cell.layout().lines().stream().flatMap(line -> line.runs().stream())
+                                .map(run -> run.text()).collect(java.util.stream.Collectors.joining()));
+                    }
+                }
+            }
+        }
+        assertEquals(source.replace(" ", ""), ownerText.toString().replace(" ", ""));
+        assertTrue(narrow && wide);
+        assertEquals(List.of("FIRST", "SECOND", "THIRD", "END", "AFTER"), labels.stream().filter(value -> !value.isEmpty()).toList());
+        assertTrue(parts.size() > 2);
+        // Covered presentations can coalesce into the last owner rectangle in a region.
+        assertTrue(emptyOwner || parts.stream().flatMap(part -> part.fragment().rows().stream())
+                .filter(row -> row.rowIndex() == 1).flatMap(row -> row.cells().stream())
+                .anyMatch(cell -> cell.columnIndex() == 0 && cell.bounds().height() > cell.lineCount() * 12));
+    }
+
+    @Test void fullyCoveredRowsAndCombinedSpansDoNotCreateBlankRegionsOrChargeFakeLines() {
+        var table = table("covered").columns(new ColumnWidth.Fraction(1), new ColumnWidth.Fraction(1))
+                .row(TableCell.builder().text("A\nB\nC\nD\nE\nF").format(CELL).columnSpan(2).rowSpan(3).build())
+                .coveredRow().coveredRow().row("END", "AFTER").build();
+        var exact = new DocumentLayoutLimits(1, 20, 8, 3, 4, 2, 8);
+        var parts = new DocumentLayouter(new ParagraphLayouter(), exact).layoutTableRegions(table, context(100, 36),
+                new FlowRegions(List.of(1.0), 36), List.of(50.0, 100.0));
+        assertEquals(List.of(1, 2, 3), parts.stream().map(part -> part.regionIndex()).toList());
+        assertEquals(8, parts.stream().flatMap(part -> part.fragment().rows().stream()).flatMap(row -> row.cells().stream())
+                .mapToLong(cell -> cell.lineCount()).sum());
+        assertEquals(List.of(0, 0, 3), parts.stream().map(part -> part.fragment().rows().getFirst().rowIndex()).toList());
+        var exhausted = new DocumentLayoutLimits(1, 20, 7, 3, 4, 2, 8);
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, assertThrows(DocumentLayoutException.class,
+                () -> new DocumentLayouter(new ParagraphLayouter(), exhausted).layoutTableRegions(table, context(100, 36),
+                        new FlowRegions(List.of(1.0), 36), List.of(50.0, 100.0))).code());
     }
 
     @Test void atomicPictureIsCheckedAtItsActualContinuationWidthRatherThanUnusedNarrowWidth() throws IOException {

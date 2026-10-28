@@ -44,10 +44,10 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 | Area | Available capabilities |
 | --- | --- |
 | Document authoring | Fluent builders, headings, paragraphs, rich text, lists, reusable themes with global/domain font and color defaults, named styles |
-| Text and fonts | Explicit font groups and real variants, missing-glyph policies, OpenType shaping through the JDK, bidirectional text, justification and an optional strict CJK line-break subset |
+| Text and fonts | Explicit font groups and real variants, missing-glyph policies, OpenType shaping through the JDK, bidirectional text, justification, an optional strict CJK line-break subset and an [explicit vertical em-cell subset](docs/vertical-text-api.md) |
 | Layout | Automatic pagination, sections, headers and footers, page backgrounds, balanced equal/unequal text columns, rectangular text wrapping and page-flow components |
-| Tables | Repeated headers, supported automatic column widths, row/column spans, explicit row splitting, multi-paragraph cells, bounded recursive tables with inline automatic columns, vertical continuations, atomic semantic rows and inline-cell line continuations across unequal columns |
-| Images and graphics | Inline PNG/JPEG, vector paths, shapes, watermarks and a restricted offline SVG input subset |
+| Tables | Repeated headers, supported automatic column widths, row/column spans, explicit row splitting, multi-paragraph cells, bounded recursive tables with inline automatic columns, vertical continuations, atomic semantic rows and inline-cell line continuations including vertical owners across unequal columns |
+| Images and graphics | Inline PNG/JPEG, vector paths, shapes, watermarks, [independent fill/stroke opacity and an offline SVG transform subset](docs/graphics-opacity-api.md) |
 | Navigation and forms | Contents, bookmarks, links, comments, page/reference fields, continued footnotes, static form components and four basic editable PDF field types |
 | Templates | Offline XML with variables, conditions, loops, dynamic rows, themes, static page settings, image/table headers/footers, sections, bounded recursive includes, dynamic links and fields; strict lightweight Markdown |
 | Output | PDF, self-contained SVG, PNG pages/ZIP, a semantic DOCX subset, HTML and Markdown |
@@ -55,7 +55,7 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 | Import and editing | Markdown/HTML/CSS/DOCX subsets, opt-in automatic PDF columns/paragraphs/table recovery with explicit grid overrides and uncertainty reports, immutable semantic edits, package-preserving DOCX text edits and structured loss previews/reports |
 | Template saving | Editable XML sources/resources in ordinary ZIP files; save supported semantic models as the same XML, reopen, edit and export with explicit loss policies |
 | PDF security and standards | AES-256; selected PDF/A-1b/2b/3b/4f generation and conversion; explicit PDF/UA-1 tags; PAdES B/T/LT/LTA, offline trust/revocation evidence, timestamps, renewal and DocMDP change classification |
-| Large tables and execution | Single-pass text/rich-text/image table sources, passive links, horizontal spans, whole-line row continuation, actual page fields with checked declared totals, and synchronous page output, resource budgets, cancellation, timeouts, structured diagnostics and atomic path writes |
+| Large tables and execution | Single-pass text/rich-text/image table sources, passive links, horizontal spans, [opt-in bounded vertical spans](docs/streaming-row-spans-api.md), whole-line row continuation, actual page fields with checked declared totals, and synchronous page output, resource budgets, cancellation, timeouts, structured diagnostics and atomic path writes |
 
 Each feature has explicit limits. A component table, semantic table and streaming table serve different contracts; see the [authoring guide](docs/authoring-api.md), [fluent API](docs/fluent-api.md) and [streaming-table guide](docs/streaming-table-api.md).
 
@@ -227,8 +227,9 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 The following areas remain open; they are not current features:
 
 - Broader page-layer composition, DOCX layer mappings and cross-reader acceptance.
-- Split vertical spans, recursive cell subtrees and component-grid continuation across unequal columns, plus broader floating page layouts.
-- Broader complex-script and reader interoperability, including search and text selection.
+- Recursive block-cell subtrees and component-grid continuation across unequal columns, plus broader floating page layouts.
+- Broader complex scripts, general vertical writing, variable/color fonts and reader search/selection interoperability.
+- Streaming automatic widths and future-dependent semantics, sustained capacity, advanced color/blending, gradients and broader SVG support.
 - Broader HTML/CSS compatibility and a visual template designer.
 - Stable public API and Maven Central distribution, with repeatable cross-platform release validation.
 

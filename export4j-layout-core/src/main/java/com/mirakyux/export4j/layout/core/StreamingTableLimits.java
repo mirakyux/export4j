@@ -11,11 +11,19 @@ import java.util.Objects;
  * positive maxParagraphs budget always admits it; there are no separate paragraph blocks.
  * maxFields and maxGeneratedCodePoints count actual field presentations and generated values,
  * including repeated headers, separately from source counts. Text-layer per-cell limits still apply.
- * No source text is included in failures.
+ * maxBufferedRows and maxBufferedCodePoints bound the optional atomic vertical-span group;
+ * ordinary non-grouped streams still retain at most one pending row. No source text is included in failures.
  */
 public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCodePoints,
         int maxRowCodePoints, long maxDiagnostics, int maxCellInlines, int maxRowInlines, long maxLinks,
-        long maxFields, long maxGeneratedCodePoints) {
+        long maxFields, long maxGeneratedCodePoints, int maxBufferedRows, long maxBufferedCodePoints) {
+    /** Compatibility constructor with bounded group defaults of 64 rows and 1,000,000 code points. */
+    public StreamingTableLimits(DocumentLayoutLimits document, int maxCellCodePoints,
+            int maxRowCodePoints, long maxDiagnostics, int maxCellInlines, int maxRowInlines, long maxLinks,
+            long maxFields, long maxGeneratedCodePoints) {
+        this(document, maxCellCodePoints, maxRowCodePoints, maxDiagnostics, maxCellInlines, maxRowInlines,
+                maxLinks, maxFields, maxGeneratedCodePoints, 64, 1_000_000);
+    }
     /** Compatibility constructor with default field presentation/value budgets. */
     public StreamingTableLimits(DocumentLayoutLimits document, int maxCellCodePoints,
             int maxRowCodePoints, long maxDiagnostics, int maxCellInlines, int maxRowInlines, long maxLinks) {
@@ -43,7 +51,8 @@ public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCod
     public StreamingTableLimits {
         Objects.requireNonNull(document, "document");
         if (maxCellCodePoints <= 0 || maxRowCodePoints <= 0 || maxDiagnostics <= 0
-                || maxCellInlines <= 0 || maxRowInlines <= 0 || maxLinks <= 0 || maxFields <= 0 || maxGeneratedCodePoints <= 0) {
+                || maxCellInlines <= 0 || maxRowInlines <= 0 || maxLinks <= 0 || maxFields <= 0 || maxGeneratedCodePoints <= 0
+                || maxBufferedRows <= 0 || maxBufferedCodePoints <= 0) {
             throw new IllegalArgumentException("streaming budgets must be positive");
         }
     }
@@ -52,7 +61,8 @@ public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCod
         return new Builder().document(document).maxCellCodePoints(maxCellCodePoints)
                 .maxRowCodePoints(maxRowCodePoints).maxDiagnostics(maxDiagnostics)
                 .maxCellInlines(maxCellInlines).maxRowInlines(maxRowInlines).maxLinks(maxLinks)
-                .maxFields(maxFields).maxGeneratedCodePoints(maxGeneratedCodePoints);
+                .maxFields(maxFields).maxGeneratedCodePoints(maxGeneratedCodePoints)
+                .maxBufferedRows(maxBufferedRows).maxBufferedCodePoints(maxBufferedCodePoints);
     }
     /** Task-confined builder; build() takes an immutable snapshot. */
     public static final class Builder {
@@ -65,6 +75,8 @@ public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCod
         private long links = DEFAULT.maxLinks;
         private long fields = DEFAULT.maxFields;
         private long generated = DEFAULT.maxGeneratedCodePoints;
+        private int bufferedRows = DEFAULT.maxBufferedRows;
+        private long bufferedCodePoints = DEFAULT.maxBufferedCodePoints;
         private Builder() { }
         public Builder document(DocumentLayoutLimits value) { document = Objects.requireNonNull(value, "document"); return this; }
         public Builder maxCellCodePoints(int value) { cell = value; return this; }
@@ -80,8 +92,13 @@ public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCod
         public Builder maxFields(long value) { fields = value; return this; }
         /** Positive cumulative generated-value code points, separate from original source text. */
         public Builder maxGeneratedCodePoints(long value) { generated = value; return this; }
+        /** Maximum physical rows in one buffered connected body group, checked before reading further rows. */
+        public Builder maxBufferedRows(int value) { bufferedRows = value; return this; }
+        /** Maximum source code points retained for one optional atomic body group. */
+        public Builder maxBufferedCodePoints(long value) { bufferedCodePoints = value; return this; }
         public StreamingTableLimits build() {
-            return new StreamingTableLimits(document, cell, row, diagnostics, cellInlines, rowInlines, links, fields, generated);
+            return new StreamingTableLimits(document, cell, row, diagnostics, cellInlines, rowInlines, links,
+                    fields, generated, bufferedRows, bufferedCodePoints);
         }
     }
 }

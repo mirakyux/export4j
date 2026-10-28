@@ -1,6 +1,6 @@
 # 单向长表 API
 
-适用于固定列、普通／富文本及显式图片、整行或完整文字行分页的大量记录。正文由调用方逐行提供，无须构造完整 Table。基础实现边界见 [ADR-0031](adr/0031-single-pass-table-output.md)，真实字体角色和局部样式见[单向长表富文本 API](streaming-rich-text-api.md)及 [ADR-0036](adr/0036-streaming-rich-text.md)。长度单位均为 point，原点左上，页索引从零开始。
+适用于固定列、普通／富文本及显式图片、整行或完整文字行分页的大量记录。正文由调用方逐行提供，无须构造完整 Table。显式 `allowRowSpans(true)` 还可启用[有界纵向合并连通组](streaming-row-spans-api.md)，不与拆行组合。基础实现边界见 [ADR-0031](adr/0031-single-pass-table-output.md)，真实字体角色和局部样式见[单向长表富文本 API](streaming-rich-text-api.md)及 [ADR-0036](adr/0036-streaming-rich-text.md)。长度单位均为 point，原点左上，页索引从零开始。
 
 ## 链式导出
 
@@ -35,7 +35,7 @@ StreamingTableLimits 组合 DocumentLayoutLimits 和逐格／逐行码点、运�
 
 未知总行数／页数时 `Progress.total()` 为 -1，先检查 `hasKnownTotal()`，不能直接计算百分比。源读取、回调及自定义后端均为协作式同步调用，无法强制抢占阻塞代码。
 
-格错误通过 DocumentLayoutException 给出表 ID、物理页、源行／列与格内 UTF-16 偏移；行索引包含前置表头。诊断使用 ContextualDiagnostic，源文字 region 为 STREAMING_TABLE；生成字段值使用 INLINE_FIELD:<原字段UTF16位置>，诊断范围属于生成值。诊断／页交付失败立即停止读源，最多已预读一行。原始 IOException 保留，关闭异常遵守 try-with-resources 的 suppressed 顺序。
+格错误通过 DocumentLayoutException 给出表 ID、物理页、源行／列与格内 UTF-16 偏移；行索引包含前置表头。诊断使用 ContextualDiagnostic，源文字 region 为 STREAMING_TABLE；生成字段值使用 INLINE_FIELD:<原字段UTF16位置>，诊断范围属于生成值。诊断／页交付失败立即停止读源；默认路径最多已预读一行，显式纵向合并路径最多已读取一个受预算限制的连通组，不预读下一独立组。原始 IOException 保留，关闭异常遵守 try-with-resources 的 suppressed 顺序。
 
 流入口借用目标流且不关闭，失败可能留下部分字节。路径入口要求父目录存在、文件系统支持同目录原子替换；任何读取、布局、关闭、输出、取消或字节预算失败都保留旧目标，清理临时文件，不降级复制。
 
@@ -43,7 +43,7 @@ StreamingTableLimits 组合 DocumentLayoutLimits 和逐格／逐行码点、运�
 
 高级调用可直接使用 StreamingTableLayouter.layout，将 LayoutPage 同步交给 PageConsumer；核心不关闭源或接收器。DocumentPainter.paintPage 转为 DisplayPage 后交 PageWriter.accept。必须显式 finish，再 close；close 不完成输出。失败会话不能继续接受页。SPI 不保存传入页，但格式对象可以随页数增长。
 
-当前支持普通文字格、InlineText 富文本及显式 PNG／JPEG 图片，沿用显式 FontGroup 的严格缺字或占位诊断。可通过 DocumentEngine.Builder.fontRole 注册真实字体变体；高级布局使用带角色 Map 的重载，旧重载保持空映射。被动文字／图片外链通过逐页链接通道传递，见[图文 API](streaming-media-api.md)。PAGE 与准确声明总数的 PAGES 已支持，见[字段 API](streaming-fields-api.md)；块格、自动宽度、纵向合并和嵌套仍拒绝。配置过的页模板、导航、注释也拒绝，避免静默忽略。未知总页数推断、目录／未来引用、脚注、分栏／平衡、DOCX 及自动签名尚未接入单向路径。
+当前支持普通文字格、InlineText 富文本及显式 PNG／JPEG 图片，沿用显式 FontGroup 的严格缺字或占位诊断。可通过 DocumentEngine.Builder.fontRole 注册真实字体变体；高级布局使用带角色 Map 的重载，旧重载保持空映射。被动文字／图片外链通过逐页链接通道传递，见[图文 API](streaming-media-api.md)。PAGE 与准确声明总数的 PAGES 已支持，见[字段 API](streaming-fields-api.md)。正文纵向合并须显式启用 `allowRowSpans(true)`，见[有界纵向合并 API](streaming-row-spans-api.md)；不与拆行组合，表头纵跨、块格、自动宽度和嵌套仍拒绝。配置过的页模板、导航、注释也拒绝，避免静默忽略。未知总页数推断、目录／未来引用、脚注、分栏／平衡、DOCX 及自动签名尚未接入单向路径。
 
 当前布局和 Display List 可逐页释放，PDFBox 仍保留页树／COS 对象，TEMP_FILE 只转移流存储。容量结果必须分别报告布局和真实 PDF，不能称完整 PDF 恒定内存。单向源不替代既有支持交互／字段的完整文档 API。
 
@@ -59,6 +59,6 @@ var row = new TableRow(List.of(
 
 跨度宽度为所覆盖列宽之和，只扣一次左右内边距，不生成内部假格或重复文字。IR、异常和缺字诊断仍使用物理起始列：上例第二个锚点的列号为 2。每行全部检查后才测量，整行移动时复用测量结果，表头也只测量一次。
 
-`sourceCells` 只计真实锚点；`DocumentLayoutLimits.maxCells` 计全部覆盖槽，不能通过大跨度绕过预算。原文、运行和码点按锚点计一次，重复表头继续占实际输出行／诊断预算。横向合并不需要读取未来行，最多一行预读的契约保持。纵向合并和更广内容仍按上述边界拒绝；正文完整行拆分见[拆行 API](streaming-row-split-api.md)。实现与独立证据见[ADR-0072](adr/0072-single-pass-horizontal-spans.md)及[阶段六十四](verification/phase-64-streaming-column-spans.md)。
+`sourceCells` 只计真实锚点；`DocumentLayoutLimits.maxCells` 计全部覆盖槽，不能通过大跨度绕过预算。原文、运行和码点按锚点计一次，重复表头继续占实际输出行／诊断预算。仅横向合并不需要读取未来行，最多一行预读的契约保持；显式纵向合并改用有界连通组。正文完整行拆分见[拆行 API](streaming-row-split-api.md)。横向合并实现与独立证据见[ADR-0072](adr/0072-single-pass-horizontal-spans.md)及[阶段六十四](verification/phase-64-streaming-column-spans.md)。
 
 AES-256 与静态 PDF/A-2b 已接入逐页后端，见[单向安全输出](streaming-protection-api.md)；归档仍拒绝链接，签名在最终文件上显式处理。

@@ -103,6 +103,12 @@ public final class DisplayListBuilder implements DrawingSurface {
         return this;
     }
 
+    @Override
+    public DisplayListBuilder opacity(double fill, double stroke) {
+        commands.add(new DrawCommand.Opacity(fill, stroke));
+        return this;
+    }
+
     /** Appends an independently balanced immutable command fragment without consuming this builder's saved state. */
     public DisplayListBuilder appendCommands(List<DrawCommand> additions) {
         // Validate the fragment independently so it cannot consume the caller's saved graphics state.

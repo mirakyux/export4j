@@ -13,11 +13,19 @@ import java.util.Objects;
  * run counts. Horizontal spans cover consecutive fixed columns and deduct padding once.
  * Passive text/image hyperlinks require the link-aware page consumer. PAGE resolves at each actual
  * presentation; PAGES requires a positive expectedPages total, checked before successful completion.
- * Zero means an unknown total. Block cells, vertical spans and future references are not supported.
+ * Zero means an unknown total. Explicit allowRowSpans enables bounded atomic body-row groups;
+ * repeating headers never contain vertical spans, and row splitting cannot be combined with groups.
+ * Block cells and future references are not supported.
  * This value is thread-safe; row sources and builders are task-confined.
  */
 public record StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
-        List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit, int expectedPages) {
+        List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit,
+        int expectedPages, boolean allowRowSpans) {
+    /** Compatibility constructor preserving the original one-row lookahead and no vertical spans. */
+    public StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
+            List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit, int expectedPages) {
+        this(id, metadata, pageSettings, columnWidths, headerRows, padding, allowRowSplit, expectedPages, false);
+    }
     /** Compatibility constructor without a caller-declared total page count. */
     public StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
             List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit) {
@@ -39,6 +47,9 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
             throw new IllegalArgumentException("streaming table requires an ID and fixed columns");
         }
         if (expectedPages < 0) { throw new IllegalArgumentException("expected page count must be nonnegative"); }
+        if (allowRowSpans && allowRowSplit) {
+            throw new IllegalArgumentException("streaming row groups are atomic and cannot enable row splitting");
+        }
         double width = 0;
         for (double column : columnWidths) {
             if (!Double.isFinite(column) || column <= padding.left() + padding.right()) {
@@ -73,7 +84,8 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
     public static Builder builder(String id) { return new Builder(id); }
     public Builder toBuilder() {
         return new Builder(id).metadata(metadata).pageSettings(pageSettings).columnWidths(columnWidths)
-                .headerRows(headerRows).padding(padding).allowRowSplit(allowRowSplit).expectedPages(expectedPages);
+                .headerRows(headerRows).padding(padding).allowRowSplit(allowRowSplit).expectedPages(expectedPages)
+                .allowRowSpans(allowRowSpans);
     }
 
     public static final class Builder {
@@ -86,6 +98,7 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
         private CellFormat cellFormat = CellFormat.of(12);
         private boolean allowRowSplit;
         private int expectedPages;
+        private boolean allowRowSpans;
 
         private Builder(String id) { this.id = Objects.requireNonNull(id, "id"); }
         public Builder metadata(DocumentMetadata value) { metadata = Objects.requireNonNull(value, "metadata"); return this; }
@@ -104,10 +117,15 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
         public Builder padding(double points) { return padding(PageMargins.uniform(points)); }
         /** Allows complete-line continuation of body rows. Headers always remain atomic. */
         public Builder allowRowSplit(boolean value) { allowRowSplit = value; return this; }
+        /** Enables finite connected body-row groups with vertical spans. Groups stay atomic;
+         * headers still reject vertical spans. Streaming layout limits cap buffered rows and text.
+         */
+        public Builder allowRowSpans(boolean value) { allowRowSpans = value; return this; }
         /** Declares an exact total for PAGES fields; zero means unknown and forbids PAGES.
          * The actual total is checked before successful completion, even without PAGES fields.
          */
         public Builder expectedPages(int value) { expectedPages = value; return this; }
-        public StreamingTable build() { return new StreamingTable(id, metadata, pageSettings, widths, headers, padding, allowRowSplit, expectedPages); }
+        public StreamingTable build() { return new StreamingTable(id, metadata, pageSettings, widths, headers, padding,
+                allowRowSplit, expectedPages, allowRowSpans); }
     }
 }

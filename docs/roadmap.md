@@ -126,6 +126,8 @@
 
 第六批完成标准长合并格内的语义表格续排及合法网格表头重复；复用一次测量游标，保留最终字段、富文本、图文外链及内 Table 来源，见[阶段二十](verification/phase-20-grid-semantic-flow.md)。345 项测试、8 页独立输出检查、15 组历史回归通过。任意递归网格拆分、DOCX 嵌套和统一合并 Table 模型仍开放；下一项为安全声明式模板子集。
 
+以下阶段记录保留当时的实现与限制；当前支持状态以缺口表及最新 API 为准，不将已被后续阶段补齐的内容继续计为缺失。
+
 每次阶段验收记录对应提交或版本、构建命令、验证工具及版本、输入资源、结果与限制。记录存入对应变更说明或独立验收文档，不能只用任务勾选代替证据。
 
 第七批补充离线声明式 XML，将文本报告结构编译到既有语义模板；支持变量、条件、循环、动态长表和显式图片，严格拒绝未知内容及外部资源。绑定同时修正大数子类、追加前预算及循环工作计费。378 项测试、4 页独立渲染、DOCX／SVG、新模块本地坐标及三组历史回归通过，见[阶段二十一](verification/phase-21-xml-templates.md)。Markdown、HTML/CSS 和设计器仍开放；下一项按 GAP-08 扩充复杂文字与阅读器语料。
@@ -153,3 +155,5 @@
 阶段四十四至五十六依次完成[语义编辑／字面替换](semantic-editing-api.md)、[通用 Markdown](markdown-import-api.md)／[离线 HTML/CSS](html-import-api.md)输入、[统一转换](document-conversion-api.md)、[DOCX 原包文字](docx-editing-api.md)与[样式级联](docx-style-import-api.md)，以及 [PDF 页／被动对象编辑、组合、渲染提取、优化、文字替换、光栅脱敏及语义恢复](pdf-adapter-api.md)的明确子集。全部按实际输出、损失预检／结果和隔离制品验收。PDF 恢复按行／字号推断并需显式表格网格；脱敏新建图片 PDF，损失搜索和矢量编辑。完整标准、任意文档无损往返、设计器和长期容量仍不属于这些已交付目标；详见[执行计划](remaining-capabilities-plan.md)。
 
 [阶段九十四至九十七](verification/phase-97-pdf-editing-standards-recovery-closure.md)进一步完成跨状态文字／图片实例编辑、选择性脱敏、扩展表单／批注／FDF／XFDF／XFA，以及自动多栏／段落／有线无线表格／合并嵌套恢复的明确子集。1,634 项测试、全新 Maven 调用方和对应独立输出验收通过。选定 PDF/A、离线 PAdES 和 PDF/UA-1 的既有子项目标均已验收；生成样例及已有标签文件两页、修复后模型第一页的实际辅助阅读器证据分别登记，模型其余页未捕获读屏的覆盖限制明确保留。当前状态以[缺口表](capability-gaps.md)为准。
+
+[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收 GAP-03／08／09／21 的四个固定单元：变宽行内格纵向 owner 续排、[逐字形竖排](vertical-text-api.md)、[有界单向纵向合并](streaming-row-spans-api.md)及[填充／描边透明度与 SVG 变换](graphics-opacity-api.md)。GAP-04／07 的既定样式／模板目标按已存在的阶段证据关闭；完整 CSS 和设计器分别只在 GAP-18.1／13 跟踪。递归块格变宽续排、可变／彩色字体、真实 PDF 恒内存、CMYK／专色与渐变等仍开放。

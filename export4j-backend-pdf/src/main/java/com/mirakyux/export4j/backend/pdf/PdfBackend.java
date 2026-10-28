@@ -45,7 +45,7 @@ import com.mirakyux.export4j.model.ExecutionContext;
 
 /**
  * Stateless PDFBox output backend, reusable concurrently with independent output streams.
- * Supports opaque RGB, standard-font Latin text and premeasured embedded TrueType glyph runs.
+ * Supports RGB with explicit per-paint alpha, standard-font Latin text and premeasured embedded TrueType glyph runs.
  * Performs no shaping or automatic layout. Output streams remain caller-owned.
  * Non-painting logical anchors embed the fixed font bundled with PDFBox; archival
  * output uses its configured anchor font. Both count toward the font byte budget.
@@ -216,6 +216,12 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                     throw budget(pageIndex, index, "graphics state depth exceeded");
                 } else if (command instanceof DrawCommand.Restore) {
                     depth--;
+                } else if (command instanceof DrawCommand.Opacity opacity) {
+                    if (options.archival().isPresent() && options.archival().orElseThrow().target() == PdfArchival.Profile.A1B
+                            && (opacity.fill() != 1 || opacity.stroke() != 1)) {
+                        throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, pageIndex, index,
+                                "PDF/A-1 forbids paint transparency");
+                    }
                 } else if (command instanceof DrawCommand.Image image) {
                     if (options.archival().isPresent() && options.archival().orElseThrow().target() == PdfArchival.Profile.A1B) {
                         for (byte alpha : image.image().alpha()) { if ((alpha & 255) != 255) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, pageIndex, index, "PDF/A-1 forbids image transparency"); } }
@@ -527,6 +533,12 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             }
             case DrawCommand.Save ignored -> stream.saveGraphicsState();
             case DrawCommand.Restore ignored -> stream.restoreGraphicsState();
+            case DrawCommand.Opacity opacity -> {
+                var state = new org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState();
+                state.setNonStrokingAlphaConstant((float) opacity.fill());
+                state.setStrokingAlphaConstant((float) opacity.stroke());
+                stream.setGraphicsStateParameters(state);
+            }
             case DrawCommand.Transform transform -> {
                 AffineTransform m = transform.matrix();
                 stream.transform(new Matrix(checkedFloat(m.a(), page, index),

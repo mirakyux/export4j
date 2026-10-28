@@ -24,7 +24,7 @@ engine.export(document).backend(new PdfBackend()).to(Path.of("details.pdf"));
 
 等宽序列复用原有一次测量游标。不同宽度默认逐区安排完整行／合并行组；显式 `allowRowSplit=true` 时，行内内容格可按完整行跨宽度续排，详见[拆行指南](variable-table-continuation-api.md)。初始短区无法容纳表头和最小正文时可跳过，完整续区仍无法推进则报 `CONTENT_TOO_TALL`。固定列超宽、图片或字段实际行宽不足继续明确失败，不缩放、不裁切，也不悄悄移去另一宽度。
 
-支持既有固定／比例列；普通文字格支持已验收的有界 Auto 和双跨度。原子 Paragraph／Table 块格在每种实际宽度下重新布局，嵌套宽度逐层扣内边距；块格表 Auto 限制保持，行内内表 Auto 见[内表指南](nested-automatic-tables-api.md)。不同宽度下的行内格完整行续排已有；纵向合并的拆分、递归子树续排和组件 `GridTable` 尚不在该契约内。
+支持既有固定／比例列；普通文字格支持已验收的有界 Auto 和双跨度。原子 Paragraph／Table 块格在每种实际宽度下重新布局，嵌套宽度逐层扣内边距；块格表 Auto 限制保持，行内内表 Auto 见[内表指南](nested-automatic-tables-api.md)。不同宽度下的行内格完整行续排及纵向 owner 拆分均已接入；递归块子树续排和组件 `GridTable` 尚不在该契约内。
 
 ## 来源、预算和资源
 

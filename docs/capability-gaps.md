@@ -2,23 +2,11 @@
 
 更新日期：2026-10-28。依据当前源码和独立验收记录。目标是易用、可控的 Java 文档生产引擎；不以功能名称数量计算完成率。
 
-状态含义：**待实现**尚无完整实现；**推进中**已有实现但未完成验收；**部分支持**只有明确子集；**已验收**所列目标及边界均有证据；**范围外**记录未提供的能力，不进入当前执行队列。每项独立关闭，不能以 Builder 或同名方法代替行为验收。
+状态含义：**待实现**尚无完整实现；**推进中**已有实现但未完成验收；**部分支持**只有明确子集；**已验收**所列目标及边界均有证据；**范围外**记录未提供的能力，不进入当前执行队列。每项独立关闭，不能以 Builder 或同名方法代替行为验收。父项汇总既定目标，扩展子项单独保留；父项与子项不相加统计完成数。历史阶段记录反映当时范围，当前状态以本表及对应 API 为准。
 
 能力补齐顺序见[剩余计划](remaining-capabilities-plan.md#后续扩展推进顺序)。更广文件兼容、编辑、恢复、标准及格式扩展按后文的独立缺口跟踪；已有子集验收不关闭这些扩展。OCR 不在当前范围内，见 GAP-23。
 
-[阶段七十七](verification/phase-77-xml-template-bundle.md)补齐既有 XML 模板源码编辑、普通 ZIP 保存／重开及显式资源复用，继续使用 `XmlTemplate → DocumentTemplate`。这是 GAP-07 的模板编写能力；任意语义模型恢复、原生格式恢复信息及完整往返仍按 GAP-24 独立跟踪。
-
-[阶段七十八](verification/phase-78-xml-model-saving.md)完成支持的语义文档到既有 XML 的保存／重开／编辑，[阶段七十九](verification/phase-79-xml-region-saving.md)完成页区、变体和有序图层的共享来源保存。[阶段八十](verification/phase-80-xml-semantic-saving.md)进一步保留注释／标记、Caption 和标题／列表文字外链，完整绑定及统一转换传递注释，三轮控制、实际编辑、10 页 PDF 和 Web 损失对账通过。[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)补齐独立 CrossReference 的保存／绑定与目标改写，跨节显示页码、题注／列表编号、循环目标和 16 页 PDF 验收通过。后续[阶段九十](verification/phase-90-recovery-closure.md)补齐声明式导航和组合验收，GAP-24 的当前完成边界见后文；主题编写意图保留原 XML，自定义运行时代码不序列化。
-
-[阶段七十六](verification/phase-76-pdf-font-compatibility.md)补齐嵌入静态 CFF 的渲染、文字替换、光栅脱敏及语义恢复，并支持同一字体／状态下连续 Tj／TJ 之间的范围匹配。连续多次替换在下一次读取前完成字体子集嵌入；外部字体与内容流的更广组合继续按 GAP-10.6／10.7 独立跟踪。
-
-[阶段七十五](verification/phase-75-variable-table-continuation.md)补齐行内格在不同栏宽间的完整行续排，保留完整原文、实际区域容量、不同格行高、横向合并、图片／字段／外链及 UTF-16。全仓 1,371 项测试、新隔离调用方、10 页独立双渲染／逐页查看和 7 组历史独立回归通过；变宽纵向合并拆分／递归子树及组件网格仍独立。
-
-阶段六十五至七十四已补齐单向图像／外链、普通表格自动列合并、单向长行续页、DocMDP 认证、有限并发失败恢复、单向加密／归档、原子语义表格变宽区域、已有签名字节完整性校验、单向长表实际页码／准确总数和行内内表自动列。全仓 1,362 项测试、本地制品和新隔离调用方通过；各项独立证据分别登记。长期容量、变宽纵向合并拆分／递归子树、更多流式语义、证书信任及完整标准不由这些子目标关闭。
-
-[阶段六十三](verification/phase-63-minimum-lines.md)已补齐变宽文字／富文本的最低行数：有界全源重测、短区跳过、实际分配与 UTF-16 诊断保持；1,312 项测试、12 页双渲染及新隔离调用方通过。[原子语义行及合并行组](variable-tables-api.md)已进一步接入变宽区域；[行内格完整行续排](variable-table-continuation-api.md)已由阶段七十五补齐；纵向合并拆分／递归子树及组件网格的变宽续排继续独立推进。
-
-[阶段三十六](verification/phase-36-xml-page-settings.md)已补齐 GAP-07 的 XML 静态纸张／方向／边距及绝对单位子目标，937 项测试、6 页独立输出与 13 组回归通过。[阶段三十七](verification/phase-37-page-region-fonts.md)按[固定页区角色设计](adr/0044-page-region-font-roles.md)修复四类固定区域的字体角色上下文：全仓 948 项测试、4 页双渲染／逐页复查、新调用方及 17 组独立检查最终通过；一次原生异常退出与单独重跑证据保留。后续[阶段三十八](verification/phase-38-component-text.md)已交付 FontRoleScope／固定富文本，975 项测试及 3 页独立输出通过；[阶段三十九](verification/phase-39-list-markers.md)与[四十](verification/phase-40-xml-text-defaults.md)进一步交付独立列表标记与 XML 分域默认角色／颜色。最终全仓 1,029 项测试、8 页双渲染／逐页复查、新隔离调用方、18 组历史独立检查及两组新检查通过。当前达到受支持报告／静态表单的本地试用门槛，见[就绪评估](readiness-assessment.md)。[阶段四十一](verification/phase-41-xml-page-regions.md)进一步补齐固定 XML 页眉页脚、独立主题及最终页码；1,041 项测试、5 页双渲染／逐页复查、新隔离调用方和 14 组历史独立回归通过。[阶段四十二](verification/phase-42-sections-and-docx-regions.md)进一步补齐页区图片／表格、XML 静态分节及 DOCX 默认页区导入导出。主题角色／颜色已由[阶段六十](verification/phase-60-theme-appearance.md)验收；首页／奇偶语义页区已由[阶段六十一](verification/phase-61-page-variants.md)验收，XML 背景／前景及独立主题已由[阶段六十二](verification/phase-62-page-overlays.md)验收。
+[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收变宽纵向 owner、显式竖排字格、有界单向纵向合并及绘制透明度／SVG 变换。1,677 项测试、25 页新增 PDF 双渲染／逐页复查、三档 64 MiB 布局容量及新 Maven 调用方通过；四项更广范围保持部分支持。GAP-04／07 的既定目标按已有证据收拢，完整 CSS／设计器不重复计缺口。
 
 ## 推进顺序
 
@@ -26,13 +14,13 @@
 | --- | --- | --- | --- | --- |
 | GAP-01 | P0 | 原嵌套 `.text()` 默认整块，需另选 `FlowText` | 普通文字按完整行自然续页；显式固定文字；短首区、嵌套、取消和缺字诊断保持 | 已验收：[阶段十五](verification/phase-15-continuation.md) |
 | GAP-02 | P0 | 原合并格不能容纳跨页长文字 | 显式拆分合并行组；逐页表头、边框和内边距；文字及图片唯一；超高原子内容失败；独立 PDF／SVG 几何及调用方验证 | 已验收：[阶段十五](verification/phase-15-continuation.md)；富文本字段另见 GAP-06 |
-| GAP-03 | P0 | `.table()` 在顶层和列内代表不同模型 | 明确 `.grid()` 与语义表格路径，保留兼容入口；共享语义表格区域流，字段、来源和 DOCX 行为保持 | 部分支持：语义长表区域流、逐栏表头字段及拆行见[阶段十八](verification/phase-18-semantic-table-flow.md)；两层原子块格及标准 DOCX 嵌套见[阶段二十七](verification/phase-27-block-cells.md)；递归子树与纵向 owner 续排已由[阶段五十七](verification/phase-57-recursive-tables.md)接入；独立重复完整源仍拒绝 |
-| GAP-04 | P1 | 原正文默认格式不进入嵌套组件 | 可复用默认样式贯穿嵌套；显式覆盖优先；真实字体变体、固定行框和诊断不变 | 部分支持：[阶段十九](verification/phase-19-style-defaults.md)的完整继承及[阶段二十三](verification/phase-23-property-styles.md)的六项具名覆盖／恢复、网格／作用域快照、短区／续页与旧调用兼容已验收；[阶段三十](verification/phase-30-authoring-themes.md)的 Java 编写时主题／命名完整样式已验收；[阶段三十一](verification/phase-31-xml-themes.md)的 XML 主题及 p／span 静态名称已验收；[可编辑字段样式](verification/phase-32-editable-form-styles.md)、[目录独立样式](verification/phase-34-contents-styles.md)和[固定页区角色传递](verification/phase-37-page-region-fonts.md)已验收；[组件字体作用域与固定富文本](verification/phase-38-component-text.md)、[独立列表标记](verification/phase-39-list-markers.md)及[XML 分域字体／颜色默认值](verification/phase-40-xml-text-defaults.md)已验收；[XML 页眉页脚主题](verification/phase-41-xml-page-regions.md)已验收；模型全局颜色／角色级联已由[阶段六十](verification/phase-60-theme-appearance.md)接入；背景／前景独立主题与固定框已由[阶段六十二](verification/phase-62-page-overlays.md)验收；连续富文本组件已由[阶段五十七](verification/phase-57-recursive-tables.md)接入 |
+| GAP-03 | P0 | `.table()` 在顶层和列内代表不同模型 | 明确 `.grid()` 与语义表格路径，保留兼容入口；共享语义表格区域流，字段、来源和 DOCX 行为保持 | 部分支持：语义长表区域流、逐栏表头字段及拆行见[阶段十八](verification/phase-18-semantic-table-flow.md)；两层原子块格及标准 DOCX 嵌套见[阶段二十七](verification/phase-27-block-cells.md)；等宽递归子树与纵向 owner 续排见[阶段五十七](verification/phase-57-recursive-tables.md)；[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)补齐变宽行内纵向 owner；独立重复完整源仍拒绝，变宽递归等扩展见 GAP-03.1 |
+| GAP-04 | P1 | 默认样式、字体角色与主题的嵌套传递 | 可复用默认样式贯穿嵌套；显式覆盖优先；真实字体变体、固定行框和诊断保持 | 已验收：六项逐属性覆盖／恢复、Java／XML 命名完整样式、组件与固定页区角色、列表标记及全局／分域颜色和字体级联均已完成；见[样式继承](verification/phase-23-property-styles.md)、[主题外观](verification/phase-60-theme-appearance.md)和[图层主题](verification/phase-62-page-overlays.md)。完整命名样式保持快照，不把未约定的动态主题系统列为本项剩余目标 |
 | GAP-05 | P1 | 原 ADR 静态勾选依赖示例私有绘制 | 通用静态勾选／选项组／标签值／填写线，矢量标记不依赖字体缺字；密集表单替换样例辅助代码 | 已验收：[阶段十六](verification/phase-16-static-forms.md)；静态组件不含 DOCX／PDF/UA 语义 |
 | GAP-06 | P1 | 组件合并格原缺富文本、字段和单元格来源 | 长合并格支持行内样式、图片、最终字段；重复表头按实际页解析；行列及 UTF-16 来源可追踪 | 已验收：[阶段二十](verification/phase-20-grid-semantic-flow.md)；标准 SemanticTable／FlowColumn 格内续排、两层表头逐页字段、内 Table 行列／UTF-16 来源；任意嵌套网格拆分仍不支持；当批未包含的合并语义 Table 已由阶段二十五／二十六另行补齐 |
-| GAP-07 | P1 | 模板原只通过 Java 节点接入 | 安全的 Markdown／声明式模板子集，变量、条件、循环、资源访问策略、预算和损失诊断；HTML/CSS 单独定义子集 | 部分支持：XML／严格 Markdown、四类字段／1～9级十进制编号／静态外链，以及[阶段二十八](verification/phase-28-xml-block-cells.md)的可读两层块格与复制引用已验收；[XML 主题及静态名称](verification/phase-31-xml-themes.md)、[平面离线 include](verification/phase-33-offline-xml-includes.md)、[XML 多级编号](verification/phase-35-xml-numbering.md)和[静态页面配置](verification/phase-36-xml-page-settings.md)已验收；[分域文字默认值](verification/phase-40-xml-text-defaults.md)已验收，包含局部恢复、链接／字段／列表标记及嵌套格范围；[固定 XML 页眉页脚](verification/phase-41-xml-page-regions.md)及[图文／表格页区与静态分节](verification/phase-42-sections-and-docx-regions.md)已验收；有界递归 include、父到子引用及动态目标／URL 已由[阶段五十八](verification/phase-58-recursive-includes.md)验收；首页／奇偶变体已由[阶段六十一](verification/phase-61-page-variants.md)验收；XML 背景／前景已由[阶段六十二](verification/phase-62-page-overlays.md)验收；[普通 ZIP 源码编辑与资源保存](xml-template-bundle-api.md)已验收；完整浏览器 CSS 和设计器仍开放；离线 HTML/CSS 输入子集见 GAP-18 |
-| GAP-08 | P1 | 复杂文字、搜索与选择兼容有限 | 扩充脚本、组合簇、断行和阅读器语料；记录字体、搜索／选择与视觉结果；不声称完整 OpenType | 部分支持：[阶段二十二](verification/phase-22-text-and-adapters.md)验收原文／实际字形簇、双向续行及连字一致性；六脚本两路径共 12 页；PDFium 查询精确，11 项 pypdf 提取与轮廓选区几何仍有限 |
-| GAP-09 | P1 | 完整文档仍保留全量模型／布局；单向长表覆盖固定列普通／富文本、图像外链及横向合并，PDFBox 页树仍累积 | 有界数据源、取消和临时资源生命周期；分别测量布局与实际 PDF 的内存、吞吐和上限；持续容量独立验收 | 部分支持：[阶段二十四](verification/phase-24-streaming-tables.md)验收单向源／逐页布局绘制／同步 PDF／扁平摘要；7 组独立 JVM 含布局和 PDF 各 1k／10k／100k 行、64 MiB 堆布局控制及退出清理。[阶段二十九](verification/phase-29-streaming-rich-text.md)补齐纯富文本／显式角色、空运行额度、6 页独立验收与 9 组普通／富文本 JVM 控制。[阶段六十四](verification/phase-64-streaming-column-spans.md)验收固定列横向合并、锚点／覆盖槽计数、物理列／UTF-16 和单行预读。图像及被动链接已由[阶段六十五](verification/phase-65-streaming-media.md)验收；完整行续排由[阶段六十七](verification/phase-67-streaming-row-split.md)验收，加密／静态归档见[阶段七十](verification/phase-70-streaming-protection.md)，重复／并发失败恢复见[阶段六十九](verification/phase-69-streaming-stability.md)；[实际页码及准确总数](verification/phase-73-streaming-fields.md)已验收；纵向合并、未来语义和长期容量仍开放；不宣称 PDF 恒内存 |
+| GAP-07 | P1 | 安全声明式模板与源码编辑 | XML／严格 Markdown 的变量、条件、循环、资源策略、预算及损失诊断；HTML/CSS 输入独立定义子集 | 已验收声明式子集：[XML 模板](verification/phase-21-xml-templates.md)、[递归 include／动态目的地](verification/phase-58-recursive-includes.md)、[普通 ZIP 源码与资源保存](verification/phase-77-xml-template-bundle.md)及[声明式恢复](verification/phase-90-recovery-closure.md)均已有证据；完整浏览器 CSS 只归 GAP-18.1，可视化设计器只归 GAP-13，不在本项重复计为缺失 |
+| GAP-08 | P1 | 复杂文字、搜索与选择兼容有限 | 扩充脚本、组合簇、断行和阅读器语料；记录字体、搜索／选择与视觉结果；不声称完整 OpenType | 部分支持：[阶段二十二](verification/phase-22-text-and-adapters.md)验收原文／实际字形簇、双向续行及连字一致性；六脚本两路径共 12 页；PDFium 查询精确，11 项 pypdf 提取与轮廓选区几何仍有限；[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)新增逐字形竖排与四组提取／查询／选中证据，更广文字方向见 GAP-08.1 |
+| GAP-09 | P1 | 完整文档仍保留全量模型／布局；单向长表覆盖固定列普通／富文本、图像外链及横向合并，PDFBox 页树仍累积 | 有界数据源、取消和临时资源生命周期；分别测量布局与实际 PDF 的内存、吞吐和上限；持续容量独立验收 | 部分支持：[阶段二十四](verification/phase-24-streaming-tables.md)验收单向源／逐页布局绘制／同步 PDF／扁平摘要；7 组独立 JVM 含布局和 PDF 各 1k／10k／100k 行、64 MiB 堆布局控制及退出清理。[阶段二十九](verification/phase-29-streaming-rich-text.md)补齐纯富文本／显式角色、空运行额度、6 页独立验收与 9 组普通／富文本 JVM 控制。[阶段六十四](verification/phase-64-streaming-column-spans.md)验收固定列横向合并、锚点／覆盖槽计数、物理列／UTF-16 和单行预读。图像及被动链接已由[阶段六十五](verification/phase-65-streaming-media.md)验收；完整行续排由[阶段六十七](verification/phase-67-streaming-row-split.md)验收，加密／静态归档见[阶段七十](verification/phase-70-streaming-protection.md)，重复／并发失败恢复见[阶段六十九](verification/phase-69-streaming-stability.md)；[实际页码及准确总数](verification/phase-73-streaming-fields.md)已验收；[显式有界纵向合并](streaming-row-spans-api.md)及 1k／10k／100k 行独立 64 MiB 布局控制已由[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收；自动宽度、未来语义和长期容量仍开放；不宣称 PDF 恒内存 |
 | GAP-10 | P2 | PDF 读取、编辑、组合及提取的明确子集 | 独立适配器；第三方类型隔离；显式密码、交互与签名处理边界；受损输入预算及独立验证；按下文 GAP-10.1～10.12 分别验收编辑、渲染、优化、脱敏、表单和数据处理 | 已验收本表全部子项：[阶段九十三](verification/phase-93-pdf-compatibility-closure.md)与[九十七](verification/phase-97-pdf-editing-standards-recovery-closure.md)完成 GAP-10.1～10.12；原位文字／图片、两种真实脱敏、扩展字段／批注、FDF／XFDF 和声明的静态／动态 XFA 分别有独立证据。各入口仍按明确字体、结构和损失边界执行，未知活动内容及无支持路径的签名修改拒绝，OCR 排除 |
 | GAP-11 | P2 | PDF/UA、PAdES/LTV、PDF/A 范围有限 | 按标准逐项实现并用独立验证器验收；不能由标签或一次输出推断合规 | 已验收本表全部子项：[阶段九十六](verification/phase-96-pdf-standards.md)完成离线 PAdES B／T／LT／LTA、信任／撤销／时间戳／DSS 续期／DocMDP、PDF/A-1b／2b／3b／4f 生成与转换，以及 PDF/UA-1 的明确语义及已有标签处理；独立合规、验签、双渲染与生成／已有标签实际辅助阅读器分别有证据。选定版本及输入子集外不由这些结果推断支持 |
 | GAP-12 | P2 | DOCX 合并表格、复杂页区及布局互转有限 | 标准 OOXML 合并与受支持样式；Word 更新／保存回读；严格损失边界；不承诺 PDF 同分页 | 部分支持：[阶段二十五](verification/phase-25-column-spans.md)／[二十六](verification/phase-26-row-spans.md)的双跨度和[二十七](verification/phase-27-block-cells.md)的两层原子块格已贯通标准 gridSpan／vMerge／p-tbl-p、字段／图文链接及全树来源；[标准 DOCX 默认页眉页脚](verification/phase-42-sections-and-docx-regions.md)含图像／表格／页码及分节继承／清空已验收；纵向拆组和递归续排见[阶段五十七](verification/phase-57-recursive-tables.md)，更广 Word 兼容仍开放；保存回读单列 |
@@ -44,7 +32,7 @@
 | GAP-18 | P1 | HTML／CSS 只有语义导出，缺导入 | 离线元素／属性／CSS 子集映射到语义模型，明确级联和资源入口；不执行脚本或隐式外联；未知样式、浮动和布局损失可定位，并受预算、取消及 GAP-19 策略控制 | 已验收：[阶段四十六](verification/phase-46-html-import.md)；离线元素／属性与有限 CSS 级联、显式资源、双跨度／两层块格和实际损失；完整浏览器布局与任意网页往返不在本项 |
 | GAP-19 | P1 | 导入、编辑和转换缺统一动作策略、损失预检及结果报告 | 全局及逐格式／功能／编辑操作控制 ERROR／WARN／IGNORE；诊断动作与跳过／降级／丢弃分开声明；编辑前可预检损失，执行后返回实际损失与位置；统一支持检查和转换编排，不放宽非法输入或执行失败 | 已验收：[阶段四十七](verification/phase-47-document-conversion.md)统一导入→编辑→导出、确切输出预检和三阶段实际损失；覆盖优先级明确，IGNORE 保留损失，未编辑内容也检查；旧入口契约保持，只有真实通道才能保留 |
 | GAP-20 | P3 | PDF 可编辑语义恢复及明确推断边界 | 在明确静态子集内恢复阅读顺序、段落、标题、表格和图像位置，再转换为 DOCX／HTML／Markdown；分别验证内容、结构和视觉差异，报告无法恢复项 | 已验收明确自动子集：[阶段九十五](verification/phase-95-pdf-automatic-recovery.md)完成 GAP-20.1／20.2；显式 AUTO 贯通多栏、段落、标题／列表、重复页区、有线／无线表格、合并／嵌套和跨页续表。显式网格优先，来源与不确定性损失保留；重新布局不等于恢复作者原版，OCR 排除 |
-| GAP-21 | P2 | 高级色彩、矢量合成和 SVG 兼容有限 | 在绘制契约中表达色彩空间、透明度及合成，扩大静态 SVG 子集；各后端逐项保留或明确报损 | 部分支持：RGB 路径、PNG／JPEG 与图片 alpha、受限离线 SVG 已有；矢量透明度／混合、CMYK／专色及更广 SVG 见 GAP-21.1／21.2 |
+| GAP-21 | P2 | 高级色彩、矢量合成和 SVG 兼容有限 | 在绘制契约中表达色彩空间、透明度及合成，扩大静态 SVG 子集；各后端逐项保留或明确报损 | 部分支持：RGB 路径、PNG／JPEG 与图片 alpha 已有；[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收独立填充／描边透明度、三后端状态恢复及受限 SVG 变换；混合模式、CMYK／专色及更广 SVG 见 GAP-21.1／21.2 |
 | GAP-22 | P3 | 其他文档及页面格式缺少转换入口 | XLSX、PPTX、EPUB、XPS、PS／PCL 等按格式及输入／输出方向分别定义语义映射、资源、损失和验收；不由扩展名推断兼容 | 待实现：候选范围见后文；已有 PDF／DOCX／HTML／Markdown 转换及 SVG／PNG 静态输出不因此扩大 |
 | GAP-23 | — | 扫描件文字识别与可搜索文字层缺失 | 当前只登记边界；若后续纳入范围，须独立设计可选识别模块及模型／语言资源、文字与像素坐标对应、置信度、预算、取消和许可验收 | 范围外（未实现）：PDF 渲染、图片提取和语义恢复均不执行 OCR，不把扫描图片当作已恢复正文 |
 | GAP-24 | P1 | 自生成文档的恢复与往返编辑 | 已支持模型／显式资源的可编辑恢复、可选标准容器、原文档保留路径和多轮损失对账 | 已验收（已支持声明模型与目标子集）：模型／资源保存、七格式可选恢复、原包／原页面保留路径、三轮及跨格式矩阵和真实 Word 保存回读；见[四项明细](#自生成文档的恢复与往返编辑)及[阶段九十](verification/phase-90-recovery-closure.md)。任意外部文件识别、运行时代码和更多原对象编辑仍归各自独立缺口 |
@@ -96,11 +84,11 @@ GAP-15～20 为新增跟踪项；GAP-17／18 细化 GAP-07 的输入方向，分
 
 | 分项 | 优先级 | 当前缺口 | 独立验收目标 | 状态 |
 | --- | --- | --- | --- | --- |
-| GAP-03.1 | P2 | 复杂表格及浮动布局的组合续排未覆盖 | 分别扩展变宽纵向合并拆分、递归格子树、组件网格及任意轮廓／跨页浮动锚点；保留完整原文、物理格来源、字段、图片与链接，验证短区推进、预算和内容唯一性 | 待实现扩展：原子变宽表格与行内格完整行续排已验收；其他高级组合仍按[支持矩阵](capabilities-api.md#docx-与剩余范围)分别判断 |
-| GAP-08.1 | P2 | 字体及文字方向覆盖有限 | 竖排、可变字体轴、CFF2、彩色字体和更多脚本分别定义支持目标；度量、塑形、绘制、提取、搜索及选区逐工具验收。CFF 原生 PDF 字体嵌入与现有轮廓输出独立 | 待实现扩展：显式静态字体及已测复杂文字子集保留，不宣称完整 OpenType／Unicode 或通用阅读器兼容 |
+| GAP-03.1 | P2 | 复杂表格及浮动布局的组合续排未覆盖 | 分别扩展变宽纵向合并拆分、递归格子树、组件网格及任意轮廓／跨页浮动锚点；保留完整原文、物理格来源、字段、图片与链接，验证短区推进、预算和内容唯一性 | 部分支持：[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收变宽行内格纵向 owner 的完整行续排，保留来源、字段、图片／外链和覆盖矩形；递归块子树、组件网格及复杂浮动仍开放，见[变宽续排 API](variable-table-continuation-api.md) |
+| GAP-08.1 | P2 | 字体及文字方向覆盖有限 | 竖排、可变字体轴、CFF2、彩色字体和更多脚本分别定义支持目标；度量、塑形、绘制、提取、搜索及选区逐工具验收。CFF 原生 PDF 字体嵌入与现有轮廓输出独立 | 部分支持：[逐字形竖排](vertical-text-api.md)提供显式字格、列顺序、CJK 直立、ASCII 侧置及选定竖排标点；可变字体轴、CFF2、彩色字体及更广脚本／竖排排版仍开放 |
 | GAP-18.1 | P2 | HTML/CSS 导入仅支持有限静态语义映射 | 按业务子集扩展选择器、媒体／分页规则、Flex／Grid、尺寸与定位；先明确语义或布局映射，再验证级联、资源和跨格式损失，不以保留 CSS 原文冒充支持 | 待实现扩展：[离线导入子集](html-import-api.md)已验收；不引入脚本执行、隐式外联或完整浏览器兼容承诺 |
-| GAP-21.1 | P2 | 绘制契约缺少高级色彩和矢量合成 | 分别表达 CMYK、ICC／专色、矢量透明度、混合模式、渐变和图案；保持模型／绘制／后端边界，各后端精确实现或报损，并独立验证色彩、透明关系与页面外观 | 待实现扩展：RGB 路径与图片 alpha 已有，不能将其列为缺失或视为完整矢量透明度支持 |
-| GAP-21.2 | P2 | 静态 SVG 仅支持受限子集 | 分别扩展渐变、图案、标记及复杂变换／裁剪组合；核对视口、资源、几何和透明度，安全解析与预算保持，以独立渲染验证最终内容 | 待实现扩展：已有 SVG 静态输出和受限离线输入不代表任意 SVG 可往返 |
+| GAP-21.1 | P2 | 绘制契约缺少高级色彩和矢量合成 | 分别表达 CMYK、ICC／专色、矢量透明度、混合模式、渐变和图案；保持模型／绘制／后端边界，各后端精确实现或报损，并独立验证色彩、透明关系与页面外观 | 部分支持：[绘制透明度](graphics-opacity-api.md)贯通独立 fill／stroke alpha、嵌套状态及三个后端的逐次 source-over；CMYK、完整 ICC／专色、混合模式、渐变、图案及离屏组仍开放 |
+| GAP-21.2 | P2 | 静态 SVG 仅支持受限子集 | 分别扩展渐变、图案、标记及复杂变换／裁剪组合；核对视口、资源、几何和透明度，安全解析与预算保持，以独立渲染验证最终内容 | 部分支持：[SVG 扩展](graphics-opacity-api.md#svg-输入)支持继承 fill／stroke opacity 和有界 matrix／translate／scale／rotate／skew；渐变、图案、标记及更广裁剪组合仍开放 |
 | GAP-14.2 | P1 | 兼容语料和跨平台／阅读器证据不足 | 为每项新增输入组合加入可公开或可复现语料，核对预检／实际损失；明确 JDK／系统矩阵及阅读器的打开、搜索、选择、编辑、保存和回读结果，失败与未执行分别登记 | 部分支持：[七十六](verification/phase-76-pdf-font-compatibility.md)新增 CFF／连续显示指令语料；[九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)与[九十二](verification/phase-92-pdf-form-recovery.md)增加源字体、图形状态及 Form 恢复语料；[九十三](verification/phase-93-pdf-compatibility-closure.md)新增 CID／Type1／Type3、Form 隔离编辑、裁切／透明、图层／标签组合的独立输入、双渲染及损失／拒绝对账。有限文件及阅读器证据不能代替一般文件或跨平台兼容；长期容量继续归 GAP-09 |
 | GAP-14.3 | P1 | 稳定 API 与正式分发未完成 | 确定 API 冻结与版本兼容规则，验证实际远程 CI、命名空间、签名制品及 Maven 分发，保留 BOM／SBOM／许可和隔离坐标调用方；发布与本地验证分别记录 | 待实现扩展：已有本地 bundle，不表示已正式发布或具备生产 SLA |
 
@@ -144,6 +132,24 @@ GAP-24 优先解决 Export4j 自己导出的文档能否重新打开并继续编
 - 自主编写语义模型、测量、分页和绘制组合算法，采用 Apache-2.0 声明。
 - 优先复用项目现有代码和 JDK。字体解析、PDF 编码等基础设施继续使用已审查依赖，不为“自主实现”重写成熟解析器。
 - 新增依赖、字体、图片或样本文档须进入[依赖记录](dependencies.md)，核对具体版本、传递依赖、原始许可和分发义务。
+
+## 历史阶段摘要
+
+以下保留各阶段当时的完成范围及后续判断；已完成或调整的内容以本文当前表格为准。
+
+[阶段七十七](verification/phase-77-xml-template-bundle.md)补齐既有 XML 模板源码编辑、普通 ZIP 保存／重开及显式资源复用，继续使用 `XmlTemplate → DocumentTemplate`。这是 GAP-07 的模板编写能力；任意语义模型恢复、原生格式恢复信息及完整往返仍按 GAP-24 独立跟踪。
+
+[阶段七十八](verification/phase-78-xml-model-saving.md)完成支持的语义文档到既有 XML 的保存／重开／编辑，[阶段七十九](verification/phase-79-xml-region-saving.md)完成页区、变体和有序图层的共享来源保存。[阶段八十](verification/phase-80-xml-semantic-saving.md)进一步保留注释／标记、Caption 和标题／列表文字外链，完整绑定及统一转换传递注释，三轮控制、实际编辑、10 页 PDF 和 Web 损失对账通过。[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)补齐独立 CrossReference 的保存／绑定与目标改写，跨节显示页码、题注／列表编号、循环目标和 16 页 PDF 验收通过。后续[阶段九十](verification/phase-90-recovery-closure.md)补齐声明式导航和组合验收，GAP-24 的当前完成边界见后文；主题编写意图保留原 XML，自定义运行时代码不序列化。
+
+[阶段七十六](verification/phase-76-pdf-font-compatibility.md)补齐嵌入静态 CFF 的渲染、文字替换、光栅脱敏及语义恢复，并支持同一字体／状态下连续 Tj／TJ 之间的范围匹配。连续多次替换在下一次读取前完成字体子集嵌入；外部字体与内容流的更广组合继续按 GAP-10.6／10.7 独立跟踪。
+
+[阶段七十五](verification/phase-75-variable-table-continuation.md)补齐行内格在不同栏宽间的完整行续排，保留完整原文、实际区域容量、不同格行高、横向合并、图片／字段／外链及 UTF-16。全仓 1,371 项测试、新隔离调用方、10 页独立双渲染／逐页查看和 7 组历史独立回归通过；变宽纵向合并拆分／递归子树及组件网格仍独立。
+
+阶段六十五至七十四已补齐单向图像／外链、普通表格自动列合并、单向长行续页、DocMDP 认证、有限并发失败恢复、单向加密／归档、原子语义表格变宽区域、已有签名字节完整性校验、单向长表实际页码／准确总数和行内内表自动列。全仓 1,362 项测试、本地制品和新隔离调用方通过；各项独立证据分别登记。长期容量、变宽纵向合并拆分／递归子树、更多流式语义、证书信任及完整标准不由这些子目标关闭。
+
+[阶段六十三](verification/phase-63-minimum-lines.md)已补齐变宽文字／富文本的最低行数：有界全源重测、短区跳过、实际分配与 UTF-16 诊断保持；1,312 项测试、12 页双渲染及新隔离调用方通过。[原子语义行及合并行组](variable-tables-api.md)已进一步接入变宽区域；[行内格完整行续排](variable-table-continuation-api.md)已由阶段七十五补齐；纵向合并拆分／递归子树及组件网格的变宽续排继续独立推进。
+
+[阶段三十六](verification/phase-36-xml-page-settings.md)已补齐 GAP-07 的 XML 静态纸张／方向／边距及绝对单位子目标，937 项测试、6 页独立输出与 13 组回归通过。[阶段三十七](verification/phase-37-page-region-fonts.md)按[固定页区角色设计](adr/0044-page-region-font-roles.md)修复四类固定区域的字体角色上下文：全仓 948 项测试、4 页双渲染／逐页复查、新调用方及 17 组独立检查最终通过；一次原生异常退出与单独重跑证据保留。后续[阶段三十八](verification/phase-38-component-text.md)已交付 FontRoleScope／固定富文本，975 项测试及 3 页独立输出通过；[阶段三十九](verification/phase-39-list-markers.md)与[四十](verification/phase-40-xml-text-defaults.md)进一步交付独立列表标记与 XML 分域默认角色／颜色。最终全仓 1,029 项测试、8 页双渲染／逐页复查、新隔离调用方、18 组历史独立检查及两组新检查通过。当前达到受支持报告／静态表单的本地试用门槛，见[就绪评估](readiness-assessment.md)。[阶段四十一](verification/phase-41-xml-page-regions.md)进一步补齐固定 XML 页眉页脚、独立主题及最终页码；1,041 项测试、5 页双渲染／逐页复查、新隔离调用方和 14 组历史独立回归通过。[阶段四十二](verification/phase-42-sections-and-docx-regions.md)进一步补齐页区图片／表格、XML 静态分节及 DOCX 默认页区导入导出。主题角色／颜色已由[阶段六十](verification/phase-60-theme-appearance.md)验收；首页／奇偶语义页区已由[阶段六十一](verification/phase-61-page-variants.md)验收，XML 背景／前景及独立主题已由[阶段六十二](verification/phase-62-page-overlays.md)验收。
 
 ## 执行记录
 

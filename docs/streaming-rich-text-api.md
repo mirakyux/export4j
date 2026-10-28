@@ -69,7 +69,7 @@ var summary = engine.export(spec, () -> openOrderRows(cellFormat, ordinary, stro
 
 ## 支持边界
 
-本入口接受普通格和仅含 `InlineText` 的富文本格，支持[固定列横向合并](streaming-table-api.md#固定列横向合并)。显式图片／被动外链见[图文 API](streaming-media-api.md)，正文完整行续排见[拆行 API](streaming-row-split-api.md)；PAGE 与准确声明总数的 PAGES 见[单向字段](streaming-fields-api.md)；块格、纵向合并和自动列宽仍明确拒绝。配置的页模板、导航和注释也会在打开源之前拒绝。未知总页数推断、目录、未来引用、脚注、分栏、DOCX 及自动签名尚未接入；需要这些能力时使用既有完整文档 API。
+本入口接受普通格和仅含 `InlineText` 的富文本格，支持[固定列横向合并](streaming-table-api.md#固定列横向合并)。显式图片／被动外链见[图文 API](streaming-media-api.md)，正文完整行续排见[拆行 API](streaming-row-split-api.md)；PAGE 与准确声明总数的 PAGES 见[单向字段](streaming-fields-api.md)。正文纵向合并须显式选择[有界连通组](streaming-row-spans-api.md)，不与拆行组合；块格和自动列宽仍明确拒绝。配置的页模板、导航和注释也会在打开源之前拒绝。未知总页数推断、目录、未来引用、脚注、分栏、DOCX 及自动签名尚未接入；需要这些能力时使用既有完整文档 API。
 
 布局和 Display List 可逐页释放，PDFBox 仍保留累计页树和 COS 对象；`TEMP_FILE` 只改变流存储方式。有限容量实测必须分别报告布局丢弃页与真实 PDF，不代表完整 PDF 恒定内存、长期无泄漏或任意工作负载容量。
 

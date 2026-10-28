@@ -64,6 +64,6 @@ public record AccessibilityTree(String language, List<Node> children, List<Comma
         if (range.pageIndex() >= covered.length || range.endCommand() > covered[range.pageIndex()].length) { throw new IllegalArgumentException("accessibility range exceeds its page"); }
         for (int index = range.firstCommand(); index < range.endCommand(); index++) { if (covered[range.pageIndex()][index]) { throw new IllegalArgumentException("accessibility command ranges overlap"); } covered[range.pageIndex()][index] = true; }
     }
-    public static boolean paints(DrawCommand command) { return !(command instanceof DrawCommand.Save || command instanceof DrawCommand.Restore || command instanceof DrawCommand.Transform || command instanceof DrawCommand.Clip); }
+    public static boolean paints(DrawCommand command) { return !(command instanceof DrawCommand.Save || command instanceof DrawCommand.Restore || command instanceof DrawCommand.Transform || command instanceof DrawCommand.Clip || command instanceof DrawCommand.Opacity); }
     private static void text(String value, String name) { Objects.requireNonNull(value, name); if (value.codePoints().anyMatch(code -> code < 32 && code != 9 && code != 10 && code != 13 || code >= 0xD800 && code <= 0xDFFF || code == 0xFFFE || code == 0xFFFF)) { throw new IllegalArgumentException("invalid accessibility text"); } }
 }

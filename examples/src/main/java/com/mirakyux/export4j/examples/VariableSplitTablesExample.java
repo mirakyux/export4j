@@ -59,6 +59,25 @@ public final class VariableSplitTablesExample {
             balanced.row(source.toString());
         }
         export(engine, balanced.build(), "balanced", true);
+
+        var owner = new ArrayList<InlineContent>();
+        for (int item = 1; item <= 36; item++) {
+            owner.add(new InlineText(String.format(Locale.ROOT, "V%03d alpha beta ", item), STYLE, "https://example.com/vertical-owner"));
+            if (item == 18) { owner.add(picture()); }
+        }
+        owner.add(new InlineText("\nOP=", STYLE));
+        owner.add(new InlineField(InlineField.Kind.PAGE, "", 12, STYLE));
+        var neighbour = new StringBuilder();
+        for (int item = 1; item <= 12; item++) { neighbour.append(String.format(Locale.ROOT, "N%03d gamma ", item)); }
+        var vertical = Table.builder("vertical-owners").cellFormat(CELL).format(format -> format.padding(3).allowRowSplit(true))
+                .columns(new ColumnWidth.Fraction(1), new ColumnWidth.Fraction(1), new ColumnWidth.Fraction(1))
+                .headerCells(header().toBuilder().columnSpan(3).build())
+                .row(TableCell.mixed(owner, CELL).toBuilder().columnSpan(2).rowSpan(3).build(), new TableCell("RIGHT-A", CELL))
+                .row(TableCell.builder().text(neighbour.toString()).format(CELL).rowSpan(2).build())
+                .coveredRow()
+                .row(TableCell.builder().text("END").format(CELL).columnSpan(2).build(), new TableCell("AFTER", CELL)).build();
+        export(engine, vertical, "vertical", false);
+        export(engine, vertical, "vertical-balanced", true);
     }
 
     private static TableCell header() {

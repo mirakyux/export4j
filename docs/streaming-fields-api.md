@@ -31,4 +31,4 @@ var result = engine.export(spec, () -> openOrderRows(format))
 
 路径输出失败保留旧目标，关闭一次行源并清理临时文件。目标流为借用流，失败可能已接收部分字节。高级逐页接收器也可能已接收前面的页，必须以整次调用成功为提交条件；声明总数本身不能实现接收器事务。
 
-未来页／编号引用、目录、脚注、分节显示页码、纵向合并、块格和自动列宽仍不属于本项。基础资源、所有权和 PDFBox 累计对象边界见[单向长表 API](streaming-table-api.md)，完整行续排见[拆行指南](streaming-row-split-api.md)。设计与证据见 [ADR-0080](adr/0080-single-pass-page-fields.md)及[阶段七十三](verification/phase-73-streaming-fields.md)。
+未来页／编号引用、目录、脚注、分节显示页码、块格和自动列宽仍不属于本项。正文纵向合并及其最终页字段另见[有界连通组](streaming-row-spans-api.md)。基础资源、所有权和 PDFBox 累计对象边界见[单向长表 API](streaming-table-api.md)，完整行续排见[拆行指南](streaming-row-split-api.md)。设计与证据见 [ADR-0080](adr/0080-single-pass-page-fields.md)及[阶段七十三](verification/phase-73-streaming-fields.md)。

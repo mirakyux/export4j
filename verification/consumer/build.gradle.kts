@@ -16,6 +16,21 @@ dependencies {
 }
 application { mainClass.set("consumer.Consumer") }
 
+mapOf(
+    "verticalText" to "consumer.Gap08VerticalTextConsumer",
+    "streamingRowSpans" to "consumer.StreamingRowSpansConsumer",
+    "gap21Graphics" to "consumer.Gap21GraphicsConsumer"
+).forEach { (taskName, entryPoint) ->
+    tasks.register<JavaExec>(taskName) {
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set(entryPoint)
+        workingDir = projectDir
+        systemProperty("java.awt.headless", "true")
+        systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+        if (taskName == "streamingRowSpans") { maxHeapSize = "64m" }
+    }
+}
+
 tasks.register<JavaExec>("recoveryClosure") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.RecoveryClosureConsumer")

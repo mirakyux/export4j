@@ -114,3 +114,4 @@
 | 0095 | [有界 Form XObject 语义恢复](0095-bounded-form-xobject-semantic-recovery.md) | 已采纳；实际调用、资源作用域、重复实例及隐式 BBox 可见性 |
 | 0096 | [外部 PDF 的保留、绘制与语义恢复分离](0096-pdf-compatibility-paths.md) | 已采纳；显式被动结构、原对象保留、默认视图及整页光栅恢复的独立契约 |
 | 0097 | [PDF 原对象编辑、语义推断与标准输出分离](0097-explicit-pdf-editing-recovery-and-standards.md) | 已采纳；实例隔离、选择性重建、显式推断、后端中立标签及离线标准证据 |
+| 0098 | [显式矢量透明度与 SVG 仿射变换](0098-explicit-vector-opacity-and-svg-transforms.md) | 已采纳；填充／描边 alpha 独立状态、三个后端逐次合成及受限静态 SVG 继承／变换 |

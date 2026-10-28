@@ -128,3 +128,9 @@ XML 模板源码／资源包变更先运行 `:examples:xmlTemplateBundle` 和 `s
 单页 PNG 内嵌恢复另运行 `:examples:embeddedPngRecovery`、本次新隔离调用方的 `embeddedPngRecovery`，再执行 `scripts/verify_embedded_png_recovery.py --prepare-external`、`:examples:embeddedPngRecoveryExternal` 和验证器主入口。独立检查 PNG 签名／块顺序／CRC、唯一 exJM、去块准确原始字节、ZIP／模型／字体／许可摘要及 Pillow 全像素解码；三轮准确文件、真实改字、外部改像素及移除恢复块的六行三动作不得返回旧模型。覆盖单页后端多页／extras／像素拒绝、总字节／新增块数／ZIP 预算、取消、借用流和失败原子性。3 页 PDF 双渲染并逐页查看；核对当前分发 ZIP 的 15 个自研 JAR 与 SBOM，回归 HTML、Markdown／SVG 及七格式伴随恢复。单 PNG 与 PNG 页 ZIP 分开，不将块 framing 校验说成完整像素解码，不宣称任意编辑器重存已验收。
 
 PDF／DOCX／PNG 页 ZIP 可选内嵌恢复另运行 `:examples:embeddedPdfRecovery :examples:embeddedZipRecovery`、独立调用方的 `embeddedContainerRecovery`、`scripts/verify_embedded_containers.py --prepare-external`、两个 `embedded*RecoveryExternal` 样例和验证器主入口。核对 PDF 附件／原文件前缀、DOCX 与页 ZIP 成员／准确去包、三轮模型和字体／许可摘要、实际编辑、外部重写与移除恢复的三动作、预算／取消／原子失败；以 pypdf、python-docx、Pillow 和 Poppler／PDFium 检查页面。Windows 有 Word 时运行 `scripts/verify_embedded_containers_word.ps1` 核对本轮 DOCX 打开和文字；Word 另存须独立完成才能宣称保存回读兼容。记录七格式普通／内嵌文件的实际字节增量，不把样例比例当固定成本。回归旧内嵌和伴随恢复，见[阶段八十六](../../../../docs/verification/phase-86-standard-container-recovery.md)。
+
+## 变宽 owner、竖排、有界合并与矢量透明度
+
+新增单元需运行全仓 `build sbom publishLocalBundle`、`:examples:variableSplitTables` 及本次新 Maven 调用方的 `run verticalText streamingRowSpans gap21Graphics`，再分别执行 `scripts/verify_variable_vertical_spans.py`、`scripts/verify_gap08_vertical_text.py`、`scripts/verify_streaming_row_spans.py` 和 `scripts/verify_gap21_graphics.py`；均传入本次成功调用方目录。
+
+核对原始 owner 行／列、覆盖行、实际宽度、UTF-16、字段和图片／外链；竖排检查逐字形方向与标点形式，不能只验文字顺序；单向组检查有限预读、预算、取消／失败关闭及旧目标，容量在独立 JVM 中记录堆上限和实际计数。透明度检查 fill／stroke 独立值、嵌套恢复、非交换变换及三后端可见像素，PDF/A-1 拒绝与 PDF/A-2b 独立 veraPDF 分开验收。全部新增 PDF 页双渲染并查看；SVG 结构检查不能冒充浏览器视觉验证。

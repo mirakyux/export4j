@@ -33,5 +33,15 @@ final class VariableSplitTablesConsumer {
         var document = Documents.builder().pageSettings(PageSettings.builder().size(320, 180).margins(20).build())
                 .component("caller-host", columns).build();
         engine.export(document).backend(new PdfBackend()).to(output.resolve("consumer-variable-split-tables.pdf"));
+
+        var vertical = Table.builder("caller-vertical").cellFormat(format).format(value -> value.padding(2).allowRowSplit(true))
+                .headerCells(TableCell.builder().text("MERGED OWNER").format(format).columnSpan(2).build())
+                .row(TableCell.rich(List.of(new InlineText(text.toString(), style, "https://example.com/caller")), format)
+                                .toBuilder().rowSpan(2).build(), new TableCell("SIDE-A", format))
+                .row("SIDE-B").row("END", "AFTER").build();
+        var verticalDocument = Documents.builder().pageSettings(PageSettings.builder().size(320, 180).margins(20).build())
+                .component("caller-vertical-host", ContinuousColumns.builder(new com.mirakyux.export4j.components.SemanticTable(vertical))
+                        .columnWeights(List.of(1.0, 2.0)).gap(12).build()).build();
+        engine.export(verticalDocument).backend(new PdfBackend()).to(output.resolve("consumer-variable-vertical-spans.pdf"));
     }
 }

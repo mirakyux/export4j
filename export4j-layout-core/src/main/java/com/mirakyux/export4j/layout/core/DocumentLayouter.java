@@ -175,7 +175,7 @@ public final class DocumentLayouter {
      * Distributes complete rows or transitive merged-row groups at each region's actual width.
      * Widths are a nonempty cyclic sequence of at most 16 finite positive point values fitting the context.
      * Equal widths use the ordinary cursor. Unequal widths support atomic rows/groups and explicit
-     * complete-line continuation of inline cells; split vertical spans and block cells remain unsupported.
+     * complete-line continuation of inline cells, including vertical owners; split block cells remain unsupported.
      *
      * <p>Source budgets apply once. Each distinct width is prepared at most once, with at most 4,000,000
      * cumulative source UTF-16 units and this layouter's line limit per prepared alternative. Only selected
@@ -200,9 +200,9 @@ public final class DocumentLayouter {
         if (widths.stream().allMatch(width -> width == first)) {
             return layoutTableRegions(table, context.viewport(first, context.height()), regions);
         }
-        if (table.format().allowRowSplit() && (table.hasRowSpans() || table.hasBlockCells())) {
+        if (table.format().allowRowSplit() && table.hasBlockCells()) {
             throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, 0, 0, table.headerRows(), -1, -1,
-                    "variable-width split rows do not support vertical spans or block cells", null);
+                    "variable-width split rows do not support block cells", null);
         }
         var document = new Document(DocumentMetadata.EMPTY, new PageSettings(
                 new PageSize(context.width(), regions.continuationHeight()), PageMargins.uniform(0)), List.of(table));
@@ -1194,10 +1194,20 @@ public final class DocumentLayouter {
             }
 
             private List<TableRegion> layout() {
+                var grid = table.grid();
                 for (int row = table.headerRows(); row < table.rows().size(); row++) {
                     ExecutionContext.checkpoint();
-                    var sources = table.rows().get(row).cells();
-                    double minimumStep = sources.stream().mapToDouble(cell -> cell.format().lineHeight()).max().orElseThrow();
+                    var anchors = new ArrayList<TableGrid.Anchor>();
+                    for (int column = 0; column < table.columns().size();) {
+                        var owner = grid.ownerAt(row, column);
+                        anchors.add(owner);
+                        column += owner.cell().columnSpan();
+                    }
+                    final int sourceRow = row;
+                    double minimumStep = anchors.stream().filter(anchor -> anchor.rowIndex() == sourceRow)
+                            .mapToDouble(anchor -> anchor.cell().format().lineHeight()).max().orElse(0);
+                    // Fully covered rows introduce no new content, matching the equal-width owner cursor.
+                    if (minimumStep == 0) { continue; }
                     double minimum = minimumStep + table.format().padding().top() + table.format().padding().bottom();
                     while (true) {
                         begin(row);
@@ -1207,15 +1217,16 @@ public final class DocumentLayouter {
                     }
                     var capacities = new RowCapacities(row, region, height, minimumStep);
                     var layouts = new ArrayList<ParagraphLayout>();
-                    int column = 0;
-                    for (var cell : sources) {
+                    for (var anchor : anchors) {
+                        if (anchor.rowIndex() < row) { layouts.add(null); continue; }
+                        var cell = anchor.cell();
+                        int column = anchor.columnIndex();
                         preparations.account(cell.text().length(), row);
                         var lineWidths = new CellWidths(column, cell.columnSpan(), cell.format().lineHeight(), capacities);
                         try { layouts.add(shapeCell(cell, settings.contentWidth(), table, 0, row, column, false, lineWidths)); }
                         catch (DocumentLayoutException cause) { throw cause.withSourcePath(cellPath(List.of(), table, row, column, -1)); }
-                        column += cell.columnSpan();
                     }
-                    int[] consumed = new int[sources.size()];
+                    int[] consumed = new int[anchors.size()];
                     boolean continued = false;
                     int part = 0;
                     while (true) {
@@ -1225,24 +1236,32 @@ public final class DocumentLayouter {
                         begin(row);
                         double inside = capacity.inside();
                         double rowHeight = 0;
-                        int[] taken = new int[sources.size()];
+                        int[] taken = new int[anchors.size()];
                         boolean complete = true;
-                        for (int anchor = 0; anchor < sources.size(); anchor++) {
-                            double step = sources.get(anchor).format().lineHeight();
+                        for (int anchor = 0; anchor < anchors.size(); anchor++) {
+                            if (layouts.get(anchor) == null) { continue; }
+                            double step = anchors.get(anchor).cell().format().lineHeight();
                             int remaining = layouts.get(anchor).lines().size() - consumed[anchor];
                             taken[anchor] = (int) Math.min(remaining, Math.floor(Math.nextUp(inside / step)));
                             complete &= taken[anchor] == remaining;
                             rowHeight = Math.max(rowHeight, Math.max(1, taken[anchor]) * step);
                         }
                         rowHeight += table.format().padding().top() + table.format().padding().bottom();
-                        var cells = new ArrayList<CellFragment>();
-                        column = 0;
-                        for (int anchor = 0; anchor < sources.size(); anchor++) {
-                            var cell = sources.get(anchor);
+                        for (int anchor = 0; anchor < anchors.size(); anchor++) {
+                            var owner = anchors.get(anchor);
+                            var cell = owner.cell();
+                            int column = owner.columnIndex();
                             var source = layouts.get(anchor);
                             double x = spannedWidth(active.widths(), 0, column);
                             double width = spannedWidth(active.widths(), column, cell.columnSpan());
                             double step = cell.format().lineHeight();
+                            var bounds = new Rect(x, height, width, rowHeight);
+                            var origin = new Point(x + table.format().padding().left(), height + table.format().padding().top());
+                            if (source == null) {
+                                placed.add(new TableRowFragment(owner.rowIndex(), false, false,
+                                        List.of(new CellFragment(column, bounds, origin, new CellFragment.Blocks(List.of(), List.of()))), true));
+                                continue;
+                            }
                             ParagraphLayout slice;
                             if (taken[anchor] == 0) {
                                 int end = source.lines().getLast().sourceEnd();
@@ -1251,12 +1270,10 @@ public final class DocumentLayouter {
                             } else { slice = fragment(source, consumed[anchor], taken[anchor], step); }
                             slice = new ParagraphLayout(width - table.format().padding().left() - table.format().padding().right(),
                                     slice.height(), slice.lines(), slice.diagnostics());
-                            cells.add(new CellFragment(column, new Rect(x, height, width, rowHeight),
-                                    new Point(x + table.format().padding().left(), height + table.format().padding().top()), slice, consumed[anchor]));
+                            placed.add(new TableRowFragment(row, false, false,
+                                    List.of(new CellFragment(column, bounds, origin, slice, consumed[anchor])), continued));
                             consumed[anchor] += taken[anchor];
-                            column += cell.columnSpan();
                         }
-                        placed.add(new TableRowFragment(row, false, false, cells, continued));
                         height += rowHeight;
                         body = true;
                         if (complete) { break; }
@@ -1310,7 +1327,7 @@ public final class DocumentLayouter {
                 }
                 lineCount += lines;
                 result.add(new TableRegion(region, new TableFragment(table.id(), 0, new Point(0, 0),
-                        java.util.Arrays.stream(active.widths()).sum(), height, placed)));
+                        java.util.Arrays.stream(active.widths()).sum(), height, coalesceRows(placed))));
             }
 
             private void advance(int row) {

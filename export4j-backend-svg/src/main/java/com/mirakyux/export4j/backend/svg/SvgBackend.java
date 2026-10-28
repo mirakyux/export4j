@@ -56,12 +56,19 @@ public final class SvgBackend implements DocumentBackend {
                     .append(page.size().width()).append(' ').append(page.size().height()).append("\">");
             xml.append("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
             var groups = new ArrayDeque<Integer>();
+            var savedOpacity = new ArrayDeque<double[]>();
+            double fillOpacity = 1;
+            double strokeOpacity = 1;
             groups.push(0);
             for (var command : page.commands()) {
                 com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                 switch (command) {
-                    case DrawCommand.Save ignored -> groups.push(0);
-                    case DrawCommand.Restore ignored -> xml.append("</g>".repeat(groups.pop()));
+                    case DrawCommand.Save ignored -> { groups.push(0); savedOpacity.push(new double[] {fillOpacity, strokeOpacity}); }
+                    case DrawCommand.Restore ignored -> {
+                        xml.append("</g>".repeat(groups.pop()));
+                        var opacity = savedOpacity.pop(); fillOpacity = opacity[0]; strokeOpacity = opacity[1];
+                    }
+                    case DrawCommand.Opacity opacity -> { fillOpacity = opacity.fill(); strokeOpacity = opacity.stroke(); }
                     case DrawCommand.Transform transform -> {
                         var m = transform.matrix();
                         xml.append("<g transform=\"matrix(").append(m.a()).append(' ').append(m.b()).append(' ').append(m.c()).append(' ')
@@ -74,18 +81,18 @@ public final class SvgBackend implements DocumentBackend {
                                 .append("<g clip-path=\"url(#clip").append(id).append(")\">");
                         groups.push(groups.pop() + 1);
                     }
-                    case DrawCommand.FillRect fill -> xml.append("<rect ").append(rect(fill.bounds())).append(" fill=\"").append(color(fill.color())).append("\"/>");
-                    case DrawCommand.FillPath fill -> path(xml, fill.path(), "fill=\"" + color(fill.color()) + "\"");
-                    case DrawCommand.StrokePath stroke -> path(xml, stroke.path(), "fill=\"none\" stroke=\"" + color(stroke.color()) + "\" stroke-width=\"" + stroke.width() + "\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"");
+                    case DrawCommand.FillRect fill -> xml.append("<rect ").append(rect(fill.bounds())).append(" fill=\"").append(color(fill.color())).append('"').append(opacity("fill-opacity", fillOpacity)).append("/>");
+                    case DrawCommand.FillPath fill -> path(xml, fill.path(), "fill=\"" + color(fill.color()) + "\"" + opacity("fill-opacity", fillOpacity));
+                    case DrawCommand.StrokePath stroke -> path(xml, stroke.path(), "fill=\"none\" stroke=\"" + color(stroke.color()) + "\" stroke-width=\"" + stroke.width() + "\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"" + opacity("stroke-opacity", strokeOpacity));
                     case DrawCommand.OutlineText text -> {
                         xml.append("<g aria-label=\"").append(escape(text.logicalText())).append("\"><title>").append(escape(text.logicalText())).append("</title>");
-                        for (var p : text.paths()) { path(xml, p, "fill=\"" + color(text.color()) + "\""); }
+                        for (var p : text.paths()) { path(xml, p, "fill=\"" + color(text.color()) + "\"" + opacity("fill-opacity", fillOpacity)); }
                         xml.append("</g>");
                     }
                     case DrawCommand.Image image -> {
                         var png = new ByteArrayOutputStream();
                         if (!ImageIO.write(StaticBackendSupport.image(image.image()), "png", png)) { throw new IOException("PNG writer unavailable"); }
-                        xml.append("<image ").append(rect(image.bounds())).append(" preserveAspectRatio=\"none\" href=\"data:image/png;base64,")
+                        xml.append("<image ").append(rect(image.bounds())).append(opacity("opacity", fillOpacity)).append(" preserveAspectRatio=\"none\" href=\"data:image/png;base64,")
                                 .append(Base64.getEncoder().encodeToString(png.toByteArray())).append("\"/>");
                     }
                     case DrawCommand.Text ignored -> throw new IllegalStateException("text must be converted before output");
@@ -100,6 +107,7 @@ public final class SvgBackend implements DocumentBackend {
     }
 
     private static String rect(Rect r) { return "x=\"" + r.x() + "\" y=\"" + r.y() + "\" width=\"" + r.width() + "\" height=\"" + r.height() + "\""; }
+    private static String opacity(String attribute, double value) { return value == 1 ? "" : " " + attribute + "=\"" + value + "\""; }
     private static String color(RgbColor c) { return "rgb(" + c.red() * 100 + "% " + c.green() * 100 + "% " + c.blue() * 100 + "%)"; }
 
     private static void path(StringBuilder xml, VectorPath path, String attributes) {

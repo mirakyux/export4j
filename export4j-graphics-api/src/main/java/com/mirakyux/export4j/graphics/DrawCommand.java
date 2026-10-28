@@ -6,11 +6,22 @@ import com.mirakyux.export4j.text.GlyphRun;
 
 /**
  * Immutable precision drawing operations. All coordinates and stroke widths are in points.
- * Operations execute in list order. Save/Restore scope transforms and clipping.
+ * Operations execute in list order. Save/Restore scope transforms, clipping and opacity.
  */
 public sealed interface DrawCommand permits DrawCommand.FillRect, DrawCommand.FillPath,
         DrawCommand.StrokePath, DrawCommand.Text, DrawCommand.Image, DrawCommand.Save,
-        DrawCommand.Restore, DrawCommand.Transform, DrawCommand.Clip, DrawCommand.GlyphText, DrawCommand.OutlineText {
+        DrawCommand.Restore, DrawCommand.Transform, DrawCommand.Clip, DrawCommand.Opacity, DrawCommand.GlyphText, DrawCommand.OutlineText {
+
+    /** Replaces the current non-stroking (fills, text and images) and stroking alpha.
+     * Values are finite in [0,1], initially both 1. Each paint composites independently using source-over;
+     * this is not isolated group opacity. Save/Restore preserve this state. */
+    record Opacity(double fill, double stroke) implements DrawCommand {
+        public Opacity {
+            if (!Double.isFinite(fill) || !Double.isFinite(stroke) || fill < 0 || fill > 1 || stroke < 0 || stroke > 1) {
+                throw new IllegalArgumentException("fill and stroke opacity must be finite in [0,1]");
+            }
+        }
+    }
 
     /** Pre-shaped text outlines in logical coordinates. logicalText is reading order, used as PDF ActualText/SVG metadata.
      * Empty paths represent whitespace. No backend reshaping is permitted. */
