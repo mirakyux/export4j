@@ -40,7 +40,7 @@ public final class PdfImageExtractor {
     public PreparedPdfImages prepare() throws IOException {
         var strategy = policy; var control = execution;
         return ExecutionContext.execute(control, () -> {
-            var preflight = new PdfPreflight(limits, true);
+            var preflight = adapter.preflight(true);
             try (var document = adapter.open(selection.input(), preflight)) {
                 if (!document.getCurrentAccessPermission().canExtractContent()) { throw preflight.failure(PdfOperationException.Code.PERMISSION_DENIED); }
                 PdfObjects.inspect(document, limits);

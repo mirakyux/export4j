@@ -49,7 +49,9 @@ adapter.editObjects(adapter.input(Path.of("edited.pdf"), ""))
 
 扁平化需要 FORMS／FLATTEN_FORMS／DISCARD，并返回 `FORM_EDITABILITY_REMOVED`；NeedAppearances 或缺少当前 normal 外观时失败。修改 Info 时已有 XMP 必须按 XMP_METADATA／SET_METADATA／DISCARD 删除，记录 `XMP_METADATA_REMOVED`；没有静默同步或伪装保留。WARN／IGNORE 执行相同处理，IGNORE 仍保留 issues／losses。加密编辑还须显式允许 owner 解密及 ENCRYPTION_REMOVED／DEGRADE。
 
-未知选项、只读权限、非法结构／Unicode、重复字段、错误 widget 归属、树循环、预算、取消和 I/O 均不可忽略。只接受已验证的 Text／Link／Widget，拒绝脚本、活动动作、签名、XFA、图层、标签和外部资源；未知结构不能通过 PRESERVE 枚举进入该入口。
+未知选项、只读权限、非法结构／Unicode、重复字段、错误 widget 归属、树循环、预算、取消和 I/O 均不可忽略。批注只接受已验证的 Text／Link／Widget，脚本、活动动作、签名、XFA 和外部资源继续拒绝；未知结构不能通过 PRESERVE 枚举进入该入口。
+
+图层／静态标签默认拒绝，可由 `PdfAdapter.builder().allowPassiveStructures(true)` 显式开启验证及完整原文档保留；元数据等无关编辑不重建源结构树或图层配置。编辑后再次预检，若删除对象导致标签所有者或结构引用悬空，整个候选失败，不能用损失策略放行。接受结构和新页树组合边界见[被动结构指南](pdf-passive-structures-api.md)。
 
 ## 预算与 I/O
 

@@ -9,7 +9,9 @@ import java.awt.Color;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -34,6 +36,7 @@ public final class PdfRedactor {
     private int fill;
     private ProcessingPolicy policy = ProcessingPolicy.STRICT;
     private ExecutionOptions execution = ExecutionOptions.DEFAULT;
+    private final Map<String, PdfFont> sourceFonts = new HashMap<>();
     PdfRedactor(PdfAdapter adapter, PdfInput input, PdfLimits limits) { this.adapter = adapter; this.input = input; this.limits = limits; }
     public PdfRedactor area(int page, double x, double y, double width, double height) {
         if (page < 0 || !finite(x) || !finite(y) || !finite(width) || !finite(height) || x < 0 || y < 0 || width <= 0 || height <= 0) { throw new IllegalArgumentException("invalid redaction region"); }
@@ -44,12 +47,20 @@ public final class PdfRedactor {
     public PdfRedactor fill(int rgb) { if (rgb < 0 || rgb > 0xFFFFFF) { throw new IllegalArgumentException("invalid RGB fill"); } fill = rgb; return this; }
     public PdfRedactor policy(ProcessingPolicy value) { policy = Objects.requireNonNull(value, "policy"); return this; }
     public PdfRedactor execution(ExecutionOptions value) { execution = Objects.requireNonNull(value, "execution"); return this; }
+    /** Uses explicit supported source-font substitutions during rasterization, with the same
+     * exact BaseFont matching and RENDER_FONT_MAPPING loss contract as PdfRasterRequest.sourceFont.
+     * No source font program is copied to the image-only redacted result.
+     */
+    public PdfRedactor sourceFont(String exactBaseFontName, PdfFont font) {
+        PdfSourceFonts.register(sourceFonts, exactBaseFontName, font, limits); return this;
+    }
     public PreparedPdf prepare() throws IOException {
         var regions = List.copyOf(areas); var strategy = policy; var control = execution; double resolution = dpi; int color = fill;
+        var fontMappings = Map.copyOf(sourceFonts);
         if (regions.isEmpty()) { throw new IllegalStateException("redaction requires at least one explicit region"); }
         return ExecutionContext.execute(control, () -> {
             var sizes = new ArrayList<Size>(); var issues = new ArrayList<ProcessingIssue>();
-            try (var source = adapter.openForEdit(input, new PdfPreflight(limits, true))) {
+            try (var source = adapter.openForEdit(input, adapter.preflight(true))) {
                 loss(strategy, issues, "RASTERIZATION", ProcessingPolicy.Treatment.DEGRADE, "ALL_TEXT_AND_VECTOR_CONTENT_BECOMES_RGB_PIXELS");
                 if (source.isEncrypted()) { loss(strategy, issues, "ENCRYPTION_REMOVED", ProcessingPolicy.Treatment.DEGRADE, "OUTPUT_IS_UNENCRYPTED"); }
                 for (var page : source.getPages()) {
@@ -68,7 +79,9 @@ public final class PdfRedactor {
                     if (area.x() + area.width() > size.width() || area.y() + area.height() > size.height()) { throw new IllegalArgumentException("redaction region exceeds visible page"); }
                 }
             }
-            var rendered = adapter.render(input.allPages()).dpi(resolution).policy(strategy).execution(control).prepare();
+            var rendering = adapter.render(input.allPages()).dpi(resolution).policy(strategy).execution(control);
+            fontMappings.forEach(rendering::sourceFont);
+            var rendered = rendering.prepare();
             // Skipping any page cannot produce a successful sanitized candidate.
             if (rendered.images().size() != sizes.size() || !rendered.preview().skipped().isEmpty()) { throw PdfObjects.unsupported(); }
             issues.addAll(rendered.preview().issues());

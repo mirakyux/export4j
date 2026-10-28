@@ -24,7 +24,10 @@ import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingIssue;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
+import java.awt.Color;
+import java.awt.image.BufferedImage;
 import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
@@ -45,11 +48,14 @@ import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceGrayCo
 import org.apache.pdfbox.contentstream.operator.color.SetNonStrokingDeviceRGBColor;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.pdfparser.PDFStreamParser;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.RenderDestination;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 
@@ -62,6 +68,8 @@ public final class PdfSemanticImporter {
     private record Grid(int page, List<Double> x, List<Double> y, int headers) { }
     private record Glyph(String text, double x, double baseline, double width, double height, InlineStyle style) { }
     private record Item(Block block, double x, double y, double width, double height) { }
+    private record Loss(String feature, ProcessingPolicy.Treatment treatment, String effect, int page) { }
+    private static final class PageRecovery { boolean supported = true; }
     private final PdfAdapter adapter;
     private final PdfInput input;
     private final PdfLimits limits;
@@ -69,6 +77,7 @@ public final class PdfSemanticImporter {
     private final Map<String, String> roles = new HashMap<>();
     private ProcessingPolicy policy = ProcessingPolicy.STRICT;
     private ExecutionOptions execution = ExecutionOptions.DEFAULT;
+    private double rasterDpi = 144;
     PdfSemanticImporter(PdfAdapter adapter, PdfInput input, PdfLimits limits) { this.adapter = adapter; this.input = input; this.limits = limits; }
     /** Maps an exact PDF font BaseFont name (including any subset prefix) to a model font role. */
     public PdfSemanticImporter fontRole(String pdfName, String role) {
@@ -84,19 +93,31 @@ public final class PdfSemanticImporter {
         grids.add(grid); return this;
     }
     public PdfSemanticImporter policy(ProcessingPolicy value) { policy = Objects.requireNonNull(value, "policy"); return this; }
+    /** Resolution used only by an explicitly selected PDF_STRUCTURE/DEGRADE page-image fallback.
+     * The image retains the default visible view, while text, vectors, layers and tags lose editability.
+     */
+    public PdfSemanticImporter rasterDpi(double value) {
+        if (!Double.isFinite(value) || value <= 0 || value > 1200) { throw new IllegalArgumentException("DPI must be within (0,1200]"); }
+        rasterDpi = value; return this;
+    }
     public PdfSemanticImporter execution(ExecutionOptions value) { execution = Objects.requireNonNull(value, "execution"); return this; }
     /** A conversion source snapshots this request, then uses the conversion's shared policy. */
     public DocumentConversion.Request conversion() {
-        var snapshot = new PdfSemanticImporter(adapter, input, limits); snapshot.grids.addAll(grids); snapshot.roles.putAll(roles); snapshot.execution = execution;
+        var snapshot = new PdfSemanticImporter(adapter, input, limits); snapshot.grids.addAll(grids); snapshot.roles.putAll(roles); snapshot.execution = execution; snapshot.rasterDpi = rasterDpi;
         return DocumentConversion.from("PDF", strategy -> { var result = snapshot.policy(strategy).prepare().execute(); return new DocumentConversion.Input(result.document(), List.of(), result.report()); });
     }
     public PreparedPdfImport prepare() throws IOException {
-        var tableGrids = List.copyOf(grids); var fontRoles = Map.copyOf(roles); var strategy = policy; var control = execution;
+        var tableGrids = List.copyOf(grids); var fontRoles = Map.copyOf(roles); var strategy = policy; var control = execution; double resolution = rasterDpi;
         return ExecutionContext.execute(control, () -> {
-            var preflight = new PdfPreflight(limits, true);
+            var preflight = adapter.preflight(true);
             try (var document = adapter.open(input, preflight)) {
                 if (!document.getCurrentAccessPermission().canExtractContent()) { throw preflight.failure(PdfOperationException.Code.PERMISSION_DENIED); }
                 var state = new State(strategy, fontRoles); var snapshot = PdfObjects.inspect(document, limits);
+                var forms = new PdfSemanticForms(limits);
+                var structures = preflight.structures();
+                boolean layered = structures != null && structures.hasLayers();
+                if (layered) { state.loss("PDF_LAYERS", ProcessingPolicy.Treatment.DEGRADE, "DEFAULT_VIEW_BECOMES_FLOW_IMAGE_NO_LAYER_TOGGLE", -1); }
+                if (structures != null && structures.hasTags()) { state.loss("PDF_TAGS", ProcessingPolicy.Treatment.DISCARD, "TAG_TREE_AND_ACCESSIBILITY_NOT_RECOVERED", -1); }
                 state.loss("PDF_LAYOUT", ProcessingPolicy.Treatment.DEGRADE, "GEOMETRIC_READING_ORDER_AND_REFLOW_INFERRED", -1);
                 if (document.isEncrypted()) { state.loss("ENCRYPTION_REMOVED", ProcessingPolicy.Treatment.DEGRADE, "MODEL_HAS_NO_SOURCE_ENCRYPTION", -1); }
                 if (!snapshot.fields().isEmpty()) { state.loss("FORMS", ProcessingPolicy.Treatment.DISCARD, "SOURCE_FIELDS_NOT_RECOVERED", -1); }
@@ -108,10 +129,20 @@ public final class PdfSemanticImporter {
                 var sections = new ArrayList<Section>();
                 for (int index = 0; index < document.getNumberOfPages(); index++) {
                     ExecutionContext.checkpoint(); var page = document.getPage(index); var media = page.getMediaBox();
+                    boolean complexStructure = !forms.supported(page);
                     if (!viewSupported(page)) { state.loss("PDF_PAGE_VIEW", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_NOT_RECOVERED", index); continue; }
-                    if (new PdfRasterResources().check(page) != null || complex(page)) { state.loss("PDF_STRUCTURE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_NOT_RECOVERED", index); continue; }
+                    String resourceIssue = new PdfRasterResources(limits).check(page);
+                    if (resourceIssue != null || complexStructure || layered) {
+                        var section = state.structure(document, index, resourceIssue, resolution);
+                        if (section != null) { sections.add(section); }
+                        continue;
+                    }
+                    state.beginPage(); var recovery = new PageRecovery();
                     var glyphs = new ArrayList<Glyph>(); int pageIndex = index;
                     var stripper = new PDFTextStripper() {
+                        int formDepth;
+                        double transformedSize;
+                        PdfSemanticForms.Visibility visibility = PdfSemanticForms.Visibility.VISIBLE;
                         {
                             // PDFTextStripper does not track colors unless these operators are registered.
                             addOperator(new SetNonStrokingColorSpace(this));
@@ -123,8 +154,27 @@ public final class PdfSemanticImporter {
                         }
                         @Override protected void processOperator(Operator operator, List<COSBase> operands) throws IOException { state.operator(); super.processOperator(operator, operands); }
                         @Override protected void operatorException(Operator operator, List<COSBase> operands, IOException failure) throws IOException { throw failure; }
+                        @Override public void showForm(PDFormXObject form) throws IOException {
+                            formDepth++;
+                            try { super.showForm(form); } finally { formDepth--; }
+                        }
                         @Override protected void showGlyph(org.apache.pdfbox.util.Matrix matrix, PDFont font, int code, org.apache.pdfbox.util.Vector displacement) throws IOException {
                             PdfRasterResources.requireGlyph(font, code);
+                            visibility = PdfSemanticForms.Visibility.VISIBLE;
+                            if (formDepth > 0) {
+                                transformedSize = matrix.getScaleY();
+                                if (getGraphicsState().getTextState().getRenderingMode().intValue() != 3) {
+                                    if (!PdfSemanticForms.axisUniform(matrix)) { recovery.supported = false; }
+                                    if (!(font instanceof PDVectorFont vector)) { throw PdfObjects.unsupported(); }
+                                    var transform = matrix.createAffineTransform(); transform.concatenate(font.getFontMatrix().createAffineTransform());
+                                    var shape = transform.createTransformedShape(vector.getNormalizedPath(code));
+                                    if (shape.getBounds2D().isEmpty()) {
+                                        visibility = getGraphicsState().getCurrentClippingPath().contains(matrix.getTranslateX(), matrix.getTranslateY())
+                                                ? PdfSemanticForms.Visibility.VISIBLE : PdfSemanticForms.Visibility.HIDDEN;
+                                    } else { visibility = forms.visibility(getGraphicsState(), shape); }
+                                    if (visibility == PdfSemanticForms.Visibility.PARTIAL) { recovery.supported = false; }
+                                }
+                            }
                             super.showGlyph(matrix, font, code, displacement);
                         }
                         @Override public void beginMarkedContentSequence(COSName tag, org.apache.pdfbox.cos.COSDictionary properties) {
@@ -136,12 +186,15 @@ public final class PdfSemanticImporter {
                         @Override protected void processTextPosition(TextPosition position) {
                             try {
                                 String text = position.getUnicode();
-                                if (text == null || text.isEmpty() || position.getDir() != 0 || !validText(text)) { throw PdfObjects.unsupported(); }
+                                if (text == null || text.isEmpty() || !validText(text)) { throw PdfObjects.unsupported(); }
                                 state.characters(text.length());
-                                if (getGraphicsState().getTextState().getRenderingMode().intValue() == 3) { state.loss("PDF_HIDDEN_TEXT", ProcessingPolicy.Treatment.DISCARD, "INVISIBLE_TEXT_NOT_RECOVERED", pageIndex); return; }
-                                double size = position.getFontSizeInPt();
+                                if (position.getDir() != 0) { if (formDepth > 0) { recovery.supported = false; } else { throw PdfObjects.unsupported(); } }
+                                double size = formDepth > 0 ? transformedSize : position.getFontSizeInPt();
                                 if (!Double.isFinite(size) || size <= 0 || !Float.isFinite(position.getXDirAdj()) || !Float.isFinite(position.getYDirAdj())
                                         || !Float.isFinite(position.getWidthDirAdj()) || position.getWidthDirAdj() < 0 || !Float.isFinite(position.getHeightDir())) { throw PdfObjects.invalid(); }
+                                if (!recovery.supported) { return; }
+                                if (getGraphicsState().getTextState().getRenderingMode().intValue() == 3) { state.loss("PDF_HIDDEN_TEXT", ProcessingPolicy.Treatment.DISCARD, "INVISIBLE_TEXT_NOT_RECOVERED", pageIndex); return; }
+                                if (visibility == PdfSemanticForms.Visibility.HIDDEN) { state.loss("PDF_HIDDEN_TEXT", ProcessingPolicy.Treatment.DISCARD, "HIDDEN_BY_FORM_BBOX", pageIndex); return; }
                                 if (position.getXDirAdj() < 0 || position.getYDirAdj() < 0 || position.getXDirAdj() + position.getWidthDirAdj() > media.getWidth() + .01 || position.getYDirAdj() > media.getHeight() + .01) {
                                     state.loss("PDF_HIDDEN_TEXT", ProcessingPolicy.Treatment.DISCARD, "OUTSIDE_PAGE_TEXT_NOT_RECOVERED", pageIndex); return;
                                 }
@@ -152,7 +205,14 @@ public final class PdfSemanticImporter {
                     };
                     stripper.setStartPage(index + 1); stripper.setEndPage(index + 1); stripper.setSuppressDuplicateOverlappingText(false);
                     try { stripper.getText(document); } catch (UncheckedIOException failure) { throw failure.getCause(); }
-                    var images = new Images(page, state, index); images.processPage(page); var items = new ArrayList<>(images.items);
+                    var images = new Images(page, state, index, forms, recovery); images.processPage(page);
+                    state.finishPage(recovery.supported);
+                    if (!recovery.supported) {
+                        var section = state.structure(document, index, null, resolution);
+                        if (section != null) { sections.add(section); }
+                        continue;
+                    }
+                    var items = new ArrayList<>(images.items);
                     double bodySize = glyphs.stream().mapToDouble(glyph -> glyph.style().fontSize()).sorted().skip(glyphs.size() / 2).findFirst().orElse(12);
                     for (var grid : tableGrids) { if (grid.page() == index) { state.grid(grid, glyphs, items, media.getWidth(), media.getHeight()); } }
                     for (var line : lines(glyphs)) {
@@ -178,12 +238,18 @@ public final class PdfSemanticImporter {
     private final class State {
         final ProcessingPolicy strategy; final Map<String, String> fontRoles; final Set<String> warnedFonts = new HashSet<>();
         final List<ProcessingIssue> issues = new ArrayList<>(); final List<PreparedPdfImport.Source> sources = new ArrayList<>();
+        List<Loss> pendingLosses;
+        final Set<String> pageFonts = new HashSet<>();
         long operators; long characters; long pixels; long encoded; long nodes; long gridWork;
         State(ProcessingPolicy strategy, Map<String, String> fontRoles) { this.strategy = strategy; this.fontRoles = fontRoles; }
         String id() throws IOException { if (++nodes > limits.maxObjects()) { throw new PdfOperationException(PdfOperationException.Code.OBJECT_LIMIT, 0, -1); } return "pdf-block-" + nodes; }
         void operator() throws IOException { ExecutionContext.checkpoint(); if (++operators > limits.maxContentOperators()) { throw new PdfOperationException(PdfOperationException.Code.OPERATOR_LIMIT, 0, -1); } }
         void characters(int count) throws IOException { ExecutionContext.checkpoint(); if (count > limits.maxTextCharacters() - characters) { throw new PdfOperationException(PdfOperationException.Code.TEXT_LIMIT, 0, -1); } characters += count; }
         void loss(String feature, ProcessingPolicy.Treatment treatment, String effect, int page) {
+            if (pendingLosses != null) {
+                if (pendingLosses.size() >= limits.maxObjects()) { throw new IllegalArgumentException("PDF recovery issue budget exceeded"); }
+                pendingLosses.add(new Loss(feature, treatment, effect, page)); return;
+            }
             var rule = strategy.resolve("MODEL", feature, "RECOVER_PDF");
             var issue = new ProcessingIssue("IMPORT", "PDF", "MODEL", feature, "RECOVER_PDF", new ProcessingIssue.Location("", "PDF_PAGE_" + page, "", List.of(), -1, -1),
                     "semantic PDF recovery requires the declared treatment", rule.action(), rule.treatment(), List.of(effect));
@@ -191,9 +257,59 @@ public final class PdfSemanticImporter {
             if (rule.treatment() != treatment) { throw new IllegalArgumentException("unsupported PDF recovery treatment"); }
             if (issues.size() >= limits.maxObjects()) { throw new IllegalArgumentException("PDF recovery issue budget exceeded"); } issues.add(issue);
         }
+        Section structure(PDDocument document, int index, String resourceIssue, double resolution) throws IOException {
+            var treatment = strategy.resolve("MODEL", "PDF_STRUCTURE", "RECOVER_PDF").treatment();
+            if (treatment != ProcessingPolicy.Treatment.DEGRADE) {
+                loss("PDF_STRUCTURE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_NOT_RECOVERED", index); return null;
+            }
+            loss("PDF_STRUCTURE", ProcessingPolicy.Treatment.DEGRADE, "PAGE_BECOMES_FLOW_IMAGE_TEXT_VECTORS_AND_STRUCTURE_NOT_EDITABLE", index);
+            // A policy cannot manufacture missing fonts, unsupported paint resources or appearances.
+            if (resourceIssue != null) { throw new PdfOperationException(PdfOperationException.Code.UNSUPPORTED_FEATURE, 0, index); }
+            var page = document.getPage(index); var box = page.getMediaBox();
+            float scale = (float) (resolution / 72);
+            long width = Math.max(1, (long) Math.floor(box.getWidth() * scale));
+            long height = Math.max(1, (long) Math.floor(box.getHeight() * scale));
+            if (width > Integer.MAX_VALUE || height > Integer.MAX_VALUE || width > (Math.min(limits.maxImagePixels() - pixels, ImageResource.MAX_PIXELS)) / height) {
+                throw new PdfOperationException(PdfOperationException.Code.IMAGE_LIMIT, 0, index);
+            }
+            pixels += width * height;
+            if (operators >= limits.maxContentOperators()) { throw new PdfOperationException(PdfOperationException.Code.OPERATOR_LIMIT, 0, index); }
+            if (characters >= limits.maxTextCharacters()) { throw new PdfOperationException(PdfOperationException.Code.TEXT_LIMIT, 0, index); }
+            var remaining = limits.toBuilder().maxContentOperators(limits.maxContentOperators() - operators)
+                    .maxTextCharacters((int) (limits.maxTextCharacters() - characters)).build();
+            var programs = new PdfSourceFonts(document, Map.of(), limits, strategy, issues, "MODEL", input.byteSize());
+            var renderer = new PdfRasterRequest.CheckedRenderer(document, remaining, programs);
+            BufferedImage raster = renderer.renderImage(index, scale, ImageType.ARGB, RenderDestination.VIEW);
+            BufferedImage image = null;
+            try {
+                image = new BufferedImage(raster.getWidth(), raster.getHeight(), BufferedImage.TYPE_INT_RGB);
+                var graphics = image.createGraphics();
+                try { graphics.setColor(Color.WHITE); graphics.fillRect(0, 0, image.getWidth(), image.getHeight()); graphics.drawImage(raster, 0, 0, null); }
+                finally { graphics.dispose(); }
+                byte[] bytes = PdfImageSupport.encode(image, "png", 1, Math.min(limits.maxOutputBytes() - encoded, ImageResource.MAX_BYTES), resolution);
+                encoded += bytes.length; operators += renderer.operations(); characters += renderer.glyphs();
+                // Flow images share a paragraph line box with font metrics. Reserve 5% at the same
+                // aspect ratio so a source-page image cannot overflow its own recovered page.
+                var inline = new InlineImage(ImageResource.load(bytes), box.getWidth() * .95, box.getHeight() * .95, 0, "", "");
+                double size = Math.min(1, box.getHeight() / 100);
+                var block = Paragraph.mixed(id(), List.of(inline), ParagraphFormat.builder().fontSize(size)
+                        .lineHeight(inline.height() + size * 2).spaceAfter(0).build());
+                sources.add(new PreparedPdfImport.Source(block.id(), index, 0, 0, box.getWidth(), box.getHeight()));
+                return new Section("pdf-page-" + index, PageSettings.builder().size(box.getWidth(), box.getHeight()).margins(0).build(), List.of(block), 0);
+            } finally { if (image != null) { image.flush(); } raster.flush(); }
+        }
         String role(String name, int page) {
             if (fontRoles.containsKey(name)) { return fontRoles.get(name); }
-            if (warnedFonts.add(name)) { loss("PDF_FONT_MAPPING", ProcessingPolicy.Treatment.DEGRADE, "SOURCE_FONT_USES_MODEL_DEFAULT_ROLE", page); } return "";
+            if (!warnedFonts.contains(name) && pageFonts.add(name)) { loss("PDF_FONT_MAPPING", ProcessingPolicy.Treatment.DEGRADE, "SOURCE_FONT_USES_MODEL_DEFAULT_ROLE", page); } return "";
+        }
+        void beginPage() { pendingLosses = new ArrayList<>(); pageFonts.clear(); }
+        void finishPage(boolean accepted) {
+            var pending = pendingLosses; pendingLosses = null;
+            if (accepted) {
+                for (var item : pending) { loss(item.feature(), item.treatment(), item.effect(), item.page()); }
+                warnedFonts.addAll(pageFonts);
+            }
+            pageFonts.clear();
         }
         void grid(Grid grid, List<Glyph> glyphs, List<Item> items, double width, double height) throws IOException {
             if (grid.x().getLast() > width || grid.y().getLast() > height) { throw new IllegalArgumentException("table grid exceeds source page"); }
@@ -231,7 +347,9 @@ public final class PdfSemanticImporter {
     }
     private final class Images extends PDFGraphicsStreamEngine {
         final State state; final int page; final List<Item> items = new ArrayList<>(); Point2D point; boolean vectorReported;
-        Images(PDPage page, State state, int index) { super(page); this.state = state; this.page = index; }
+        final PdfSemanticForms forms; final PageRecovery recovery; int formDepth;
+        Images(PDPage page, State state, int index, PdfSemanticForms forms, PageRecovery recovery) { super(page); this.state = state; this.page = index; this.forms = forms; this.recovery = recovery; }
+        @Override public void showForm(PDFormXObject form) throws IOException { formDepth++; try { super.showForm(form); } finally { formDepth--; } }
         @Override protected void processOperator(Operator operator, List<COSBase> operands) throws IOException { state.operator(); if (!Set.of("Tj", "TJ", "'", "\"").contains(operator.getName())) { super.processOperator(operator, operands); } }
         @Override protected void operatorException(Operator operator, List<COSBase> operands, IOException failure) throws IOException { throw failure; }
         @Override public void drawImage(PDImage image) throws IOException {
@@ -239,17 +357,22 @@ public final class PdfSemanticImporter {
             var matrix = getGraphicsState().getCurrentTransformationMatrix();
             if (matrix.getShearX() != 0 || matrix.getShearY() != 0 || matrix.getScaleX() <= 0 || matrix.getScaleY() <= 0) { state.loss("PDF_IMAGE_TRANSFORM", ProcessingPolicy.Treatment.SKIP_MATCH, "IMAGE_NOT_RECOVERED", page); return; }
             long count = (long) image.getWidth() * image.getHeight(); if (count > limits.maxImagePixels() - state.pixels) { throw new PdfOperationException(PdfOperationException.Code.IMAGE_LIMIT, 0, page); } state.pixels += count;
+            var visibility = formDepth > 0 ? forms.visibility(getGraphicsState(), new Rectangle2D.Double(matrix.getTranslateX(), matrix.getTranslateY(), matrix.getScaleX(), matrix.getScaleY())) : PdfSemanticForms.Visibility.VISIBLE;
+            if (visibility == PdfSemanticForms.Visibility.PARTIAL) { recovery.supported = false; }
             if (!Set.of("DeviceRGB", "DeviceGray").contains(image.getColorSpace().getName())) { state.loss("PDF_IMAGE_COLOR", ProcessingPolicy.Treatment.DEGRADE, "IMAGE_COLOR_CONVERTED_TO_RGB", page); }
             if (image.getBitsPerComponent() > 8) { state.loss("PDF_IMAGE_PRECISION", ProcessingPolicy.Treatment.DEGRADE, "IMAGE_PRECISION_REDUCED_TO_EIGHT_BITS", page); }
             var raster = image.getImage();
             try {
+                if (raster == null) { throw PdfObjects.invalid(); }
+                if (!recovery.supported) { return; }
+                if (visibility == PdfSemanticForms.Visibility.HIDDEN) { state.loss("PDF_IMAGE_TRANSFORM", ProcessingPolicy.Treatment.SKIP_MATCH, "HIDDEN_BY_FORM_BBOX", page); return; }
                 byte[] bytes = PdfImageSupport.encode(raster, "png", 1, limits.maxOutputBytes() - state.encoded); state.encoded += bytes.length;
                 var inline = new InlineImage(ImageResource.load(bytes), matrix.getScaleX(), matrix.getScaleY(), 0, "", "");
                 var block = Paragraph.mixed(state.id(), List.of(inline), ParagraphFormat.builder().fontSize(12).lineHeight(inline.height() + 18).build());
                 double x = matrix.getTranslateX(); double y = getPage().getMediaBox().getHeight() - matrix.getTranslateY() - matrix.getScaleY();
                 if (x < 0 || y < 0 || x + inline.width() > getPage().getMediaBox().getWidth() + .01 || y + inline.height() > getPage().getMediaBox().getHeight() + .01) { throw PdfObjects.unsupported(); }
                 items.add(new Item(block, x, y, inline.width(), inline.height()));
-            } finally { raster.flush(); }
+            } finally { if (raster != null) { raster.flush(); } }
         }
         void vector() { if (!vectorReported) { state.loss("PDF_VECTOR_GRAPHICS", ProcessingPolicy.Treatment.DISCARD, "PAINTED_PATHS_NOT_RECOVERED", page); vectorReported = true; } }
         @Override public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3) { point = p0; }
@@ -291,26 +414,6 @@ public final class PdfSemanticImporter {
         var media = page.getMediaBox(); var crop = page.getCropBox();
         return page.getRotation() == 0 && page.getUserUnit() == 1 && media.getLowerLeftX() == 0 && media.getLowerLeftY() == 0
                 && crop.getLowerLeftX() == 0 && crop.getLowerLeftY() == 0 && media.getWidth() == crop.getWidth() && media.getHeight() == crop.getHeight();
-    }
-    private static boolean complex(PDPage page) throws IOException {
-        if (page.getResources() != null) { for (var name : page.getResources().getXObjectNames()) { if (page.getResources().getXObject(name) instanceof PDFormXObject) { return true; } } }
-        var streams = page.getContentStreams();
-        while (streams.hasNext()) {
-            var parser = new PDFStreamParser(new PdfContentStream(streams.next().getCOSObject()));
-            try {
-                Object token; Object previous = null;
-                while ((token = parser.parseNextToken()) != null) {
-                    ExecutionContext.checkpoint();
-                    if (token instanceof Operator operator) {
-                        if (Set.of("W", "W*", "gs").contains(operator.getName())) { return true; }
-                        if (operator.getName().equals("Tr") && (!(previous instanceof org.apache.pdfbox.cos.COSNumber number) || number.floatValue() != 0 && number.floatValue() != 3)) { return true; }
-                    }
-                    previous = token;
-                }
-            }
-            finally { parser.close(); }
-        }
-        return false;
     }
     private static List<Double> edges(List<Double> values) {
         var copy = List.copyOf(values); if (copy.size() < 2 || copy.size() > 4097) { throw new IllegalArgumentException("invalid table edges"); }

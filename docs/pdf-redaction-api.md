@@ -18,6 +18,10 @@ adapter.redact(input).area(0, 18, 25, 68, 22).dpi(144).fill(0)
 
 全文变为 RGB 图像，包括选区外的文字和矢量；搜索、复制和语义编辑能力会丢失。RASTERIZATION／DEGRADE 必须明确接受。源 CropBox、旋转或 UserUnit 规范化时要求 PAGE_GEOMETRY／DEGRADE；其他字段、评论、链接、书签、附件和元数据沿用[渲染损失策略](pdf-raster-api.md)。加密输入仍要求 owner 解密复制授权，且输出无加密需 ENCRYPTION_REMOVED／DEGRADE。
 
+源使用受支持的未嵌入简单字体或水平 Type0 时，可先通过 `.sourceFont(exactBaseFontName, PdfFont.of(fontBytes))` 显式提供静态 TrueType，并接受 `RENDER_FONT_MAPPING / DEGRADE`。映射复用[渲染子集](pdf-font-compatibility-api.md#渲染与脱敏的显式源字体映射)，不恢复可搜索文字，也不放宽任何页必须成功渲染的要求。有效传统 Type1 和受控 Type3 通过各自真实程序绘制，不调用隐式系统字体。
+
+源含图层或静态标签时，先显式开启 `PdfAdapter.builder().allowPassiveStructures(true)`。脱敏使用默认 VIEW 的完整页面像素，新文件不复制关闭层、源标签树或隐藏资源；`PDF_LAYERS / DEGRADE` 和 `PDF_TAGS / DISCARD` 仍分别说明丢失的能力。默认视图渲染、读取和原对象保留的范围见[被动结构指南](pdf-passive-structures-api.md)。
+
 默认严格失败。任何页不支持渲染，即使策略请求 SKIP_BLOCK，也不能产生脱敏候选；没有保留原对象或静默漏页的降级路径。非法结构、签名、权限、预算、取消和 I/O 不可忽略。
 
 `prepare()` 完成全部清理、最终验证和确切编码，再允许原子路径写入。借用流不关闭或刷新。调用方必须定位**所有需要清除的可见出现**；未选区域的敏感文字仍可从图像读到，不提供自动发现或 OCR。当前也不提供保留矢量、保留其他可编辑文字的选择性内容流脱敏。

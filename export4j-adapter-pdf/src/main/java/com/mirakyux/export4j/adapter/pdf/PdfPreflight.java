@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.io.ByteArrayInputStream;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Set;
@@ -45,8 +46,11 @@ final class PdfPreflight {
 
     final PdfLimits limits;
     private final boolean interactive;
+    private final boolean passiveStructures;
+    private PdfPassiveStructures structures;
     private final Set<COSStream> decoded = Collections.newSetFromMap(new IdentityHashMap<>());
     private final IdentityHashMap<COSStream, CommandDepth> commands = new IdentityHashMap<>();
+    private final Set<COSStream> glyphCommands = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<COSBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<COSBase> active = Collections.newSetFromMap(new IdentityHashMap<>());
     private long decodedBytes;
@@ -62,7 +66,12 @@ final class PdfPreflight {
     int pageIndex = -1;
 
     PdfPreflight(PdfLimits limits) { this(limits, false); }
-    PdfPreflight(PdfLimits limits, boolean interactive) { this.limits = limits; this.interactive = interactive; }
+    PdfPreflight(PdfLimits limits, boolean interactive) { this(limits, interactive, false); }
+    PdfPreflight(PdfLimits limits, boolean interactive, boolean passiveStructures) {
+        this.limits = limits; this.interactive = interactive; this.passiveStructures = passiveStructures;
+    }
+
+    PdfPassiveStructures structures() { return structures; }
 
     PdfOperationException failure(PdfOperationException.Code code) {
         return new PdfOperationException(code, inputIndex, pageIndex);
@@ -85,6 +94,16 @@ final class PdfPreflight {
         if (document.getDocument().getXrefTable().size() > limits.maxObjects()) {
             throw failure(PdfOperationException.Code.OBJECT_LIMIT);
         }
+        if (passiveStructures) {
+            // Structure validation reads marked content. Bound every reachable and pooled stream
+            // before letting it decode a content stream; this traversal grants no feature support.
+            Set<COSBase> bounded = Collections.newSetFromMap(new IdentityHashMap<>());
+            boundStreams(document.getDocument().getTrailer(), bounded, 0);
+            for (var key : document.getDocument().getXrefTable().keySet()) {
+                boundStreams(document.getDocument().getObjectFromPool(key), bounded, 0);
+            }
+            structures = PdfPassiveStructures.inspect(document, limits);
+        }
         graph(document.getDocument().getTrailer(), 0);
         for (var key : document.getDocument().getXrefTable().keySet()) {
             ExecutionContext.checkpoint();
@@ -103,6 +122,23 @@ final class PdfPreflight {
             if (depth != 0) { throw failure(PdfOperationException.Code.INVALID_PDF); }
         }
         pageIndex = -1;
+    }
+
+    private void boundStreams(COSBase value, Set<COSBase> bounded, int depth) throws IOException {
+        ExecutionContext.checkpoint();
+        if (value == null || !bounded.add(value)) { return; }
+        if (bounded.size() > limits.maxObjects()) { throw failure(PdfOperationException.Code.OBJECT_LIMIT); }
+        if (depth > limits.maxDepth()) { throw failure(PdfOperationException.Code.DEPTH_LIMIT); }
+        if (value instanceof COSObject indirect) { boundStreams(indirect.getObject(), bounded, depth + 1); }
+        else if (value instanceof COSArray array) {
+            for (var item : array) { boundStreams(item, bounded, depth + 1); }
+        } else if (value instanceof COSDictionary dictionary) {
+            if (dictionary instanceof COSStream stream) { stream(stream); }
+            for (var entry : dictionary.entrySet()) {
+                if (entry.getKey().equals(COSName.PARENT) && Set.of("Page", "Pages").contains(dictionary.getNameAsString(COSName.TYPE))) { continue; }
+                boundStreams(entry.getValue(), bounded, depth + 1);
+            }
+        }
     }
 
     private void graph(COSBase value, int depth) throws IOException {
@@ -132,8 +168,18 @@ final class PdfPreflight {
                         if (commandDepth.minimum() < 0 || commandDepth.finalDepth() != 0) { throw failure(PdfOperationException.Code.INVALID_PDF); }
                     }
                 }
+                if ("Type3".equals(dictionary.getNameAsString(COSName.SUBTYPE))) {
+                    PdfRasterResources.validateType3Declaration(dictionary, limits);
+                    if (!(dictionary.getDictionaryObject(COSName.CHAR_PROCS) instanceof COSDictionary procedures)) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+                    for (var key : procedures.keySet()) {
+                        if (!(procedures.getDictionaryObject(key) instanceof COSStream procedure)) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+                        stream(procedure); var commandDepth = commands(procedure, true);
+                        if (commandDepth.minimum() < 0 || commandDepth.finalDepth() != 0) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+                    }
+                }
                 String type = dictionary.getNameAsString(COSName.TYPE, "");
                 for (var entry : dictionary.entrySet()) {
+                    if (structures != null && structures.structuralBackReference(dictionary, entry.getKey())) { continue; }
                     if (entry.getKey().equals(COSName.PARENT) && (type.equals("Page") || type.equals("Pages"))) { continue; }
                     if (interactive && entry.getKey().equals(COSName.P) && (type.equals("Annot") || dictionary.containsKey(COSName.SUBTYPE))) { continue; }
                     if (interactive && entry.getKey().equals(COSName.PARENT) && (dictionary.containsKey(COSName.FT)
@@ -173,7 +219,8 @@ final class PdfPreflight {
         }
         String type = dictionary.getNameAsString(COSName.TYPE, "");
         String action = dictionary.getNameAsString(COSName.S, "");
-        boolean passiveType = interactive && Set.of("Filespec", "EmbeddedFile", "Annot", "Action").contains(type);
+        boolean passiveType = interactive && Set.of("Filespec", "EmbeddedFile", "Annot", "Action").contains(type)
+                || passiveStructures && Set.of("OCG", "OCMD", "StructElem").contains(type);
         boolean actionOwner = type.equals("Annot") || Set.of("Text", "Link", "Widget").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))
                 || dictionary.containsKey(COSName.TITLE);
         if (interactive && (type.equals("Action") || actionOwner && dictionary.containsKey(COSName.A))) {
@@ -183,13 +230,14 @@ final class PdfPreflight {
         if (interactive && action.equals("URI")) { new com.mirakyux.export4j.model.ExternalDestination(dictionary.getString(COSName.URI, "")); }
         if (interactive && type.equals("Annot") && !Set.of("Text", "Link", "Widget").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))) { throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
         if ("Sig".equals(dictionary.getNameAsString(COSName.FT)) || REJECTED_TYPES.contains(type) && !passiveType
-                || ACTIONS.contains(action) && !(interactive && Set.of("URI", "GoTo").contains(action))
-                || "Type3".equals(dictionary.getNameAsString(COSName.SUBTYPE))) {
+                || ACTIONS.contains(action) && !(interactive && Set.of("URI", "GoTo").contains(action))) {
             throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE);
         }
         for (var key : dictionary.keySet()) {
             boolean supported = interactive && Set.of("Annots", "AcroForm", "Outlines", "Names", "EmbeddedFiles").contains(key.getName());
-            if (REJECTED_KEYS.contains(key.getName()) && !supported || type.equals("Catalog") && !CATALOG_KEYS.contains(key.getName()) && !supported) {
+            boolean passive = passiveStructures && Set.of("StructTreeRoot", "StructParent", "StructParents", "OCProperties", "OC", "MarkInfo").contains(key.getName());
+            if (REJECTED_KEYS.contains(key.getName()) && !supported && !passive
+                    || type.equals("Catalog") && !CATALOG_KEYS.contains(key.getName()) && !supported && !passive) {
                 throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE);
             }
         }
@@ -198,8 +246,15 @@ final class PdfPreflight {
     private record CommandDepth(int finalDepth, int minimum, int maximum) { }
 
     private CommandDepth commands(COSStream stream) throws IOException {
+        return commands(stream, false);
+    }
+
+    private CommandDepth commands(COSStream stream, boolean glyph) throws IOException {
         var cached = commands.get(stream);
-        if (cached != null) { return cached; }
+        if (cached != null) {
+            if (glyphCommands.contains(stream) != glyph) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+            return cached;
+        }
         PdfContentSyntax.validate(stream.createInputStream(), this);
         var parser = new ContentParser(stream, this);
         try {
@@ -207,20 +262,34 @@ final class PdfPreflight {
             int graphicsDepth = 0;
             int minimum = 0;
             int maximum = 0;
+            boolean first = true;
+            var widthOperands = new ArrayList<COSBase>();
             while ((token = parser.parseNextToken()) != null) {
                 ExecutionContext.checkpoint();
                 if (token instanceof Operator operator) {
                     if (++operators > limits.maxContentOperators()) { throw failure(PdfOperationException.Code.OPERATOR_LIMIT); }
                     String name = operator.getName();
+                    if (glyph && first) {
+                        int size = name.equals("d0") ? 2 : name.equals("d1") ? 6 : -1;
+                        if (widthOperands.size() != size) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+                        for (var operand : widthOperands) {
+                            if (!(operand instanceof org.apache.pdfbox.cos.COSNumber number) || !Float.isFinite(number.floatValue())) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+                        }
+                        if (size == 6 && (((org.apache.pdfbox.cos.COSNumber) widthOperands.get(2)).floatValue() > ((org.apache.pdfbox.cos.COSNumber) widthOperands.get(4)).floatValue()
+                                || ((org.apache.pdfbox.cos.COSNumber) widthOperands.get(3)).floatValue() > ((org.apache.pdfbox.cos.COSNumber) widthOperands.get(5)).floatValue())) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+                    } else if (name.equals("d0") || name.equals("d1")) { throw failure(PdfOperationException.Code.INVALID_PDF); }
+                    first = false; widthOperands.clear();
                     if (name.equals("BI")) { throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
                     if (name.equals("q") && ++graphicsDepth > limits.maxDepth()) { throw failure(PdfOperationException.Code.DEPTH_LIMIT); }
                     if (name.equals("Q")) { graphicsDepth--; }
                     minimum = Math.min(minimum, graphicsDepth);
                     maximum = Math.max(maximum, graphicsDepth);
-                }
+                } else if (glyph && first && token instanceof COSBase operand) { widthOperands.add(operand); }
             }
+            if (glyph && first) { throw failure(PdfOperationException.Code.INVALID_PDF); }
             var value = new CommandDepth(graphicsDepth, minimum, maximum);
             commands.put(stream, value);
+            if (glyph) { glyphCommands.add(stream); }
             return value;
         } finally { parser.close(); }
     }

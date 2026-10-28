@@ -88,7 +88,7 @@ public final class PdfPageEditor {
     public PreparedPdf prepare() throws IOException {
         var operations = List.copyOf(edits); var control = execution; var strategy = policy;
         return ExecutionContext.execute(control, () -> {
-            var budget = new PdfPreflight(limits); var issues = new ArrayList<ProcessingIssue>();
+            var budget = adapter.preflight(false); var issues = new ArrayList<ProcessingIssue>();
             try (var document = adapter.openForEdit(input, budget)) {
                 if (document.isEncrypted()) { issue(strategy, issues, "ENCRYPTION_REMOVED", "PREPARE", -1, "OUTPUT_IS_UNENCRYPTED"); }
                 Map<PdfFont, PDType0Font> fonts = new IdentityHashMap<>();

@@ -214,7 +214,7 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 
 - General Word documents are not guaranteed to round-trip without loss or paginate identically to PDF.
 - PDFs commonly store glyphs, paths and coordinates without reliable table row/cell relationships. Recovery infers line paragraphs/headings and requires explicit table grids; without a grid, table text is treated as ordinary lines.
-- PDF recovery accepts valid embedded static TrueType and [CFF subsets](docs/pdf-font-compatibility-api.md), avoiding machine-dependent font substitution and measurements. Invisible inline-image/outline anchors use a fixed embedded font. Outlined text and external PDFs retain their own limits; see [PDF recovery boundaries](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档).
+- PDF recovery accepts valid embedded static TrueType, CFF and traditional Type1 [subsets](docs/pdf-font-compatibility-api.md), avoiding machine-dependent font substitution and measurements. Complex pages, including supported Type3 drawing, can explicitly become page images with reported editing and structure losses. Invisible inline-image/outline anchors use a fixed embedded font; see [PDF recovery boundaries](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档).
 - Redaction rasterizes all pages and removes source objects, sacrificing text search and vector editing; callers identify every sensitive region.
 - Complex-text coverage, text extraction, search and selection depend on the tested scripts and readers. Full OpenType, Unicode segmentation and PDF/UA compliance are not claimed.
 - PDF/A output needs independent compliance validation. Signing requires a caller-provided external signer; no private key is bundled.

@@ -1,5 +1,9 @@
 # 依赖与资源管理
 
+外部 PDF 的显式源字体映射、不透明图形状态恢复和独立合成语料由项目自主实现，没有新增运行依赖、字体文件或第三方样本。固定 AFM 度量来自既有 PDFBox 3.0.8，验收复用已登记的 Liberation Sans 及原始许可。映射字体由调用方显式提供并遵守其嵌入权限，见[字体兼容](pdf-font-compatibility-api.md)和[阶段九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)。
+
+普通 Form XObject 的有界语义恢复同样复用既有 PDFBox 3.0.8；独立夹具由 pypdf 自主生成，使用已登记字体的确切字节及自定义源字宽，不增加依赖、字体或外部样本。来源与双渲染证据见[阶段九十二](verification/phase-92-pdf-form-recovery.md)。
+
 PDF 普通输出的不可见逻辑锚点复用既有 PDFBox 3.0.8 JAR 内 `org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf`，与[字体记录](../assets/fonts/README.md)中已审查的 Regular 字节一致。只嵌入锚点使用的子集，不用作可见正文的字体替换；没有新增 Maven 坐标或第三方字体文件。沿用已有 PDFBox 完整 LICENSE／NOTICE 和 Liberation Sans OFL 声明。原始字体字节计入输出字体预算，归档仍使用显式配置的字体。
 
 PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans。PDF 适配器显式声明 FontBox，用于读取嵌入权限及禁止子集标志；没有新增运行坐标、字体或第三方样本。样例图像由 Java 自行生成，源码和检查脚本采用 Apache-2.0。见[阶段四十九](verification/phase-49-pdf-page-editing.md)。

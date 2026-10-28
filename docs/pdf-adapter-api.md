@@ -14,7 +14,7 @@
 | 区域像素清除并新建纯图片 PDF | `redact`，[脱敏](pdf-redaction-api.md)；损失全文搜索及矢量编辑 |
 | 恢复可编辑模型再转 DOCX／HTML／Markdown | `importDocument`，[语义恢复](pdf-semantic-import-api.md)；显式网格、几何推断，无 OCR |
 
-下文描述原有严格读取／静态复制入口，其拒绝边界保持。
+下文描述默认严格读取／静态复制入口。显式 `allowPassiveStructures(true)` 可启用已验证图层／标签的读取和完整原文档保留路径，见[被动结构 API](pdf-passive-structures-api.md)；选页／跨来源组合仍拒绝这些文档。
 
 `export4j-adapter-pdf` 的读取／静态复制通道提供逐页信息、文字提取、选择页复制与合并，直接处理既有对象，不经过布局引擎；语义恢复另走上表的明确损失通道。公共类型位于 `com.mirakyux.export4j.adapter.pdf`，签名不暴露 PDFBox。
 
@@ -54,9 +54,9 @@ pdf.copy(report.pages(0), Path.of("first-page.pdf"));
 | 压缩 | 无滤镜、单个 Flate；图像另允许单个 DCT；拒绝未知滤镜和多滤镜链 |
 | 内容语法 | 前置有界括号／字典／字符串／十六进制／转义检查；操作符白名单，名称或裸 token 最多 256 字节；拒绝未知操作符，包括 BX／EX 中的未知操作符 |
 | 图像 | 普通 XObject 图像按编码资源复制；拒绝 BI 行内图像；DCT 不栅格化，仅检查声明尺寸与编码字节预算 |
-| 字体 | 页面复制保留已编码字体资源；拒绝 Type3；不提供字体替换或损坏字体恢复能力 |
+| 字体 | 页面复制保留已编码字体资源；静态 Type3 先校验声明与 CharProc 内容；复制不替换字体，渲染所需程序及映射见[字体兼容](pdf-font-compatibility-api.md) |
 | 交互与签名 | 批注、链接、AcroForm、动作、目录书签、签名／权限字典、附件明确拒绝；不静默剥离 |
-| 文档语义 | 图层、结构树、标记结构、PDF/A OutputIntents、集合等拒绝；不保持 PDF/UA、PDF/A 或签名合规性 |
+| 文档语义 | 默认拒绝图层、结构树、PDF/A OutputIntents 和集合；被动 BMC／BDC 普通字形可读，ActualText 不替代。显式被动结构选项只放开已验证的图层／标签；不声明 PDF/UA、PDF/A 或签名合规性 |
 | 文档属性 | 新文件不复制 Info、XMP、语言及阅读器显示设置；遇到相应数据返回 `DOCUMENT_METADATA_NOT_COPIED` |
 
 拒绝检查覆盖可达结构和交叉引用表中的对象。即使选择页未引用某个不支持对象，也不能用选择页操作绕过检查。首版也不提供压缩优化、图片重采样、覆盖文字、OCR、标签重建、复杂交互的合并保留或字节级无损保存。

@@ -104,6 +104,54 @@ tasks.register<JavaExec>("pdfFontCompatibility") {
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
 }
 
+tasks.register<JavaExec>("pdfCompatibility") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.PdfCompatibilityConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("pdfExtendedFonts") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.PdfExtendedFontConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("pdfFormEdit") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.PdfFormEditConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("pdfPassive") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.PdfPassiveConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("pdfComplexRecovery") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.PdfComplexRecoveryConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("pdfFormImport") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.PdfFormImportConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
 tasks.register<JavaExec>("xmlCrossReferenceSaving") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.XmlCrossReferenceSavingConsumer")

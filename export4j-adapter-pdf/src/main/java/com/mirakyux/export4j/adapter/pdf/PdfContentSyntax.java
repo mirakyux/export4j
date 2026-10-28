@@ -10,7 +10,7 @@ import java.util.Set;
 /** Small lexical guard, not an operator interpreter. PDFBox content parsing otherwise repairs unterminated arrays. */
 final class PdfContentSyntax {
     private static final Set<String> OPERATORS = Set.of(
-            "q", "Q", "cm", "w", "J", "j", "M", "d", "ri", "i", "gs", "m", "l", "c", "v", "y", "h", "re",
+            "d0", "d1", "q", "Q", "cm", "w", "J", "j", "M", "d", "ri", "i", "gs", "m", "l", "c", "v", "y", "h", "re",
             "S", "s", "f", "F", "f*", "B", "B*", "b", "b*", "n", "W", "W*", "BT", "ET", "Tc", "Tw", "Tz",
             "TL", "Tf", "Tr", "Ts", "Td", "TD", "Tm", "T*", "Tj", "TJ", "'", "\"", "CS", "cs", "SC", "SCN",
             "sc", "scn", "G", "g", "RG", "rg", "K", "k", "sh", "Do", "MP", "DP", "BMC", "BDC", "EMC", "BX", "EX");

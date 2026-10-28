@@ -28,15 +28,23 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 | --- | --- |
 | [页级编辑](pdf-page-editing-api.md) | 旋转／裁剪／等比缩放、显式图文叠加；裁剪隐藏未删除；[阶段四十九](verification/phase-49-pdf-page-editing.md) |
 | [对象编辑](pdf-object-editing-api.md)／[组合](pdf-object-composition-api.md) | 四类字段／外观／扁平化、被动批注／链接／书签／附件／Info；选页及跨来源关系／命名空间重映射；[五十](verification/phase-50-pdf-object-editing.md)／[五十一](verification/phase-51-pdf-object-composition.md) |
-| [渲染与图片](pdf-raster-api.md) | CropBox／旋转／UserUnit、明确 DPI／背景、PNG／JPEG 及去重资源提取；字体必须嵌入，未知外观可明确跳页；[五十二](verification/phase-52-pdf-raster.md) |
+| [渲染与图片](pdf-raster-api.md) | CropBox／旋转／UserUnit、明确 DPI／背景、PNG／JPEG 及去重资源提取；验证嵌入静态字体，或使用显式源字体映射并报告替代损失；未知外观可明确跳页；[五十二](verification/phase-52-pdf-raster.md)／[九十三](verification/phase-93-pdf-compatibility-closure.md) |
 | [优化](pdf-optimization-api.md) | 无损流压缩、相同简单图片／字体程序流去重；显式图片降采样／JPEG，返回确切大小与像素统计，不保证更小；[五十三](verification/phase-53-pdf-optimization.md) |
-| [文字替换](pdf-text-editing-api.md) | 同一指令及同状态连续 Tj／TJ 范围匹配、显式字体及后续坐标保持；被动 Span／ActualText 外部可编辑，内部命中明确拒绝或跳过；不等于脱敏；[七十六](verification/phase-76-pdf-font-compatibility.md)／[九十](verification/phase-90-recovery-closure.md) |
+| [文字替换](pdf-text-editing-api.md) | 同一指令及同状态连续 Tj／TJ 范围匹配、显式字体及后续坐标保持；普通 Form 按命中调用复制后修改，未命中共享实例保持；被动 Span／ActualText 内部及带标签所有者的 Form 明确拒绝或跳过；不等于脱敏；[文字编辑边界](pdf-text-editing-api.md)／[九十三](verification/phase-93-pdf-compatibility-closure.md) |
 | [区域脱敏](pdf-redaction-api.md) | 清除选区像素后新建纯图片 PDF，不复制源对象、文字层、附件、元数据及历史；牺牲全文搜索与矢量编辑；[五十五](verification/phase-55-pdf-redaction.md) |
 | [语义恢复](pdf-semantic-import-api.md) | 逐行段落、字号标题、显式表格网格及流图片，再编辑并转换 DOCX／HTML／Markdown／PDF；普通输出的不可见图片锚点已嵌入字体并验证重新导入；近似源框、推断损失及原版重排限制见[五十六](verification/phase-56-pdf-semantic-import.md) |
 
 不支持任意 PDF 无损编辑或版面恢复，OCR 不在范围内。脱敏区域由调用方完整指定；不是自动发现敏感信息。各坐标系和字体／页面子集以对应 API 为准。
 
 外部 PDF 的[嵌入静态 CFF 字体](pdf-font-compatibility-api.md)已贯通渲染、文字替换、光栅脱敏及语义恢复；新建 PDF 的 CFF 正文仍使用既有轮廓输出。未嵌入字体没有隐式系统替代，复杂内容流和交互结构的入口边界保持独立。
+
+[显式源字体映射](pdf-font-compatibility-api.md#渲染与脱敏的显式源字体映射)允许渲染／光栅脱敏使用调用方静态 TrueType 替代无程序的简单字体，保留源编码及字宽，并报告外观替代损失；不扩大文字编辑／语义恢复的字体范围。语义恢复另接受明确白名单的普通不透明 ExtGState，透明度、软蒙版、未知键、Form 与裁剪仍按各自边界处理。两项实现与独立控制见[阶段九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)。
+
+[阶段九十二](verification/phase-92-pdf-form-recovery.md)进一步支持普通不透明 Form 的实际调用恢复：嵌套／重复实例、局部或继承资源、正向等比缩放和平移，以及变换后的文字颜色／字号、图片和物理来源。隐式 BBox 检查真实字形轮廓与图片矩形，完全隐藏内容报损丢弃。该阶段尚未包含的原 Form 编辑、显式裁切及透明合成由后续阶段扩展。
+
+[阶段九十三](verification/phase-93-pdf-compatibility-closure.md)完成 GAP-10.6 原剩余清单：字典编码／水平 CID 源字体映射、传统 Type1／静态 Type3 绘制、共享 Form 调用隔离编辑、更多图形状态、显式裁切／透明合成，以及被动图层／标签的读取与原文档保留。图层／标签须显式开启 `allowPassiveStructures(true)`；读取使用默认 VIEW，关闭层文字不泄露，跨文档复制／组合仍严格拒绝。各入口的保留、编辑和恢复范围见[兼容矩阵](pdf-passive-structures-api.md)。
+
+可渲染而不能表达为当前语义模型的页面，可显式选择 `PDF_STRUCTURE / DEGRADE` 整页恢复为流图片，再输出 PDF／DOCX／HTML／Markdown；正文、矢量和结构不再可编辑，损失逐项报告。`SKIP_BLOCK` 仍可整页跳过；默认 ERROR，WARN／IGNORE 处理一致，非法输入、缺字、预算和取消仍失败。源字体映射仅服务渲染／光栅脱敏，不隐式进入语义恢复。
 
 ## HTML 与 Markdown 输出
 
@@ -56,7 +64,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 ## 公共文本和字体
 
-DOCX [样式级联](docx-style-import-api.md)支持默认值、basedOn、字符样式和直接格式，并通过显式字体族映射选择真实角色；图展开损失明确报告。[原包编辑](docx-editing-api.md)可修改普通文字并保留未编辑目录、评论、修订、表单及页区。两种通道均由[阶段四十八](verification/phase-48-docx-editing.md)验收，不能推断一般 Word 无损语义编辑；保存／导出未验收。
+DOCX [样式级联](docx-style-import-api.md)支持默认值、basedOn、字符样式和直接格式，并通过显式字体族映射选择真实角色；图展开损失明确报告。[原包编辑](docx-editing-api.md)可修改普通文字并保留未编辑目录、评论、修订、表单及页区。两种通道均由[阶段四十八](verification/phase-48-docx-editing.md)验收；[阶段九十](verification/phase-90-recovery-closure.md)进一步完成生成 DOCX 的真实 Word 编辑、保存、重开及当前内容受限回读，不能推断一般 Word 无损语义编辑或跨应用兼容。
 
 默认 `ParagraphLayouter` 对组合字符、阿拉伯语、希伯来语等需要塑形的文本，以及静态 CFF 字体，使用显式物理字体的 JDK OpenType 布局。语义段落、富文本单元格、`FlowText`、页眉页脚、脚注和目录文本因此共享该能力。简单文字仍保持原有度量；需要对纯拉丁文字显式启用 kerning／连字时继续使用 `OpenTypeText`。
 
@@ -145,7 +153,7 @@ engine.writeAtomically(document, backend, targetPath, options);
 
 ## DOCX 与剩余范围
 
-既有 PDF 使用上文各独立入口。原 `read`／`copy`／`merge` 继续拒绝交互，不承担对象重映射或语义恢复；被动对象组合和模型导入须分别显式选择。签名、标签、图层和未知活动结构仍不受支持，ActualText、owner 身份和损失边界不能绕过。
+既有 PDF 使用上文各独立入口。原 `read`／`copy`／`merge` 继续拒绝交互，不承担对象重映射或语义恢复；被动对象组合和模型导入须分别显式选择。图层／静态标签只在显式开启的入口按兼容矩阵接受，`copy`／`merge`／`composeObjects` 仍拒绝其新页树重映射；签名及未知活动结构继续拒绝，ActualText、owner 身份和损失边界不能绕过。
 
 DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关系；外链只保存语义，不访问目标。PNG／JPEG 媒体、替代文字与标准 DrawingML 的范围见[行内图像 API](inline-images-api.md)。自动列宽以项目扩展属性往返保存，目标 Word 视觉列宽不等于本引擎 PDF 结果。
 

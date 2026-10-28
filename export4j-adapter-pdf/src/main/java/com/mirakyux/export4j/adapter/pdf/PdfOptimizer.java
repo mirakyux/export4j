@@ -68,13 +68,13 @@ public final class PdfOptimizer {
         int width = imageWidth; int height = imageHeight; float quality = jpegQuality;
         if (quality > 0 && width == 0) { throw new IllegalArgumentException("JPEG optimization requires explicit downsampling bounds"); }
         return ExecutionContext.execute(control, () -> {
-            var budget = new PdfPreflight(limits, true);
+            var budget = adapter.preflight(true);
             try (var document = adapter.openForEdit(input, budget)) {
                 PdfObjects.inspect(document, limits); var state = new State(document, strategy, compress, dedupe, width, height, quality);
                 if (document.isEncrypted()) { state.loss("ENCRYPTION_REMOVED", ProcessingPolicy.Treatment.DEGRADE, "OUTPUT_IS_UNENCRYPTED"); }
                 state.findMasks(document.getDocument().getTrailer(), Collections.newSetFromMap(new IdentityHashMap<>()));
                 state.walk(document.getDocument().getTrailer(), "");
-                new PdfPreflight(limits, true).inspect(document); PdfObjects.inspect(document, limits);
+                adapter.preflight(true).inspect(document); PdfObjects.inspect(document, limits);
                 var output = PreparedPdf.encode(document, state.compressed + state.deduplicated + state.resampled, state.issues, limits, control);
                 return new PreparedPdfOptimization(output, new PreparedPdfOptimization.Statistics(input.byteSize(), output.outputBytes(),
                         state.compressed, state.deduplicated, state.resampled, state.pixelsBefore, state.pixelsAfter));

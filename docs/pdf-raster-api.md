@@ -21,7 +21,11 @@ images.toZip(Path.of("embedded-images.zip"));
 
 默认 PNG／白色背景，`.transparent(true)` 保留 alpha；JPEG 不接受透明模式。`.format(PdfRasterRequest.Format.JPEG).jpegQuality(.9).background(0xEEF0F5)` 明确质量和背景。结果为 8 位 RGB／RGBA 预览，不承诺保留印刷色、专色或源色彩空间。PNG pHYs 按整数像素／米登记密度，JPEG JFIF 按整数 DPI 登记；实际尺寸按调用方的原始 DPI 计算。
 
-渲染要求有效、嵌入的静态 TrueType 或 CFF：普通 TrueType／Type0／CIDFontType2，以及 Type1／Type1C、Type0／CIDFontType0C 和静态 OTF／CFF。准确声明与拒绝边界见[嵌入字体兼容](pdf-font-compatibility-api.md)。字体资源、当前外观、ExtGState 字体和软蒙版组预先检查。NeedAppearances、缺少应有外观及当前不支持的图案通过独立功能键处理。文字缺少 Tf、畸形字体、实际缺字及无效资源不生成默认字体结果。
+渲染接受有效静态 TrueType、CFF、传统 Type1 分段程序和受控 Type3 CharProc。准确声明、递归／程序执行及拒绝边界见[字体兼容](pdf-font-compatibility-api.md)。字体资源、当前外观、ExtGState 字体和软蒙版组预先检查。NeedAppearances、缺少应有外观及当前不支持的图案通过独立功能键处理。文字缺少 Tf、畸形字体、实际缺字及无效资源不生成默认字体结果。
+
+无程序的受支持简单字体或水平 Type0 可通过 `.sourceFont(exactBaseFontName, PdfFont.of(fontBytes))` 明确映射到调用方静态 TrueType。源编码、字宽、ToUnicode 和内容流保持；Type0 依据确切 Unicode 建立 CIDToGIDMap，原字形外观可能改变。支持编码、字宽及预算边界见[显式源字体映射](pdf-font-compatibility-api.md#渲染与脱敏的显式源字体映射)，没有隐式系统字体回退。
+
+含被动图层或标签的源须在适配器上显式开启 `allowPassiveStructures(true)`；默认仍拒绝。图层按源默认 VIEW 渲染，不输出关闭层；PNG／JPEG 不保留图层切换、标签树或可访问性结构，分别返回下表损失。准确结构验证、静态读取边界和原对象保留条件见[被动结构指南](pdf-passive-structures-api.md)。
 
 | 功能键 | 真实处理及必需 treatment |
 | --- | --- |
@@ -30,6 +34,9 @@ images.toZip(Path.of("embedded-images.zip"));
 | COMMENTS | 仅可见外观成为像素，评论内容和编辑能力不保留，DEGRADE |
 | DOCUMENT_METADATA | 不复制源 Info／XMP，DISCARD |
 | JPEG_ENCODING | 有损像素编码，DEGRADE |
+| RENDER_FONT_MAPPING | 使用调用方字体替代未嵌入源字体，DEGRADE；源步进保持但字形外观可能改变 |
+| PDF_LAYERS | 源默认 VIEW 成为固定像素，无法切换图层，DEGRADE |
+| PDF_TAGS | 标签树及可访问性结构不进入图像，DISCARD |
 | RENDER_FONT／FORM_APPEARANCE／RENDER_PATTERN | 无受支持渲染路径，只能 SKIP_BLOCK 跳过整页，报告 PAGE_NOT_RENDERED |
 
 默认 ERROR；WARN／IGNORE 的真实处理相同，IGNORE 仍保留 issues／losses。操作键 RASTERIZE，目标格式 PNG／JPEG，遵循共享覆盖顺序。用户明确选择查看图像不等于继续保留 PDF 交互或可搜索文字。

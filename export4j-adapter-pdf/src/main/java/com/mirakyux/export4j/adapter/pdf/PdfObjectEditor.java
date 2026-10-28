@@ -186,12 +186,13 @@ public final class PdfObjectEditor {
     public PreparedPdf prepare() throws IOException {
         var operations = List.copyOf(edits); var control = execution; var strategy = policy;
         return ExecutionContext.execute(control, () -> {
-            var budget = new PdfPreflight(limits, true);
+            var budget = adapter.preflight(true);
             try (var document = adapter.openForEdit(input, budget)) {
                 PdfObjects.inspect(document, limits);
                 var state = new State(document, strategy); int changes = 0;
                 if (document.isEncrypted()) { state.loss("ENCRYPTION_REMOVED", "PREPARE", ProcessingPolicy.Treatment.DEGRADE, "OUTPUT_IS_UNENCRYPTED"); }
                 for (var edit : operations) { ExecutionContext.checkpoint(); if (edit.apply(state)) { changes++; } }
+                adapter.preflight(true).inspect(document);
                 PdfObjects.inspect(document, limits);
                 return PreparedPdf.encode(document, changes, state.issues, limits, control);
             }

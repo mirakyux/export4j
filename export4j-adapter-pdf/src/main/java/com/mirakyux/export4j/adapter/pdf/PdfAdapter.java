@@ -38,13 +38,16 @@ import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.apache.pdfbox.pdmodel.encryption.SecurityHandler;
 import org.apache.pdfbox.pdmodel.encryption.StandardSecurityHandler;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
+import org.apache.pdfbox.pdmodel.graphics.form.PDTransparencyGroup;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 
 /** Offline PDF inspection, heuristic text extraction and static physical page composition.
  * Instances are immutable and reusable concurrently; builders are task confined. No API exposes PDFBox types.
  * Inputs are encoded snapshots and passwords are always explicit (use "" for no password).
- * Interactive, signed, tagged, layered, archival and embedded-file documents are rejected by the strict first subset.
+ * The default static entry rejects interactive, signed, tagged, layered, archival and embedded-file input.
+ * An explicit builder option admits validated passive layers/tags for reading and whole-document edits;
+ * page composition remains strict because these document graphs require independent remapping.
  * Streams remain caller owned. Failed stream writes may leave partial bytes; discard those bytes.
  * Path output requires same-directory atomic replacement and never falls back to a non-atomic copy.
  * Cancellation is cooperative on the caller thread; the underlying parser and font decoder are not a sandbox.
@@ -86,15 +89,19 @@ public final class PdfAdapter {
 
     private final PdfLimits limits;
     private final boolean allowDecryptedCopy;
+    private final boolean allowPassiveStructures;
 
-    public PdfAdapter() { this(PdfLimits.DEFAULT, false); }
+    public PdfAdapter() { this(PdfLimits.DEFAULT, false, false); }
 
-    private PdfAdapter(PdfLimits limits, boolean allowDecryptedCopy) {
+    private PdfAdapter(PdfLimits limits, boolean allowDecryptedCopy, boolean allowPassiveStructures) {
         this.limits = limits;
         this.allowDecryptedCopy = allowDecryptedCopy;
+        this.allowPassiveStructures = allowPassiveStructures;
     }
 
     public static Builder builder() { return new Builder(); }
+
+    PdfPreflight preflight(boolean interactive) { return new PdfPreflight(limits, interactive, allowPassiveStructures); }
 
     /** Starts real, bounded content-stream replacement in the static page-text subset. */
     public PdfTextEditor editText(PdfInput input) { return new PdfTextEditor(this, Objects.requireNonNull(input, "input"), limits); }
@@ -130,7 +137,7 @@ public final class PdfAdapter {
         Objects.requireNonNull(input, "input");
         return ExecutionContext.execute(options, () -> {
             checkInputs(List.of(input));
-            var budget = new PdfPreflight(limits, true);
+            var budget = preflight(true);
             try (var document = open(input, budget)) {
                 if (!document.getCurrentAccessPermission().canExtractContent()) { throw budget.failure(PdfOperationException.Code.PERMISSION_DENIED); }
                 return PdfObjects.inspect(document, limits);
@@ -158,13 +165,20 @@ public final class PdfAdapter {
     public static final class Builder {
         private PdfLimits limits = PdfLimits.DEFAULT;
         private boolean allowDecryptedCopy;
+        private boolean allowPassiveStructures;
         private Builder() { }
         public Builder limits(PdfLimits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
         /** Explicitly permits an unencrypted derivative of encrypted input, with an owner password only.
          * The write result reports ENCRYPTION_REMOVED. The default is false.
          */
         public Builder allowDecryptedCopy(boolean value) { allowDecryptedCopy = value; return this; }
-        public PdfAdapter build() { return new PdfAdapter(limits, allowDecryptedCopy); }
+        /** Enables validated passive optional-content and tagged-PDF structures for reading,
+         * rendering and edits that retain the complete original document. The default is false.
+         * Page selection and composition still reject them because their document-level references
+         * require a separate remapping contract. This does not enable actions, scripts or PDF/UA.
+         */
+        public Builder allowPassiveStructures(boolean value) { allowPassiveStructures = value; return this; }
+        public PdfAdapter build() { return new PdfAdapter(limits, allowDecryptedCopy, allowPassiveStructures); }
     }
 
     /** Takes a defensive encoded snapshot after checking the per-input byte budget. Does not parse the PDF yet. */
@@ -231,7 +245,7 @@ public final class PdfAdapter {
     public ReadResult read(PdfInput input, ExecutionOptions options) throws IOException {
         Objects.requireNonNull(input, "input");
         return ExecutionContext.execute(options, () -> {
-            var budget = new PdfPreflight(limits);
+            var budget = preflight(false);
             checkInputs(List.of(input));
             try (var document = open(input, budget)) {
                 if (!document.getCurrentAccessPermission().canExtractContent()) {
@@ -585,32 +599,61 @@ public final class PdfAdapter {
         private final TextBudget budget;
         private final List<Diagnostic> diagnostics;
         private final Set<COSBase> forms = Collections.newSetFromMap(new IdentityHashMap<>());
+        private final java.util.ArrayDeque<Boolean> visibility = new java.util.ArrayDeque<>();
+        private boolean visible = true;
+        private int graphicsDepth;
         private boolean actualText;
         Stripper(TextBudget budget, List<Diagnostic> diagnostics) { this.budget = budget; this.diagnostics = diagnostics; }
         @Override protected void processTextPosition(TextPosition position) {
             try { budget.glyphs(position.getUnicode() == null ? 0 : position.getUnicode().length()); }
             catch (IOException exception) { throw new UncheckedIOException(exception); }
-            super.processTextPosition(position);
+            if (visible) { super.processTextPosition(position); }
         }
         @Override protected void processOperator(Operator operator, List<COSBase> operands) throws IOException {
             ExecutionContext.checkpoint();
             if (++budget.operators > budget.preflight.limits.maxContentOperators()) {
                 throw budget.preflight.failure(PdfOperationException.Code.OPERATOR_LIMIT);
             }
-            if (operator.getName().equals("q") && getGraphicsStackSize() >= budget.preflight.limits.maxDepth()) {
-                throw budget.preflight.failure(PdfOperationException.Code.DEPTH_LIMIT);
-            }
+            if (operator.getName().equals("q")) {
+                if (forms.size() + graphicsDepth + 1 > budget.preflight.limits.maxDepth()) { throw budget.preflight.failure(PdfOperationException.Code.DEPTH_LIMIT); }
+                graphicsDepth++;
+            } else if (operator.getName().equals("Q")) { graphicsDepth--; }
             if (operator.getName().equals("BI")) { throw budget.preflight.failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
             super.processOperator(operator, operands);
         }
         @Override protected void operatorException(Operator operator, List<COSBase> operands, IOException exception) throws IOException { throw exception; }
         @Override public void showForm(PDFormXObject form) throws IOException {
-            if (!forms.add(form.getCOSObject())) { throw budget.preflight.failure(PdfOperationException.Code.INVALID_PDF); }
-            if (forms.size() > budget.preflight.limits.maxDepth()) { throw budget.preflight.failure(PdfOperationException.Code.DEPTH_LIMIT); }
+            boolean parent = visible;
+            int parentDepth = enter(form);
             try { super.showForm(form); }
-            finally { forms.remove(form.getCOSObject()); }
+            finally { visible = parent; graphicsDepth = parentDepth; forms.remove(form.getCOSObject()); }
+        }
+        @Override public void showTransparencyGroup(PDTransparencyGroup group) throws IOException {
+            boolean parent = visible;
+            int parentDepth = enter(group);
+            try { super.showTransparencyGroup(group); }
+            finally { visible = parent; graphicsDepth = parentDepth; forms.remove(group.getCOSObject()); }
+        }
+        private int enter(PDFormXObject form) throws IOException {
+            ExecutionContext.checkpoint();
+            if (forms.contains(form.getCOSObject())) { throw budget.preflight.failure(PdfOperationException.Code.INVALID_PDF); }
+            if (forms.size() + graphicsDepth + 1 > budget.preflight.limits.maxDepth()) { throw budget.preflight.failure(PdfOperationException.Code.DEPTH_LIMIT); }
+            var structures = budget.preflight.structures();
+            if (structures != null && form.getCOSObject().containsKey(COSName.OC)) {
+                visible &= structures.visible(form.getCOSObject().getCOSDictionary(COSName.OC));
+            }
+            forms.add(form.getCOSObject()); return graphicsDepth;
         }
         @Override public void beginMarkedContentSequence(COSName tag, COSDictionary properties) {
+            if (visibility.size() >= budget.preflight.limits.maxDepth()) {
+                throw new UncheckedIOException(budget.preflight.failure(PdfOperationException.Code.DEPTH_LIMIT));
+            }
+            visibility.push(visible);
+            var structures = budget.preflight.structures();
+            if (COSName.OC.equals(tag) && structures != null) {
+                try { visible &= structures.visible(properties); }
+                catch (IOException failure) { throw new UncheckedIOException(failure); }
+            }
             if (!actualText && properties != null && properties.containsKey(COSName.ACTUAL_TEXT)) {
                 actualText = true;
                 diagnostics.add(new Diagnostic(DiagnosticCode.ACTUAL_TEXT_NOT_APPLIED, budget.preflight.inputIndex, budget.preflight.pageIndex));
@@ -618,6 +661,9 @@ public final class PdfAdapter {
             // The first subset intentionally exposes ordinary glyph extraction. Do not enter
             // PDFTextStripper's separate ActualText substitution state for untrusted logical values.
         }
-        @Override public void endMarkedContentSequence() { /* No ActualText substitution state is entered. */ }
+        @Override public void endMarkedContentSequence() {
+            if (visibility.isEmpty()) { throw new UncheckedIOException(budget.preflight.failure(PdfOperationException.Code.INVALID_PDF)); }
+            visible = visibility.pop();
+        }
     }
 }

@@ -7,7 +7,8 @@ import org.apache.fontbox.ttf.OS2WindowsMetricsTable;
 import org.apache.fontbox.ttf.TTFParser;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
-/** Explicit TrueType bytes for simple PDF stamps; no font discovery or implicit fallback.
+/** Explicit static TrueType bytes for PDF stamps, replacements and source-font mappings;
+ * no font discovery or implicit fallback.
  * Immutable snapshot; parsing and glyph support checks occur during preparation.
  */
 public final class PdfFont {

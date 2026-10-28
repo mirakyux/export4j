@@ -110,3 +110,6 @@
 | 0091 | [标准容器中的恢复信息按调用显式写入](0091-optional-standard-container-recovery.md) | 已采纳；DOCX／PNG 页 ZIP 成员、PDF 附件、准确绑定与显式体积代价 |
 | 0092 | [有损输出从当前文件重建恢复模型](0092-reimport-lossy-output-for-recovery.md) | 已采纳；显式当前字节读取器、目标损失降级、实际导入损失及源内容排除 |
 | 0093 | [声明式导航与自生成文档恢复验收](0093-portable-navigation-and-recovery-acceptance.md) | 已采纳；后端中立导航、当前标题解析、明确目标损失及 GAP-24 验收范围 |
+| 0094 | [显式 PDF 源字体映射与不透明图形状态恢复](0094-explicit-pdf-source-fonts-and-passive-graphics-state.md) | 已采纳；调用方字体、源编码／字宽保持、替代损失及 ExtGState 独立白名单 |
+| 0095 | [有界 Form XObject 语义恢复](0095-bounded-form-xobject-semantic-recovery.md) | 已采纳；实际调用、资源作用域、重复实例及隐式 BBox 可见性 |
+| 0096 | [外部 PDF 的保留、绘制与语义恢复分离](0096-pdf-compatibility-paths.md) | 已采纳；显式被动结构、原对象保留、默认视图及整页光栅恢复的独立契约 |

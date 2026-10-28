@@ -39,7 +39,7 @@ prepared.to(Path.of("edited.pdf"));
 
 字体显式快照且有 16 MiB 上限，只接受静态 TrueType，检查嵌入权限、保留禁止子集标志。简单水平文字支持受限脚本；组合标记、双向及需塑形的脚本为 TEXT_SHAPING／STAMP_TEXT，默认 ERROR，仅允许 SKIP_MATCH 跳过整个叠加，保留 issues。缺字、非法 Unicode、尺寸、权限、预算、取消和 I/O 继续失败，不能靠忽略策略强行写出。
 
-静态入口继续拒绝交互对象、签名、标签、图层、归档声明等未实现结构。原有文档属性和原内容流保留；XML／PDF 字节整体相同不在契约中。此能力不包含原文字替换、OCR 或真正内容删除。
+默认静态入口继续拒绝交互对象、签名、标签、图层及归档声明。显式开启 `PdfAdapter.builder().allowPassiveStructures(true)` 后，可在通过专用验证的图层／静态标签文档上保留源结构进行页面编辑；不修改图层配置或标签逻辑，条件见[兼容矩阵](pdf-passive-structures-api.md)。原有文档属性和原内容流保留；XML／PDF 字节整体相同不在契约中。此能力不包含原文字替换、OCR 或真正内容删除。
 
 ## 准备、预算和输出
 
