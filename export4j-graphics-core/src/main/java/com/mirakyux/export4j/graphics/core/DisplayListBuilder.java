@@ -32,6 +32,13 @@ public final class DisplayListBuilder implements DrawingSurface {
         return commands.size();
     }
 
+    @Override public DisplayListBuilder fillPath(VectorPath path, com.mirakyux.export4j.graphics.Paint paint, DrawCommand.FillRule rule) { commands.add(new DrawCommand.PaintFill(path, paint, rule)); return this; }
+    public DisplayListBuilder fillPath(VectorPath path, com.mirakyux.export4j.graphics.Paint paint) { return fillPath(path, paint, DrawCommand.FillRule.NONZERO); }
+    @Override public DisplayListBuilder strokePath(VectorPath path, com.mirakyux.export4j.graphics.Paint paint, double width) { commands.add(new DrawCommand.PaintStroke(path, paint, width)); return this; }
+    @Override public DisplayListBuilder clipPath(VectorPath path, DrawCommand.FillRule rule) { commands.add(new DrawCommand.ClipPath(path, rule)); return this; }
+    @Override public DisplayListBuilder blend(com.mirakyux.export4j.graphics.BlendMode mode) { commands.add(new DrawCommand.Blend(mode)); return this; }
+    @Override public DisplayListBuilder group(Rect bounds, List<DrawCommand> nested, double opacity, com.mirakyux.export4j.graphics.BlendMode blend) { commands.add(new DrawCommand.Group(bounds, nested, opacity, blend)); return this; }
+
     @Override
     public DisplayListBuilder fillRect(Rect bounds, RgbColor color) {
         commands.add(new DrawCommand.FillRect(bounds, color));

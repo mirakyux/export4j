@@ -22,6 +22,11 @@ final class GridTableContinuation {
     private GridTableContinuation() { }
 
     static List<RegionFlow.Fragment> layout(GridTable table, ComponentContext context, FlowRegions regions) {
+        return layout(table, context, regions, null);
+    }
+
+    static List<RegionFlow.Fragment> layout(GridTable table, ComponentContext context, FlowRegions regions, List<Double> widths) {
+        boolean variable = widths != null;
         var budget = new Budget();
         var streams = new GridSemanticStreams();
         var cells = table.cells();
@@ -36,7 +41,9 @@ final class GridTableContinuation {
             budget.tick();
             double width = xs[cell.column() + cell.columnSpan()] - xs[cell.column()] - cell.padding().left() - cell.padding().right();
             double height = regions.continuationHeight() - cell.padding().top() - cell.padding().bottom();
-            flows.add(PreparedCellFlow.prepare(cell.content(), context.viewport(width, height), streams, cell.row() < table.headerRows()));
+            flows.add(variable ? VariableCellFlow.prepare(cell.content(), context.viewport(width, height), streams, cell.row() < table.headerRows())
+                    : PreparedCellFlow.prepare(cell.content(), context.viewport(width, height), streams, cell.row() < table.headerRows()));
+            if (variable) { flows.getLast().reflow(context.viewport(width, height)); }
         }
         var constraints = IntStream.range(0, cells.size()).boxed().sorted(Comparator
                 .<Integer>comparingInt(i -> cells.get(i).rowSpan()).thenComparingInt(i -> cells.get(i).row())
@@ -59,7 +66,7 @@ final class GridTableContinuation {
         for (int index = 0; index < cells.size(); index++) {
             budget.tick();
             var cell = cells.get(index);
-            if (cell.row() < table.headerRows()) {
+            if (cell.row() < table.headerRows() && !variable) {
                 double height = sum(heights, cell.row(), cell.row() + cell.rowSpan(), budget)
                         - cell.padding().top() - cell.padding().bottom();
                 var content = flows.get(index).take(height);
@@ -70,8 +77,40 @@ final class GridTableContinuation {
 
         List<RegionFlow.Fragment> result = new ArrayList<>();
         int first = table.headerRows();
+        double[] remainingMinima = table.minimumRowHeights().stream().mapToDouble(Double::doubleValue).toArray();
+        boolean[] joined = new boolean[table.rowCount()];
+        for (var cell : cells) {
+            for (int row = cell.row() + 1; row < cell.row() + cell.rowSpan(); row++) { joined[row] = true; }
+        }
         for (int region = 0; first < table.rowCount(); region++) {
             budget.tick();
+            if (region >= 100_016) { throw new IllegalArgumentException("grid logical region budget exceeded"); }
+            double actualWidth = variable ? widths.get(region % widths.size()) : context.width();
+            if (variable) {
+                for (int column = 0; column < table.columnWeights().size(); column++) {
+                    xs[column + 1] = xs[column] + actualWidth * (table.columnWeights().get(column) / max) / sum;
+                }
+                heights = remainingMinima.clone();
+                for (int index = 0; index < cells.size(); index++) {
+                    budget.tick();
+                    var cell = cells.get(index);
+                    if (cell.row() + cell.rowSpan() <= first && cell.row() >= table.headerRows()) { continue; }
+                    double width = xs[cell.column() + cell.columnSpan()] - xs[cell.column()] - cell.padding().left() - cell.padding().right();
+                    flows.get(index).reflow(context.viewport(width, regions.continuationHeight() - cell.padding().top() - cell.padding().bottom()));
+                }
+                for (int index : constraints) {
+                    budget.tick(); var cell = cells.get(index);
+                    if (cell.row() + cell.rowSpan() <= first && cell.row() >= table.headerRows()) { continue; }
+                    int start = cell.row() < table.headerRows() ? cell.row() : Math.max(first, cell.row());
+                    double required = flows.get(index).remainingHeight() + cell.padding().top() + cell.padding().bottom();
+                    double actual = sum(heights, start, cell.row() + cell.rowSpan(), budget);
+                    if (required > actual) {
+                        double extra = (required - actual) / (cell.row() + cell.rowSpan() - start);
+                        for (int row = start; row < cell.row() + cell.rowSpan(); row++) { heights[row] += extra; }
+                    }
+                }
+                headerHeight = sum(heights, 0, table.headerRows(), budget);
+            }
             // Continuation padding and unused line-box space must never consume the remaining source.
             // Increase the ending logical row before allocating the next region, in canonical order.
             for (int index : constraints) {
@@ -94,11 +133,23 @@ final class GridTableContinuation {
             while (last < table.rowCount() && used < capacity) {
                 budget.tick();
                 double available = capacity - used;
+                if (!table.allowRowSplit()) {
+                    int end = last + 1;
+                    while (end < table.rowCount() && joined[end]) { end++; }
+                    double group = sum(heights, last, end, budget);
+                    if (group > Math.nextUp(available)) { break; }
+                    while (last < end) { assigned[last] = heights[last]; used += heights[last]; last++; }
+                    continue;
+                }
                 double take = heights[last] <= Math.nextUp(available) ? heights[last] : available;
                 assigned[last] = take;
                 used += take;
                 last++;
                 if (take < heights[last - 1]) { break; }
+            }
+            if (last == first) {
+                if (region < regions.initialHeights().size()) { continue; }
+                throw new IllegalArgumentException("grid atomic group cannot fit the actual region");
             }
             List<Optional<ComponentLayout>> contents = new ArrayList<>(headers);
             boolean progress = false;
@@ -124,8 +175,22 @@ final class GridTableContinuation {
                 throw new IllegalArgumentException("cell atomic content or line constraints exceed continuation region");
             }
             if (result.size() >= 100_000) { throw new IllegalArgumentException("table region fragment budget exceeded"); }
-            result.add(new RegionFlow.Fragment(region, paint(table, context.width(), headerHeight + used, first, last, xs, heights, assigned, contents, budget)));
-            for (int row = first; row < last; row++) { budget.tick(); heights[row] = Math.max(0, heights[row] - assigned[row]); }
+            if (variable) {
+                for (int index = 0; index < cells.size(); index++) {
+                    var cell = cells.get(index);
+                    if (cell.row() >= table.headerRows()) { continue; }
+                    double height = sum(heights, cell.row(), cell.row() + cell.rowSpan(), budget)
+                            - cell.padding().top() - cell.padding().bottom();
+                    var part = flows.get(index).take(height);
+                    if (part.isEmpty() || !flows.get(index).done()) { throw new IllegalArgumentException("header cell must fit as one fragment"); }
+                    contents.set(index, part);
+                }
+            }
+            result.add(new RegionFlow.Fragment(region, paint(table, actualWidth, headerHeight + used, first, last, xs, heights, assigned, contents, budget)));
+            for (int row = first; row < last; row++) {
+                budget.tick(); heights[row] = Math.max(0, heights[row] - assigned[row]);
+                remainingMinima[row] = Math.max(0, remainingMinima[row] - assigned[row]);
+            }
             while (first < table.rowCount() && heights[first] == 0) { budget.tick(); first++; }
         }
         if (flows.stream().anyMatch(flow -> !flow.done())) { throw new IllegalArgumentException("table ended before all cell content was consumed"); }

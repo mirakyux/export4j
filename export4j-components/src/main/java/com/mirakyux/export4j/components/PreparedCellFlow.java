@@ -24,6 +24,7 @@ import com.mirakyux.export4j.text.TextDiagnostic;
 
 /** Layout-local cursors over measured content. No backend clipping and no reshaping on continuation. */
 abstract class PreparedCellFlow {
+    void reflow(ComponentContext context) { }
     abstract double remainingHeight();
     abstract boolean done();
     abstract Optional<ComponentLayout> take(double height);
@@ -125,7 +126,7 @@ abstract class PreparedCellFlow {
         };
     }
 
-    private static List<TextDiagnostic> diagnostics(List<TextDiagnostic> values, int start, int end) {
+    static List<TextDiagnostic> diagnostics(List<TextDiagnostic> values, int start, int end) {
         return values.stream().filter(d -> d.sourceStart() >= start && d.sourceStart() < end).toList();
     }
 

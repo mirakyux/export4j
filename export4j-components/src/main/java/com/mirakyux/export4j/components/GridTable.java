@@ -17,6 +17,7 @@ import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.ComponentSemantics;
 import com.mirakyux.export4j.layout.core.FlowRegions;
 import com.mirakyux.export4j.layout.core.RegionFlow;
+import com.mirakyux.export4j.layout.core.WidthAwareRegionFlow;
 import com.mirakyux.export4j.layout.core.TextInheritance;
 import com.mirakyux.export4j.model.LineBreakPolicy;
 import com.mirakyux.export4j.text.ParagraphStyle;
@@ -33,7 +34,7 @@ import com.mirakyux.export4j.text.TextDiagnostic;
  * Immutable structure; thread safety depends on cells. No content is shrunk or clipped to fit.
  */
 public record GridTable(int rowCount, List<Double> columnWeights, int headerRows, List<Cell> cells,
-        List<Double> minimumRowHeights, boolean allowRowSplit) implements RegionFlow {
+        List<Double> minimumRowHeights, boolean allowRowSplit) implements WidthAwareRegionFlow {
     /** Compatibility constructor: connected row groups remain atomic. */
     public GridTable(int rowCount, List<Double> columnWeights, int headerRows, List<Cell> cells, List<Double> minimumRowHeights) {
         this(rowCount, columnWeights, headerRows, cells, minimumRowHeights, false);
@@ -258,12 +259,12 @@ public record GridTable(int rowCount, List<Double> columnWeights, int headerRows
 
     @Override
     public List<ComponentLayout> layoutParts(ComponentContext context) {
-        return RegionFlow.super.layoutParts(context);
+        return WidthAwareRegionFlow.super.layoutParts(context);
     }
 
     @Override
     public List<ComponentLayout> layoutParts(ComponentContext context, double firstPageHeight) {
-        return RegionFlow.super.layoutParts(context, firstPageHeight);
+        return WidthAwareRegionFlow.super.layoutParts(context, firstPageHeight);
     }
 
     @Override
@@ -356,6 +357,16 @@ public record GridTable(int rowCount, List<Double> columnWeights, int headerRows
             first = last;
         }
         return streams.finish(result);
+    }
+
+    @Override
+    public List<RegionFlow.Fragment> layoutVariableRegions(ComponentContext context, FlowRegions regions, List<Double> widths) {
+        widths = ComponentSupport.variableWidths(context, regions, widths);
+        double firstWidth = widths.getFirst();
+        if (widths.stream().allMatch(width -> width == firstWidth)) {
+            return layoutRegions(context.viewport(firstWidth, context.height()), regions);
+        }
+        return GridTableContinuation.layout(this, context, regions, widths);
     }
 
     private ComponentLayout paint(double width, double height, int first, int last, double[] xs,

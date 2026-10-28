@@ -58,3 +58,11 @@ var document = Documents.builder()
 完整样例见 [GridContinuationExample](../examples/src/main/java/com/mirakyux/export4j/examples/GridContinuationExample.java)，包括 120 行中文合并格、图片、短首区、双栏、复杂文字和固定文本。运行 `:examples:gridContinuation` 后，使用 `scripts/verify_grid_continuation.py` 独立检查内容、格矩形、字形和图片，并对全部页面做 Poppler／PDFium 渲染。
 
 本批分页与组合逻辑为项目自主实现，仅使用原有项目代码、JDK 和已审查基础依赖。未加入竞争库代码或运行依赖。证据见[阶段十五验收](verification/phase-15-continuation.md)。
+
+## 不同宽度的连续栏
+
+`GridTable` 实现 `WidthAwareRegionFlow`，可直接作为不同栏宽的 `ContinuousColumns` 内容。每个区域重新解析列权重，格内标准文字、OpenType、FormText／ChoiceGroup、SemanticTable 及 FlowColumn 按实际宽度继续；已经接受的行保留其历史宽度和原始来源，正文不切片、不缩放。具名字体及样式作用域保持。
+
+表头按当前宽度重测，在确认本区可以推进正文后才输出；短区不会提前消费表头或正文。每个区域重新满足剩余最小行高及横纵合并约束；已经输出的短格不会重复。默认原子合并组仍整体分配，`allowRowSplit(true)` 才允许完整行续排。普通或自定义固定组件按当前宽度重新测量，仍保持原子。
+
+每个文字／语义来源的重复测量累计最多 4,000,000 UTF-16 工作单位；原有格数、嵌套深度、片段、取消及总工作预算保持。语义插槽按同一完整来源的连续片段登记，不放宽独立重复来源的错误。底层公共游标见[变宽表格](variable-table-continuation-api.md)，隔离验收任务为 `complexFlows`。

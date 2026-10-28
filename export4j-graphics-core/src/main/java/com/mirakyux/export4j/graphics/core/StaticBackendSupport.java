@@ -35,10 +35,11 @@ public final class StaticBackendSupport {
         long commands = 0;
         for (var page : document.pages()) {
             if (page.size().width() > 14_400 || page.size().height() > 14_400) { throw new IllegalArgumentException("static page dimension budget exceeded"); }
-            commands += page.commands().size();
+            final long[] nested = new long[1]; GraphicsResources.walk(page.commands(), ignored -> nested[0]++);
+            commands += nested[0];
             if (commands > 2_000_000) { throw new IllegalArgumentException("static command budget exceeded"); }
             var converted = new ArrayList<DrawCommand>();
-            for (var original : page.commands()) {
+            for (var original : nestedOutlines(page.commands(), fonts, standardFonts, 0)) {
                 DrawCommand command = original;
                 if (original instanceof DrawCommand.GlyphText glyph) {
                     var run = glyph.run();
@@ -53,18 +54,59 @@ public final class StaticBackendSupport {
                     var vector = font.createGlyphVector(new java.awt.font.FontRenderContext(null, true, true), text.text());
                     command = new DrawCommand.OutlineText(text.text(), FontOutlines.paths(vector.getOutline((float) text.baseline().x(), (float) text.baseline().y())), text.style().color());
                 }
-                if (command instanceof DrawCommand.OutlineText text) {
-                    points += text.logicalText().codePointCount(0, text.logicalText().length());
-                    segments += text.paths().stream().mapToLong(path -> path.segments().size()).sum();
-                } else if (command instanceof DrawCommand.FillPath path) { segments += path.path().segments().size();
-                } else if (command instanceof DrawCommand.StrokePath path) { segments += path.path().segments().size();
-                } else if (command instanceof DrawCommand.Image image) { pixels += (long) image.image().width() * image.image().height(); }
-                if (points > 2_000_000 || segments > 5_000_000 || pixels > 50_000_000) { throw new IllegalArgumentException("static drawing budget exceeded"); }
                 converted.add(command);
             }
+            long[] totals = new long[4];
+            GraphicsResources.walk(converted, command -> {
+                if (command instanceof DrawCommand.FillPath fill) { totals[0] += fill.path().segments().size(); }
+                if (command instanceof DrawCommand.StrokePath stroke) { totals[0] += stroke.path().segments().size(); }
+                if (command instanceof DrawCommand.PaintFill fill) { totals[0] += fill.path().segments().size(); }
+                if (command instanceof DrawCommand.PaintStroke stroke) { totals[0] += stroke.path().segments().size(); }
+                if (command instanceof DrawCommand.ClipPath clip) { totals[0] += clip.path().segments().size(); }
+                if (command instanceof DrawCommand.Image image) { totals[1] += (long) image.image().width() * image.image().height(); }
+                if (command instanceof DrawCommand.OutlineText text) { totals[0] += text.paths().stream().mapToLong(path -> path.segments().size()).sum(); totals[2] += text.logicalText().codePointCount(0, text.logicalText().length()); }
+                var paint = command instanceof DrawCommand.PaintFill fill ? fill.paint() : command instanceof DrawCommand.PaintStroke stroke ? stroke.paint() : null;
+                if (paint != null) { for (var color : GraphicsResources.colors(paint)) { if (color instanceof com.mirakyux.export4j.graphics.IccColor icc) { totals[3] += icc.profile().length; } if (color instanceof com.mirakyux.export4j.graphics.SpotColor spot && spot.alternate() instanceof com.mirakyux.export4j.graphics.IccColor icc) { totals[3] += icc.profile().length; } } }
+            });
+            segments += totals[0]; pixels += totals[1]; points += totals[2];
+            if (segments > 5_000_000 || pixels > 50_000_000 || points > 2_000_000 || totals[3] > 64L * 1024 * 1024) { throw new IllegalArgumentException("static drawing resource budget exceeded"); }
             pages.add(new DisplayPage(page.size(), converted));
         }
         return List.copyOf(pages);
+    }
+
+    private static List<DrawCommand> nestedOutlines(List<DrawCommand> commands, Map<String, Font> fonts,
+            Map<FontFamily, FontData> standardFonts, int depth) {
+        if (depth > 32) { throw new IllegalArgumentException("nested static depth exceeded"); }
+        var result = new ArrayList<DrawCommand>();
+        for (var command : commands) {
+            if (command instanceof DrawCommand.Group group) {
+                command = new DrawCommand.Group(group.bounds(), outlineFragment(group.commands(), fonts, standardFonts, depth + 1), group.opacity(), group.blend());
+            } else if (command instanceof DrawCommand.PaintFill fill && fill.paint() instanceof com.mirakyux.export4j.graphics.Paint.Tile tile) {
+                command = new DrawCommand.PaintFill(fill.path(), new com.mirakyux.export4j.graphics.Paint.Tile(tile.bounds(), tile.xStep(), tile.yStep(), tile.transform(), outlineFragment(tile.commands(), fonts, standardFonts, depth + 1)), fill.rule());
+            } else if (command instanceof DrawCommand.PaintStroke stroke && stroke.paint() instanceof com.mirakyux.export4j.graphics.Paint.Tile tile) {
+                command = new DrawCommand.PaintStroke(stroke.path(), new com.mirakyux.export4j.graphics.Paint.Tile(tile.bounds(), tile.xStep(), tile.yStep(), tile.transform(), outlineFragment(tile.commands(), fonts, standardFonts, depth + 1)), stroke.width());
+            }
+            result.add(command);
+        }
+        return result;
+    }
+    private static List<DrawCommand> outlineFragment(List<DrawCommand> commands, Map<String, Font> fonts, Map<FontFamily, FontData> standardFonts, int depth) {
+        var result = new ArrayList<DrawCommand>();
+        for (var command : nestedOutlines(commands, fonts, standardFonts, depth)) {
+            if (command instanceof DrawCommand.GlyphText glyph) {
+                var run = glyph.run(); var font = fonts.computeIfAbsent(run.font().id() + ":" + run.fontSize(), ignored -> FontOutlines.physicalFont(run.font(), run.fontSize()));
+                command = new DrawCommand.OutlineText(run.text(), FontOutlines.glyphs(run, glyph.baseline(), font), glyph.color(), new com.mirakyux.export4j.graphics.Rect(glyph.baseline().x(), glyph.baseline().y() - run.fontSize(), Math.max(1, run.width()), run.fontSize() * 1.5));
+            } else if (command instanceof DrawCommand.Text text) {
+                var data = standardFonts.get(text.style().family()); if (data == null) { throw new IllegalArgumentException("nested text needs an explicit font mapping"); }
+                var font = fonts.computeIfAbsent(data.id() + ":" + text.style().fontSize(), ignored -> FontOutlines.physicalFont(data, text.style().fontSize()));
+                if (font.canDisplayUpTo(text.text()) != -1) { throw new IllegalArgumentException("static font mapping is missing glyphs"); }
+                var vector = font.createGlyphVector(new java.awt.font.FontRenderContext(null, true, true), text.text());
+                command = new DrawCommand.OutlineText(text.text(), FontOutlines.paths(vector.getOutline((float) text.baseline().x(), (float) text.baseline().y())), text.style().color());
+            }
+            result.add(command);
+        }
+        return result;
     }
 
     public static Path2D.Double path(VectorPath vector) {

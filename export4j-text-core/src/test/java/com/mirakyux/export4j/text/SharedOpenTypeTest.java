@@ -59,9 +59,20 @@ class SharedOpenTypeTest {
         assertThrows(TextLayoutException.class, () -> new ParagraphLayouter(new SimpleTextShaper(), TextLayoutLimits.DEFAULT)
                 .layout(source, group, 500, style));
     }
-    @Test void cffUsesOutlinesAndMissingScalarsKeepWarningSourceRanges() throws IOException {
-        var cff = FontGroup.strict(List.of(face("SourceSans3-Regular.otf")));
-        assertFalse(new ParagraphLayouter().layout("CFF AVATAR ffi", cff, 200, ParagraphStyle.of(12)).lines().getFirst().outlines().isEmpty());
+    @Test void cffKeepsNativeGlyphMappingAndMissingScalarsKeepWarningSourceRanges() throws IOException {
+        var face = face("SourceSans3-Regular.otf");
+        var cff = FontGroup.strict(List.of(face));
+        String cffSource = "CFF AVATAR ffi";
+        var cffLine = new ParagraphLayouter().layout(cffSource, cff, 200, ParagraphStyle.of(12)).lines().getFirst();
+        assertTrue(cffLine.outlines().isEmpty());
+        assertEquals(cffSource, cffLine.runs().stream().map(GlyphRun::text).collect(java.util.stream.Collectors.joining()));
+        assertTrue(cffLine.runs().stream().allMatch(run -> run.font().cffOutlines()));
+        for (var run : cffLine.runs()) {
+            for (var glyph : run.glyphs()) { assertEquals(face.glyph(glyph.codePoint()).orElseThrow().glyphId(), glyph.glyphId()); }
+        }
+        var outlined = new ParagraphLayouter().layoutOpenType(List.of(new StyledSpan(cffSource, cff, 12, -1, 0, false, false)), 200, ParagraphStyle.of(12)).lines().getFirst();
+        assertFalse(outlined.outlines().isEmpty());
+        assertEquals(cffSource, outlined.outlines().stream().map(TextOutline::logicalText).collect(java.util.stream.Collectors.joining()));
         var group = FontGroup.placeholder(List.of(face("LiberationSans-Regular.ttf")), '?');
         var result = new ParagraphLayouter().layout("a\u0301\uD840\uDC00", group, 200, ParagraphStyle.of(12));
         var warning = result.diagnostics().stream().filter(d -> d.severity() == TextDiagnostic.Severity.WARNING).findFirst().orElseThrow();

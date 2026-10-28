@@ -89,8 +89,8 @@ public final class Gap21GraphicsConsumer {
         catch (PdfRenderException expected) { if (rejected.size() != 0) { throw new IllegalStateException("PDF/A-1 emitted bytes before refusing transparency"); } }
 
         int refusals = 1;
-        for (String attribute : List.of("opacity='0.5'", "fill-opacity='NaN'", "stroke-opacity='101%'", "transform='translate(1) bad'",
-                "transform='scale(1 2 3)'", "style='fill-opacity:.5'", "filter='url(x)'")) {
+        for (String attribute : List.of("opacity='1.5'", "fill-opacity='NaN'", "stroke-opacity='101%'", "transform='translate(1) bad'",
+                "transform='scale(1 2 3)'", "style='filter:blur(1px)'", "filter='url(x)'")) {
             try { SvgComponent.parse("<svg viewBox='0 0 10 10'><rect width='10' height='10' " + attribute + "/></svg>"); throw new IllegalStateException("unsupported SVG accepted"); }
             catch (IllegalArgumentException expected) { refusals++; }
         }

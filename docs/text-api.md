@@ -60,7 +60,9 @@ try (var output = Files.newOutputStream(Path.of("text.pdf"))) {
 
 按字体组顺序选择第一个支持码点的字体，选用其他字体时产生 `FONT_FALLBACK`／`INFO` 诊断，包含原文 UTF-16 范围与所选字体标识。`FontGroup.strict(fonts)` 默认缺字报错；`FontGroup.placeholder(fonts, 0x25a1)` 显式启用占位符及 `MISSING_GLYPH_REPLACED`／`WARNING`。先尝试整个组，占位符本身缺字仍失败，原文 UTF-16 来源范围保持不变。不扫描系统字体。嵌入标志之外的许可证义务仍由调用方核查。
 
-`FontCollectionLoader.load(bytes, memberIndex)` 显式提取 TTC／OTC 的零基成员；集合和成员各有字节预算。静态 OTF/CFF 由 `TrueTypeFontLoader` 加载，默认段落通过轮廓输出。可变字体、CFF2、竖排和彩色字体尚未支持，CFF 不能用于 PDF 可编辑字段。
+`FontCollectionLoader.load(bytes, memberIndex)` 显式提取 TTC／OTC 的零基成员；集合和成员各有字节预算。静态 OTF/CFF 由 `TrueTypeFontLoader` 加载，普通字形段落保留原生字形映射，PDF 嵌入 Type1C／CIDFontType0C；复杂塑形或显式 `layoutOpenType` 仍使用测量轮廓。CFF 不能用于 PDF 可编辑字段。
+
+可变轴、CFF2、彩色字体及通用竖排塑形使用独立可选模块 [export4j-opentype](native-opentype-api.md)，显式提供字体字节和匹配平台二进制。普通文字核心继续使用现有 Java 路径，不自动加载 JNI；[逐字格竖排](vertical-text-api.md)保留原入口。
 
 ## 段落几何与来源范围
 

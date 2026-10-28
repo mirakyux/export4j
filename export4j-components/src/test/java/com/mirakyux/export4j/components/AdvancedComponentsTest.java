@@ -194,7 +194,7 @@ class AdvancedComponentsTest {
         assertEquals(2, drawing.commands().stream().filter(DrawCommand.FillPath.class::isInstance).count());
         assertThrows(IllegalArgumentException.class, () -> SvgComponent.parse("<!DOCTYPE svg [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><svg viewBox='0 0 10 10'/>"));
         assertThrows(IllegalArgumentException.class, () -> SvgComponent.parse("<svg viewBox='0 0 10 10'><image href='https://example.com/x'/></svg>"));
-        assertThrows(IllegalArgumentException.class, () -> SvgComponent.parse("<svg viewBox='0 0 10 10'><g opacity='0.5'/></svg>"));
+        assertTrue(SvgComponent.parse("<svg viewBox='0 0 10 10'><g opacity='0.5'/></svg>").layout(new ComponentContext(10, 10, fonts, 0, 0)).commands().stream().anyMatch(DrawCommand.Group.class::isInstance));
         assertThrows(IllegalArgumentException.class, () -> SvgComponent.parse("<svg width='20px' viewBox='0 0 10 10'/>"));
     }
 

@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.backend.raster;
 
-import java.awt.BasicStroke;
-import java.awt.AlphaComposite;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -23,9 +16,7 @@ import com.mirakyux.export4j.font.FontData;
 import com.mirakyux.export4j.graphics.DisplayDocument;
 import com.mirakyux.export4j.graphics.DisplayPage;
 import com.mirakyux.export4j.graphics.DocumentBackend;
-import com.mirakyux.export4j.graphics.DrawCommand;
 import com.mirakyux.export4j.graphics.FontFamily;
-import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.graphics.core.StaticBackendSupport;
 import com.mirakyux.export4j.model.DocumentMetadata;
 
@@ -58,7 +49,14 @@ public final class RasterBackend implements DocumentBackend {
     @Override
     public void write(DisplayDocument document, OutputStream output) throws IOException {
         Objects.requireNonNull(output, "output");
+        write(document, output, com.mirakyux.export4j.model.processing.ProcessingPolicy.STRICT);
+    }
+
+    public com.mirakyux.export4j.model.processing.ProcessingReport write(DisplayDocument document, OutputStream output,
+            com.mirakyux.export4j.model.processing.ProcessingPolicy policy) throws IOException {
+        Objects.requireNonNull(output, "output");
         var pages = prepare(document);
+        var issues = com.mirakyux.export4j.graphics.core.GraphicsResources.colorIssues(pages, "PNG", Objects.requireNonNull(policy, "policy"));
         try (var zip = new ZipOutputStream(new Borrowed(output))) {
             for (int index = 0; index < pages.size(); index++) {
                 com.mirakyux.export4j.model.ExecutionContext.progress("PNG_PAGE", "", index, index, pages.size());
@@ -70,13 +68,24 @@ public final class RasterBackend implements DocumentBackend {
                 zip.closeEntry();
             }
         }
+        return new com.mirakyux.export4j.model.processing.ProcessingReport(com.mirakyux.export4j.model.processing.ProcessingReport.Phase.ACTUAL, issues);
     }
 
     public void writePage(DisplayPage page, OutputStream output) throws IOException {
         Objects.requireNonNull(output, "output");
         var pages = prepare(new DisplayDocument(DocumentMetadata.EMPTY, List.of(page)));
+        com.mirakyux.export4j.graphics.core.GraphicsResources.colorIssues(pages, "PNG", com.mirakyux.export4j.model.processing.ProcessingPolicy.STRICT);
         var image = render(pages.getFirst());
         try { writePng(image, output); } finally { image.flush(); }
+    }
+
+    public com.mirakyux.export4j.model.processing.ProcessingReport writePage(DisplayPage page, OutputStream output,
+            com.mirakyux.export4j.model.processing.ProcessingPolicy policy) throws IOException {
+        var pages = prepare(new DisplayDocument(DocumentMetadata.EMPTY, List.of(page)));
+        var issues = com.mirakyux.export4j.graphics.core.GraphicsResources.colorIssues(pages, "PNG", Objects.requireNonNull(policy, "policy"));
+        var image = render(pages.getFirst());
+        try { writePng(image, Objects.requireNonNull(output, "output")); } finally { image.flush(); }
+        return new com.mirakyux.export4j.model.processing.ProcessingReport(com.mirakyux.export4j.model.processing.ProcessingReport.Phase.ACTUAL, issues);
     }
 
     /** A reusable backend for exactly one laid-out page as a standard PNG, using this DPI/fonts.
@@ -87,7 +96,9 @@ public final class RasterBackend implements DocumentBackend {
             Objects.requireNonNull(document, "document"); Objects.requireNonNull(output, "output");
             if (document.pages().size() != 1) { throw new IllegalArgumentException("single PNG requires exactly one page"); }
             com.mirakyux.export4j.model.ExecutionContext.progress("PNG_PAGE", "", 0, 0, 1);
-            var image = render(prepare(document).getFirst());
+            var prepared = prepare(document);
+            com.mirakyux.export4j.graphics.core.GraphicsResources.colorIssues(prepared, "PNG", com.mirakyux.export4j.model.processing.ProcessingPolicy.STRICT);
+            var image = render(prepared.getFirst());
             try { writePng(image, new Borrowed(output)); } finally { image.flush(); }
         };
     }
@@ -105,56 +116,9 @@ public final class RasterBackend implements DocumentBackend {
     }
 
     private BufferedImage render(DisplayPage page) {
-        var image = new BufferedImage((int) Math.ceil(page.size().width() * dpi / 72), (int) Math.ceil(page.size().height() * dpi / 72), BufferedImage.TYPE_INT_RGB);
-        Graphics2D graphics = image.createGraphics();
-        var saved = new ArrayDeque<Graphics2D>();
-        var savedOpacity = new ArrayDeque<double[]>();
-        double fillOpacity = 1;
-        double strokeOpacity = 1;
-        try {
-            graphics.setColor(Color.WHITE);
-            graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
-            graphics.scale(dpi / 72, dpi / 72);
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            for (var command : page.commands()) {
-                com.mirakyux.export4j.model.ExecutionContext.checkpoint();
-                switch (command) {
-                    case DrawCommand.Save ignored -> {
-                        saved.push(graphics); graphics = (Graphics2D) graphics.create();
-                        savedOpacity.push(new double[] {fillOpacity, strokeOpacity});
-                    }
-                    case DrawCommand.Restore ignored -> {
-                        graphics.dispose(); graphics = saved.pop();
-                        var opacity = savedOpacity.pop(); fillOpacity = opacity[0]; strokeOpacity = opacity[1];
-                    }
-                    case DrawCommand.Opacity opacity -> { fillOpacity = opacity.fill(); strokeOpacity = opacity.stroke(); }
-                    case DrawCommand.Transform t -> { var m = t.matrix(); graphics.transform(new java.awt.geom.AffineTransform(m.a(), m.b(), m.c(), m.d(), m.e(), m.f())); }
-                    case DrawCommand.Clip c -> { var r = c.bounds(); graphics.clip(new Rectangle2D.Double(r.x(), r.y(), r.width(), r.height())); }
-                    case DrawCommand.FillRect f -> { var r = f.bounds(); graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity)); graphics.setColor(color(f.color())); graphics.fill(new Rectangle2D.Double(r.x(), r.y(), r.width(), r.height())); }
-                    case DrawCommand.FillPath f -> { graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity)); graphics.setColor(color(f.color())); graphics.fill(StaticBackendSupport.path(f.path())); }
-                    case DrawCommand.StrokePath s -> { graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) strokeOpacity)); graphics.setColor(color(s.color())); graphics.setStroke(new BasicStroke((float) s.width(), BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER)); graphics.draw(StaticBackendSupport.path(s.path())); }
-                    case DrawCommand.OutlineText t -> { graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity)); graphics.setColor(color(t.color())); for (var p : t.paths()) { graphics.fill(StaticBackendSupport.path(p)); } }
-                    case DrawCommand.Image i -> {
-                        graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) fillOpacity));
-                        var r = i.bounds();
-                        var transform = new java.awt.geom.AffineTransform();
-                        transform.translate(r.x(), r.y());
-                        transform.scale(r.width() / i.image().width(), r.height() / i.image().height());
-                        graphics.drawImage(StaticBackendSupport.image(i.image()), transform, null);
-                    }
-                    case DrawCommand.Text ignored -> throw new IllegalStateException("text must be converted before output");
-                    case DrawCommand.GlyphText ignored -> throw new IllegalStateException("glyphs must be converted before output");
-                }
-            }
-        } finally {
-            graphics.dispose();
-            saved.forEach(Graphics2D::dispose);
-        }
-        return image;
+        return com.mirakyux.export4j.graphics.core.PrecisionRaster.render(page.commands(), page.size().width(), page.size().height(), dpi / 72, true);
     }
 
-    private static Color color(RgbColor c) { return new Color((float) c.red(), (float) c.green(), (float) c.blue()); }
     private static void writePng(BufferedImage image, OutputStream output) throws IOException {
         if (!ImageIO.write(image, "png", output)) { throw new IOException("PNG writer unavailable"); }
     }

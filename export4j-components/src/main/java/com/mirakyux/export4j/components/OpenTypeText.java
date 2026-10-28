@@ -44,6 +44,11 @@ public record OpenTypeText(String text, ParagraphStyle style, RgbColor color, Di
     public enum Direction { AUTO, LEFT_TO_RIGHT, RIGHT_TO_LEFT }
     record Line(int sourceStart, int sourceEnd, double width, DrawCommand.OutlineText command) { }
     record Measured(List<Line> lines, List<TextDiagnostic> diagnostics) { }
+    static final class LineTooNarrow extends IllegalArgumentException {
+        private static final long serialVersionUID = 1L;
+        final int line;
+        LineTooNarrow(int line) { super("one grapheme or punctuation group exceeds line width"); this.line = line; }
+    }
 
     public OpenTypeText(String text, ParagraphStyle style, RgbColor color, Direction direction,
             boolean kerning, boolean ligatures, boolean cjkPunctuation) {
@@ -182,7 +187,7 @@ public record OpenTypeText(String text, ParagraphStyle style, RgbColor color, Di
                             limit = boundaries.lower(limit);
                         }
                     }
-                    if (limit <= position) { throw new IllegalArgumentException("one grapheme or punctuation group exceeds line width"); }
+                    if (limit <= position) { throw new LineTooNarrow(lines.size()); }
                     int consumed = limit;
                     if (style.alignment() == TextAlignment.JUSTIFY && limit < prepared.value().length()) {
                         while (consumed < prepared.value().length() && prepared.value().charAt(consumed) == ' ') { consumed++; }

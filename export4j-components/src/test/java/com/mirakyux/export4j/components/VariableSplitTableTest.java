@@ -3,6 +3,7 @@ package com.mirakyux.export4j.components;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -185,15 +186,56 @@ class VariableSplitTableTest {
         assertTrue(parts.get(1).fragment().rows().getLast().continuedRow());
     }
 
-    @Test void unsupportedRecursiveSplitAndImpossibleLineFailWithoutAffectingLaterLayout() {
-        var nested = Table.builder("inner").cellFormat(CELL).row("A").build();
-        var blocks = table("blocks").row(TableCell.builder().blocks(List.of(nested)).build()).build();
-        assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, assertThrows(DocumentLayoutException.class,
-                () -> new DocumentLayouter().layoutTableRegions(blocks, context(100, 36), new FlowRegions(List.of(), 36), List.of(50.0, 100.0))).code());
+    @Test void impossibleLineFailsWithoutAffectingLaterLayout() {
         var ordinary = table("ordinary").header("H").row("A").build();
         assertEquals(DocumentLayoutException.Code.CONTENT_TOO_TALL, assertThrows(DocumentLayoutException.class,
                 () -> new DocumentLayouter().layoutTableRegions(ordinary, context(100, 12), new FlowRegions(List.of(), 12), List.of(50.0, 100.0))).code());
         assertFalse(new DocumentLayouter().layoutTableRegions(ordinary, context(100, 36), new FlowRegions(List.of(), 36), List.of(50.0, 100.0)).isEmpty());
+    }
+
+    @Test void recursiveBlocksRewrapAcrossWidthsWithoutLosingOriginalParagraphRanges() {
+        String source = "alpha beta gamma delta ".repeat(30);
+        var paragraph = new com.mirakyux.export4j.model.Paragraph("deep-source", source,
+                com.mirakyux.export4j.model.ParagraphFormat.builder().fontSize(10).lineHeight(12).build());
+        var deep = table("deep").header("DEEP").row(TableCell.builder().blocks(List.of(paragraph)).build()).build();
+        var middle = table("middle").header("MID").row(TableCell.builder().blocks(List.of(deep)).build()).build();
+        var root = table("root").header("ROOT").row(TableCell.builder().blocks(List.of(middle)).rowSpan(2).build())
+                .coveredRow().row("END").build();
+        var parts = new DocumentLayouter().layoutTableRegions(root, context(200, 96),
+                new FlowRegions(List.of(1.0), 96), List.of(80.0, 200.0));
+        var actual = new StringBuilder();
+        int firstLine = 0;
+        boolean narrow = false, wide = false;
+        for (var part : parts) {
+            var leaves = new java.util.ArrayList<com.mirakyux.export4j.layout.ParagraphFragment>();
+            collectParagraphs(part.fragment(), leaves);
+            for (var leaf : leaves) {
+                assertEquals(firstLine, leaf.firstLineIndex());
+                firstLine += leaf.layout().lines().size();
+                double width = part.regionIndex() % 2 == 0 ? 80 : 200;
+                narrow |= width == 80; wide |= width == 200;
+                for (var line : leaf.layout().lines()) {
+                    assertTrue(line.width() <= Math.nextUp(width));
+                    actual.append(source, line.sourceStart(), line.sourceEnd());
+                }
+            }
+        }
+        assertTrue(parts.size() > 3 && narrow && wide);
+        assertEquals(source.replace(" ", ""), actual.toString().replace(" ", ""));
+        assertEquals(1, parts.getFirst().regionIndex());
+    }
+
+    private static void collectParagraphs(com.mirakyux.export4j.layout.TableFragment table,
+            List<com.mirakyux.export4j.layout.ParagraphFragment> result) {
+        for (var row : table.rows()) {
+            if (row.header()) { continue; }
+            for (var cell : row.cells()) {
+                for (var child : cell.blocks()) {
+                    if (child instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph) { result.add(paragraph); }
+                    else { collectParagraphs((com.mirakyux.export4j.layout.TableFragment) child, result); }
+                }
+            }
+        }
     }
 
     @Test void verticalOwnersRewrapAtActualWidthAndRetainOriginalAnchorAcrossCoveredRows() {
@@ -256,6 +298,32 @@ class VariableSplitTableTest {
         assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, assertThrows(DocumentLayoutException.class,
                 () -> new DocumentLayouter(new ParagraphLayouter(), exhausted).layoutTableRegions(table, context(100, 36),
                         new FlowRegions(List.of(1.0), 36), List.of(50.0, 100.0))).code());
+    }
+
+    @Test void recursiveFuturePictureIsDeferredUntilItsActualWidthAndKeepsOriginalOffsets() throws IOException {
+        var bitmap = new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var bytes = new java.io.ByteArrayOutputStream();
+        try { assertTrue(javax.imageio.ImageIO.write(bitmap, "png", bytes)); } finally { bitmap.flush(); }
+        var image = new com.mirakyux.export4j.model.InlineImage(com.mirakyux.export4j.model.ImageResource.load(bytes.toByteArray()),
+                80, 8, 0, "picture", "https://example.com/recursive-picture");
+        var paragraph = com.mirakyux.export4j.model.Paragraph.mixed("future-picture-leaf",
+                List.of(new InlineText("A\nB\n", InlineStyle.of(10)), image, new InlineText("\nEND", InlineStyle.of(10))),
+                com.mirakyux.export4j.model.ParagraphFormat.builder().fontSize(10).lineHeight(18).build());
+        var inner = table("picture-inner").row(TableCell.builder().blocks(List.of(paragraph)).build()).build();
+        var root = table("picture-root").row(TableCell.builder().blocks(List.of(inner)).build()).build();
+        var parts = new DocumentLayouter().layoutTableRegions(root, context(120, 36), new FlowRegions(List.of(), 36), List.of(60.0, 120.0));
+        assertEquals(2, parts.size());
+        var leaves = new ArrayList<com.mirakyux.export4j.layout.ParagraphFragment>();
+        for (var part : parts) { collectParagraphs(part.fragment(), leaves); }
+        assertEquals(List.of(0, 2), leaves.stream().map(com.mirakyux.export4j.layout.ParagraphFragment::firstLineIndex).toList());
+        assertEquals(1, leaves.stream().flatMap(leaf -> leaf.layout().lines().stream()).flatMap(line -> line.images().stream()).count());
+        assertEquals(120, leaves.getLast().layout().width());
+        assertEquals(4, leaves.getLast().layout().lines().getFirst().sourceStart());
+        var immediate = table("picture-immediate").row(TableCell.builder().blocks(List.of(
+                com.mirakyux.export4j.model.Paragraph.mixed("immediate-leaf", List.of(image), paragraph.format()))).build()).build();
+        assertEquals(DocumentLayoutException.Code.CONTENT_TOO_TALL, assertThrows(DocumentLayoutException.class,
+                () -> new DocumentLayouter().layoutTableRegions(immediate, context(120, 36), new FlowRegions(List.of(), 36),
+                        List.of(60.0, 120.0))).code());
     }
 
     @Test void atomicPictureIsCheckedAtItsActualContinuationWidthRatherThanUnusedNarrowWidth() throws IOException {

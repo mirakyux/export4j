@@ -101,6 +101,27 @@ final class GridSemanticStreams {
         registry.sources();
     }
 
+    Map<String, Source> recordVariableFixed(ComponentLayout layout, boolean header, Map<String, Source> prepared) {
+        var result = prepared == null ? new LinkedHashMap<String, Source>() : new LinkedHashMap<>(prepared);
+        var registry = new SemanticSourceRegistry(List.of());
+        for (var placement : layout.semanticPlacements()) {
+            ExecutionContext.checkpoint();
+            if (registry.accept("grid-cell", placement)) {
+                var source = result.get(placement.source().id());
+                if (source == null) {
+                    source = register(placement.source(), placement.fonts(), placement.roles(), header);
+                    result.put(placement.source().id(), source);
+                } else if (!header || source.table != placement.source() || !source.fonts.equals(placement.fonts())
+                        || !source.roles.equals(placement.roles())) {
+                    throw new IllegalArgumentException("variable header must preserve its exact semantic source");
+                }
+            }
+            result.get(placement.source().id()).record(placement);
+        }
+        registry.sources();
+        return Map.copyOf(result);
+    }
+
     List<RegionFlow.Fragment> finish(List<RegionFlow.Fragment> fragments) {
         if (sources.isEmpty()) { return List.copyOf(fragments); }
         int count = 0;

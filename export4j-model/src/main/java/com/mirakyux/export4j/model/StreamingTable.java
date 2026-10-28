@@ -14,13 +14,20 @@ import java.util.Objects;
  * Passive text/image hyperlinks require the link-aware page consumer. PAGE resolves at each actual
  * presentation; PAGES requires a positive expectedPages total, checked before successful completion.
  * Zero means an unknown total. Explicit allowRowSpans enables bounded atomic body-row groups;
- * repeating headers never contain vertical spans, and row splitting cannot be combined with groups.
- * Block cells and future references are not supported.
+ * repeating headers never contain vertical spans. semanticCells opts into bounded semantic/replay
+ * entry points, enabling Paragraph/Table cells and complete-line group splitting. Future information
+ * requires an explicit stable-source replay plan, never an implicit second source read.
  * This value is thread-safe; row sources and builders are task-confined.
  */
 public record StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
         List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit,
-        int expectedPages, boolean allowRowSpans) {
+        int expectedPages, boolean allowRowSpans, boolean semanticCells) {
+    /** Original fixed-inline specification. Advanced semantic cells are opt-in. */
+    public StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
+            List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit,
+            int expectedPages, boolean allowRowSpans) {
+        this(id, metadata, pageSettings, columnWidths, headerRows, padding, allowRowSplit, expectedPages, allowRowSpans, false);
+    }
     /** Compatibility constructor preserving the original one-row lookahead and no vertical spans. */
     public StreamingTable(String id, DocumentMetadata metadata, PageSettings pageSettings,
             List<Double> columnWidths, List<TableRow> headerRows, PageMargins padding, boolean allowRowSplit, int expectedPages) {
@@ -47,7 +54,7 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
             throw new IllegalArgumentException("streaming table requires an ID and fixed columns");
         }
         if (expectedPages < 0) { throw new IllegalArgumentException("expected page count must be nonnegative"); }
-        if (allowRowSpans && allowRowSplit) {
+        if (allowRowSpans && allowRowSplit && !semanticCells) {
             throw new IllegalArgumentException("streaming row groups are atomic and cannot enable row splitting");
         }
         double width = 0;
@@ -61,7 +68,7 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
             throw new IllegalArgumentException("streaming columns exceed page content width");
         }
         for (var row : headerRows) {
-            if (row.cells().stream().anyMatch(TableCell::hasBlocks)) {
+            if (!semanticCells && row.cells().stream().anyMatch(TableCell::hasBlocks)) {
                 throw new IllegalArgumentException("streaming tables do not support block cells");
             }
             if (row.cells().stream().anyMatch(cell -> cell.rowSpan() != 1)) {
@@ -85,7 +92,7 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
     public Builder toBuilder() {
         return new Builder(id).metadata(metadata).pageSettings(pageSettings).columnWidths(columnWidths)
                 .headerRows(headerRows).padding(padding).allowRowSplit(allowRowSplit).expectedPages(expectedPages)
-                .allowRowSpans(allowRowSpans);
+                .allowRowSpans(allowRowSpans).semanticCells(semanticCells);
     }
 
     public static final class Builder {
@@ -99,6 +106,7 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
         private boolean allowRowSplit;
         private int expectedPages;
         private boolean allowRowSpans;
+        private boolean semanticCells;
 
         private Builder(String id) { this.id = Objects.requireNonNull(id, "id"); }
         public Builder metadata(DocumentMetadata value) { metadata = Objects.requireNonNull(value, "metadata"); return this; }
@@ -117,15 +125,19 @@ public record StreamingTable(String id, DocumentMetadata metadata, PageSettings 
         public Builder padding(double points) { return padding(PageMargins.uniform(points)); }
         /** Allows complete-line continuation of body rows. Headers always remain atomic. */
         public Builder allowRowSplit(boolean value) { allowRowSplit = value; return this; }
-        /** Enables finite connected body-row groups with vertical spans. Groups stay atomic;
-         * headers still reject vertical spans. Streaming layout limits cap buffered rows and text.
+        /** Enables finite connected body-row groups with vertical spans. The ordinary exporter
+         * keeps groups atomic; semanticCells plus the semantic exporter permits explicit splitting.
+         * Headers still reject vertical spans. Layout limits cap buffered rows and text.
          */
         public Builder allowRowSpans(boolean value) { allowRowSpans = value; return this; }
+        /** Enables the bounded semantic/replay exporter, including Paragraph/Table cells and
+         * complete-line splitting of connected span groups. Use DocumentEngine.exportReplay. */
+        public Builder semanticCells(boolean value) { semanticCells = value; return this; }
         /** Declares an exact total for PAGES fields; zero means unknown and forbids PAGES.
          * The actual total is checked before successful completion, even without PAGES fields.
          */
         public Builder expectedPages(int value) { expectedPages = value; return this; }
         public StreamingTable build() { return new StreamingTable(id, metadata, pageSettings, widths, headers, padding,
-                allowRowSplit, expectedPages, allowRowSpans); }
+                allowRowSplit, expectedPages, allowRowSpans, semanticCells); }
     }
 }

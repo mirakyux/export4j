@@ -13,12 +13,25 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-template")
     implementation("com.mirakyux.export4j:export4j-adapter-pdf")
     implementation("com.mirakyux.export4j:export4j-adapter-web")
+    implementation("com.mirakyux.export4j:export4j-opentype")
+    val nativeClassifier = providers.gradleProperty("export4jNativeClassifier").orElse("natives-windows")
+    runtimeOnly("org.lwjgl:lwjgl:3.4.3:${nativeClassifier.get()}")
+    runtimeOnly("org.lwjgl:lwjgl-harfbuzz:3.4.3:${nativeClassifier.get()}")
 }
 application { mainClass.set("consumer.Consumer") }
+
+tasks.register<JavaExec>("openType") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.OpenTypeConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
 
 mapOf(
     "verticalText" to "consumer.Gap08VerticalTextConsumer",
     "streamingRowSpans" to "consumer.StreamingRowSpansConsumer",
+    "streamingReplay" to "consumer.StreamingReplayConsumer",
     "gap21Graphics" to "consumer.Gap21GraphicsConsumer"
 ).forEach { (taskName, entryPoint) ->
     tasks.register<JavaExec>(taskName) {
@@ -236,4 +249,20 @@ tasks.register("resolvedLibraries") {
         val ids = runtime.get().resolvedConfiguration.resolvedArtifacts.map { it.moduleVersion.id.toString() }.distinct().sorted()
         layout.buildDirectory.file("resolved-libraries.txt").get().asFile.writeText(ids.joinToString("\n") + "\n")
     }
+}
+// Named isolated acceptance entry point for recursive, grid and contour continuation.
+tasks.register<JavaExec>("complexFlows") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.Gap03ComplexFlowConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("gap21Complete") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.Gap21CompleteConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
 }

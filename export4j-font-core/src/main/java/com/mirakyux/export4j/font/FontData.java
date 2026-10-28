@@ -38,7 +38,7 @@ public final class FontData {
         return subsetAllowed;
     }
 
-    /** True for static OpenType CFF outlines; backends must use precomputed outlines instead of TrueType embedding. */
+    /** True for static OpenType CFF; PDF can embed its native program, while outlined runs retain measured geometry. */
     public boolean cffOutlines() {
         return bytes.length >= 4 && bytes[0] == 'O' && bytes[1] == 'T' && bytes[2] == 'T' && bytes[3] == 'O';
     }

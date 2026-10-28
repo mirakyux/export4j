@@ -115,3 +115,7 @@
 | 0096 | [外部 PDF 的保留、绘制与语义恢复分离](0096-pdf-compatibility-paths.md) | 已采纳；显式被动结构、原对象保留、默认视图及整页光栅恢复的独立契约 |
 | 0097 | [PDF 原对象编辑、语义推断与标准输出分离](0097-explicit-pdf-editing-recovery-and-standards.md) | 已采纳；实例隔离、选择性重建、显式推断、后端中立标签及离线标准证据 |
 | 0098 | [显式矢量透明度与 SVG 仿射变换](0098-explicit-vector-opacity-and-svg-transforms.md) | 已采纳；填充／描边 alpha 独立状态、三个后端逐次合成及受限静态 SVG 继承／变换 |
+| 0099 | [保留已接受行宽的递归续排与显式轮廓锚点](0099-variable-recursive-grid-and-contour-flow.md) | 已采纳；完整来源、变宽子树／网格、真实曲线行带与跨区域浮动 |
+| 0100 | [原生颜色画刷与离线 SVG 资源](0100-native-paints-and-offline-svg-resources.md) | 已采纳；高级色彩、混合／隔离组、渐变／图案和明确降级 |
+| 0101 | [显式原生 OpenType 与 CFF 嵌入](0101-explicit-native-opentype-and-cff-embedding.md) | 已采纳；可选塑形模块、方向／轴／彩色字形及原生 CFF PDF |
+| 0102 | [有界语义流、显式重放与 PDF 磁盘索引](0102-bounded-semantic-streaming-replay-and-pdf-spool.md) | 已采纳；单次语义源、快照摘要、未来语义和逐页对象释放 |

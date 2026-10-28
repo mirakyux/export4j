@@ -44,10 +44,10 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 | Area | Available capabilities |
 | --- | --- |
 | Document authoring | Fluent builders, headings, paragraphs, rich text, lists, reusable themes with global/domain font and color defaults, named styles |
-| Text and fonts | Explicit font groups and real variants, missing-glyph policies, OpenType shaping through the JDK, bidirectional text, justification, an optional strict CJK line-break subset and an [explicit vertical em-cell subset](docs/vertical-text-api.md) |
-| Layout | Automatic pagination, sections, headers and footers, page backgrounds, balanced equal/unequal text columns, rectangular text wrapping and page-flow components |
-| Tables | Repeated headers, supported automatic column widths, row/column spans, explicit row splitting, multi-paragraph cells, bounded recursive tables with inline automatic columns, vertical continuations, atomic semantic rows and inline-cell line continuations including vertical owners across unequal columns |
-| Images and graphics | Inline PNG/JPEG, vector paths, shapes, watermarks, [independent fill/stroke opacity and an offline SVG transform subset](docs/graphics-opacity-api.md) |
+| Text and fonts | Explicit font groups and real variants, missing-glyph policies, JDK OpenType shaping, bidirectional text and justification; an optional [native OpenType module](docs/native-opentype-api.md) adds variable/CFF2/color fonts, vertical shaping and script controls; native static CFF PDF embedding |
+| Layout | Automatic pagination, sections, page bands/backgrounds, balanced equal/unequal columns, rectangular wrapping and [contour floats with source/page anchors](docs/contour-floats-api.md) |
+| Tables | Repeated headers, automatic columns, row/column spans, complete-line splitting, bounded recursive block cells and component grids that continue across unequal columns while preserving sources, fields, images and links |
+| Images and graphics | Inline PNG/JPEG, vector paths, shapes and watermarks; [CMYK/ICC/spot colors, gradients, patterns, 16 blend modes, isolated groups and local SVG resources](docs/advanced-graphics-api.md), with explicit loss policies for RGB targets |
 | Navigation and forms | Contents, bookmarks, links, comments, page/reference fields, continued footnotes, static form components and four basic editable PDF field types |
 | Templates | Offline XML with variables, conditions, loops, dynamic rows, themes, static page settings, image/table headers/footers, sections, bounded recursive includes, dynamic links and fields; strict lightweight Markdown |
 | Output | PDF, self-contained SVG, PNG pages/ZIP, a semantic DOCX subset, HTML and Markdown |
@@ -55,9 +55,11 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 | Import and editing | Markdown/HTML/CSS/DOCX subsets, opt-in automatic PDF columns/paragraphs/table recovery with explicit grid overrides and uncertainty reports, immutable semantic edits, package-preserving DOCX text edits and structured loss previews/reports |
 | Template saving | Editable XML sources/resources in ordinary ZIP files; save supported semantic models as the same XML, reopen, edit and export with explicit loss policies |
 | PDF security and standards | AES-256; selected PDF/A-1b/2b/3b/4f generation and conversion; explicit PDF/UA-1 tags; PAdES B/T/LT/LTA, offline trust/revocation evidence, timestamps, renewal and DocMDP change classification |
-| Large tables and execution | Single-pass text/rich-text/image table sources, passive links, horizontal spans, [opt-in bounded vertical spans](docs/streaming-row-spans-api.md), whole-line row continuation, actual page fields with checked declared totals, and synchronous page output, resource budgets, cancellation, timeouts, structured diagnostics and atomic path writes |
+| Large tables and execution | Single-pass text/rich-text/image and recursive semantic rows, bounded spans and line continuations; [explicit replay](docs/streaming-replay-api.md) for sampled automatic widths, final totals, future references, contents/bookmarks and group footnotes; optional disk-indexed PDF output, budgets, cancellation and atomic path writes |
 
 Each feature has explicit limits. A component table, semantic table and streaming table serve different contracts; see the [authoring guide](docs/authoring-api.md), [fluent API](docs/fluent-api.md) and [streaming-table guide](docs/streaming-table-api.md).
+
+The native OpenType module is optional. Applications select their target LWJGL native classifiers and supply licensed fonts explicitly; the core keeps its existing Java-only path. See the [native module setup and limits](docs/native-opentype-api.md).
 
 ## Getting started
 
@@ -227,9 +229,7 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 The following areas remain open; they are not current features:
 
 - Broader page-layer composition, DOCX layer mappings and cross-reader acceptance.
-- Recursive block-cell subtrees and component-grid continuation across unequal columns, plus broader floating page layouts.
-- Broader complex scripts, general vertical writing, variable/color fonts and reader search/selection interoperability.
-- Streaming automatic widths and future-dependent semantics, sustained capacity, advanced color/blending, gradients and broader SVG support.
+- Cross-platform and cross-reader font search/selection compatibility beyond the verified corpus.
 - Broader HTML/CSS compatibility and a visual template designer.
 - Stable public API and Maven Central distribution, with repeatable cross-platform release validation.
 
@@ -250,6 +250,7 @@ The layout engine owns line breaking and pagination. Backends consume the final 
 | --- | --- |
 | `export4j-model` | Semantic document model, styles and execution contracts |
 | `export4j-font-core`, `export4j-text-core` | Font resources, metrics, shaping and text layout |
+| `export4j-opentype` | Optional native shaping, variable/color fonts and vertical flow |
 | `export4j-graphics-api`, `export4j-graphics-core` | Graphics contracts, display list and common drawing |
 | `export4j-layout-model`, `export4j-layout-core` | Layout IR, measurement, regions and pagination |
 | `export4j-components` | Fluent authoring, composed components and `DocumentEngine` |
@@ -308,11 +309,14 @@ Export4j builds on open-source infrastructure and explicitly supplied font resou
 | [Apache Commons Logging](https://commons.apache.org/proper/commons-logging/) | Transitive PDFBox runtime dependency |
 | [commonmark-java](https://github.com/commonmark/commonmark-java), [jsoup](https://jsoup.org/) | Offline Markdown and HTML parsing |
 | [Bouncy Castle](https://www.bouncycastle.org/) | PDF signature, certificate, revocation and timestamp primitives; internal backend dependency |
+| [LWJGL](https://www.lwjgl.org/), [HarfBuzz](https://harfbuzz.github.io/) | Optional native OpenType shaping, outlines and color glyph rendering |
 | [OpenJDK](https://openjdk.org/) | Java runtime, Java2D/OpenType, ZIP and XML infrastructure |
 | [Gradle](https://gradle.org/), [JUnit](https://junit.org/) | Build and Java tests |
 | [pypdf](https://github.com/py-pdf/pypdf), [pypdfium2](https://github.com/pypdfium2-team/pypdfium2), [Pillow](https://python-pillow.org/), [python-docx](https://github.com/python-openxml/python-docx), [cryptography](https://cryptography.io/), [Poppler](https://poppler.freedesktop.org/) | Independent format, rendering and verification tools |
 | [Liberation Fonts](https://github.com/liberationfonts/liberation-fonts), [LXGW WenKai TC](https://github.com/lxgw/LxgwWenkaiTC), [ZCOOL XiaoWei](https://github.com/googlefonts/zcool-xiaowei) | Explicit example/test fonts |
 | [Noto Fonts](https://github.com/notofonts/noto-fonts), [Source Sans 3](https://github.com/adobe-fonts/source-sans) | Complex-script and CFF example/test fonts |
+| [Roboto Flex](https://github.com/googlefonts/roboto-flex), [color-fonts](https://github.com/googlefonts/color-fonts) | Variable and color font verification fixtures |
+| [resvg-py](https://github.com/baseplate-admin/resvg-py), [resvg](https://github.com/linebender/resvg) | Independent SVG rendering in verification; excluded from Java runtime artifacts |
 
 See the [dependency record](docs/dependencies.md), [font provenance](assets/fonts/README.md), [NOTICE](NOTICE) and [original licenses](third-party/licenses) for versions, hashes and distribution obligations.
 

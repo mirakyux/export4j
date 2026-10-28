@@ -30,7 +30,7 @@ try (var output = Files.newOutputStream(pdfPath)) {
 
 | 路径 | 支持与约束 |
 | --- | --- |
-| 语义段落、`FlowText`、`TextComponent` | 默认自适应简单／OpenType 路径；组合字符、双向文字及 CFF 在文本层确定轮廓，显式注入简单塑形器仍保持严格限制 |
+| 语义段落、`FlowText`、`TextComponent` | 默认自适应简单／OpenType 路径；组合字符、双向文字在文本层确定轮廓，静态 CFF 简单字形保留原生映射；显式注入简单塑形器仍保持严格限制 |
 | `OpenTypeText` | 使用传入字体的 JDK OpenType 排版，支持 kerning、连字、组合字符、阿拉伯语连接字形、双向混排和常见中文标点禁则 |
 | `FontScope(component, fontGroup)` | 在局部组件及续页片段内覆盖字体组，保留页上下文与缺字策略 |
 
@@ -43,7 +43,7 @@ var block = new ComponentBlock("shaped", new FontScope(text, complexFonts), 0, 0
 
 字体组默认 `ERROR`；`FontGroup.placeholder(fonts, codePoint)` 尝试整组后替换并返回 `MISSING_GLYPH_REPLACED`／`WARNING`。占位符也必须被字体支持。原码点与原 UTF-16 范围保留；一个字形簇必须由同一物理字体覆盖。非法代理项或无法完整覆盖的字形簇仍失败，不回退到系统字体。
 
-`OpenTypeText` 最多 200,000 个输入码点、100,000 行及 2,000,000 个轮廓段。显式组件采用静态 TrueType，公共路径另支持静态 CFF；不支持彩色 emoji、可变字体轴、竖排或全部 OpenType 特性。常见标点禁则不等于完整东亚排版标准。
+组件模块的 `OpenTypeText` 最多 200,000 个输入码点、100,000 行及 2,000,000 个轮廓段，继续采用静态 TrueType 的 Java 路径。公共段落另支持静态 CFF，简单字形 PDF 可以原生嵌入。可变轴、CFF2、彩色字形和分页竖排使用[可选原生 OpenType 模块](native-opentype-api.md)的独立入口及预算；两者包名、字体和资源契约不同，不自动替换。常见标点禁则不等于完整东亚排版标准。
 
 复杂文字在布局阶段生成轮廓；普通 PDF 输出带 `/ActualText` 与不可见文字锚点。PDFium 已验证能提取样本逻辑文字，但整页提取顺序可能与视觉顺序不同；搜索、选择、复制依赖阅读器实现。PDF/UA-1 另需显式逻辑顺序、最终命令绑定及启用标签的后端，见[标准 API](pdf-standards-api.md)；普通轮廓文字不能当作通用无障碍方案。
 

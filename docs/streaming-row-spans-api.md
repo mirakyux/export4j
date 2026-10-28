@@ -36,8 +36,8 @@ engine.export(spec, () -> openRows())
 
 ## 保留边界
 
-纵向合并只扩大固定列正文的原子连通组能力；重复表头仍不接受纵向跨度，`allowRowSplit(true)` 与 `allowRowSpans(true)` 的组合明确拒绝。块格、嵌套、自动列宽、目录／未来引用与脚注未因此接入。`StreamingTable` 仍不是普通语义 `Block`，不走 XML 模型序列化、DOCX 或恢复信息路径。
+本页描述普通 `export` 的原子连通组。该入口不接受重复表头纵跨，未启用语义模式时 `allowRowSplit(true)` 与 `allowRowSpans(true)` 的组合明确拒绝。需要块格／嵌套或跨页拆分 owner 时，显式设置 `semanticCells(true)` 并使用 [`exportSemantic`／`exportReplay`](streaming-replay-api.md)；自动宽探测、目录／未来引用和组脚注由重放计划提供。`StreamingTable` 仍不是普通语义 `Block`，不走 XML 模型序列化、DOCX 或恢复信息路径。
 
-这是 GAP-09 的一个已实现单元；PDFBox 仍累计页树／COS 对象，布局页可释放不等于真实 PDF 恒定内存，也不证明长期无泄漏。原单向能力见[单向长表 API](streaming-table-api.md)。独立调用方运行 `streamingRowSpans`，随后执行 `python scripts/verify_streaming_row_spans.py --consumer-build-directory <本次调用方构建目录>`，分别核对源计数、原子失败、物理格几何、实际字段、链接／图片与双引擎渲染。
+使用普通 `PdfBackend` 时仍保留累计 PDFBox 文档对象；需要逐页释放对象图时选用 [`PdfSpoolBackend`](streaming-replay-api.md)。有限容量样例不能证明长期无泄漏。原单向能力见[单向长表 API](streaming-table-api.md)。独立调用方运行 `streamingRowSpans`，随后执行 `python scripts/verify_streaming_row_spans.py --consumer-build-directory <本次调用方构建目录>`，分别核对源计数、原子失败、物理格几何、实际字段、链接／图片与双引擎渲染。
 
 本单元的构建、独立输出、调用方及容量覆盖见[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)。

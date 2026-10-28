@@ -30,8 +30,8 @@ public final class ParagraphLayouter {
 
     /** Whether default adaptive layout uses physical OpenType shaping for this source/stack. */
     public static boolean requiresOpenType(String text, FontGroup group) {
-        return OpenTypeParagraphLayouter.required(Objects.requireNonNull(text, "text"))
-                || group.fonts().stream().anyMatch(face -> face.data().cffOutlines());
+        Objects.requireNonNull(group, "group");
+        return OpenTypeParagraphLayouter.required(Objects.requireNonNull(text, "text"));
     }
 
     public ParagraphLayouter() {
@@ -118,6 +118,16 @@ public final class ParagraphLayouter {
         return layout(spans, width, style, Map.of(), Map.of(), Map.of(), true);
     }
 
+    /** Wraps original text and atomic vector ink against explicit per-line widths, in points.
+     * Keys and diagnostics retain original UTF-16 positions. No resources are owned. */
+    public ParagraphLayout layout(List<StyledSpan> spans, double width, ParagraphStyle style,
+            Map<Integer, com.mirakyux.export4j.model.InlineImage> images,
+            Map<Integer, com.mirakyux.export4j.model.InlineField> fields,
+            Map<Integer, InlineGraphic> graphics, IntToDoubleFunction lineWidths) {
+        return layout(spans, width, style, images, fields, graphics, false,
+                Objects.requireNonNull(lineWidths, "lineWidths"));
+    }
+
     private ParagraphLayout layout(List<StyledSpan> spans, double width, ParagraphStyle style,
             Map<Integer, com.mirakyux.export4j.model.InlineImage> images,
             Map<Integer, com.mirakyux.export4j.model.InlineField> fields,
@@ -161,8 +171,7 @@ public final class ParagraphLayouter {
             throw new TextLayoutException(TextLayoutException.Code.LINE_HEIGHT_TOO_SMALL, 0,
                     "line height is smaller than the configured font stack's line box");
         }
-        if (!images.isEmpty() || !fields.isEmpty() || !graphics.isEmpty() || forceOpenType || adaptive && (OpenTypeParagraphLayouter.required(text)
-                || spans.stream().flatMap(span -> span.fonts().stream()).anyMatch(font -> font.data().cffOutlines()))) {
+        if (!images.isEmpty() || !fields.isEmpty() || !graphics.isEmpty() || forceOpenType || adaptive && OpenTypeParagraphLayouter.required(text)) {
             return new OpenTypeParagraphLayouter(limits).layout(spans, width, style, ascent, images, fields, graphics,
                     line -> checkedLineWidth(lineWidths, line, width, style));
         }

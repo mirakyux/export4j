@@ -44,10 +44,10 @@ Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档�
 | 领域 | 当前能力 |
 | --- | --- |
 | 文档编写 | 链式 Builder、标题、段落、富文本、列表、全局及分域字体／颜色主题与命名样式 |
-| 文字与字体 | 显式字体组及真实变体、缺字策略、基于 JDK 的 OpenType 塑形、双向文本、两端对齐和可选严格中文禁则子集；[逐字形竖排子集](docs/vertical-text-api.md) |
-| 页面布局 | 自动分页、分节、页眉页脚、页面背景、等宽／变宽文字栏与平衡、矩形绕排及区域流组件 |
-| 表格 | 重复表头、受支持的自动列宽、跨行／跨列合并、显式拆行续页、多段单元格、有界递归内表及行内内容自动列宽、纵向合并续排、不同栏宽的原子语义行及含纵向 owner 的行内格完整行续排 |
-| 图片与绘制 | 行内 PNG／JPEG、矢量路径、形状、水印、[填充／描边透明度](docs/graphics-opacity-api.md)及支持仿射变换的受限离线 SVG 输入 |
+| 文字与字体 | 显式字体组、真实变体、缺字策略、JDK 塑形、双向文本和两端对齐；可选[原生 OpenType 模块](docs/native-opentype-api.md)提供可变／CFF2／彩色字体、竖排塑形及脚本控制；静态 CFF 原生 PDF 嵌入 |
+| 页面布局 | 自动分页、分节、页眉页脚／背景、等宽／变宽栏及平衡、矩形绕排和[原文／页区锚定的任意轮廓浮动](docs/contour-floats-api.md) |
+| 表格 | 重复表头、自动列宽、双跨度及完整行拆分；递归块格和组件网格按实际变宽区域续排，保留原文来源、字段、图片及链接 |
+| 图片与绘制 | 行内 PNG／JPEG、矢量路径、形状、水印；[CMYK／ICC／专色、渐变、图案、16 种混合、隔离组及 SVG 本地资源](docs/advanced-graphics-api.md)，RGB 目标按明确策略报告损失 |
 | 导航与表单 | 目录、书签、链接、评论、页码／引用字段、脚注续页、静态表单组件及四类基础可编辑 PDF 字段 |
 | 模板 | 离线 XML 变量、条件、循环、动态行、主题、静态页面配置、图文／表格页眉页脚、分节、有界递归 include、动态链接和字段；严格轻量 Markdown |
 | 输出格式 | PDF、自包含 SVG、PNG 单页／ZIP、DOCX 语义子集、HTML 和 Markdown |
@@ -55,9 +55,11 @@ Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档�
 | 导入与编辑 | Markdown／HTML/CSS／DOCX 子集、显式启用的 PDF 栏／段落／表格自动恢复及网格覆盖和不确定性报告、不可变语义编辑、DOCX 原包文字编辑及结构化损失预检／结果报告 |
 | 模板保存 | 普通 ZIP 中的可编辑 XML 源码／资源；支持的语义模型也可保存为同一 XML，再重开、编辑和导出，不兼容内容明确报损 |
 | PDF 安全与标准 | AES-256；选定 PDF/A-1b／2b／3b／4f 生成与转换；显式 PDF/UA-1 标签；PAdES B／T／LT／LTA、离线信任／撤销证据、时间戳、续期及 DocMDP 修改符合性 |
-| 长表与执行控制 | 单向普通／富文本／图片行源、被动外链、横向合并、完整行续页、实际页码／准确总数校验和同步逐页输出、资源预算、取消、超时、结构化诊断和原子路径写入 |
+| 长表与执行控制 | 单次源支持普通／富文本／图片及递归语义格、有界跨度和完整行续排；[显式重放](docs/streaming-replay-api.md)计算采样自动宽、最终总数、未来引用、目录／书签及组脚注；可选磁盘索引 PDF 输出、预算、取消及原子路径写入 |
 
 各项能力都有明确边界。组件网格、语义表格和单向长表分别服务不同契约，选择入口时参阅[编写指南](docs/authoring-api.md)、[链式 API](docs/fluent-api.md)与[长表指南](docs/streaming-table-api.md)。
+
+原生 OpenType 模块按需引入，应用显式选择目标平台的 LWJGL native classifier 并提供合法字体；核心仍保留原有纯 Java 路径。配置方式和限制见[原生模块指南](docs/native-opentype-api.md)。
 
 ## 快速开始
 
@@ -227,9 +229,7 @@ HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出
 以下能力仍未完整实现，不属于当前已支持特性：
 
 - 更广页面图层组合、DOCX 图层映射及跨阅读器验收。
-- 递归块格子树及组件网格跨变宽栏续排，以及更广泛的页面浮动布局。
-- 更多复杂脚本、通用竖排、可变／彩色字体及阅读器搜索／选区兼容。
-- 单向长表自动列宽与更多未来语义、长期容量；高级色彩、混合模式、渐变及更广 SVG 子集。
+- 已验收语料以外的跨平台字体与跨阅读器搜索／选区兼容。
 - 更广 HTML/CSS 兼容与可视化模板设计器。
 - 稳定公共 API、Maven Central 分发及可重复的跨平台发布验证。
 
@@ -250,6 +250,7 @@ Existing PDF → Bounded Semantic Recovery → Document Model
 | --- | --- |
 | `export4j-model` | 文档语义、样式与执行契约 |
 | `export4j-font-core`、`export4j-text-core` | 字体资源、度量、塑形和文字布局 |
+| `export4j-opentype` | 可选的原生塑形、可变／彩色字体与竖排流 |
 | `export4j-graphics-api`、`export4j-graphics-core` | 绘制接口、Display List 与通用绘制 |
 | `export4j-layout-model`、`export4j-layout-core` | Layout IR、测量、区域与分页 |
 | `export4j-components` | 链式编写、组合组件与 DocumentEngine |
@@ -309,11 +310,14 @@ Export4j 复用了以下开源基础设施与显式提供的字体资源：
 | [Apache Commons Logging](https://commons.apache.org/proper/commons-logging/) | PDFBox 传递运行依赖 |
 | [commonmark-java](https://github.com/commonmark/commonmark-java)、[jsoup](https://jsoup.org/) | 离线 Markdown 与 HTML 解析 |
 | [Bouncy Castle](https://www.bouncycastle.org/) | PDF 签名、证书、撤销及时间戳基础能力；后端内部依赖 |
+| [LWJGL](https://www.lwjgl.org/)、[HarfBuzz](https://harfbuzz.github.io/) | 可选的原生 OpenType 塑形、轮廓及彩色字形绘制 |
 | [OpenJDK](https://openjdk.org/) | Java 运行时、Java2D／OpenType、ZIP 与 XML 基础设施 |
 | [Gradle](https://gradle.org/)、[JUnit](https://junit.org/) | 构建与 Java 测试 |
 | [pypdf](https://github.com/py-pdf/pypdf)、[pypdfium2](https://github.com/pypdfium2-team/pypdfium2)、[Pillow](https://python-pillow.org/)、[python-docx](https://github.com/python-openxml/python-docx)、[cryptography](https://cryptography.io/)、[Poppler](https://poppler.freedesktop.org/) | 独立格式、渲染与验收工具 |
 | [Liberation Fonts](https://github.com/liberationfonts/liberation-fonts)、[霞鹜文楷 TC](https://github.com/lxgw/LxgwWenkaiTC)、[站酷小薇](https://github.com/googlefonts/zcool-xiaowei) | 示例与测试显式字体 |
 | [Noto Fonts](https://github.com/notofonts/noto-fonts)、[Source Sans 3](https://github.com/adobe-fonts/source-sans) | 复杂脚本及 CFF 示例／测试字体 |
+| [Roboto Flex](https://github.com/googlefonts/roboto-flex)、[color-fonts](https://github.com/googlefonts/color-fonts) | 可变／彩色字体验证夹具 |
+| [resvg-py](https://github.com/baseplate-admin/resvg-py)、[resvg](https://github.com/linebender/resvg) | 验证阶段的独立 SVG 渲染，不进入 Java 运行制品 |
 
 具体版本、哈希、来源和分发义务见[依赖记录](docs/dependencies.md)、[字体记录](assets/fonts/README.md)、[NOTICE](NOTICE)及[原始许可证](third-party/licenses)。
 

@@ -9,6 +9,11 @@ import com.mirakyux.export4j.text.GlyphRun;
  * Mutable implementations are task-confined unless explicitly documented otherwise.
  */
 public interface DrawingSurface {
+    default DrawingSurface fillPath(VectorPath path, Paint paint, DrawCommand.FillRule rule) { throw new UnsupportedOperationException("surface does not support explicit paint"); }
+    default DrawingSurface strokePath(VectorPath path, Paint paint, double width) { throw new UnsupportedOperationException("surface does not support explicit paint"); }
+    default DrawingSurface clipPath(VectorPath path, DrawCommand.FillRule rule) { throw new UnsupportedOperationException("surface does not support path clipping"); }
+    default DrawingSurface blend(BlendMode mode) { throw new UnsupportedOperationException("surface does not support blend modes"); }
+    default DrawingSurface group(Rect bounds, java.util.List<DrawCommand> commands, double opacity, BlendMode blend) { throw new UnsupportedOperationException("surface does not support isolated groups"); }
     DrawingSurface fillRect(Rect bounds, RgbColor color);
 
     DrawingSurface fillPath(VectorPath path, RgbColor color);

@@ -19,6 +19,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.util.Matrix;
@@ -90,13 +91,25 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
 
     @Override
     public void write(DisplayDocument document, OutputStream output) throws IOException {
-        Objects.requireNonNull(document, "document");
+        write(document, output, com.mirakyux.export4j.model.processing.ProcessingPolicy.STRICT);
+    }
+
+    public com.mirakyux.export4j.model.processing.ProcessingReport write(DisplayDocument document, OutputStream output,
+            com.mirakyux.export4j.model.processing.ProcessingPolicy policy) throws IOException {
+        Objects.requireNonNull(document, "document"); Objects.requireNonNull(policy, "policy");
+        var issues = new java.util.ArrayList<com.mirakyux.export4j.model.processing.ProcessingIssue>();
+        var pages = new java.util.ArrayList<DisplayPage>();
+        for (var page : document.pages()) {
+            pages.add(new DisplayPage(page.size(), com.mirakyux.export4j.graphics.core.GraphicsResources.mapPaints(page.commands(),
+                    paint -> PdfPaintWriter.prepare(paint, options.archival().map(PdfArchival::target).orElse(null), policy, issues))));
+        }
+        document = new DisplayDocument(document.metadata(), pages, document.extras(), document.accessibility());
         Objects.requireNonNull(output, "output");
         preflight(document);
         try (PDDocument pdf = createDocument(document.metadata())) {
             if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, document.metadata(), document.extras()); }
             Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
-            Map<String, PDType0Font> embedded = new HashMap<>();
+            Map<String, PDFont> embedded = new HashMap<>();
             var tags = options.accessibility().isPresent() ? new PdfTagWriter(document) : null;
             for (int pageIndex = 0; pageIndex < document.pages().size(); pageIndex++) {
                 com.mirakyux.export4j.model.ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, document.pages().size());
@@ -113,6 +126,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             throw new PdfRenderException(PdfErrorCode.OUTPUT_FAILED, -1, -1,
                     "PDF output failed", failure);
         }
+        return new com.mirakyux.export4j.model.processing.ProcessingReport(com.mirakyux.export4j.model.processing.ProcessingReport.Phase.ACTUAL, issues);
     }
 
     /**
@@ -189,6 +203,8 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         private long pathSegments;
         private final Set<String> fontIds = new HashSet<>();
         private long fontBytes;
+        private long colorBytes, gradientStops;
+        private final Set<String> colorProfiles = new HashSet<>();
 
         private BudgetState(DocumentExtras extras) throws PdfRenderException {
             fontBytes = PdfExtrasWriter.preflight(extras, limits, fontIds);
@@ -204,18 +220,35 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             }
             checkedFloat(page.size().width(), pageIndex, -1);
             checkedFloat(page.size().height(), pageIndex, -1);
-            if (page.commands().size() > limits.maxCommands() - commandCount) {
+            acceptCommands(page.commands(), pageIndex, 0);
+            pages++;
+        }
+
+        private void acceptCommands(List<DrawCommand> commands, int pageIndex, int nesting) throws PdfRenderException {
+            if (nesting > 32) { throw budget(pageIndex, -1, "nested paint depth exceeded"); }
+            if (commands.size() > limits.maxCommands() - commandCount) {
                 throw budget(pageIndex, -1, "command budget exceeded");
             }
-            commandCount += page.commands().size();
+            commandCount += commands.size();
             int depth = 0;
-            for (int index = 0; index < page.commands().size(); index++) {
+            for (int index = 0; index < commands.size(); index++) {
                 ExecutionContext.checkpoint();
-                DrawCommand command = page.commands().get(index);
+                DrawCommand command = commands.get(index);
                 if (command instanceof DrawCommand.Save && ++depth > limits.maxStateDepth()) {
                     throw budget(pageIndex, index, "graphics state depth exceeded");
                 } else if (command instanceof DrawCommand.Restore) {
                     depth--;
+                } else if (command instanceof DrawCommand.Group group) {
+                    if (options.archival().filter(value -> value.target() == PdfArchival.Profile.A1B).isPresent()) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, pageIndex, index, "PDF/A-1 forbids transparency groups"); }
+                    acceptCommands(group.commands(), pageIndex, nesting + 1);
+                } else if (command instanceof DrawCommand.Blend blend) {
+                    if (blend.mode() != com.mirakyux.export4j.graphics.BlendMode.NORMAL && options.archival().filter(value -> value.target() == PdfArchival.Profile.A1B).isPresent()) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, pageIndex, index, "PDF/A-1 forbids blend modes"); }
+                } else if (command instanceof DrawCommand.PaintFill fill) {
+                    pathSegments = countSegments(fill.path(), pathSegments, pageIndex, index); acceptPaint(fill.paint(), pageIndex, index, nesting);
+                } else if (command instanceof DrawCommand.PaintStroke stroke) {
+                    pathSegments = countSegments(stroke.path(), pathSegments, pageIndex, index); acceptPaint(stroke.paint(), pageIndex, index, nesting);
+                } else if (command instanceof DrawCommand.ClipPath clip) {
+                    pathSegments = countSegments(clip.path(), pathSegments, pageIndex, index);
                 } else if (command instanceof DrawCommand.Opacity opacity) {
                     if (options.archival().isPresent() && options.archival().orElseThrow().target() == PdfArchival.Profile.A1B
                             && (opacity.fill() != 1 || opacity.stroke() != 1)) {
@@ -261,7 +294,26 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                     }
                 }
             }
-            pages++;
+        }
+
+        private void acceptPaint(com.mirakyux.export4j.graphics.Paint paint, int pageIndex, int index, int nesting) throws PdfRenderException {
+            var paintColors = com.mirakyux.export4j.graphics.core.GraphicsResources.colors(paint);
+            gradientStops += paint instanceof com.mirakyux.export4j.graphics.Paint.Solid ? 0 : paintColors.size();
+            if (gradientStops > 1_000_000) { throw budget(pageIndex, index, "gradient stop budget exceeded"); }
+            for (var color : paintColors) {
+                var base = color instanceof com.mirakyux.export4j.graphics.SpotColor spot ? spot.alternate() : color;
+                if (base instanceof com.mirakyux.export4j.graphics.IccColor icc && colorProfiles.add(icc.id())) {
+                    colorBytes += icc.profile().length; if (colorBytes > 64L * 1024 * 1024) { throw budget(pageIndex, index, "ICC profile byte budget exceeded"); }
+                }
+            }
+            if (paint instanceof com.mirakyux.export4j.graphics.Paint.Tile tile) { acceptCommands(tile.commands(), pageIndex, nesting + 1); }
+            if (options.archival().isPresent()) {
+                for (var color : com.mirakyux.export4j.graphics.core.GraphicsResources.colors(paint)) {
+                    if (color instanceof com.mirakyux.export4j.graphics.CmykColor || color instanceof com.mirakyux.export4j.graphics.SpotColor spot && spot.alternate() instanceof com.mirakyux.export4j.graphics.CmykColor) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, pageIndex, index, "RGB archival output needs explicit ICC rather than DeviceCMYK"); }
+                }
+                var stops = paint instanceof com.mirakyux.export4j.graphics.Paint.Linear p ? p.stops() : paint instanceof com.mirakyux.export4j.graphics.Paint.Radial p ? p.stops() : java.util.List.<com.mirakyux.export4j.graphics.Paint.Stop>of();
+                if (options.archival().orElseThrow().target() == PdfArchival.Profile.A1B && stops.stream().anyMatch(stop -> stop.opacity() != 1)) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, pageIndex, index, "PDF/A-1 forbids gradient transparency"); }
+            }
         }
 
         private void acceptFont(FontData data, int page, int command) throws PdfRenderException {
@@ -283,7 +335,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         private final OutputStream output;
         private final BudgetState budget;
         private final Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
-        private final Map<String, PDType0Font> embedded = new HashMap<>();
+        private final Map<String, PDFont> embedded = new HashMap<>();
         private WriterState state = WriterState.OPEN;
         private long interactionCount;
         private long interactionCodePoints;
@@ -425,11 +477,14 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private void renderPage(PDDocument pdf, DisplayPage source, int pageIndex,
-            Map<FontFamily, PDType1Font> fonts, Map<String, PDType0Font> embedded, PdfTagWriter tags) throws IOException {
+            Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded, PdfTagWriter tags) throws IOException {
         PDPage page = new PDPage(new PDRectangle(
                 checkedFloat(source.size().width(), pageIndex, -1),
                 checkedFloat(source.size().height(), pageIndex, -1)));
         pdf.addPage(page);
+        page.setResources(new org.apache.pdfbox.pdmodel.PDResources());
+        var paintState = new PaintState();
+        paintState.matrix = new java.awt.geom.AffineTransform(1, 0, 0, -1, 0, source.size().height());
         try (PDPageContentStream stream = new PDPageContentStream(pdf, page)) {
             stream.transform(new Matrix(1, 0, 0, -1, 0,
                     checkedFloat(source.size().height(), pageIndex, -1)));
@@ -438,7 +493,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 try {
                     boolean marked = tags != null && tags.begin(stream, pageIndex, index);
                     renderCommand(pdf, stream, source.commands().get(index),
-                            fonts, embedded, pageIndex, index);
+                            fonts, embedded, pageIndex, index, page.getResources(), paintState);
                     if (marked) { stream.endMarkedContent(); }
                 } catch (PdfRenderException failure) {
                     throw failure;
@@ -450,9 +505,26 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         }
     }
 
+    private static final class PaintState {
+        double fill = 1, stroke = 1;
+        com.mirakyux.export4j.graphics.BlendMode blend = com.mirakyux.export4j.graphics.BlendMode.NORMAL;
+        java.awt.geom.AffineTransform matrix = new java.awt.geom.AffineTransform();
+        java.awt.geom.AffineTransform baseMatrix = new java.awt.geom.AffineTransform();
+        java.awt.geom.AffineTransform patternMatrix() {
+            try { var relative = baseMatrix.createInverse(); relative.concatenate(matrix); return relative; }
+            catch (java.awt.geom.NoninvertibleTransformException failure) { throw new IllegalArgumentException("singular PDF form transform", failure); }
+        }
+        record Saved(double fill, double stroke, com.mirakyux.export4j.graphics.BlendMode blend, java.awt.geom.AffineTransform matrix) { }
+        final java.util.ArrayDeque<Saved> saved = new java.util.ArrayDeque<>();
+    }
+
     private void renderCommand(PDDocument pdf, PDPageContentStream stream, DrawCommand command,
-            Map<FontFamily, PDType1Font> fonts, Map<String, PDType0Font> embedded,
-            int page, int index) throws IOException {
+            Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded,
+            int page, int index, org.apache.pdfbox.pdmodel.PDResources resources, PaintState paintState) throws IOException {
+        PdfPaintWriter.Renderer nested = (content, commands, nestedResources, initialMatrix) -> {
+            var childState = new PaintState(); childState.matrix = new java.awt.geom.AffineTransform(initialMatrix); childState.baseMatrix = new java.awt.geom.AffineTransform(initialMatrix);
+            for (var child : commands) { renderCommand(pdf, content, child, fonts, embedded, page, index, nestedResources, childState); }
+        };
         switch (command) {
             case DrawCommand.OutlineText text -> {
                 var properties = new org.apache.pdfbox.cos.COSDictionary();
@@ -531,9 +603,15 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                                 checkedFloat(bounds.x(), page, index),
                                 checkedFloat(bounds.y() + bounds.height(), page, index)));
             }
-            case DrawCommand.Save ignored -> stream.saveGraphicsState();
-            case DrawCommand.Restore ignored -> stream.restoreGraphicsState();
+            case DrawCommand.PaintFill fill -> PdfPaintWriter.paint(pdf, stream, fill.path(), fill.paint(), fill.rule(), 0, paintState.fill, paintState.blend, paintState.patternMatrix(), resources, nested);
+            case DrawCommand.PaintStroke stroke -> PdfPaintWriter.paint(pdf, stream, stroke.path(), stroke.paint(), DrawCommand.FillRule.NONZERO, stroke.width(), paintState.stroke, paintState.blend, paintState.patternMatrix(), resources, nested);
+            case DrawCommand.ClipPath clip -> { PdfPaintWriter.path(stream, clip.path()); if (clip.rule() == DrawCommand.FillRule.EVEN_ODD) { stream.clipEvenOdd(); } else { stream.clip(); } }
+            case DrawCommand.Blend blend -> { paintState.blend = blend.mode(); PdfPaintWriter.blend(stream, blend.mode()); }
+            case DrawCommand.Group group -> PdfPaintWriter.group(pdf, stream, group, paintState.fill, paintState.matrix, nested);
+            case DrawCommand.Save ignored -> { stream.saveGraphicsState(); paintState.saved.push(new PaintState.Saved(paintState.fill, paintState.stroke, paintState.blend, new java.awt.geom.AffineTransform(paintState.matrix))); }
+            case DrawCommand.Restore ignored -> { stream.restoreGraphicsState(); var previous = paintState.saved.pop(); paintState.fill = previous.fill(); paintState.stroke = previous.stroke(); paintState.blend = previous.blend(); paintState.matrix = previous.matrix(); }
             case DrawCommand.Opacity opacity -> {
+                paintState.fill = opacity.fill(); paintState.stroke = opacity.stroke();
                 var state = new org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState();
                 state.setNonStrokingAlphaConstant((float) opacity.fill());
                 state.setStrokingAlphaConstant((float) opacity.stroke());
@@ -541,6 +619,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             }
             case DrawCommand.Transform transform -> {
                 AffineTransform m = transform.matrix();
+                paintState.matrix.concatenate(com.mirakyux.export4j.graphics.core.GraphicsResources.matrix(m));
                 stream.transform(new Matrix(checkedFloat(m.a(), page, index),
                         checkedFloat(m.b(), page, index), checkedFloat(m.c(), page, index),
                         checkedFloat(m.d(), page, index), checkedFloat(m.e(), page, index),
@@ -554,9 +633,24 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private static void renderGlyphs(PDDocument pdf, PDPageContentStream stream, DrawCommand.GlyphText text,
-            Map<String, PDType0Font> fonts, int page, int index) throws IOException {
+            Map<String, PDFont> fonts, int page, int index) throws IOException {
         GlyphRun run = text.run();
-        PDType0Font font = fonts.get(run.font().id());
+        if (run.font().cffOutlines()) {
+            double cursor = text.baseline().x();
+            for (var glyph : run.glyphs()) {
+                ExecutionContext.checkpoint();
+                PDFont cff = PdfCffFont.get(pdf, run.font(), glyph, fonts);
+                stream.beginText();
+                stream.setFont(cff, checkedFloat(run.fontSize(), page, index));
+                fillColor(stream, text.color());
+                stream.setTextMatrix(new Matrix(1, 0, 0, -1, checkedFloat(cursor, page, index), checkedFloat(text.baseline().y(), page, index)));
+                stream.showText(glyph.text());
+                stream.endText();
+                cursor += glyph.advance();
+            }
+            return;
+        }
+        PDFont font = fonts.get(run.font().id());
         if (font == null) {
             try {
                 font = PDType0Font.load(pdf, new ByteArrayInputStream(run.font().bytes()),

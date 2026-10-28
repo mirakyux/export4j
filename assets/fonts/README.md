@@ -15,7 +15,7 @@
 | `NotoSansThai-Regular.ttf` | [Noto Fonts 同一固定提交](https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf)，原样保存 | The Noto Project Authors（2018） | 泰文组合标记、断行与阅读器语料 |
 | `SourceSans3-Regular.otf` | [Adobe Source Sans 3.052R](https://raw.githubusercontent.com/adobe-fonts/source-sans/3.052R/OTF/SourceSans3-Regular.otf)，原样保存 | Adobe（2010～2022），保留字体名 Source | 静态 OTF/CFF 加载、集合成员提取及轮廓输出 |
 
-审查日期：2026-10-16。十个字体文件均采用 SIL Open Font License 1.1，原文件未经修改或重命名。中文样例使用 Liberation Sans 与霞鹜文楷 TC；复杂文字语料另显式传入 Noto Naskh Arabic、Noto Sans Devanagari 和 Noto Sans Thai。三个变体不替换原 Regular；Regular 仍按 PDFBox 来源复现。
+上表静态字体均采用 SIL Open Font License 1.1，原文件未经修改。中文样例使用 Liberation Sans 与霞鹜文楷 TC；复杂文字语料另显式传入相应脚本的 Noto 字体。三个变体不替换原 Regular；Regular 仍按 PDFBox 来源复现。可变、彩色及项目自产测试字体的独立来源和许可见下文，不能将本目录所有字体笼统归为 OFL。
 
 站酷小薇体保留用于阶段二历史样本。其“回”字在直接 FreeType 渲染时也显示为实心轮廓；阶段三新增霞鹜文楷 TC 作为当前中文字体，避免修改原资源。
 
@@ -56,8 +56,44 @@ Source Sans 3 使用同一固定标签中的 [LICENSE.md](https://raw.githubuser
 
 ## 使用与分发
 
-字体可按 OFL 条件随软件打包、嵌入与再分发，必须保留版权和许可证，不得单独销售字体。修改版涉及保留字体名时须遵守原许可。OFL 对字体的约束不使使用字体创建的文档自动采用 OFL。
+采用 OFL 的字体可按其条件随软件打包、嵌入与再分发，必须保留版权和许可证，不得单独销售字体。修改版涉及保留字体名时须遵守原许可。OFL 对字体的约束不使使用字体创建的文档自动采用 OFL。彩色样本和项目自产几何分别遵守下述许可。
 
 加载器还检查字体 OS/2 嵌入标志，拒绝受限或仅位图嵌入，禁止子集化时使用完整嵌入。标志检查不能替代调用方对实际字体许可证的审查。
 
 测试对内存字节中的嵌入权限进行局部修改，以验证拒绝和完整嵌入路径；这些修改不写回字体文件，也不作为修改字体资产分发。
+
+## 原生 OpenType 验收资源
+
+| 文件 | 固定来源 | 许可与用途 |
+| --- | --- | --- |
+| `RobotoFlex.ttf` | Google Fonts 提交 `d427686494a89f0b7ecb9833273b6aabb83a6350` 的 `ofl/robotoflex/RobotoFlex[GRAD,XOPQ,XTRA,YOPQ,YTAS,YTDE,YTFI,YTLC,YTUC,opsz,slnt,wdth,wght].ttf` | `RobotoFlex-OFL.txt`；13 个轴的度量与真实轮廓变化。仅使用较短本地文件名，字节及字体内名称未修改 |
+| `SourceSans3VF-Upright.otf` | Adobe Source Sans 标签 `3.052R` 的 `VF/SourceSans3VF-Upright.otf` | `SourceSans3-OFL.txt`；CFF2 权重插值 |
+| `NotoSansBengali-Regular.ttf`、`NotoSansTamil-Regular.ttf`、`NotoSansMyanmar-Regular.ttf`、`NotoSansKhmer-Regular.ttf`、`NotoSansSinhala-Regular.ttf`、`NotoSansHebrew-Regular.ttf` | `notofonts/noto-fonts` 提交 `ffebf8c1ee449e544955a7e813c54f9b73848eac` 的 `hinted/ttf/<字体族>/<文件名>` | 共用 `NotoNaskhArabic-OFL.txt`；孟加拉、泰米尔、缅甸、高棉、僧伽罗与希伯来语簇和独立塑形对照 |
+| `NotoColorEmoji-COLRv1.ttf`、`NotoColorEmoji-sbix.ttf` | `googlefonts/color-fonts` 提交 `0046ea4c3b69e9fbbe464c2594816894e3aa5e4b` 的 `fonts/noto-glyf_colr_1.ttf`、`fonts/noto-sbix.ttf` | `ColorFonts-LICENSE.txt`（Apache-2.0）；保留原字节与内部名称，验证真实 COLRv1 和 PNG/sbix 着色 |
+| `Export4j-CID-Test.otf`、`Export4j-ColorV0-Test.ttf`、`Export4j-ColorV1-Test.ttf` | 项目自编 `scripts/generate_opentype_fixtures.py`，fontTools 4.62.1，固定字体时间戳 | 项目 Apache-2.0；自主矩形、圆形和渐变，无外部字形轮廓。覆盖 CID CFF、双 palette、COLRv0、COLRv1 三种渐变及 28 种合成模式 |
+
+两份 Noto 彩色字体由上游配置从 SVG 图像重新生成，并非复制已发布的 OFL Noto 字体。上游固定子模块 `font-srcs/noto-emoji` 指向提交 `b960563a023fbd1337227bf2a8a2d5a91889a333`：其图像／工具的 Apache-2.0 原文保存在 `NotoEmoji-Artwork-LICENSE.txt`，旗帜来源及例外原文保存在 `NotoEmoji-RegionFlags-LICENSE.txt`。字体来源、图像来源和普通静态 Noto 字体的 OFL 不混用。
+
+这些资源只用于示例和验证；`export4j-opentype` 普通 JAR 不嵌入它们，也不自动下载字体。原生二进制是另一个显式资源选择，见[原生 OpenType API](../../docs/native-opentype-api.md)。
+
+### 新增资源字节与校验
+
+| 文件 | 字节数 | SHA-256 |
+| --- | --- | --- |
+| `RobotoFlex.ttf` | 1,787,292 | `9b523f7d82593df0107173849ebb8c817471a1df4b4fb2c3cbf40cfd810c8281` |
+| `RobotoFlex-OFL.txt` | 4,488 | `9cbaed04b20c853f99840efe5dc96956f6f6120ed83a0ade35f9281a2b63e5d0` |
+| `SourceSans3VF-Upright.otf` | 538,164 | `3d0dfd6a3a644ab3d462a737923ffac41fb0ae007ce9ba83c24e6bfa76aa56c7` |
+| `NotoSansBengali-Regular.ttf` | 200,048 | `6300c5370cd688b0641343de4c786de6d412bb6c578d129dae75e93a0322dcab` |
+| `NotoSansTamil-Regular.ttf` | 74,248 | `6532db33b8b264abe3a098a40619feb489b5ddf5ab1d2b46e72b51eeb548001b` |
+| `NotoSansMyanmar-Regular.ttf` | 195,408 | `9dd2bc76a822a974efce803a4b07302d14d01d5c1fa9e33a258d15a9cb513a7d` |
+| `NotoSansKhmer-Regular.ttf` | 114,096 | `5c1ec068352f1e1fe8e7a3218230360d054e104d377ef40c0423b17c34c3c259` |
+| `NotoSansSinhala-Regular.ttf` | 310,232 | `a966549310b2d3046ba25bbeef11985428ff9356fa656fd6118bc90fb82df031` |
+| `NotoSansHebrew-Regular.ttf` | 26,900 | `a7fa16fffb27bedb060a0866267c29e9859aeb9c21cc33f5b3aaf6eb062eca85` |
+| `NotoColorEmoji-COLRv1.ttf` | 4,619,384 | `fc1c3b581d01fcaed3283b9a12a04f784db0a22710e1c196dfb3a52696063fdc` |
+| `NotoColorEmoji-sbix.ttf` | 9,365,452 | `fd68ec5f75e244db879b1f3aaf453627ed764453343a2dbaa8b17da8641d75b5` |
+| `ColorFonts-LICENSE.txt` | 11,358 | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
+| `NotoEmoji-Artwork-LICENSE.txt` | 11,357 | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
+| `NotoEmoji-RegionFlags-LICENSE.txt` | 3,479 | `73af5be6e2ea006b75bebfd2f463f252c5ce8c94024c639dbdd97f0456272a5a` |
+| `Export4j-CID-Test.otf` | 1,144 | `6bb6f3506ce4e04b6922546ae6ccc1689f14e2682156536bd965dc934af5fe36` |
+| `Export4j-ColorV0-Test.ttf` | 1,996 | `a8f79a18311ff2f340c3bf0be0314fc90b870caaf1e0d244aa7ff86b6bd1c347` |
+| `Export4j-ColorV1-Test.ttf` | 2,096 | `88056d20ed7d032028c1753f3ae679589d58b0cc119458f0cf46f758975d9e97` |

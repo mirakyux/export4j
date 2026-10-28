@@ -86,6 +86,9 @@ public final class StreamingTableLayouter {
     public Summary layout(StreamingTable table, TableRowSource source, FontGroup fonts,
             Map<String, FontGroup> fontRoles, PageConsumer pages,
             Consumer<StreamingTableDiagnostic> diagnostics, StreamingTableLimits limits) throws IOException {
+        if (Objects.requireNonNull(table, "table").semanticCells()) {
+            throw new IllegalArgumentException("semantic streaming tables require the explicit replay exporter");
+        }
         var roles = Map.copyOf(Objects.requireNonNull(fontRoles, "fontRoles"));
         for (var name : roles.keySet()) {
             ExecutionContext.checkpoint();

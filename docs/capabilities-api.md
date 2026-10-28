@@ -10,7 +10,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 [列表标记](list-markers-api.md)独立保存完整 InlineStyle，标准 DOCX 使用所选 level 的运行属性；[XML 文字默认值](xml-text-defaults-api.md)按正文／标题／单元格独立配置角色和颜色，显式局部覆盖、命名完整样式及嵌套格范围保持。验收分别见[阶段三十八](verification/phase-38-component-text.md)、[三十九](verification/phase-39-list-markers.md)及[四十](verification/phase-40-xml-text-defaults.md)。整体试用边界见[就绪评估](readiness-assessment.md)。
 
-当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 17 个模块。最初能力扩展的可编译样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)，其范围见[阶段五验收](verification/phase-5-capabilities.md)；后续扩展按各节所列验收判断。
+当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 18 个模块。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
 
 ## 已有 PDF 处理与语义恢复
 
@@ -38,7 +38,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 不支持任意 PDF 无损编辑或版面恢复，OCR 不在范围内。脱敏区域由调用方完整指定；不是自动发现敏感信息。各坐标系和字体／页面子集以对应 API 为准。
 
-外部 PDF 的[嵌入静态 CFF 字体](pdf-font-compatibility-api.md)已贯通渲染、文字替换、光栅脱敏及语义恢复；新建 PDF 的 CFF 正文仍使用既有轮廓输出。未嵌入字体没有隐式系统替代，复杂内容流和交互结构的入口边界保持独立。
+外部 PDF 的[嵌入静态 CFF 字体](pdf-font-compatibility-api.md)已贯通渲染、文字替换、光栅脱敏及语义恢复；新建 PDF 支持静态 CFF 正文原生嵌入。未嵌入字体没有隐式系统替代，复杂内容流和交互结构的入口边界保持独立。
 
 [显式源字体映射](pdf-font-compatibility-api.md#渲染与脱敏的显式源字体映射)允许渲染／光栅脱敏使用调用方静态 TrueType 替代无程序的简单字体，保留源编码及字宽，并报告外观替代损失；不扩大文字编辑／语义恢复的字体范围。语义恢复另接受明确白名单的普通不透明 ExtGState，透明度、软蒙版、未知键、Form 与裁剪仍按各自边界处理。两项实现与独立控制见[阶段九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)。
 
@@ -81,7 +81,7 @@ var member = FontCollectionLoader.load(collectionBytes, 1); // TTC/OTC，明确�
 var cff = TrueTypeFontLoader.load(otfBytes);                 // 静态 OTF/CFF 或 TTF
 ~~~
 
-集合和提取成员分别受字节预算控制。[VerticalText](vertical-text-api.md)提供显式字格的逐字形竖排子集；通用 OpenType 竖排、可变字体、CFF2 和彩色字体尚未支持。CFF 正文以轮廓绘制；PDF 可编辑字段需要显式 TrueType 字体。
+集合和提取成员分别受字节预算控制。[VerticalText](vertical-text-api.md)保留显式字格入口；可选[原生 OpenType 模块](native-opentype-api.md)提供 HarfBuzz 方向／特性塑形、可变 glyf／CFF2、彩色字形、纵中横及分页竖排。字体和平台 native classifier 都由应用显式提供。静态 CFF 正文支持原生 PDF 字体嵌入，原生模块的可变／彩色实例则生成确定的轮廓／图片和 ActualText。两种路径分别验证提取、查询、选中与视觉，不把逻辑锚点矩形当作精确字形轮廓。PDF 可编辑字段仍需要显式 TrueType 字体。
 
 `TableCell.rich(inlines, cellFormat)` 保留真实字体角色、颜色、上下标、下划线和删除线。`InlineText(text, style, uri)` 增加被动外链，允许 HTTP、HTTPS、mailto，禁止脚本、文件链接和带用户信息的 HTTP URL。外链按最终行片段解析，包括跨页段落与表格；不获取链接内容。SVG／PNG 仍拒绝交互对象，调用方须显式提供无交互版本。
 
@@ -121,6 +121,8 @@ PDF 四类可编辑字段可通过[FormStyle](form-styles-api.md)设置文字／
 `ContinuousColumns(regionFlow, columns, gap)` 从当前页剩余高度开始，续页使用完整栏高；支持 `FlowText`／`OpenTypeText`、`FlowColumn` 混合流与 `GridTable` 表格。等宽文字每次试排只换行一次，变宽最低多行策略使用有界重测；图片整块移动，表头逐占用栏重复，默认合并行组保持完整；末片段按最高栏实际高度接续正文。可用 `.balanced(true)` 进行最多 24 次试排，缩短公共栏高并保持页数及跳过的首页；显式合并格续排见[续页指南](grid-continuation-api.md)，基础几何见[连续分栏 API](continuous-columns-api.md)和[混合分栏 API](mixed-columns-api.md)。
 
 `MultiFloatText(text, floats)` 已补齐首片段内多个左右矩形同时避让、错位／堆叠、封闭行带跳过与整组移页；浮动组件仅输出一次，正文续页恢复全宽。最多 64 个实际不相交的矩形，完整契约见[多浮动组件绕排](multi-floats-api.md)。
+
+[ContourFloatText](contour-floats-api.md)进一步支持任意闭合直线／三次曲线轮廓、原文 UTF-16 锚点与未来区域锚点；逐整行带按实际轮廓避让，图形跨页遮罩分片，语义子组件通过区域流真正续排。文字原子组件不能靠重复裁切跨页，全部工作受有限预算控制。
 
 ## 取消、超时与文件写入
 
@@ -164,15 +166,15 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 
 原生 PAGE／NUMPAGES／PAGEREF／编号 REF 已接入正文及普通单元格，支持显式宽度和扁平复杂字段导入；本地 Word 16.0 已实测更新并导出样例 PDF。重复表头 PAGE、非块起点页码书签、注释标记和题注编号仍有限制，见[DOCX 字段 API](docx-fields-api.md)与[阶段十二验收](verification/phase-12-docx-fields.md)。
 
-以下内容仍未完成，不能据本批结果宣称全部缺口关闭：
+相关能力与独立边界如下；四项补齐不代表任意格式、平台及阅读器兼容：
 
 | 范围 | 后续验收目标 |
 | --- | --- |
 | 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、任意组件内字段、自动字段宽度重排及未支持节点的无障碍映射 |
-| 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。变宽行内格纵向 owner 续排现已支持；递归块子树、任意轮廓／跨页浮动锚点、任意递归网格续页、通用竖排与可变字体轴仍开放；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
+| 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。[变宽递归子树与组件网格续排](variable-table-continuation-api.md)、[任意轮廓与跨页浮动锚点](contour-floats-api.md)及[可选原生方向／可变字体](native-opentype-api.md)已接入；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
 | DOCX | 浮动／裁剪等复杂图像、目录／评论／表单完整模型映射；首页／奇偶语义页区已验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已验收，Word 保存兼容单独登记 |
 | PDF | 现有编辑、恢复、PDF/UA-1、选定 PDF/A 及 PAdES 的子集见对应 API；任意外部结构、任意标准等级与通用阅读器兼容不由有限样例保证 |
-| 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。一般 Word／LibreOffice 外观、其他系统／JDK、多阅读器、持续容量与长期资源释放仍未验收 |
+| 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。后续[磁盘索引 PDF 与重放容量](streaming-replay-api.md)另有独立验证；一般 Word／LibreOffice 外观、其他系统／JDK及跨阅读器矩阵仍按对应缺口推进。有限容量证据不证明长期无泄漏 |
 
 [编写时主题](themes-api.md)已接入 Java Document／Documents，集中管理正文、六级标题、便利语义表格和有界命名完整样式。加入时快照、显式完整值优先、组件六项继承及默认输出兼容见[阶段三十验收](verification/phase-30-authoring-themes.md)。XML 静态名称与四类可编辑字段显式外观分别见[XML 主题](xml-themes-api.md)和[FormStyle](form-styles-api.md)。页眉页脚独立默认值见[页区主题](xml-page-regions-api.md)；全局颜色／字体角色与分域覆盖已由[阶段六十](verification/phase-60-theme-appearance.md)验收；背景／前景的独立主题与固定框已由[阶段六十二](verification/phase-62-page-overlays.md)验收。
 
@@ -188,6 +190,10 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 
 单向 PDF 后端支持[加密及静态归档](streaming-protection-api.md)，复用完整文档的 AES-256 权限及 PDF/A-2b 限制；独立合规与密码／链接／图片验收见[阶段七十](verification/phase-70-streaming-protection.md)。有限并发失败恢复见[阶段六十九](verification/phase-69-streaming-stability.md)，不证明长期无泄漏或恒内存。
 
-## 矢量透明度与 SVG 变换
+## 高级图形与 SVG 本地资源
 
-[绘制透明度](graphics-opacity-api.md)以显式填充／描边 alpha 贯通 PDF、SVG 和 PNG，嵌套 save／restore 保持，PDF/A-1b 拒绝非不透明状态。静态 SVG 输入支持继承 fill-opacity／stroke-opacity 及有界仿射变换；group opacity、混合模式、CMYK／专色、渐变、图案和滤镜仍拒绝或保持未提供，不把图片 alpha 等同于完整矢量合成。
+[高级图形](advanced-graphics-api.md)支持 CMYK／ICC／专色、16 种混合模式、隔离透明组、线性／径向渐变、图案及复合裁剪。PDF 保留原生颜色空间和矢量资源；SVG／PNG 对印刷颜色按明确 ERROR／WARN／IGNORE 策略处理并保留实际损失。SVG 离线输入支持本地 defs／use、渐变及图案继承、marker、变换与裁剪组合。滤镜、动画、脚本、浏览器 CSS 和外部加载不属于此矢量子集。透明度和 PDF/A 限制不能由颜色降级绕过。
+
+## 语义流、显式重放与磁盘索引 PDF
+
+[语义长表及重放](streaming-replay-api.md)提供单次源递归块格、嵌套和纵向 owner 续排。显式可重开的快照计划增加有限前缀自动列宽、最终总页数、未来引用、目录／书签及组脚注；各遍完整语义摘要不一致则失败。`PdfSpoolBackend` 持有单页 PDF 对象，xref／页树索引写临时盘；普通 `PdfBackend` 继续按其配置处理完整文档，不能将新后端的对象释放契约归给它。容量证据分别记录堆、进程内存、临时磁盘及退出清理，有限压力样本不证明长期无泄漏。

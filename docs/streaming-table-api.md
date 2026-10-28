@@ -1,6 +1,6 @@
 # 单向长表 API
 
-适用于固定列、普通／富文本及显式图片、整行或完整文字行分页的大量记录。正文由调用方逐行提供，无须构造完整 Table。显式 `allowRowSpans(true)` 还可启用[有界纵向合并连通组](streaming-row-spans-api.md)，不与拆行组合。基础实现边界见 [ADR-0031](adr/0031-single-pass-table-output.md)，真实字体角色和局部样式见[单向长表富文本 API](streaming-rich-text-api.md)及 [ADR-0036](adr/0036-streaming-rich-text.md)。长度单位均为 point，原点左上，页索引从零开始。
+本页描述默认 `export` 的固定列单次源路径，适用于普通／富文本及显式图片、整行或完整文字行分页的大量记录。正文由调用方逐行提供，无须构造完整 Table。显式 `allowRowSpans(true)` 还可启用[有界纵向合并连通组](streaming-row-spans-api.md)，默认模式不与拆行组合。需要递归块格、跨页 owner 或自动宽／未来信息时，使用[语义／重放入口](streaming-replay-api.md)。基础实现边界见 [ADR-0031](adr/0031-single-pass-table-output.md)，真实字体角色和局部样式见[单向长表富文本 API](streaming-rich-text-api.md)及 [ADR-0036](adr/0036-streaming-rich-text.md)。长度单位均为 point，原点左上，页索引从零开始。
 
 ## 链式导出
 
@@ -43,9 +43,9 @@ StreamingTableLimits 组合 DocumentLayoutLimits 和逐格／逐行码点、运�
 
 高级调用可直接使用 StreamingTableLayouter.layout，将 LayoutPage 同步交给 PageConsumer；核心不关闭源或接收器。DocumentPainter.paintPage 转为 DisplayPage 后交 PageWriter.accept。必须显式 finish，再 close；close 不完成输出。失败会话不能继续接受页。SPI 不保存传入页，但格式对象可以随页数增长。
 
-当前支持普通文字格、InlineText 富文本及显式 PNG／JPEG 图片，沿用显式 FontGroup 的严格缺字或占位诊断。可通过 DocumentEngine.Builder.fontRole 注册真实字体变体；高级布局使用带角色 Map 的重载，旧重载保持空映射。被动文字／图片外链通过逐页链接通道传递，见[图文 API](streaming-media-api.md)。PAGE 与准确声明总数的 PAGES 已支持，见[字段 API](streaming-fields-api.md)。正文纵向合并须显式启用 `allowRowSpans(true)`，见[有界纵向合并 API](streaming-row-spans-api.md)；不与拆行组合，表头纵跨、块格、自动宽度和嵌套仍拒绝。配置过的页模板、导航、注释也拒绝，避免静默忽略。未知总页数推断、目录／未来引用、脚注、分栏／平衡、DOCX 及自动签名尚未接入单向路径。
+本页默认模式支持普通文字格、InlineText 富文本及显式 PNG／JPEG 图片，沿用显式 FontGroup 的严格缺字或占位诊断。可通过 DocumentEngine.Builder.fontRole 注册真实字体变体；高级布局使用带角色 Map 的重载，旧重载保持空映射。被动文字／图片外链通过逐页链接通道传递，见[图文 API](streaming-media-api.md)。PAGE 与准确声明总数的 PAGES 已支持，见[字段 API](streaming-fields-api.md)。正文纵向合并须显式启用 `allowRowSpans(true)`，见[有界纵向合并 API](streaming-row-spans-api.md)；默认模式不与拆行组合，表头纵跨、块格、自动宽度和嵌套仍拒绝。配置过的页模板、导航、注释也拒绝，避免静默忽略。未知总页数、目录／未来引用、组脚注和自动宽由显式重放路径处理；分栏／平衡、DOCX 及自动签名没有因此自动接入流规格。
 
-当前布局和 Display List 可逐页释放，PDFBox 仍保留页树／COS 对象，TEMP_FILE 只转移流存储。容量结果必须分别报告布局和真实 PDF，不能称完整 PDF 恒定内存。单向源不替代既有支持交互／字段的完整文档 API。
+普通 `PdfBackend` 仍保留页树／COS 对象，TEMP_FILE 只转移流存储。需要逐页释放 PDF 对象、递归语义格、跨页纵向 owner 或显式未来语义时，使用[有界语义长表与重放 API](streaming-replay-api.md)，并选择 `PdfSpoolBackend`。该入口还提供有限前缀 Auto 探测、稳定快照摘要核对、最终总页数、目录／引用／书签和组脚注；原 `export` 的单次行预读行为保持。容量结果分别报告布局、真实 PDF 和进程／堆指标，有限测试不代表永久无泄漏。单向源不替代既有完整文档 API。
 
 ## 固定列横向合并
 

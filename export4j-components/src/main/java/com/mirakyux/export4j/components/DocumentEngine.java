@@ -184,6 +184,29 @@ public final class DocumentEngine {
         return new StreamingExportRequest(table, source, fonts, roles);
     }
 
+    /** Explicit stable-source replay with bounded semantic groups, prefix column probing,
+     * final total pages, future targets, navigation and declared group footnotes. Every source
+     * pass is owned and closed before the next pass. Stream failures may leave partial bytes;
+     * Path output preserves the previous target on every failed planning or writing pass.
+     */
+    public StreamingReplayRequest exportReplay(StreamingTable table, TableRowSource.Factory source) {
+        if (!pageTemplate.equals(PageTemplate.EMPTY) || !navigation.equals(Navigation.EMPTY) || !notes.isEmpty()) {
+            throw new IllegalStateException("replay output uses its explicit StreamingReplayPlan");
+        }
+        return new StreamingReplayRequest(table, source, fonts, roles);
+    }
+
+    /** One-pass bounded semantic cells and splitting row groups. PAGE uses actual physical pages;
+     * PAGES needs an exact expectedPages declaration. Future references require exportReplay.
+     * The source is opened once and is closed before successful writer.finish.
+     */
+    public StreamingReplayRequest exportSemantic(StreamingTable table, TableRowSource.Factory source) {
+        if (!pageTemplate.equals(PageTemplate.EMPTY) || !navigation.equals(Navigation.EMPTY) || !notes.isEmpty()) {
+            throw new IllegalStateException("single-pass semantic output requires explicit table-only settings");
+        }
+        return new StreamingReplayRequest(table, source, fonts, roles, false);
+    }
+
     /** Task-confined synchronous export. Keeps no full-document layout, display list or warning list.
      * The selected backend may retain document state; PDFBox still retains its PDF page tree.
      */
@@ -360,9 +383,9 @@ public final class DocumentEngine {
     }
 
     @FunctionalInterface
-    private interface Export<T> { T write(OutputStream output) throws IOException; }
+    interface Export<T> { T write(OutputStream output) throws IOException; }
 
-    private static <T> T writeAtomically(Path target, Export<T> export) throws IOException {
+    static <T> T writeAtomically(Path target, Export<T> export) throws IOException {
         Path absolute = Objects.requireNonNull(target, "target").toAbsolutePath();
         Path temporary = Files.createTempFile(absolute.getParent(), ".export4j-", ".tmp");
         try {

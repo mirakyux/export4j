@@ -8,10 +8,11 @@ import java.util.Objects;
  * code point and inline-run caps bound a single source row before shaping. Empty runs count, and a
  * plain cell without explicit runs counts as one. maxCells counts covered fixed-column slots;
  * summary sourceCells counts real anchors once. The specification is one semantic source, so the
- * positive maxParagraphs budget always admits it; there are no separate paragraph blocks.
+ * positive maxParagraphs budget always admits its legacy inline path. The semantic streaming
+ * path instead counts all original Paragraph/Table descendants against that cumulative budget.
  * maxFields and maxGeneratedCodePoints count actual field presentations and generated values,
  * including repeated headers, separately from source counts. Text-layer per-cell limits still apply.
- * maxBufferedRows and maxBufferedCodePoints bound the optional atomic vertical-span group;
+ * maxBufferedRows and maxBufferedCodePoints bound the optional connected vertical-span group;
  * ordinary non-grouped streams still retain at most one pending row. No source text is included in failures.
  */
 public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCodePoints,

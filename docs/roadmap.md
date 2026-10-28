@@ -59,9 +59,9 @@
 
 进阶批次已实现最低片段行数、保持相邻、分节模板、富文本、合并图文表格、嵌套续页、编号／引用、注释、透明图像和中文表单，见[进阶验收](verification/phase-3-advanced.md)。生产批次进一步提供多栏、矩形绕排、文本表格拆行、脚注续页与换行引用；后续复杂脚本已进入公共段落路径，并扩展富文本单元格、外链、自动列宽与末页平衡，详见[能力指南](capabilities-api.md)。
 
-多浮动组件已扩展为同一首片段内多个左右矩形的逐行避让、封闭行带跳过和整体移页，并保持全文原文顺序与续页全宽，见[调用指南](multi-floats-api.md)及[独立验收](verification/phase-7-multi-floats.md)。任意轮廓／跨页浮动锚点仍未覆盖。
+多浮动组件支持首片段多个矩形的逐行避让、封闭行带跳过和整体移页，见[调用指南](multi-floats-api.md)。[任意轮廓与跨页浮动锚点](contour-floats-api.md)进一步按实际曲线行带布局，保留原文位置及真实子流续排，见[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)。
 
-当前页连续文字分栏已支持剩余高度、完整续栏、两栏／三栏、最低行数移页和后续正文接续，见[调用指南](continuous-columns-api.md)及[独立验收](verification/phase-8-continuous-columns.md)。混合组件、嵌套流与表格后续已接入区域 SPI，支持图片整块移动、逐栏表头和完整合并行组，见[混合分栏指南](mixed-columns-api.md)及[验收](verification/phase-9-mixed-columns.md)。文字／混合流变栏宽与平衡见[阶段五十九](verification/phase-59-variable-columns.md)，变宽最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义表格](variable-tables-api.md)及[行内格完整行续排](variable-table-continuation-api.md)已接入变宽区域；纵向合并拆分／递归子树与组件网格继续独立。
+当前页连续文字分栏已支持剩余高度、完整续栏、两栏／三栏、最低行数移页和后续正文接续，见[调用指南](continuous-columns-api.md)及[独立验收](verification/phase-8-continuous-columns.md)。混合组件、嵌套流与表格后续已接入区域 SPI，支持图片整块移动、逐栏表头和完整合并行组，见[混合分栏指南](mixed-columns-api.md)及[验收](verification/phase-9-mixed-columns.md)。文字／混合流变栏宽与平衡见[阶段五十九](verification/phase-59-variable-columns.md)，变宽最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义表格](variable-tables-api.md)及[完整行续排](variable-table-continuation-api.md)已接入变宽区域；纵向 owner、递归子树与组件网格的变宽续排已由[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)完成。
 
 正文行内动态字段、页码／编号引用和注释锚点已实现。字段固定宽度，最终分页后解析；脚注跟随标记实际所在行，见[字段指南](inline-fields-api.md)及[验收](verification/phase-10-inline-fields.md)。语义表格单元格进一步支持页码和引用字段、逐页重复表头及拆行来源，见[表格字段验收](verification/phase-11-table-fields.md)。DOCX 原生四类字段及显式宽度导入已补齐，见[DOCX 字段验收](verification/phase-12-docx-fields.md)。单元格注释标记、任意组件字段、长表区域流、自动字段宽度重排和结构化可访问性仍属后续范围。
 
@@ -96,7 +96,7 @@
 
 后续补充两端对齐、可选严格中文禁则、富文本标题／列表和常用编写入口。新增 2 线程、6 份各 26 页混合报告，采样独立 JVM 的 Windows 工作集、私有字节和句柄，并验证取消／输出超限恢复。该证据仍属于有界工作负载，不代表长期泄漏或容量保证，见[阶段十三](verification/phase-13-authoring.md)。
 
-取消／超时／进度／原子文件写入已有实现；AES-256、选定 PDF/A-1b／2b／3b／4f、显式 PDF/UA-1 和离线 PAdES B／T／LT／LTA 使用各自独立入口及验收，见[标准指南](pdf-standards-api.md)。完整流式布局、持续压力及跨系统／阅读器矩阵仍未完成。具体范围见[能力矩阵](capabilities-api.md#docx-与剩余范围)。
+取消／超时／进度／原子文件写入已有实现；AES-256、选定 PDF/A-1b／2b／3b／4f、显式 PDF/UA-1 和离线 PAdES B／T／LT／LTA 使用各自独立入口及验收，见[标准指南](pdf-standards-api.md)。[语义长表、重放及磁盘索引 PDF](streaming-replay-api.md)和本轮有限持续压力已完成；跨系统／阅读器矩阵继续归 GAP-14.2。具体范围见[能力矩阵](capabilities-api.md#docx-与剩余范围)。
 
 固定列普通文字已接入独立单向源和逐页 PDF，见[阶段二十四](verification/phase-24-streaming-tables.md)。布局丢弃页／真实 PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM 通过；100k PDF 为 1,786 页、325.281 秒。结果同时记录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘及退出文件清理。PDFBox 页树仍累计；这不完成一般文档恒内存或持续容量目标。
 
@@ -156,4 +156,11 @@
 
 [阶段九十四至九十七](verification/phase-97-pdf-editing-standards-recovery-closure.md)进一步完成跨状态文字／图片实例编辑、选择性脱敏、扩展表单／批注／FDF／XFDF／XFA，以及自动多栏／段落／有线无线表格／合并嵌套恢复的明确子集。1,634 项测试、全新 Maven 调用方和对应独立输出验收通过。选定 PDF/A、离线 PAdES 和 PDF/UA-1 的既有子项目标均已验收；生成样例及已有标签文件两页、修复后模型第一页的实际辅助阅读器证据分别登记，模型其余页未捕获读屏的覆盖限制明确保留。当前状态以[缺口表](capability-gaps.md)为准。
 
-[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收 GAP-03／08／09／21 的四个固定单元：变宽行内格纵向 owner 续排、[逐字形竖排](vertical-text-api.md)、[有界单向纵向合并](streaming-row-spans-api.md)及[填充／描边透明度与 SVG 变换](graphics-opacity-api.md)。GAP-04／07 的既定样式／模板目标按已存在的阶段证据关闭；完整 CSS 和设计器分别只在 GAP-18.1／13 跟踪。递归块格变宽续排、可变／彩色字体、真实 PDF 恒内存、CMYK／专色与渐变等仍开放。
+[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收 GAP-03／08／09／21 的四个固定单元：变宽行内格纵向 owner 续排、[逐字形竖排](vertical-text-api.md)、[有界单向纵向合并](streaming-row-spans-api.md)及[填充／描边透明度与 SVG 变换](graphics-opacity-api.md)。GAP-04／07 的既定样式／模板目标按已存在的阶段证据关闭；完整 CSS 和设计器分别只在 GAP-18.1／13 跟踪。当时尚未完成的递归块格变宽续排、可变／彩色字体、PDF 累计对象控制、CMYK／专色与渐变已由阶段九十九补齐。
+
+
+## GAP-03／08／09／21：原剩余清单已完成
+
+本轮按原剩余清单统一推进，未增加编号或删减关闭条件：变宽递归格／组件网格与轮廓锚点；可变／CFF2／彩色字体、方向塑形与静态 CFF 原生 PDF；单次语义长表、显式重放与磁盘索引 PDF；CMYK／ICC／专色、混合／透明组、渐变／图案和 SVG 本地资源。当前接口见[变宽续排](variable-table-continuation-api.md)、[轮廓浮动](contour-floats-api.md)、[原生文字](native-opentype-api.md)、[语义重放](streaming-replay-api.md)及[高级图形](advanced-graphics-api.md)。最终构建、独立输出及容量结果统一登记在[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)。
+
+历史阶段中的“下一项”及“仍开放”描述保留当时范围，当前状态以缺口表和最新验收为准。跨平台／阅读器矩阵、外部 DOCX、完整浏览器 CSS、设计器及正式发布继续归原有独立缺口；不把这四项已定义内容重复加入后续队列。

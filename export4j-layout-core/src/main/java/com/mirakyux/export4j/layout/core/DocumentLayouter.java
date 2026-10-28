@@ -131,6 +131,29 @@ public final class DocumentLayouter {
                 ? flow.new RecursiveCursor(table, 0) : flow.new Cursor(table));
     }
 
+    /** Prepares a bounded variable-width cursor over the complete original table source.
+     * Width changes preserve accepted original line positions, fields, images and nested cell cursors.
+     * No I/O occurs; fonts and images remain borrowed. */
+    public VariableTableCursor prepareVariableTable(Table table, ComponentContext context) {
+        Objects.requireNonNull(table, "table");
+        Objects.requireNonNull(context, "context");
+        var document = new Document(DocumentMetadata.EMPTY,
+                new PageSettings(new PageSize(context.width(), context.height()), PageMargins.uniform(0)), List.of(table));
+        var flow = new Flow(document, context.fontGroup(), context.fontRoles(), preflight(document));
+        return new VariableTableCursor(flow.new VariableCursor(table));
+    }
+
+    /** Resolves the declared fixed, fractional and bounded automatic columns of one explicit probe table.
+     * Returns immutable positive widths in points after ordinary source/structure and measurement budgets.
+     * Does not consume table rows or produce output. Fonts and resources remain borrowed. */
+    public List<Double> resolveTableColumns(Table table, ComponentContext context) {
+        Objects.requireNonNull(table, "table"); Objects.requireNonNull(context, "context");
+        var document = new Document(DocumentMetadata.EMPTY,
+                new PageSettings(new PageSize(context.width(), context.height()), PageMargins.uniform(0)), List.of(table));
+        var flow = new Flow(document, context.fontGroup(), context.fontRoles(), preflight(document));
+        return java.util.Arrays.stream(flow.columnWidths(table, table.grid(), 0, context.width())).boxed().toList();
+    }
+
     /**
      * Measures one table at {@code context.width()} points and distributes it over sequential regions.
      * Resolves column widths before preparing final cell lines, then moves complete rows without reshaping; explicit
@@ -175,10 +198,11 @@ public final class DocumentLayouter {
      * Distributes complete rows or transitive merged-row groups at each region's actual width.
      * Widths are a nonempty cyclic sequence of at most 16 finite positive point values fitting the context.
      * Equal widths use the ordinary cursor. Unequal widths support atomic rows/groups and explicit
-     * complete-line continuation of inline cells, including vertical owners; split block cells remain unsupported.
+     * complete-line continuation of inline cells and recursive block cells, including vertical owners.
      *
      * <p>Source budgets apply once. Each distinct width is prepared at most once, with at most 4,000,000
-     * cumulative source UTF-16 units and this layouter's line limit per prepared alternative. Only selected
+     * cumulative source UTF-16 units and this layouter's line limit per prepared alternative. Recursive
+     * continuation retains accepted line widths and remeasures at width changes under the same work budget. Only selected
      * rows and actual repeated headers consume the final output-line budget. Initial short regions may be
      * skipped; every full continuation region must advance. Fonts/resources remain borrowed; no I/O occurs.
      */
@@ -200,14 +224,11 @@ public final class DocumentLayouter {
         if (widths.stream().allMatch(width -> width == first)) {
             return layoutTableRegions(table, context.viewport(first, context.height()), regions);
         }
-        if (table.format().allowRowSplit() && table.hasBlockCells()) {
-            throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, 0, 0, table.headerRows(), -1, -1,
-                    "variable-width split rows do not support block cells", null);
-        }
         var document = new Document(DocumentMetadata.EMPTY, new PageSettings(
                 new PageSize(context.width(), regions.continuationHeight()), PageMargins.uniform(0)), List.of(table));
         var flow = new Flow(document, context.fontGroup(), context.fontRoles(), preflight(document));
-        return table.format().allowRowSplit() ? flow.new VariableInlineTable(table, regions, widths).layout()
+        return table.format().allowRowSplit() && table.hasBlockCells() ? flow.variableRecursiveTable(table, regions, widths)
+                : table.format().allowRowSplit() ? flow.new VariableInlineTable(table, regions, widths).layout()
                 : flow.variableTableRegions(table, regions, widths);
     }
 
@@ -325,6 +346,9 @@ public final class DocumentLayouter {
         private long semanticPlacements;
         private List<CellLocation> measuringPath = List.of();
         private boolean measuringVariableTable;
+        private Map<Object, List<Double>> retainedLineWidths;
+        private final Map<Object, Double> maximumSourceWidths = new java.util.IdentityHashMap<>();
+        private VariableMeasurements activeVariableWork;
         private int keptThrough = -1;
         private Flow(Document document, FontGroup group, Map<String, FontGroup> roles, long codePoints) {
             this.document = document;
@@ -531,13 +555,13 @@ public final class DocumentLayouter {
 
         private ParagraphLayout shapeParagraph(Paragraph paragraph, int index, double width) {
                 var format = paragraph.format();
-                if (!paragraph.inlines().isEmpty() || !paragraph.images().isEmpty() || !paragraph.fields().isEmpty()) {
+                if (retainedLineWidths != null || !paragraph.inlines().isEmpty() || !paragraph.images().isEmpty() || !paragraph.fields().isEmpty()) {
                     ParagraphLayout result;
                     var sourceInlines = paragraph.inlines().isEmpty() ? List.of(new com.mirakyux.export4j.model.InlineText(paragraph.text(),
                             com.mirakyux.export4j.model.InlineStyle.of(format.fontSize()))) : paragraph.inlines();
                     var spans = styledSpans(sourceInlines, paragraph, index, -1, -1);
                     try {
-                        result = paragraphLayouter.layout(spans, width, new ParagraphStyle(format.fontSize(),
+                        result = shapeRetained(paragraph, width, spans, new ParagraphStyle(format.fontSize(),
                                 format.lineHeight(), format.firstLineIndent(), format.subsequentLineIndent(), alignment(format.alignment()), format.lineBreakPolicy()),
                                 paragraph.images().stream().collect(java.util.stream.Collectors.toMap(Paragraph.ImageSpan::sourceIndex, Paragraph.ImageSpan::image)),
                                 paragraph.fields().stream().collect(java.util.stream.Collectors.toMap(Paragraph.FieldSpan::sourceIndex, Paragraph.FieldSpan::field)));
@@ -550,6 +574,7 @@ public final class DocumentLayouter {
                         throw failure(DocumentLayoutException.Code.TEXT_LAYOUT_FAILED, paragraph, index, pages.size(),
                                 -1, -1, -1, "rich text font role or geometry is invalid", cause);
                     }
+                    if (retainedLineWidths != null) { result = new ParagraphLayout(width, result.height(), result.lines(), result.diagnostics()); }
                     addLines(result.lines().size(), paragraph, index, -1, -1);
                     return result;
                 }
@@ -1063,6 +1088,171 @@ public final class DocumentLayouter {
             }
             boolean continued = java.util.Arrays.stream(consumed).anyMatch(value -> value > 0);
             return Optional.of(new RowSlice(new TableRowFragment(row, false, false, cells, continued), height, take, complete));
+        }
+
+        /** Rebuilds only unconsumed wrapping; accepted line widths retain the full original shaping context. */
+        private List<TableRegion> variableRecursiveTable(Table table, FlowRegions regions, List<Double> widths) {
+            var cursor = new VariableCursor(table);
+            var result = new ArrayList<TableRegion>();
+            for (int region = 0; !cursor.done(); region++) {
+                ExecutionContext.checkpoint();
+                if (region >= 100_016) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, table, 0, result.size(),
+                            cursor.progress.row, -1, 0, "recursive table region budget exceeded", null);
+                }
+                if (regions.height(region) == 0) { continue; }
+                cursor.width(widths.get(region % widths.size()));
+                var attempt = cursor.take(regions.height(region));
+                if (attempt.isPresent()) { result.add(new TableRegion(region, attempt.orElseThrow())); }
+                else if (region >= regions.initialHeights().size()) {
+                    throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, table, 0, result.size(),
+                            cursor.progress.row, -1, 0, "recursive content cannot advance at the actual region width", null);
+                }
+            }
+            return List.copyOf(result);
+        }
+
+        private final class VariableCursor implements VariableTableCursor.State {
+            private final Table table;
+            private final VariableMeasurements work;
+            private TableProgress progress;
+            private double selected = Double.NaN;
+
+            private VariableCursor(Table table) {
+                this.table = table;
+                retainedLineWidths = new java.util.IdentityHashMap<>();
+                work = new VariableMeasurements(table);
+                activeVariableWork = work;
+                width(settings.contentWidth());
+            }
+            @Override public void width(double width) {
+                ExecutionContext.checkpoint();
+                if (!Double.isFinite(width) || width <= 0 || !fits(width, settings.contentWidth())) {
+                    throw new IllegalArgumentException("table cursor width must fit the preparation viewport");
+                }
+                if (width == selected) { return; }
+                work.account(work.sourceUnits, progress == null ? table.headerRows() : progress.row);
+                MeasuredTable measured;
+                long saved = lineCount;
+                lineCount = 0;
+                measuringVariableTable = true;
+                cellTables.clear();
+                try { measured = prepareMeasuredTable(table, 0, width, false); }
+                finally { lineCount = saved; measuringVariableTable = false; }
+                progress = progress == null ? new TableProgress(table, measured, 0) : progress.reflow(measured);
+                selected = width;
+            }
+            @Override public double remainingHeight() { return progress.remainingHeight(); }
+            @Override public boolean done() { return progress.done(); }
+            @Override public Optional<TableFragment> take(double height) {
+                if (!Double.isFinite(height) || height < 0 || !fits(height, settings.contentHeight())) {
+                    throw new IllegalArgumentException("table take height must fit the preparation viewport");
+                }
+                var attempt = progress.take(height);
+                if (attempt == null) { return Optional.empty(); }
+                if (progress.outputs >= Math.min(limits.maxPages(), 100_000)) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, table, 0, progress.outputs,
+                            progress.row, -1, 0, "variable table fragment budget exceeded", null);
+                }
+                var fragment = attempt.fragment();
+                addLines(fragment.rows().stream().flatMap(row -> row.cells().stream()).mapToLong(CellFragment::lineCount).sum(),
+                        table, 0, progress.row, -1);
+                rememberWidths(table, fragment);
+                progress = attempt.next();
+                // A subsequent width change must use accepted widths even when returning to this width.
+                return Optional.of(fragment);
+            }
+        }
+
+        private IntToDoubleFunction retainedWidths(Object source, double currentWidth) {
+            var accepted = retainedLineWidths == null ? List.<Double>of() : retainedLineWidths.getOrDefault(source, List.of());
+            return line -> line < accepted.size() ? accepted.get(line) : currentWidth;
+        }
+
+        private double retainedMaximum(Object source, double currentWidth) {
+            if (retainedLineWidths == null) { return currentWidth; }
+            maximumSourceWidths.merge(source, currentWidth, Math::max);
+            return Math.max(maximumSourceWidths.get(source),
+                    retainedLineWidths.getOrDefault(source, List.of()).stream().mapToDouble(Double::doubleValue).max().orElse(currentWidth));
+        }
+
+        /** Future atomic content may be measured at its maximum width, but can never be emitted
+         * from that probe in a narrower region. Only explicit GLYPH_TOO_WIDE is deferred. */
+        private ParagraphLayout shapeRetained(Object source, double width, List<StyledSpan> spans, ParagraphStyle style,
+                Map<Integer, com.mirakyux.export4j.model.InlineImage> images,
+                Map<Integer, com.mirakyux.export4j.model.InlineField> fields) {
+            double maximum = retainedMaximum(source, width);
+            if (retainedLineWidths == null) { return paragraphLayouter.layout(spans, maximum, style, images, fields); }
+            var accepted = retainedWidths(source, width);
+            var deferred = new java.util.HashSet<Integer>();
+            int[] requested = {-1};
+            while (true) {
+                ExecutionContext.checkpoint();
+                try {
+                    return paragraphLayouter.layout(spans, maximum, style, images, fields, line -> {
+                        requested[0] = line;
+                        return deferred.contains(line) ? maximum : accepted.applyAsDouble(line);
+                    });
+                } catch (TextLayoutException failure) {
+                    int line = requested[0];
+                    if (failure.code() != TextLayoutException.Code.GLYPH_TOO_WIDE || width >= maximum
+                            || line < retainedLineWidths.getOrDefault(source, List.of()).size() || !deferred.add(line)) { throw failure; }
+                    long units = spans.stream().mapToLong(span -> span.text().length()).sum();
+                    activeVariableWork.account(Math.max(1, units), -1);
+                }
+            }
+        }
+
+        private int fittingLines(ParagraphLayout layout, int first, int count) {
+            if (retainedLineWidths == null) { return count; }
+            int result = 0;
+            while (result < count && fits(layout.lines().get(first + result).width(), layout.width())) { result++; }
+            return result;
+        }
+
+        private boolean contentFits(CellFragment.Content content) {
+            if (content instanceof CellFragment.Inline inline) {
+                return fittingLines(inline.layout(), 0, inline.layout().lines().size()) == inline.layout().lines().size();
+            }
+            for (var child : ((CellFragment.Blocks) content).fragments()) {
+                if (child instanceof ParagraphFragment paragraph) {
+                    if (fittingLines(paragraph.layout(), 0, paragraph.layout().lines().size()) != paragraph.layout().lines().size()) { return false; }
+                } else {
+                    for (var row : ((TableFragment) child).rows()) {
+                        for (var cell : row.cells()) { if (!contentFits(cell.content())) { return false; } }
+                    }
+                }
+            }
+            return true;
+        }
+
+        private void rememberWidths(Object source, int first, ParagraphLayout layout) {
+            var accepted = retainedLineWidths.computeIfAbsent(source, ignored -> new ArrayList<>());
+            if (first > accepted.size()) { throw new IllegalStateException("noncontiguous recursive text source"); }
+            for (int at = 0; at < layout.lines().size(); at++) {
+                if (first + at == accepted.size()) { accepted.add(layout.width()); }
+            }
+        }
+
+        private void rememberWidths(Table source, TableFragment fragment) {
+            var grid = source.grid();
+            for (var row : fragment.rows()) {
+                if (row.header()) { continue; }
+                for (var cell : row.cells()) {
+                    var owner = grid.ownerAt(row.rowIndex(), cell.columnIndex()).cell();
+                    if (cell.content() instanceof CellFragment.Inline inline) {
+                        rememberWidths(owner, inline.firstLineIndex(), inline.layout());
+                    } else {
+                        for (int at = 0; at < cell.blocks().size(); at++) {
+                            var child = cell.blocks().get(at);
+                            var original = owner.blocks().get(cell.sourceBlockIndices().get(at));
+                            if (child instanceof ParagraphFragment paragraph) {
+                                rememberWidths(original, paragraph.firstLineIndex(), paragraph.layout());
+                            } else { rememberWidths((Table) original, (TableFragment) child); }
+                        }
+                    }
+                }
+            }
         }
 
         private final class VariableMeasurements {
@@ -1604,6 +1794,30 @@ public final class DocumentLayouter {
                 next.cells = cells; next.spanning = spanning;
                 return next;
             }
+            private TableProgress reflow(MeasuredTable replacement) {
+                var next = new TableProgress(table, replacement, index, grid);
+                next.row = row; next.outputs = outputs; next.rowParts = rowParts;
+                if (cells != null) {
+                    var owners = owners();
+                    var values = new ArrayList<ContentProgress>();
+                    for (int at = 0; at < cells.size(); at++) {
+                        var owner = owners.get(at);
+                        var sourceRow = replacement.rows().get(owner.rowIndex());
+                        values.add(cells.get(at).reflow(sourceRow.cells().get(sourceRow.anchors().indexOf(owner)).content()));
+                    }
+                    next.cells = List.copyOf(values);
+                }
+                var owners = new HashMap<Long, ContentProgress>();
+                for (var entry : spanning.entrySet()) {
+                    int ownerRow = (int) (entry.getKey() >>> 32);
+                    int ownerColumn = (int) (long) entry.getKey();
+                    var anchor = grid.ownerAt(ownerRow, ownerColumn);
+                    var sourceRow = replacement.rows().get(ownerRow);
+                    owners.put(entry.getKey(), entry.getValue().reflow(sourceRow.cells().get(sourceRow.anchors().indexOf(anchor)).content()));
+                }
+                next.spanning = Map.copyOf(owners);
+                return next;
+            }
             private boolean done() { return row == table.rows().size(); }
             private double remainingHeight() {
                 if (done()) { return 0; }
@@ -1639,6 +1853,7 @@ public final class DocumentLayouter {
                 long extras = 0;
                 for (int header = 0; header < table.headerRows(); header++) {
                     var source = measured.rows().get(header);
+                    if (retainedLineWidths != null && source.cells().stream().anyMatch(cell -> !contentFits(cell.content()))) { return null; }
                     appendRow(rows, table, header, source, measured.widths(), height, outputs > 0);
                     height += source.height();
                     if (outputs > 0) { extras += source.lines(); }
@@ -1649,6 +1864,13 @@ public final class DocumentLayouter {
                     if (!table.format().allowRowSplit()) {
                         if (!fits(height + groupHeight(measured, next.row), available)) { break; }
                         int end = measured.groupEnds()[next.row];
+                        boolean valid = true;
+                        if (retainedLineWidths != null) {
+                            for (int at = next.row; at < end; at++) {
+                                if (measured.rows().get(at).cells().stream().anyMatch(cell -> !contentFits(cell.content()))) { valid = false; break; }
+                            }
+                        }
+                        if (!valid) { break; }
                         while (next.row < end) {
                             var source = measured.rows().get(next.row);
                             appendRow(rows, table, next.row++, source, measured.widths(), height, false);
@@ -1767,6 +1989,15 @@ public final class DocumentLayouter {
                 next.block = block; next.line = line; next.nested = nested;
                 return next;
             }
+            private ContentProgress reflow(CellFragment.Content replacement) {
+                var next = new ContentProgress(source, replacement, index);
+                next.block = block; next.line = line;
+                if (nested != null) {
+                    var child = (Table) source.blocks().get(block);
+                    next.nested = nested.reflow(cellTables.get(child.id()));
+                }
+                return next;
+            }
             private boolean done() {
                 return full instanceof CellFragment.Inline inline ? line == inline.layout().lines().size()
                         : block == ((CellFragment.Blocks) full).fragments().size();
@@ -1801,6 +2032,7 @@ public final class DocumentLayouter {
                         return new ContentAttempt(next, new CellFragment.Inline(empty, line), step, 1);
                     }
                     int count = (int) Math.min(layout.lines().size() - line, Math.max(0, Math.floor(Math.nextUp(available / step))));
+                    count = fittingLines(layout, line, count);
                     if (count == 0) { return null; }
                     next.line += count;
                     return new ContentAttempt(next, new CellFragment.Inline(fragment(layout, line, count, step), line), count * step, 0);
@@ -1823,6 +2055,7 @@ public final class DocumentLayouter {
                         double step = paragraph.format().lineHeight();
                         int remaining = shaped.lines().size() - next.line;
                         int count = (int) Math.min(remaining, Math.max(0, Math.floor(Math.nextUp(capacity / step))));
+                        count = fittingLines(shaped, next.line, count);
                         if (count < remaining) {
                             var policy = paragraph.format().pagination();
                             count = Math.min(count, remaining - policy.minLinesAfterBreak());
@@ -1929,6 +2162,7 @@ public final class DocumentLayouter {
 
         private ParagraphLayout shapeCell(com.mirakyux.export4j.model.TableCell cell, double width, Block block,
                 int index, int row, int column, boolean countLines, IntToDoubleFunction lineWidths) {
+            if (lineWidths == null && retainedLineWidths != null) { lineWidths = retainedWidths(cell, width); }
             var format = cell.format();
             var style = new ParagraphStyle(format.fontSize(), format.lineHeight(), 0, 0, alignment(format.alignment()), format.lineBreakPolicy());
             if (lineWidths == null && cell.inlines().isEmpty() && cell.images().isEmpty() && cell.fields().isEmpty()) { return shape(cell.text(), width, style, block, index, row, column, countLines); }
@@ -1937,10 +2171,10 @@ public final class DocumentLayouter {
                     com.mirakyux.export4j.model.InlineStyle.of(format.fontSize()))) : cell.inlines();
             var spans = styledSpans(sourceInlines, block, index, row, column);
             try {
-                result = paragraphLayouter.layout(spans, width, style,
-                        cell.images().stream().collect(java.util.stream.Collectors.toMap(Paragraph.ImageSpan::sourceIndex, Paragraph.ImageSpan::image)),
-                        cell.fields().stream().collect(java.util.stream.Collectors.toMap(Paragraph.FieldSpan::sourceIndex, Paragraph.FieldSpan::field)),
-                        lineWidths == null ? line -> width : lineWidths);
+                var imageMap = cell.images().stream().collect(java.util.stream.Collectors.toMap(Paragraph.ImageSpan::sourceIndex, Paragraph.ImageSpan::image));
+                var fieldMap = cell.fields().stream().collect(java.util.stream.Collectors.toMap(Paragraph.FieldSpan::sourceIndex, Paragraph.FieldSpan::field));
+                result = retainedLineWidths != null ? shapeRetained(cell, width, spans, style, imageMap, fieldMap)
+                        : paragraphLayouter.layout(spans, width, style, imageMap, fieldMap, lineWidths == null ? line -> width : lineWidths);
             } catch (DocumentLayoutException cause) {
                 throw cause;
             } catch (TextLayoutException cause) {
@@ -1949,6 +2183,7 @@ public final class DocumentLayouter {
             } catch (IllegalArgumentException cause) {
                 throw failure(DocumentLayoutException.Code.TEXT_LAYOUT_FAILED, block, index, pages.size(), row, column, -1, "rich cell geometry or font role is invalid", cause);
             }
+            if (retainedLineWidths != null) { result = new ParagraphLayout(width, result.height(), result.lines(), result.diagnostics()); }
             if (countLines) { addLines(result.lines().size(), block, index, row, column); }
             return result;
         }

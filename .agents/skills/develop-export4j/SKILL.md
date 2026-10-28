@@ -29,6 +29,7 @@ description: '开发、修复或重构 Export4j 的 Java 模型、字体、布�
 | `export4j-graphics-api`／`export4j-graphics-core` | 绘制契约、Display List 及通用绘制实现 |
 | `export4j-font-core`／`export4j-text-core` | 显式字体资源、测量、塑形及文字来源 |
 | `export4j-layout-model`／`export4j-layout-core` | Layout IR、测量、区域分配及分页 |
+| `export4j-opentype` | 可选原生塑形、可变／彩色字体及竖排区域流；第三方类型不进入公共 API |
 | `export4j-components` | 编写入口、组合组件及 `DocumentEngine` |
 | `export4j-backend-pdf`／`export4j-backend-svg`／`export4j-backend-raster` | 消费最终绘制结果，不重新布局 |
 | `export4j-adapter-docx` | 语义 DOCX 导入／导出，使用 JDK ZIP 与安全 XML |

@@ -24,7 +24,7 @@ powershell -NoProfile -File scripts/verify_local_consumer.ps1
 
 ## 实际发布边界
 
-`publishLocalBundle` 将 15 个库及 BOM 写入项目的 `build/repository`，用于隔离验证。它不代表远程仓库或签名发布成功；不自动替换成 `publishToMavenLocal`。
+`publishLocalBundle` 将 16 个库及 BOM 写入项目的 `build/repository`，用于隔离验证。它不代表远程仓库或签名发布成功；不自动替换成 `publishToMavenLocal`。
 
 远程发布前需有明确任务授权、可核实的目标、命名空间权限、版本和签名配置。只执行任务已授权的动作，不增加重复确认。配置尚未存在时，完成制品准备并说明具体缺口，不编造远程任务、凭据或成功状态。
 

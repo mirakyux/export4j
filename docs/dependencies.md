@@ -1,5 +1,9 @@
 # 依赖与资源管理
 
+可选 `export4j-opentype` 内部依赖 LWJGL 3.4.3 的 `lwjgl`／`lwjgl-harfbuzz` 两个 Java 制品（BSD-3-Clause）。应用显式选择平台 native classifier，生产 POM 不自动传递平台二进制。Windows 实际内含 HarfBuzz 14.3.0，与绑定头版本分别核对；HarfBuzz、libffi、liburing 等内含许可原文随清单保存，见[原生制品记录](../third-party/native-artifacts.csv)。核心原有 JDK 路径不强制加载 JNI。
+
+SVG 独立渲染增加验证依赖 resvg-py 0.5.0（MIT）及其 resvg（MPL-2.0）实现；只在 Python 验证环境使用，不加入 Java 运行清单。字体检查使用 fontTools／uharfbuzz 的固定版本，字体来源、SHA-256 与原始许可独立登记于[字体记录](../assets/fonts/README.md)。
+
 PDF 信任链、OCSP／CRL 与 PAdES 使用 Bouncy Castle 1.86：PDF 后端内部直接依赖 `bcpkix-jdk18on`，传递依赖同版本 `bcprov-jdk18on` 和 `bcutil-jdk18on`。三者采用 MIT，实际 JAR／POM 的 SHA-256、原始许可和来源均登记在依赖清单；公共 API 只使用项目类型与 JDK 密钥／证书字节，不暴露第三方类型。独立验签使用 pyHanko 0.33.0，固定在验证 requirements，仅用于验证环境，不进入 Java 制品。
 
 外部 PDF 的显式源字体映射、不透明图形状态恢复和独立合成语料由项目自主实现，没有新增运行依赖、字体文件或第三方样本。固定 AFM 度量来自既有 PDFBox 3.0.8，验收复用已登记的 Liberation Sans 及原始许可。映射字体由调用方显式提供并遵守其嵌入权限，见[字体兼容](pdf-font-compatibility-api.md)和[阶段九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)。
@@ -34,7 +38,7 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 | DOCX 导入导出 | JDK ZIP／安全 XML | DOCX 适配器 | 当前使用 JDK 实现语义子集，未新增 Maven 依赖 |
 | 自动化测试 | [JUnit](https://junit.org/) | 测试代码 | 已采用 6.1.3，Java 21 测试通过 |
 | 字体解析 | [Apache FontBox](https://pdfbox.apache.org/) | 字体层内部 | 已采用 3.0.8，与 pdfbox-io 一起封装，验证静态 TrueType／CFF 及集合成员 |
-| 复杂塑形 | JDK TextMeasurer／GlyphVector | 公共文本层与显式 OpenType 组件 | 已验证静态物理字体的连接字形、组合字符、字距和双向样本；完整特性另行扩展 |
+| 复杂塑形 | JDK TextMeasurer／GlyphVector；可选 LWJGL／HarfBuzz | 核心静态字体与可选原生 OpenType 模块 | JDK 路径保持；原生方向、可变／彩色字体及特性见[原生指南](native-opentype-api.md) |
 | 行内图片 | JDK ImageIO／GraphicAttribute | 模型内有界资源验证、文本测量、绘制解码 | 仅显式静态 PNG／JPEG；AWT 不进入公共签名，无新增 Maven 依赖 |
 | 构建工具 | [Gradle](https://gradle.org/) | 构建与内置插件 | 已采用 9.2.1，Java 21 构建通过 |
 
@@ -61,7 +65,7 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 
 ## 正式依赖记录
 
-完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 22 个 Maven 坐标，包含 BOM 与测试依赖。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
+完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 24 个 Maven 坐标，包含 BOM 与测试依赖；平台原生分类制品另见 `third-party/native-artifacts.csv`。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
 
 | 依赖 | 版本 | 范围 | 许可依据与处理 |
 | --- | --- | --- | --- |
@@ -170,7 +174,7 @@ Liberation Sans 粗体、斜体与粗斜体来自官方 2.1.5 发布包，未经
 
 根目录 [NOTICE](../NOTICE) 汇集当前运行依赖的原始归属声明。构建出的 JAR 携带自研 LICENSE、NOTICE 和第三方许可原文；示例发行包同时携带未修改的依赖 JAR。
 
-当前 `sbom` 生成 CycloneDX 1.6 库运行清单，目标集合为 15 个自研库及 11 个第三方制品，携带实际 JAR 的 SHA-256；字段与字体资源另按本文件登记。每批须重新生成并由生产验证器核对最终制品，不能沿用前一批哈希。候选清单不能替代 SBOM。
+当前 `sbom` 生成 CycloneDX 1.6 库运行清单，目标集合为 16 个自研库及 13 个第三方 Java 制品，携带实际 JAR 的 SHA-256；字段与字体资源另按本文件登记。每批须重新生成并由生产验证器核对最终制品，不能沿用前一批哈希。候选清单不能替代 SBOM。
 
 XML 模板源码与普通 ZIP 打包复用既有适配器及 JDK ZIP／UTF-8 API，没有增加模块或第三方依赖。示例继续使用已登记的 Liberation Sans Regular 字节，原版权及 OFL 文本随模板 ZIP 的 `licenses/` 条目保存；图片由自编样例生成。独立输入由 Python 标准库 ZIP 与既有 Pillow 生成，二者不进入 Java 运行清单。
 

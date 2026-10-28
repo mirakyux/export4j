@@ -4,6 +4,11 @@
 
 ## 构建与依赖
 
+- 变宽递归格／组件网格及轮廓浮动使用新隔离调用方的 `complexFlows` 和 `scripts/verify_complex_flows.py`，核对完整 UTF-16 来源、递归 owner、最终字段、图文外链、实际曲线行带及全部新页独立渲染。
+- 可选原生 OpenType 使用 `openType` 和 `scripts/verify_native_opentype.py`；平台 native classifier 必须显式配置。分别验证真实可变轮廓、彩色字形、方向塑形、分页、静态 CFF 原生 PDF、提取／查询／选中及新页双渲染，不能将绑定头版本当作实际原生版本。
+- 语义长表／重放／磁盘索引 PDF 使用 `streamingReplay` 和 `scripts/verify_streaming_replay.py`；容量运行 `scripts/measure_streaming_replay.ps1` 后由 `scripts/verify_streaming_replay_capacity.py` 核对全部源行及首中末页。分录堆、进程工作集／私有字节、临时盘和退出清理，不把有限组解释为长期无泄漏。
+- 高级颜色／渐变／图案／混合及 SVG 资源使用 `gap21Complete` 和 `scripts/verify_gap21_complete.py`；最终 PDF 经 Poppler／PDFium，最终 SVG 经 resvg，源 SVG 经显式 Chromium 对照，归档样例使用 veraPDF。保留颜色空间实际损失与默认拒绝，独立检查原生资源和可见像素。
+
 - 工程建立后统一使用提交到仓库的 Gradle Wrapper，不要求全局 Gradle。
 - Windows 使用 `.\gradlew.bat`，Linux/macOS 使用 `./gradlew`。
 - 依赖版本集中管理并固定，不使用 `+`、动态版本或未固定的 SNAPSHOT。

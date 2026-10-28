@@ -63,6 +63,50 @@ class GridContinuationTest {
     }
     private static FlowText flow(String value) { return FlowText.builder(value).style(STYLE).build(); }
 
+    @Test void variableMergedGridRewrapsEveryTextKindAndKeepsSourceOnce() {
+        var source = "alpha beta gamma delta ".repeat(35);
+        var content = FlowColumn.builder().gap(2).add(flow(source))
+                .add(new OpenTypeText("AV office ".repeat(20), STYLE, RgbColor.BLACK))
+                .add(FormText.builder("check ☑ ".repeat(12)).style(STYLE).build()).build();
+        var grid = merged(true, content).build();
+        var parts = grid.layoutVariableRegions(context(140), new FlowRegions(List.of(1.0), 140), List.of(150.0, 240.0));
+        assertEquals(1, parts.getFirst().regionIndex());
+        var joined = parts.stream().map(part -> text(part.layout())).collect(Collectors.joining())
+                .replaceAll("HEAD-A|HEAD-B|SIDE-A|SIDE-B", "");
+        assertEquals((source + "AV office ".repeat(20) + "check ☑ ".repeat(12)).replaceAll("\\s|☑", ""), joined.replaceAll("\\s|☑", ""));
+        assertEquals(java.util.Set.of(150.0, 240.0), parts.stream().map(part -> part.layout().width()).collect(Collectors.toSet()));
+        assertTrue(parts.stream().allMatch(part -> part.layout().height() <= 140));
+    }
+
+    @Test void variableGridSemanticTreeKeepsFieldsAndOriginalContinuationIdentity() {
+        var nested = com.mirakyux.export4j.model.Table.builder("variable-grid-nested")
+                .format(f -> f.padding(0).allowRowSplit(true)).row("nested ".repeat(80)).build();
+        var tree = com.mirakyux.export4j.model.Table.builder("variable-grid-root")
+                .format(f -> f.padding(0).allowRowSplit(true))
+                .row(com.mirakyux.export4j.model.TableCell.builder().blocks(List.of(nested)).build()).build();
+        var grid = GridTable.builder().allowRowSplit(true).defaults(cell -> cell.padding(1))
+                .row(row -> row.semanticTable(tree)).build();
+        var parts = grid.layoutVariableRegions(context(96), new FlowRegions(List.of(1.0), 96), List.of(100.0, 240.0));
+        var placements = parts.stream().flatMap(part -> part.layout().semanticPlacements().stream()).toList();
+        assertTrue(placements.size() > 2);
+        for (int at = 0; at < placements.size(); at++) {
+            assertEquals(at, placements.get(at).fragmentIndex());
+            assertEquals(placements.size(), placements.get(at).fragmentCount());
+            assertTrue(placements.get(at).source() == tree);
+        }
+    }
+
+    @Test void variableAtomicGridKeepsConnectedGroupsAndRemeasuresAtActualWidth() {
+        var grid = GridTable.builder().defaults(cell -> cell.padding(1).textStyle(STYLE))
+                .row(row -> row.cell("alpha beta gamma delta"))
+                .row(row -> row.cell("second row"))
+                .row(row -> row.cell("last row")).build();
+        var parts = grid.layoutVariableRegions(context(50), new FlowRegions(List.of(1.0), 50), List.of(100.0, 240.0));
+        assertEquals("alphabetagammadeltasecondrowlastrow", parts.stream().map(part -> text(part.layout()))
+                .collect(Collectors.joining()).replaceAll("\\s", ""));
+        assertEquals(1, parts.getFirst().regionIndex());
+    }
+
     @Test void ordinaryNestedTextContinuesButFixedTextFailsWhenOverheight() {
         var column = FlowColumn.builder().text(source(16), value -> value.style(STYLE)).build();
         var parts = column.layoutRegions(context(100), new FlowRegions(List.of(40.0), 100));

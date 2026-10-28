@@ -1,6 +1,6 @@
 # 架构设计
 
-本文将[立项文档](project-proposal.md)整理为实现约束。当前共 17 个模块，含原有 PDF 路径、SVG／Raster 后端、DOCX 语义适配器、离线 XML／Markdown 模板适配器、PDF 处理／恢复适配器、HTML／Markdown 导入导出适配器与 BOM。生产入口位于组件模块，不新增仅转发调用的 API 模块。公共复杂文本、模板与受控导出见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)。行内图片、共享行几何与 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)和[验收记录](verification/phase-6-inline-images.md)。原有范围及证据见[生产能力 API](production-api.md)与[验收记录](verification/phase-4-production.md)。
+本文将[立项文档](project-proposal.md)整理为实现约束。当前共 18 个模块，包含 16 个库、BOM 和示例。可选 `export4j-opentype` 封装原生塑形，不让核心强制依赖 JNI；生产入口仍位于组件模块。实际能力见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)，行内图片及 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)。
 
 ## 分层与数据流
 
@@ -28,6 +28,10 @@ flowchart TD
 
 文档模型表达内容的含义；布局结果表达内容的位置；绘制指令表达具体绘制操作；后端负责把指令映射到目标格式。DOCX 使用独立的模型映射路径。
 
+变宽递归表格与网格在布局层从完整来源重测剩余内容，已接受的行保留实际宽度，不切断原始 UTF-16 或重编号 owner；轮廓浮动也在排版阶段确定行带和锚点。原生 OpenType 模块在绘制前完成方向、轴及彩色字形处理，输出自有字形／轮廓／图像指令。后端无需持有或调用塑形引擎。
+
+高级颜色、画刷、隔离组和裁剪由后端中立绘制类型表达；各输出器保留原生资源或通过共享处理策略报告确切损失。单次语义流与显式快照重放独立于完整文档快照，重放由应用提供可重开来源并验证摘要；`PdfSpoolBackend` 使用单页对象和磁盘索引，不改变普通 `PdfBackend` 的文档持有方式。设计分别见 [ADR-0099](adr/0099-variable-recursive-grid-and-contour-flow.md)、[0100](adr/0100-native-paints-and-offline-svg-resources.md)、[0101](adr/0101-explicit-native-opentype-and-cff-embedding.md)和 [0102](adr/0102-bounded-semantic-streaming-replay-and-pdf-spool.md)。
+
 无障碍输出另由后端中立 `AccessibilityTree` 保存逻辑阅读顺序及最终命令绑定。`DocumentPainter.paintAccessible` 使用源模型 ID 和已有 Layout IR 建立受支持的标题、段落、列表、图像及表格关系，不重新测量或分页；复杂来源由调用方显式绑定。PDF 后端据此生成 PDF/UA-1 标签，其他后端拒绝不能保留的非空语义树。原对象编辑、选择性重建、自动几何推断及离线标准验证分别保持自己的资源与损失契约，见[ADR-0097](adr/0097-explicit-pdf-editing-recovery-and-standards.md)。
 
 ## 核心层职责
@@ -53,6 +57,7 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-model` | 语义节点、样式和资源标识 | 保持基础层独立 |
 | `export4j-font-core` | 字体资源、度量抽象和生命周期 | 保持基础层独立 |
 | `export4j-text-core` | 自适应简单／OpenType 塑形、文本测量与段落行布局 | 字体层、模型层执行检查点 |
+| `export4j-opentype` | 可选的原生方向／特性塑形、可变轮廓、彩色字形及竖排区域流 | 布局核心和绘制核心；LWJGL／HarfBuzz 封装在内部 |
 | `export4j-graphics-api` | 绘制接口、几何与输出 SPI | 模型、文本层的字形数据 |
 | `export4j-graphics-core` | 图形原语、指令记录与执行协调 | 绘制接口 |
 | `export4j-layout-model` | Layout IR、布局片段和来源映射 | 绘制 API 的几何类型及传递的模型、字形与行数据 |

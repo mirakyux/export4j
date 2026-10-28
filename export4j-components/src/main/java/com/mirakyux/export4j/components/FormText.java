@@ -45,7 +45,11 @@ public record FormText(String text, ParagraphStyle style, RgbColor color, TextIn
     }
 
     ParagraphLayout measure(ComponentContext context) {
-        if (!inheritance.equals(TextInheritance.NONE)) { return resolved(context).measure(context); }
+        return measure(context, line -> context.width());
+    }
+
+    ParagraphLayout measure(ComponentContext context, java.util.function.IntToDoubleFunction widths) {
+        if (!inheritance.equals(TextInheritance.NONE)) { return resolved(context).measure(context, widths); }
         var source = new StringBuilder(text);
         Map<Integer, InlineGraphic> graphics = new HashMap<>();
         for (int index = 0; index < text.length(); index++) {
@@ -58,7 +62,7 @@ public record FormText(String text, ParagraphStyle style, RgbColor color, TextIn
             }
         }
         return new ParagraphLayouter().layout(List.of(new StyledSpan(source.toString(), context.fontGroup(),
-                style.fontSize(), -1, 0, false, false)), context.width(), style, Map.of(), Map.of(), graphics);
+                style.fontSize(), -1, 0, false, false)), context.width(), style, Map.of(), Map.of(), graphics, widths);
     }
 
     ComponentLayout paint(ParagraphLayout measured, int first, int count) {

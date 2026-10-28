@@ -10,7 +10,42 @@ import com.mirakyux.export4j.text.GlyphRun;
  */
 public sealed interface DrawCommand permits DrawCommand.FillRect, DrawCommand.FillPath,
         DrawCommand.StrokePath, DrawCommand.Text, DrawCommand.Image, DrawCommand.Save,
-        DrawCommand.Restore, DrawCommand.Transform, DrawCommand.Clip, DrawCommand.Opacity, DrawCommand.GlyphText, DrawCommand.OutlineText {
+        DrawCommand.Restore, DrawCommand.Transform, DrawCommand.Clip, DrawCommand.Opacity, DrawCommand.GlyphText, DrawCommand.OutlineText,
+        DrawCommand.PaintFill, DrawCommand.PaintStroke, DrawCommand.ClipPath, DrawCommand.Blend, DrawCommand.Group {
+
+    enum FillRule { NONZERO, EVEN_ODD }
+
+    /** Fills with an explicit solid color, gradient or colored vector tile. */
+    record PaintFill(VectorPath path, Paint paint, FillRule rule) implements DrawCommand {
+        public PaintFill { Objects.requireNonNull(path, "path"); Objects.requireNonNull(paint, "paint"); Objects.requireNonNull(rule, "rule"); }
+        public PaintFill(VectorPath path, Paint paint) { this(path, paint, FillRule.NONZERO); }
+    }
+
+    record PaintStroke(VectorPath path, Paint paint, double width) implements DrawCommand {
+        public PaintStroke {
+            Objects.requireNonNull(path, "path"); Objects.requireNonNull(paint, "paint");
+            if (!Double.isFinite(width) || width <= 0) { throw new IllegalArgumentException("stroke width must be finite and positive"); }
+        }
+    }
+
+    /** Intersects the current clip with a local path, including holes. */
+    record ClipPath(VectorPath path, FillRule rule) implements DrawCommand {
+        public ClipPath { Objects.requireNonNull(path, "path"); Objects.requireNonNull(rule, "rule"); }
+    }
+
+    /** Replaces the current per-paint blend operation, scoped by Save/Restore. */
+    record Blend(BlendMode mode) implements DrawCommand { public Blend { Objects.requireNonNull(mode, "mode"); } }
+
+    /** Isolated, clipped transparency group. Children start with alpha=1 and NORMAL blend;
+     * the group is composited once with opacity times the outer fill alpha and its explicit blend mode.
+     * Bounds and commands use the current local coordinates. */
+    record Group(Rect bounds, java.util.List<DrawCommand> commands, double opacity, BlendMode blend) implements DrawCommand {
+        public Group {
+            Objects.requireNonNull(bounds, "bounds"); Objects.requireNonNull(blend, "blend"); commands = java.util.List.copyOf(commands);
+            if (!Double.isFinite(opacity) || opacity < 0 || opacity > 1) { throw new IllegalArgumentException("group opacity must be in [0,1]"); }
+            Paint.validateCommands(commands);
+        }
+    }
 
     /** Replaces the current non-stroking (fills, text and images) and stroking alpha.
      * Values are finite in [0,1], initially both 1. Each paint composites independently using source-over;

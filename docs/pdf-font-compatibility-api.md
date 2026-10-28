@@ -65,7 +65,7 @@ CMap 的每个映射必须完整位于声明码空间内；重叠范围或跨码
 | [光栅脱敏](pdf-redaction-api.md) | 渲染嵌入 CFF 后清除指定像素，新文件不携带源字体、文字对象或历史 |
 | [语义恢复](pdf-semantic-import-api.md) | 恢复具有合法 Unicode、实际字形及受支持水平几何的可见文字；目标字体通过显式角色映射和导出配置选择，不直接把源字体程序放入语义模型 |
 
-字体兼容与 [Form／图层／标签的兼容矩阵](pdf-passive-structures-api.md)分别检查，不将轮廓路径或未经验证的 ActualText 还原为正文。Type3 等可渲染而不可恢复的字形可通过 `PDF_STRUCTURE / DEGRADE` 成为整页流图片，不再是可编辑正文。新生成 PDF 的可见 CFF 正文仍采用既有轮廓输出；输入程序兼容不是新增原生 CFF 嵌入后端。
+字体兼容与 [Form／图层／标签的兼容矩阵](pdf-passive-structures-api.md)分别检查，不将轮廓路径或未经验证的 ActualText 还原为正文。Type3 等可渲染而不可恢复的字形可通过 `PDF_STRUCTURE / DEGRADE` 成为整页流图片，不再是可编辑正文。新生成 PDF 的静态 CFF 普通字形支持[原生 Type1C／CIDFontType0C 嵌入](native-opentype-api.md)，复杂塑形／显式轮廓路径保留测量轮廓；输入字体兼容与输出字体嵌入分别验收。
 
 Type3 在创建底层字体对象前校验原始 Encoding／Differences 的类型、整数范围和顺序，字典不能伪装为流。每个 CharProc 必须以具有正确有限数值操作数的 `d0` 或 `d1` 开始，`d1` 的 BBox 不得倒置；后续重复声明、页或普通 Form 中出现这两个操作符均拒绝。实际字形和递归绘制仍受执行预算控制。
 

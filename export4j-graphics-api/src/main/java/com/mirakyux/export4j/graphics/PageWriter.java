@@ -11,6 +11,16 @@ import java.io.IOException;
  * The borrowed output stream remains open throughout the session's lifetime.
  */
 public interface PageWriter extends AutoCloseable {
+    /** Declares exact final pages and optional global navigation before the first accept.
+     * Existing page writers explicitly reject navigation until they implement this method.
+     * A failed configuration is terminal, just like an accept failure.
+     */
+    default void configureNavigation(PageNavigation navigation) throws IOException {
+        java.util.Objects.requireNonNull(navigation, "navigation");
+        if (!navigation.bookmarks().isEmpty() || !navigation.links().isEmpty()) {
+            throw new IOException("page writer does not support replay navigation");
+        }
+    }
     /**
      * Consumes one non-null prelaid-out page before returning. Coordinates and dimensions
      * use points with the logical origin at the top left. Implementations do not retain

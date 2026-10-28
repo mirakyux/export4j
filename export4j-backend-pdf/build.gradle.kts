@@ -2,6 +2,7 @@
 description = "PDF output implementation using Apache PDFBox"
 dependencies {
     api(project(":export4j-graphics-api"))
+    implementation(project(":export4j-graphics-core"))
     implementation(libs.pdfbox)
     implementation(libs.bcpkix)
     testImplementation(project(":export4j-graphics-core"))
