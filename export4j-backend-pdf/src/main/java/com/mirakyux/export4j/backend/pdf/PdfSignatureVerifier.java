@@ -124,7 +124,7 @@ public final class PdfSignatureVerifier {
     }
 
     private record Field(COSDictionary dictionary, COSName inheritedType) { }
-    private record Prepared(int first, int second, int end, byte[] cms) { }
+    record Prepared(int first, int second, int end, byte[] cms) { }
 
     private static void prepareFields(COSDictionary form, byte[] encoded, Limits limits, List<Prepared> prepared) throws IOException {
         var roots = form.getDictionaryObject(COSName.FIELDS);
@@ -164,8 +164,13 @@ public final class PdfSignatureVerifier {
     }
 
     private static Prepared prepare(COSDictionary signature, byte[] encoded, Limits limits) throws IOException {
+        return prepare(signature, encoded, limits, false);
+    }
+
+    static Prepared prepare(COSDictionary signature, byte[] encoded, Limits limits, boolean allowTimestamp) throws IOException {
         String filter = signature.getNameAsString(COSName.SUB_FILTER);
-        if (!"adbe.pkcs7.detached".equals(filter) && !"ETSI.CAdES.detached".equals(filter)) {
+        if (!"adbe.pkcs7.detached".equals(filter) && !"ETSI.CAdES.detached".equals(filter)
+                && !(allowTimestamp && "ETSI.RFC3161".equals(filter))) {
             throw new IOException("unsupported signature subfilter");
         }
         if (!(signature.getDictionaryObject(COSName.BYTERANGE) instanceof COSArray ranges) || ranges.size() != 4) {

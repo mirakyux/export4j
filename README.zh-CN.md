@@ -51,10 +51,10 @@ Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档�
 | 导航与表单 | 目录、书签、链接、评论、页码／引用字段、脚注续页、静态表单组件及四类基础可编辑 PDF 字段 |
 | 模板 | 离线 XML 变量、条件、循环、动态行、主题、静态页面配置、图文／表格页眉页脚、分节、有界递归 include、动态链接和字段；严格轻量 Markdown |
 | 输出格式 | PDF、自包含 SVG、PNG 单页／ZIP、DOCX 语义子集、HTML 和 Markdown |
-| PDF 处理 | 页级编辑／叠加、被动表单／评论／导航／附件、对象关系重映射合并、PNG／JPEG 渲染、图片提取、实测优化、受限文字替换及新建图片 PDF 脱敏；各有明确输入子集 |
-| 导入与编辑 | Markdown／HTML/CSS／DOCX 子集、显式表格网格的 PDF 几何恢复、不可变语义编辑、DOCX 原包文字编辑及结构化损失预检／结果报告 |
+| PDF 处理 | 页级编辑／叠加、被动对象及关系重映射、渲染／提取、优化、同一行跨受支持样式文字替换、指定图片实例替换、光栅或保留选区外文字／矢量的脱敏；扩展字段、六种被动标记批注、FDF／XFDF 及独立 XFA 子集 |
+| 导入与编辑 | Markdown／HTML/CSS／DOCX 子集、显式启用的 PDF 栏／段落／表格自动恢复及网格覆盖和不确定性报告、不可变语义编辑、DOCX 原包文字编辑及结构化损失预检／结果报告 |
 | 模板保存 | 普通 ZIP 中的可编辑 XML 源码／资源；支持的语义模型也可保存为同一 XML，再重开、编辑和导出，不兼容内容明确报损 |
-| PDF 安全与标准 | AES-256 输出、PDF/A-2b 子集、外部 detached CMS 签名、三档 DocMDP 认证及显式签名字节完整性校验 |
+| PDF 安全与标准 | AES-256；选定 PDF/A-1b／2b／3b／4f 生成与转换；显式 PDF/UA-1 标签；PAdES B／T／LT／LTA、离线信任／撤销证据、时间戳、续期及 DocMDP 修改符合性 |
 | 长表与执行控制 | 单向普通／富文本／图片行源、被动外链、横向合并、完整行续页、实际页码／准确总数校验和同步逐页输出、资源预算、取消、超时、结构化诊断和原子路径写入 |
 
 各项能力都有明确边界。组件网格、语义表格和单向长表分别服务不同契约，选择入口时参阅[编写指南](docs/authoring-api.md)、[链式 API](docs/fluent-api.md)与[长表指南](docs/streaming-table-api.md)。
@@ -213,11 +213,11 @@ HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出
 | 输入与编辑 | 离线 XML／严格 Markdown 模板；通用 Markdown／HTML/CSS／DOCX 子集和受限 PDF 语义恢复；[统一转换](docs/document-conversion-api.md)含编辑、损失预检和结果报告 |
 
 - 不保证一般 Word 文档无损往返，也不保证 DOCX 与 PDF 分页相同。
-- PDF 通常保存字形、线条和坐标，不能据此确定原表格的行列关系。恢复按文字行推断段落／标题，表格须显式提供网格；未提供时按普通文字行处理。
+- PDF 通常保存字形、线条和坐标，缺少可靠的表格关系。默认恢复保留文字行；显式自动分析推断栏、段落和受支持表格，并报告不确定性与实际损失；显式网格优先。两种路径均不保证恢复原可编辑版面。
 - PDF 恢复接受有效嵌入的静态 TrueType、CFF 和传统 Type1 [子集](docs/pdf-font-compatibility-api.md)，以避免依赖本机字体而改变内容或测量结果。复杂页面及受支持的 Type3 绘制可显式降为整页图片，并报告失去文字编辑及结构的损失。行内图片／轮廓输出的不可见锚点使用固定嵌入字体；具体条件见 [PDF 恢复边界](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档)。
 - 脱敏会将全页光栅化并移除源对象，损失文字搜索及矢量编辑；调用方须列出全部敏感区域。
-- 复杂文字、提取、搜索与选择受已测脚本和阅读器范围约束，不宣称完整 OpenType、完整 Unicode 分段或 PDF/UA 合规。
-- PDF/A 文件需要独立合规验证；签名要求调用方提供外部签名器，项目不捆绑私钥。
+- 复杂文字、提取、搜索与选择受已测脚本和阅读器范围约束。PDF/UA-1 需要显式语义绑定和已验收输出通道，普通输出不自动成为无障碍文档；不宣称完整 OpenType 或完整 Unicode 分段。
+- PDF/A 与 PDF/UA 均需验证最终文件。签名要求显式调用方密钥或签名回调、信任锚和验证证据；项目不捆绑私钥或隐式信任服务。见[标准指南](docs/pdf-standards-api.md)。
 - 固定字段与原子内容必须放入预留区域，不通过隐式缩小或裁切处理不支持的内容。
 - 单向布局有界，但 PDFBox 页树仍增长，不代表完整 PDF 恒内存或长期无泄漏。
 - 资源预算不等于恶意输入沙箱；调用方仍需控制资源访问及不可信输入隔离。
@@ -307,6 +307,7 @@ Export4j 复用了以下开源基础设施与显式提供的字体资源：
 | [Apache PDFBox／FontBox](https://pdfbox.apache.org/) | PDF 后端、受限 PDF 处理与字体解析 |
 | [Apache Commons Logging](https://commons.apache.org/proper/commons-logging/) | PDFBox 传递运行依赖 |
 | [commonmark-java](https://github.com/commonmark/commonmark-java)、[jsoup](https://jsoup.org/) | 离线 Markdown 与 HTML 解析 |
+| [Bouncy Castle](https://www.bouncycastle.org/) | PDF 签名、证书、撤销及时间戳基础能力；后端内部依赖 |
 | [OpenJDK](https://openjdk.org/) | Java 运行时、Java2D／OpenType、ZIP 与 XML 基础设施 |
 | [Gradle](https://gradle.org/)、[JUnit](https://junit.org/) | 构建与 Java 测试 |
 | [pypdf](https://github.com/py-pdf/pypdf)、[pypdfium2](https://github.com/pypdfium2-team/pypdfium2)、[Pillow](https://python-pillow.org/)、[python-docx](https://github.com/python-openxml/python-docx)、[cryptography](https://cryptography.io/)、[Poppler](https://poppler.freedesktop.org/) | 独立格式、渲染与验收工具 |

@@ -13,7 +13,7 @@ python scripts/verify_capabilities.py
 
 `publishLocalBundle` 发布 15 个库和 BOM 到 `build/repository`，不访问远程发布服务、不写用户 Maven 仓库。库携带源码、Javadoc、POM、Gradle 元数据和许可。SNAPSHOT 使用 Maven 时间戳制品，验证脚本通过 `maven-metadata.xml` 解析实际文件，不假设固定文件名。
 
-`sbom` 写入 `build/reports/sbom.cdx.json`，CycloneDX 1.6 库运行清单包含 15 个自研库及 8 个第三方制品的 SHA-256；分别记录 Apache-2.0 和 BSD-2-Clause。第三方许可白名单遇到新增坐标会失败，须先审查；字体、JDK、测试工具和构建工具不在该运行清单中，另按依赖与资源记录核对。
+`sbom` 写入 `build/reports/sbom.cdx.json`，CycloneDX 1.6 库运行清单包含 15 个自研库及 11 个第三方制品的 SHA-256；按实际坐标记录 Apache-2.0、BSD-2-Clause 和 MIT。第三方许可白名单遇到新增坐标会失败，须先审查；字体、JDK、测试工具和构建工具不在该运行清单中，另按依赖与资源记录核对。
 
 独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，证明本地制品可消费；这不是 Maven Central、签名或远程 CI 验证。
 

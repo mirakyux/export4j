@@ -96,7 +96,7 @@
 
 后续补充两端对齐、可选严格中文禁则、富文本标题／列表和常用编写入口。新增 2 线程、6 份各 26 页混合报告，采样独立 JVM 的 Windows 工作集、私有字节和句柄，并验证取消／输出超限恢复。该证据仍属于有界工作负载，不代表长期泄漏或容量保证，见[阶段十三](verification/phase-13-authoring.md)。
 
-取消／超时／进度／原子文件写入已有实现；PDF/A-2b、AES-256 及 detached CMS 提供受限入口与独立样例证据。完整流式布局、持续压力、跨系统／阅读器兼容、PDF/UA 和 PAdES 长期验证仍未完成。具体后续范围见[能力矩阵](capabilities-api.md#docx-与剩余范围)。
+取消／超时／进度／原子文件写入已有实现；AES-256、选定 PDF/A-1b／2b／3b／4f、显式 PDF/UA-1 和离线 PAdES B／T／LT／LTA 使用各自独立入口及验收，见[标准指南](pdf-standards-api.md)。完整流式布局、持续压力及跨系统／阅读器矩阵仍未完成。具体范围见[能力矩阵](capabilities-api.md#docx-与剩余范围)。
 
 固定列普通文字已接入独立单向源和逐页 PDF，见[阶段二十四](verification/phase-24-streaming-tables.md)。布局丢弃页／真实 PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM 通过；100k PDF 为 1,786 页、325.281 秒。结果同时记录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘及退出文件清理。PDFBox 页树仍累计；这不完成一般文档恒内存或持续容量目标。
 
@@ -151,3 +151,5 @@
 阶段四十三新增语义 HTML／Markdown 导出，支持静态自包含 HTML5、CommonMark/GFM 内容与逐功能 ERROR／WARN／IGNORE。默认严格，合并／块格在 Markdown 中仅按明确策略展开，字段使用未解析标记；见[API](web-export-api.md)与[验收](verification/phase-43-web-exports.md)。
 
 阶段四十四至五十六依次完成[语义编辑／字面替换](semantic-editing-api.md)、[通用 Markdown](markdown-import-api.md)／[离线 HTML/CSS](html-import-api.md)输入、[统一转换](document-conversion-api.md)、[DOCX 原包文字](docx-editing-api.md)与[样式级联](docx-style-import-api.md)，以及 [PDF 页／被动对象编辑、组合、渲染提取、优化、文字替换、光栅脱敏及语义恢复](pdf-adapter-api.md)的明确子集。全部按实际输出、损失预检／结果和隔离制品验收。PDF 恢复按行／字号推断并需显式表格网格；脱敏新建图片 PDF，损失搜索和矢量编辑。完整标准、任意文档无损往返、设计器和长期容量仍不属于这些已交付目标；详见[执行计划](remaining-capabilities-plan.md)。
+
+[阶段九十四至九十七](verification/phase-97-pdf-editing-standards-recovery-closure.md)进一步完成跨状态文字／图片实例编辑、选择性脱敏、扩展表单／批注／FDF／XFDF／XFA，以及自动多栏／段落／有线无线表格／合并嵌套恢复的明确子集。1,634 项测试、全新 Maven 调用方和对应独立输出验收通过。选定 PDF/A、离线 PAdES 和 PDF/UA-1 的既有子项目标均已验收；生成样例及已有标签文件两页、修复后模型第一页的实际辅助阅读器证据分别登记，模型其余页未捕获读屏的覆盖限制明确保留。当前状态以[缺口表](capability-gaps.md)为准。

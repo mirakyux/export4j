@@ -11,8 +11,12 @@
 | 已有 PDF 渲染为 PNG／JPEG、提取图片资源 | `render`／`extractImages`，[渲染与提取](pdf-raster-api.md) |
 | 流压缩、资源去重及显式图片重采样 | `optimize`，[优化](pdf-optimization-api.md)；不保证输出更小 |
 | 有界真实文字替换 | `editText`，[文字编辑](pdf-text-editing-api.md)；不是安全脱敏 |
+| 原图片的指定绘制实例替换 | `editImages`，[图片编辑](pdf-image-editing-api.md)；共享资源按调用隔离 |
 | 区域像素清除并新建纯图片 PDF | `redact`，[脱敏](pdf-redaction-api.md)；损失全文搜索及矢量编辑 |
-| 恢复可编辑模型再转 DOCX／HTML／Markdown | `importDocument`，[语义恢复](pdf-semantic-import-api.md)；显式网格、几何推断，无 OCR |
+| 保留选区外文字／矢量的选择性脱敏 | `redactSelective`，[脱敏](pdf-redaction-api.md)；完整新文档重建，未知结构拒绝 |
+| 字段数据交换 | `formData`／`editObjects().importFormData`，[FDF／XFDF](pdf-form-data-api.md) |
+| XFA 读取／扁平化 | `xfa`，[独立 XFA 子集](pdf-xfa-api.md)；不执行脚本 |
+| 恢复可编辑模型再转 DOCX／HTML／Markdown | `importDocument`，[语义恢复](pdf-semantic-import-api.md)；逐行默认、显式 AUTO／网格覆盖，无 OCR |
 
 下文描述默认严格读取／静态复制入口。显式 `allowPassiveStructures(true)` 可启用已验证图层／标签的读取和完整原文档保留路径，见[被动结构 API](pdf-passive-structures-api.md)；选页／跨来源组合仍拒绝这些文档。
 

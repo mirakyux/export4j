@@ -27,12 +27,14 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 | 能力 | 实际子集及证据 |
 | --- | --- |
 | [页级编辑](pdf-page-editing-api.md) | 旋转／裁剪／等比缩放、显式图文叠加；裁剪隐藏未删除；[阶段四十九](verification/phase-49-pdf-page-editing.md) |
-| [对象编辑](pdf-object-editing-api.md)／[组合](pdf-object-composition-api.md) | 四类字段／外观／扁平化、被动批注／链接／书签／附件／Info；选页及跨来源关系／命名空间重映射；[五十](verification/phase-50-pdf-object-editing.md)／[五十一](verification/phase-51-pdf-object-composition.md) |
+| [对象编辑](pdf-object-editing-api.md)／[组合](pdf-object-composition-api.md) | 基础字段及多行／comb／富文本／多选／自适应字号、外观／扁平化、六种被动标记批注和既有对象；[FDF／XFDF](pdf-form-data-api.md) 数据交换；选页及跨来源关系重映射仍按独立组合子集 |
 | [渲染与图片](pdf-raster-api.md) | CropBox／旋转／UserUnit、明确 DPI／背景、PNG／JPEG 及去重资源提取；验证嵌入静态字体，或使用显式源字体映射并报告替代损失；未知外观可明确跳页；[五十二](verification/phase-52-pdf-raster.md)／[九十三](verification/phase-93-pdf-compatibility-closure.md) |
 | [优化](pdf-optimization-api.md) | 无损流压缩、相同简单图片／字体程序流去重；显式图片降采样／JPEG，返回确切大小与像素统计，不保证更小；[五十三](verification/phase-53-pdf-optimization.md) |
-| [文字替换](pdf-text-editing-api.md) | 同一指令及同状态连续 Tj／TJ 范围匹配、显式字体及后续坐标保持；普通 Form 按命中调用复制后修改，未命中共享实例保持；被动 Span／ActualText 内部及带标签所有者的 Form 明确拒绝或跳过；不等于脱敏；[文字编辑边界](pdf-text-editing-api.md)／[九十三](verification/phase-93-pdf-compatibility-closure.md) |
-| [区域脱敏](pdf-redaction-api.md) | 清除选区像素后新建纯图片 PDF，不复制源对象、文字层、附件、元数据及历史；牺牲全文搜索与矢量编辑；[五十五](verification/phase-55-pdf-redaction.md) |
-| [语义恢复](pdf-semantic-import-api.md) | 逐行段落、字号标题、显式表格网格及流图片，再编辑并转换 DOCX／HTML／Markdown／PDF；普通输出的不可见图片锚点已嵌入字体并验证重新导入；近似源框、推断损失及原版重排限制见[五十六](verification/phase-56-pdf-semantic-import.md) |
+| [文字替换](pdf-text-editing-api.md) | 同一行跨受支持 Tj／TJ、字体／颜色／定位匹配；样式／字距降级须显式接受，未命中字形位置保持；普通 Form 按命中调用复制，被动标记内部及结构所有者仍拒绝或跳过；不是脱敏 |
+| [图片实例替换](pdf-image-editing-api.md) | 实际深度优先绘制次序、共享 Form 隔离、原 cm／BBox／clip 和图层成员保留；蒙版替换明确报损 |
+| [区域脱敏](pdf-redaction-api.md) | 原光栅入口清除像素后新建纯图片 PDF；选择性入口在明确不透明静态子集中重建保留字形、图像及真实剩余路径，删除源流／替代文本／附件／历史；不支持结构整体拒绝 |
+| [XFA](pdf-xfa-api.md) | 独立静态定位／受支持流式重复的读取和扁平化子集，不执行脚本或外联；普通对象入口继续拒绝 |
+| [语义恢复](pdf-semantic-import-api.md) | 默认逐行；显式 AUTO 检测多栏／段落／标题列表／重复页区、有线无线及合并嵌套续表，显式网格优先；保留叶框／物理格路径和推断损失，再转换 DOCX／HTML／Markdown／PDF；不保留原绝对版面 |
 
 不支持任意 PDF 无损编辑或版面恢复，OCR 不在范围内。脱敏区域由调用方完整指定；不是自动发现敏感信息。各坐标系和字体／页面子集以对应 API 为准。
 
@@ -145,11 +147,12 @@ engine.writeAtomically(document, backend, targetPath, options);
 | 能力 | 调用与约束 |
 | --- | --- |
 | AES-256 | `PdfOptions.withEncryption(new PdfEncryption(owner, user, permissions))`；读者密码和所有者密码分离；权限依赖阅读器遵守，不是 DRM |
-| PDF/A-2b | `PdfOptions.withArchival(new PdfArchival(rgbIccBytes, anchorTrueTypeFont))`；静态 RGB 文档，嵌入字体与 XMP／OutputIntent；拒绝加密、交互 extras 和未嵌入标准字体命令 |
+| PDF/A-1b／2b／3b／4f | `PdfArchival.Profile` 显式选择，旧构造默认 2b；静态 RGB／嵌入字体／XMP／OutputIntent，3b／4f 有限显式关联附件，4f 要求附件；已有文件转换为有损 RGB 页面重建，见[标准指南](pdf-standards-api.md) |
+| PDF/UA-1 | `AccessibilityTree` 绑定逻辑顺序及最终命令，或 `DocumentPainter.paintAccessible` 绑定受支持模型；PDF 后端显式启用标签；已有 UA-1 标签读取／title／language 原子修改单独处理 |
 | detached CMS 签名 | `PdfSigner.sign(sourcePath, borrowedOutput, options, signer)`；增量追加，源文件不变；回调消费准确 ByteRange，返回完整 DER CMS；失败输出须丢弃 |
 | DocMDP 认证 | `PdfSigner.certify` 首签支持三档权限声明；普通批准签名遵守已识别的认证限制；路径签名原子替换，见[认证 API](pdf-certification-api.md) |
 
-签名器不捆绑私钥、证书或网络服务。本地验证使用自签测试证书，证明签名完整性与篡改拒绝，不证明证书受信任、PAdES 长期验证或可信时间戳。PDF/A 必须对最终文件独立验证；元数据中的合规标识不能替代验证结果。PDF/UA 和完整标签阅读顺序尚未实现。
+`PdfPades` 提供 B／T／LT／LTA、RFC 3161、DSS 证据更新及续期；`PdfTrust` 使用显式 DER 证书／信任锚、时刻和 OCSP／CRL。字节完整性、信任／撤销、时间戳和 DocMDP 修改符合性分别判断，不隐式联网或信任系统证书。测试证书只证明受控验证场景，不提供真实业务信任背书。标准标识不能替代最终文件独立验证，详见[标准 API](pdf-standards-api.md)及[阶段九十六](verification/phase-96-pdf-standards.md)。
 
 ## DOCX 与剩余范围
 
@@ -168,7 +171,7 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 | 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、组件内字段、自动字段宽度重排和可访问的结构化阅读顺序 |
 | 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。变宽纵向合并拆分／递归子树、任意轮廓／跨页浮动锚点、任意递归网格续页、竖排、可变字体轴仍开放；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
 | DOCX | 浮动／裁剪等复杂图像、目录／评论／表单完整模型映射；首页／奇偶语义页区已验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已验收，Word 保存兼容单独登记 |
-| PDF | PDF/UA 标签树、更多注释／表单属性、现有签名验证和 PAdES 长期验证 |
+| PDF | 现有编辑、恢复、PDF/UA-1、选定 PDF/A 及 PAdES 的子集见对应 API；任意外部结构、任意标准等级与通用阅读器兼容不由有限样例保证 |
 | 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。一般 Word／LibreOffice 外观、其他系统／JDK、多阅读器、持续容量与长期资源释放仍未验收 |
 
 [编写时主题](themes-api.md)已接入 Java Document／Documents，集中管理正文、六级标题、便利语义表格和有界命名完整样式。加入时快照、显式完整值优先、组件六项继承及默认输出兼容见[阶段三十验收](verification/phase-30-authoring-themes.md)。XML 静态名称与四类可编辑字段显式外观分别见[XML 主题](xml-themes-api.md)和[FormStyle](form-styles-api.md)。页眉页脚独立默认值见[页区主题](xml-page-regions-api.md)；全局颜色／字体角色与分域覆盖已由[阶段六十](verification/phase-60-theme-appearance.md)验收；背景／前景的独立主题与固定框已由[阶段六十二](verification/phase-62-page-overlays.md)验收。

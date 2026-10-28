@@ -17,6 +17,7 @@ import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSString;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.filespecification.PDComplexFileSpecification;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
@@ -38,10 +39,17 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDTextField;
  */
 public final class PdfObjects {
     private PdfObjects() { }
-    public record Field(String name, String type, String value, List<String> options, boolean readOnly) {
-        public Field { options = List.copyOf(options); }
+    public record Field(String name, String type, String value, List<String> options, boolean readOnly,
+            List<String> values, boolean multiline, boolean comb, boolean richText, boolean multiSelect,
+            int maxLength, String richValue) {
+        public Field { options = List.copyOf(options); values=List.copyOf(values); java.util.Objects.requireNonNull(richValue); }
+        public Field(String name,String type,String value,List<String> options,boolean readOnly){this(name,type,value,options,readOnly,List.of(value),false,false,false,false,0,"");}
     }
-    public record Annotation(int page, int index, String type, PdfAdapter.Box box, String text, String uri, int targetPage) { }
+    public record Annotation(int page, int index, String type, PdfAdapter.Box box, String text, String uri, int targetPage,
+            List<PdfAnnotationSpec.Quad> quads,List<List<PdfAnnotationSpec.Point>> ink,int strokeRgb,int fillRgb,double width,double opacity) {
+        public Annotation{quads=List.copyOf(quads);ink=ink.stream().map(List::copyOf).toList();}
+        public Annotation(int page,int index,String type,PdfAdapter.Box box,String text,String uri,int targetPage){this(page,index,type,box,text,uri,targetPage,List.of(),List.of(),0,-1,1,1);}
+    }
     public record Bookmark(String title, int page, List<Bookmark> children) {
         public Bookmark { java.util.Objects.requireNonNull(title, "title"); children = List.copyOf(children); }
     }
@@ -84,12 +92,18 @@ public final class PdfObjects {
                 String type = field instanceof PDTextField ? "TEXT" : field instanceof PDCheckBox ? "CHECKBOX"
                         : field instanceof PDRadioButton ? "RADIO" : field instanceof PDChoice ? "CHOICE" : "";
                 if (type.isEmpty()) { throw unsupported(); }
+                if(field.getCOSObject().containsKey(COSName.FF)&&!(field.getCOSObject().getDictionaryObject(COSName.FF)instanceof COSInteger)){throw invalid();}
+                if(field instanceof PDTextField){var value=field.getCOSObject().getDictionaryObject(COSName.V);if(value!=null&&!(value instanceof COSString)){throw invalid();}var maximum=field.getCOSObject().getDictionaryObject(COSName.MAX_LEN);if(maximum!=null&&!(maximum instanceof COSInteger)){throw invalid();}}
                 String name = field.getFullyQualifiedName();
                 if (name == null || name.isBlank() || !names.add(name)) { throw invalid(); }
                 var options = field instanceof PDChoice choice ? choice.getOptionsExportValues()
                         : field instanceof PDRadioButton radio ? radio.getOnValues().stream().sorted().toList() : List.<String>of();
                 count.text(name); count.text(field.getValueAsString()); for (String option : options) { count.text(option); }
-                fields.add(new Field(name, type, field.getValueAsString(), options, field.isReadOnly()));
+                var values=field instanceof PDChoice choice?choice.getValue():List.of(field.getValueAsString());
+                boolean multiline=false,comb=false,rich=false;int maxLength=0;String richValue="";
+                if(field instanceof PDTextField text){multiline=text.isMultiline();comb=text.isComb();rich=text.isRichText();maxLength=text.getMaxLen();richValue=text.getRichTextValue();if(richValue==null){richValue="";}count.text(richValue);if(!richValue.isEmpty()){PdfRichText.validate(richValue,limits);}
+                    if(maxLength<0&&text.getCOSObject().containsKey(COSName.MAX_LEN)||comb&&(maxLength<=0||multiline||text.isPassword()||text.isFileSelect())){throw invalid();}if(maxLength<0){maxLength=0;}}
+                for(String value:values){count.text(value);}fields.add(new Field(name,type,field.getValueAsString(),options,field.isReadOnly(),values,multiline,comb,rich,field instanceof PDChoice choice&&choice.isMultiSelect(),maxLength,richValue));
             }
         }
         var annotations = new ArrayList<Annotation>(); Set<COSDictionary> seenWidgets = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -105,7 +119,7 @@ public final class PdfObjects {
                 var rectangle = annotation.getRectangle();
                 if (rectangle == null || !Float.isFinite(rectangle.getLowerLeftX()) || !Float.isFinite(rectangle.getLowerLeftY())
                         || !Float.isFinite(rectangle.getWidth()) || !Float.isFinite(rectangle.getHeight()) || rectangle.getWidth() <= 0 || rectangle.getHeight() <= 0) { throw invalid(); }
-                String type; String uri = ""; int target = -1;
+                String type; String uri = ""; int target = -1;PdfAnnotationSpec specification=null;
                 if (annotation instanceof PDAnnotationWidget) {
                     if (!fieldWidgets.contains(annotation.getCOSObject()) || !seenWidgets.add(annotation.getCOSObject())) { throw invalid(); } type = "WIDGET";
                 } else if (annotation instanceof PDAnnotationText) { type = "TEXT"; }
@@ -117,9 +131,11 @@ public final class PdfObjects {
                     else if (action != null) { throw unsupported(); }
                     else if (link.getDestination() != null) { target = destination(document, link.getDestination()); }
                     else { throw invalid(); }
-                } else { throw unsupported(); }
+                } else if(PdfPassiveAnnotations.supported(annotation.getSubtype())){specification=PdfPassiveAnnotations.inspect(annotation,limits);type=specification.type().name();}
+                else { throw unsupported(); }
                 String text = annotation.getContents() == null ? "" : annotation.getContents(); count.text(text); count.text(uri);
-                annotations.add(new Annotation(pageIndex, index, type, new PdfAdapter.Box(rectangle.getLowerLeftX(), rectangle.getLowerLeftY(), rectangle.getWidth(), rectangle.getHeight()), text, uri, target));
+                var box=new PdfAdapter.Box(rectangle.getLowerLeftX(),rectangle.getLowerLeftY(),rectangle.getWidth(),rectangle.getHeight());
+                annotations.add(specification==null?new Annotation(pageIndex,index,type,box,text,uri,target):new Annotation(pageIndex,index,type,box,text,uri,target,specification.quads(),specification.ink(),specification.strokeRgb(),specification.fillRgb(),specification.width(),specification.opacity()));
             }
         }
         if (!seenWidgets.equals(fieldWidgets)) { throw invalid(); }

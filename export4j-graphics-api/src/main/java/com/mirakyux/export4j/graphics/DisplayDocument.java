@@ -7,14 +7,16 @@ import java.util.HashSet;
 import com.mirakyux.export4j.model.DocumentMetadata;
 
 /** Immutable, nonempty Display List document; contains no backend handles or open resources. */
-public record DisplayDocument(DocumentMetadata metadata, List<DisplayPage> pages, DocumentExtras extras) {
+public record DisplayDocument(DocumentMetadata metadata, List<DisplayPage> pages, DocumentExtras extras, AccessibilityTree accessibility) {
     public DisplayDocument {
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(extras, "extras");
+        Objects.requireNonNull(accessibility, "accessibility");
         pages = List.copyOf(pages);
         if (pages.isEmpty()) {
             throw new IllegalArgumentException("document must contain at least one page");
         }
+        accessibility.validatePages(pages);
         int level = 0;
         for (var bookmark : extras.bookmarks()) {
             if (bookmark.level() > level + 1) {
@@ -41,8 +43,9 @@ public record DisplayDocument(DocumentMetadata metadata, List<DisplayPage> pages
     }
 
     public DisplayDocument(DocumentMetadata metadata, List<DisplayPage> pages) {
-        this(metadata, pages, DocumentExtras.EMPTY);
+        this(metadata, pages, DocumentExtras.EMPTY, AccessibilityTree.EMPTY);
     }
+    public DisplayDocument(DocumentMetadata metadata, List<DisplayPage> pages, DocumentExtras extras) { this(metadata, pages, extras, AccessibilityTree.EMPTY); }
 
     private static void requireRect(List<DisplayPage> pages, int index, Rect bounds) {
         requirePoint(pages, index, new Point(bounds.x(), bounds.y()));

@@ -51,10 +51,10 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 | Navigation and forms | Contents, bookmarks, links, comments, page/reference fields, continued footnotes, static form components and four basic editable PDF field types |
 | Templates | Offline XML with variables, conditions, loops, dynamic rows, themes, static page settings, image/table headers/footers, sections, bounded recursive includes, dynamic links and fields; strict lightweight Markdown |
 | Output | PDF, self-contained SVG, PNG pages/ZIP, a semantic DOCX subset, HTML and Markdown |
-| PDF processing | Page edits/overlays, passive forms/comments/navigation/attachments, object-preserving composition, PNG/JPEG rendering, image extraction, measured optimization, bounded text replacement and fresh-raster redaction; each has a defined input subset |
-| Import and editing | Markdown/HTML/CSS/DOCX subsets, geometric PDF recovery with explicit table grids, immutable semantic edits, package-preserving DOCX text edits and structured loss previews/reports |
+| PDF processing | Page edits/overlays, passive forms/comments/navigation/attachments, object-preserving composition, rendering/extraction, optimization, same-line text replacement across supported styles, individual image replacement, raster or selective text/vector-preserving redaction; extended forms, six passive annotation types, FDF/XFDF and a separate XFA subset |
+| Import and editing | Markdown/HTML/CSS/DOCX subsets, opt-in automatic PDF columns/paragraphs/table recovery with explicit grid overrides and uncertainty reports, immutable semantic edits, package-preserving DOCX text edits and structured loss previews/reports |
 | Template saving | Editable XML sources/resources in ordinary ZIP files; save supported semantic models as the same XML, reopen, edit and export with explicit loss policies |
-| PDF security and standards | AES-256 output, a PDF/A-2b subset, external detached CMS signing and three DocMDP certification permissions and explicit signed-byte verification |
+| PDF security and standards | AES-256; selected PDF/A-1b/2b/3b/4f generation and conversion; explicit PDF/UA-1 tags; PAdES B/T/LT/LTA, offline trust/revocation evidence, timestamps, renewal and DocMDP change classification |
 | Large tables and execution | Single-pass text/rich-text/image table sources, passive links, horizontal spans, whole-line row continuation, actual page fields with checked declared totals, and synchronous page output, resource budgets, cancellation, timeouts, structured diagnostics and atomic path writes |
 
 Each feature has explicit limits. A component table, semantic table and streaming table serve different contracts; see the [authoring guide](docs/authoring-api.md), [fluent API](docs/fluent-api.md) and [streaming-table guide](docs/streaming-table-api.md).
@@ -213,11 +213,11 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 | Input and editing | Offline XML/strict Markdown templates; general Markdown, HTML/CSS, DOCX subsets and bounded PDF recovery; [shared conversion](docs/document-conversion-api.md) includes editing and loss reports |
 
 - General Word documents are not guaranteed to round-trip without loss or paginate identically to PDF.
-- PDFs commonly store glyphs, paths and coordinates without reliable table row/cell relationships. Recovery infers line paragraphs/headings and requires explicit table grids; without a grid, table text is treated as ordinary lines.
+- PDFs commonly store glyphs, paths and coordinates without reliable table relationships. The default recovery keeps lines; opt-in automatic analysis infers columns, paragraphs and supported tables with uncertainty/loss reports. Explicit grids override inferred tables. Neither path guarantees the original editable layout.
 - PDF recovery accepts valid embedded static TrueType, CFF and traditional Type1 [subsets](docs/pdf-font-compatibility-api.md), avoiding machine-dependent font substitution and measurements. Complex pages, including supported Type3 drawing, can explicitly become page images with reported editing and structure losses. Invisible inline-image/outline anchors use a fixed embedded font; see [PDF recovery boundaries](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档).
 - Redaction rasterizes all pages and removes source objects, sacrificing text search and vector editing; callers identify every sensitive region.
-- Complex-text coverage, text extraction, search and selection depend on the tested scripts and readers. Full OpenType, Unicode segmentation and PDF/UA compliance are not claimed.
-- PDF/A output needs independent compliance validation. Signing requires a caller-provided external signer; no private key is bundled.
+- Complex-text coverage, extraction, search and selection depend on the tested scripts and readers. PDF/UA-1 requires explicit semantic bindings and its validated output path; ordinary output does not become accessible automatically. Full OpenType and Unicode segmentation are not claimed.
+- PDF/A and PDF/UA output need final-file compliance validation. Signing requires explicit caller-owned keys or signer callbacks, trust anchors and evidence; no private key or implicit trust service is bundled. See the [standards guide](docs/pdf-standards-api.md).
 - Fixed-size fields and atomic content must fit their reserved area. The engine does not silently shrink or clip unsupported content.
 - Streaming layout is bounded, but the PDFBox page tree still grows. This is not a constant-memory guarantee for the entire PDF or a long-term leak-free claim.
 - Resource limits are not a hostile-input sandbox. Callers remain responsible for access policy and untrusted-input isolation.
@@ -306,6 +306,7 @@ Export4j builds on open-source infrastructure and explicitly supplied font resou
 | [Apache PDFBox / FontBox](https://pdfbox.apache.org/) | PDF backend, restricted PDF processing and font parsing |
 | [Apache Commons Logging](https://commons.apache.org/proper/commons-logging/) | Transitive PDFBox runtime dependency |
 | [commonmark-java](https://github.com/commonmark/commonmark-java), [jsoup](https://jsoup.org/) | Offline Markdown and HTML parsing |
+| [Bouncy Castle](https://www.bouncycastle.org/) | PDF signature, certificate, revocation and timestamp primitives; internal backend dependency |
 | [OpenJDK](https://openjdk.org/) | Java runtime, Java2D/OpenType, ZIP and XML infrastructure |
 | [Gradle](https://gradle.org/), [JUnit](https://junit.org/) | Build and Java tests |
 | [pypdf](https://github.com/py-pdf/pypdf), [pypdfium2](https://github.com/pypdfium2-team/pypdfium2), [Pillow](https://python-pillow.org/), [python-docx](https://github.com/python-openxml/python-docx), [cryptography](https://cryptography.io/), [Poppler](https://poppler.freedesktop.org/) | Independent format, rendering and verification tools |

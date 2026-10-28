@@ -45,7 +45,7 @@ var block = new ComponentBlock("shaped", new FontScope(text, complexFonts), 0, 0
 
 `OpenTypeText` 最多 200,000 个输入码点、100,000 行及 2,000,000 个轮廓段。显式组件采用静态 TrueType，公共路径另支持静态 CFF；不支持彩色 emoji、可变字体轴、竖排或全部 OpenType 特性。常见标点禁则不等于完整东亚排版标准。
 
-复杂文字在布局阶段生成轮廓；PDF 输出带 `/ActualText` 与不可见文字锚点。PDFium 已验证能提取样本逻辑文字，但整页提取顺序可能与视觉顺序不同；搜索、选择、复制依赖阅读器实现。未实现完整标签树或 PDF/UA，不能把轮廓文字当作通用无障碍方案。
+复杂文字在布局阶段生成轮廓；普通 PDF 输出带 `/ActualText` 与不可见文字锚点。PDFium 已验证能提取样本逻辑文字，但整页提取顺序可能与视觉顺序不同；搜索、选择、复制依赖阅读器实现。PDF/UA-1 另需显式逻辑顺序、最终命令绑定及启用标签的后端，见[标准 API](pdf-standards-api.md)；普通轮廓文字不能当作通用无障碍方案。
 
 ## 多栏、绕排、表格、脚注和引用
 

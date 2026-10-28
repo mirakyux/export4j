@@ -69,6 +69,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         public Builder options(java.util.function.Consumer<PdfOptions.Builder> configure) {
             var value = PdfOptions.builder().storage(options.storage());
             options.encryption().ifPresent(value::encryption); options.archival().ifPresent(value::archival);
+            options.accessibility().ifPresent(value::accessibility);
             configure.accept(value); return options(value.build());
         }
         public PdfBackend build() { return new PdfBackend(limits, options); }
@@ -96,14 +97,16 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, document.metadata(), document.extras()); }
             Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
             Map<String, PDType0Font> embedded = new HashMap<>();
+            var tags = options.accessibility().isPresent() ? new PdfTagWriter(document) : null;
             for (int pageIndex = 0; pageIndex < document.pages().size(); pageIndex++) {
                 com.mirakyux.export4j.model.ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, document.pages().size());
-                renderPage(pdf, document.pages().get(pageIndex), pageIndex, fonts, embedded);
+                renderPage(pdf, document.pages().get(pageIndex), pageIndex, fonts, embedded, tags);
             }
             PdfExtrasWriter.write(pdf, document.extras());
+            if (tags != null) { tags.finish(pdf); }
             protect(pdf);
             // Explicitly shield borrowed streams from implementation-specific close behavior.
-            pdf.save(new BorrowedOutputStream(output));
+            save(pdf, output);
         } catch (PdfRenderException failure) {
             throw failure;
         } catch (IOException failure) {
@@ -122,6 +125,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(output, "output");
         ExecutionContext.checkpoint();
+        if (options.accessibility().isPresent()) { throw new IOException("PDF/UA requires a complete semantic DisplayDocument; page sessions have no logical tree"); }
         var budget = new BudgetState(DocumentExtras.EMPTY);
         return new PdfPageWriter(createDocument(metadata), metadata, output, budget);
     }
@@ -144,6 +148,14 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         pdf.protect(policy);
     }
 
+    private void save(PDDocument pdf, OutputStream output) throws IOException {
+        if (options.archival().filter(value -> value.target() == PdfArchival.Profile.A1B).isPresent()) {
+            pdf.save(new BorrowedOutputStream(output), org.apache.pdfbox.pdfwriter.compress.CompressParameters.NO_COMPRESSION);
+        } else {
+            pdf.save(new BorrowedOutputStream(output));
+        }
+    }
+
     private PDDocument createDocument(DocumentMetadata metadata) {
         var pdf = new PDDocument(options.storage() == PdfOptions.Storage.TEMP_FILE
                 ? org.apache.pdfbox.io.IOUtils.createTempFileOnlyStreamCache() : org.apache.pdfbox.io.IOUtils.createMemoryOnlyStreamCache());
@@ -154,6 +166,13 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private void preflight(DisplayDocument document) throws PdfRenderException {
+        if (document.accessibility().children().isEmpty() == options.accessibility().isPresent()) {
+            throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, -1, -1, "PDF/UA target and explicit accessibility tree must be selected together");
+        }
+        if (options.accessibility().isPresent()) {
+            if (document.metadata().title().isBlank() || !document.extras().equals(DocumentExtras.EMPTY)) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, -1, -1, "PDF/UA requires a title and currently rejects interactive extras without object tagging"); }
+            for (var page : document.pages()) { for (var command : page.commands()) { if (command instanceof DrawCommand.Text) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, -1, -1, "PDF/UA requires explicit embedded fonts or outlined text"); } } }
+        }
         if (document.pages().size() > limits.maxPages()) {
             throw budget(-1, -1, "page budget exceeded");
         }
@@ -198,6 +217,9 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 } else if (command instanceof DrawCommand.Restore) {
                     depth--;
                 } else if (command instanceof DrawCommand.Image image) {
+                    if (options.archival().isPresent() && options.archival().orElseThrow().target() == PdfArchival.Profile.A1B) {
+                        for (byte alpha : image.image().alpha()) { if ((alpha & 255) != 255) { throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, pageIndex, index, "PDF/A-1 forbids image transparency"); } }
+                    }
                     long pixels = (long) image.image().width() * image.image().height();
                     if (pixels > limits.maxImagePixels() - imagePixels) {
                         throw budget(pageIndex, index, "image pixel budget exceeded");
@@ -304,7 +326,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 interactionCount += snapshot.size();
                 budget.accept(page);
                 ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, -1);
-                renderPage(pdf, page, pageIndex, fonts, embedded);
+                renderPage(pdf, page, pageIndex, fonts, embedded, null);
                 PdfExtrasWriter.write(pdf, new DocumentExtras(List.of(), List.of(), List.of(), List.of(), snapshot));
                 ExecutionContext.checkpoint();
             } catch (IOException failure) {
@@ -326,7 +348,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 ExecutionContext.checkpoint();
                 if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, metadata, DocumentExtras.EMPTY); }
                 protect(pdf);
-                pdf.save(new BorrowedOutputStream(output));
+                save(pdf, output);
                 ExecutionContext.checkpoint();
                 state = WriterState.FINISHED;
             } catch (IOException failure) {
@@ -397,7 +419,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private void renderPage(PDDocument pdf, DisplayPage source, int pageIndex,
-            Map<FontFamily, PDType1Font> fonts, Map<String, PDType0Font> embedded) throws IOException {
+            Map<FontFamily, PDType1Font> fonts, Map<String, PDType0Font> embedded, PdfTagWriter tags) throws IOException {
         PDPage page = new PDPage(new PDRectangle(
                 checkedFloat(source.size().width(), pageIndex, -1),
                 checkedFloat(source.size().height(), pageIndex, -1)));
@@ -408,8 +430,10 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             for (int index = 0; index < source.commands().size(); index++) {
                 com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                 try {
+                    boolean marked = tags != null && tags.begin(stream, pageIndex, index);
                     renderCommand(pdf, stream, source.commands().get(index),
                             fonts, embedded, pageIndex, index);
+                    if (marked) { stream.endMarkedContent(); }
                 } catch (PdfRenderException failure) {
                     throw failure;
                 } catch (IOException failure) {

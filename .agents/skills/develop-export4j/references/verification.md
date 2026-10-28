@@ -111,6 +111,18 @@ XML 模板源码／资源包变更先运行 `:examples:xmlTemplateBundle` 和 `s
 | PDF 文字替换／区域脱敏 | `pdfContentEditing` | `pdf_content_editing.py` |
 | PDF 语义恢复与转换 | `pdfSemanticImport` | `pdf_semantic_import.py` |
 
+扩展 PDF 能力的独立夹具、Maven 调用方任务和验证脚本如下。夹具先用对应 `scripts/create_pdf_*.py` 生成；调用方任务在 `verification/consumer` 执行，不使用当前 classes 预验替代制品验收。
+
+| 变更 | 调用方任务 | 独立验证器 |
+| --- | --- | --- |
+| 跨字体／同线定位文字及图片绘制实例 | `pdfInstanceEditing` | `scripts/verify_pdf_instance_editing.py` |
+| 保留选区外字形／矢量的选择性脱敏 | `pdfSelectiveRedaction` | `scripts/verify_pdf_selective_redaction.py` |
+| 扩展字段、六类标记、FDF／XFDF、XFA | `pdfExtendedForms` | `scripts/verify_pdf_extended_forms.py` |
+| 自动栏／段落／页区及表格恢复 | `pdfAutomaticRecovery` | `scripts/verify_pdf_automatic_recovery.py` |
+| PDF/UA-1、选定 PDF/A 及离线 PAdES | `pdfStandards` | `scripts/verify_pdf_standards.py` |
+
+各脚本传入本次成功 `--consumer-build-directory`。选择性脱敏须额外移除新遮挡后检查真实剩余几何／像素，检查子集字体／ToUnicode 和隐藏文本／附件／历史排除；裁切图像外不得覆盖未绘制背景。自动恢复须核对叶来源及物理格路径、完整正文和缺失／乱序负对照。标准输出逐份独立 veraPDF／pyHanko 验证，实际辅助阅读器结果与结构校验分别记录；未知标准和 DocMDP 修改不得按可信成功处理。
+
 检查 PREVIEW／ACTUAL 对账、IGNORE 实际损失、配置快照、未编辑内容及取消／失败原子性。全部新 PDF 页双渲染并查看；DOCX／HTML／Markdown 验证真实标准结构、文字和图片字节／像素。PDF 文字替换验证未命中位置，脱敏检查所有对象／解码流和区域像素，不能以矩形覆盖代替删除。恢复模型允许已声明的重排，不能要求像素恒等或声称任意无损恢复。Word 打开、更新、保存和导出各自登记；控制组也超时后不无假设重试。
 
 单页 PNG 内嵌恢复另运行 `:examples:embeddedPngRecovery`、本次新隔离调用方的 `embeddedPngRecovery`，再执行 `scripts/verify_embedded_png_recovery.py --prepare-external`、`:examples:embeddedPngRecoveryExternal` 和验证器主入口。独立检查 PNG 签名／块顺序／CRC、唯一 exJM、去块准确原始字节、ZIP／模型／字体／许可摘要及 Pillow 全像素解码；三轮准确文件、真实改字、外部改像素及移除恢复块的六行三动作不得返回旧模型。覆盖单页后端多页／extras／像素拒绝、总字节／新增块数／ZIP 预算、取消、借用流和失败原子性。3 页 PDF 双渲染并逐页查看；核对当前分发 ZIP 的 15 个自研 JAR 与 SBOM，回归 HTML、Markdown／SVG 及七格式伴随恢复。单 PNG 与 PNG 页 ZIP 分开，不将块 framing 校验说成完整像素解码，不宣称任意编辑器重存已验收。

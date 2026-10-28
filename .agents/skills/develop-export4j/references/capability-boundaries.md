@@ -42,5 +42,5 @@
 
 - [HTML／Markdown 导出](../../../../docs/web-export-api.md)直接消费语义模型；[通用 Markdown](../../../../docs/markdown-import-api.md)和[离线 HTML/CSS](../../../../docs/html-import-api.md)子集导入与严格模板独立。CommonMark／jsoup 仅封装在 Web 适配器内部，不外联。
 - [语义编辑](../../../../docs/semantic-editing-api.md)及[统一转换](../../../../docs/document-conversion-api.md)提供不可变候选、确切编码和共享损失报告；操作／功能／格式／默认覆盖，IGNORE 不删实际损失。DOCX [样式级联](../../../../docs/docx-style-import-api.md)与[原包文字编辑](../../../../docs/docx-editing-api.md)各有边界；未建模结构不能声称无损语义编辑。
-- [PDF 语义恢复](../../../../docs/pdf-semantic-import-api.md)只推断逐行段落／字号标题，表格需显式网格，图片转流块；不保持绝对版面，近似来源框不能作为精确脱敏框。[脱敏](../../../../docs/pdf-redaction-api.md)清除指定区域像素后新建纯图片 PDF，不复制原对象，明确损失全文搜索／矢量编辑。各批证据入口见[执行计划](../../../../docs/remaining-capabilities-plan.md)。
+- [PDF 语义恢复](../../../../docs/pdf-semantic-import-api.md)默认逐行；显式 AUTO 推断栏、段落、标题／列表、页区及有线无线／合并嵌套续表，显式网格优先，推断必须保留不确定性／实际损失及来源。图片转流块，不保持绝对版面；近似来源框不能作为精确脱敏框。[脱敏](../../../../docs/pdf-redaction-api.md)区分光栅新建图片 PDF 与明确静态子集的选择性重建，两者都实际删源内容，不把覆盖／裁切视为删除。各批证据入口见[执行计划](../../../../docs/remaining-capabilities-plan.md)。
 - [离线认证签名](../../../../docs/pdf-certification-api.md)支持首签 DocMDP 三档声明及原子目标，禁止修改时追加签名拒绝；完整性验签不等于信任或 PAdES。[单向安全输出](../../../../docs/streaming-protection-api.md)支持已有 AES-256 和静态 PDF/A-2b，归档拒绝链接及标准字体，轮廓锚点字体计入共享额度；最终合规独立验证。有限[并发失败恢复](../../../../docs/verification/phase-69-streaming-stability.md)不证明长期无泄漏。

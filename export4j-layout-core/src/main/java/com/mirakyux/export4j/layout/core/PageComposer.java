@@ -86,6 +86,9 @@ public final class PageComposer {
         if (placements > limits.maxPlacements()) {
             throw new IllegalArgumentException("component placement budget exceeded");
         }
+        if (placements > 0 && !body.accessibility().children().isEmpty()) {
+            throw new IllegalArgumentException("accessible page decoration requires explicit final command bindings");
+        }
         long commands = 0;
         List<DisplayPage> pages = new ArrayList<>();
         List<PageComposition.Placed> traces = new ArrayList<>();
@@ -118,7 +121,7 @@ public final class PageComposer {
             }
             pages.add(builder.build());
         }
-        return new PageComposition(new DisplayDocument(body.metadata(), pages, body.extras()), traces);
+        return new PageComposition(new DisplayDocument(body.metadata(), pages, body.extras(), body.accessibility()), traces);
     }
 
     private long place(DisplayListBuilder builder, List<Placement> placements, Rect parent, FontGroup fonts, Map<String, FontGroup> roles,

@@ -36,6 +36,18 @@ public final class DocumentPainter {
         return new DisplayDocument(layout.metadata(), pages);
     }
 
+    /** Binds semantic body blocks to final commands without layout or font substitution.
+     * The source must be the document used to produce the IR, before list-marker lowering.
+     * Supports ordinary paragraphs, headings, level-one lists, standalone inline figures and
+     * inline-content tables. Complex components, mixed inline figures and block cells require
+     * an explicit {@link com.mirakyux.export4j.graphics.AccessibilityTree} instead.
+     * Repeated table headers become artifacts; original header cells retain stable associations.
+     */
+    public static DisplayDocument paintAccessible(com.mirakyux.export4j.model.Document source,
+            DocumentLayout layout, String language) {
+        return AccessiblePainter.paint(source, layout, language);
+    }
+
     /** Paints one page without wrapping it in a document or changing its physical IR page index.
      * DisplayPage carries geometry and commands only; the receiving backend owns sequential ordering.
      * Performs no measurement, pagination, I/O or ownership transfer. Thread-safe for immutable input.

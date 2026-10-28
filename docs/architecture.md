@@ -28,6 +28,8 @@ flowchart TD
 
 文档模型表达内容的含义；布局结果表达内容的位置；绘制指令表达具体绘制操作；后端负责把指令映射到目标格式。DOCX 使用独立的模型映射路径。
 
+无障碍输出另由后端中立 `AccessibilityTree` 保存逻辑阅读顺序及最终命令绑定。`DocumentPainter.paintAccessible` 使用源模型 ID 和已有 Layout IR 建立受支持的标题、段落、列表、图像及表格关系，不重新测量或分页；复杂来源由调用方显式绑定。PDF 后端据此生成 PDF/UA-1 标签，其他后端拒绝不能保留的非空语义树。原对象编辑、选择性重建、自动几何推断及离线标准验证分别保持自己的资源与损失契约，见[ADR-0097](adr/0097-explicit-pdf-editing-recovery-and-standards.md)。
+
 ## 核心层职责
 
 | 层 | 输入与输出 | 负责的工作 | 边界 |

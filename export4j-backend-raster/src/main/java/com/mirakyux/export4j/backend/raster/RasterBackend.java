@@ -92,6 +92,7 @@ public final class RasterBackend implements DocumentBackend {
     }
 
     private List<DisplayPage> prepare(DisplayDocument document) {
+        if (!document.accessibility().children().isEmpty()) { throw new IllegalArgumentException("PNG output does not preserve the explicit accessibility tree"); }
         long pixels = 0;
         for (var page : document.pages()) {
             double w = Math.ceil(page.size().width() * dpi / 72);

@@ -33,6 +33,7 @@ class PdfTextEditorTest {
     private static final ProcessingPolicy POLICY = ProcessingPolicy.builder()
             .feature("TEXT_FONT", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
             .feature("TEXT_SPACING", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+            .feature("TEXT_STYLE", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
             .feature("TEXT_CAPACITY", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.SKIP_MATCH)
             .feature("TEXT_SHAPING", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.SKIP_MATCH)
             .feature("MARKED_TEXT", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.SKIP_MATCH)
@@ -135,6 +136,21 @@ class PdfTextEditorTest {
             assertArrayEquals(first.readAllBytes(), second.readAllBytes());
         }
     }
+    @Test void laterLineDoesNotRequireStyleAcceptanceForSameStateSplitShows() throws Exception {
+        var adapter = new PdfAdapter();
+        for (boolean kerned : java.util.List.of(false, true)) {
+            byte[] source = splitSource("", kerned, 1, true);
+            var policy = ProcessingPolicy.builder().feature("TEXT_FONT", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+                    .feature("TEXT_SPACING", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
+            var prepared = adapter.editText(adapter.input(source, "")).replace(0, "SECRET", "HI", font()).policy(policy).prepare();
+            byte[] output = write(prepared);
+            assertEquals(1, prepared.to(new ByteArrayOutputStream()).changes());
+            assertEquals(positions(source).subList(6, positions(source).size()), positions(output).subList(2, positions(output).size()));
+            assertTrue(text(output).contains("BODY"));
+            assertFalse(prepared.preview().issues().stream().anyMatch(issue -> issue.feature().equals("TEXT_STYLE")));
+            assertEquals(kerned ? 2 : 1, prepared.preview().issues().size());
+        }
+    }
     @Test void twoMatchesAcrossFourShowOperatorsKeepTheFinalOriginalTextInPlace() throws Exception {
         byte[] source = splitSource("", false, 2); var adapter = new PdfAdapter();
         var prepared = adapter.editText(adapter.input(source, "")).replace(0, "SECRET", "HI", font()).policy(POLICY).prepare();
@@ -143,14 +159,35 @@ class PdfTextEditorTest {
         assertEquals(positions(source).subList(12, 17), positions(output).subList(4, 9));
         assertFalse(text(output).contains("SECRET")); assertEquals(2, prepared.preview().issues().size());
     }
-    @Test void positioningStyleAndTextObjectBoundariesCannotCreateCrossShowMatches() throws Exception {
+    @Test void distinctLinesAndTextObjectsCannotCreateCrossShowMatches() throws Exception {
         var adapter = new PdfAdapter();
-        for (String barrier : java.util.List.of("0 -20 Td", "/Original 14 Tf", "0 g", "ET BT /Original 14 Tf 20 60 Td")) {
+        for (String barrier : java.util.List.of("0 -20 Td", "ET BT /Original 14 Tf 20 60 Td")) {
             byte[] source = splitSource(barrier, false);
             var result = adapter.editText(adapter.input(source, "")).replace(0, "SECRET", "HI", font()).policy(POLICY).prepare();
             assertEquals(0, result.to(new ByteArrayOutputStream()).changes()); assertEquals(positions(source), positions(write(result)));
             assertTrue(result.preview().issues().isEmpty());
         }
+    }
+    @Test void fontColorSpacingAndSameLinePositionChangesPreserveEveryUnmatchedGlyph() throws Exception {
+        var adapter = new PdfAdapter();
+        for (String barrier : java.util.List.of("/Original 16 Tf", "0.8 0.1 0.2 rg", "1 Tc", "ADVANCE 0 Td", "1 0 0 1 ABSOLUTE 80 Tm")) {
+            byte[] source = splitSource(barrier, false); var prepared = adapter.editText(adapter.input(source, ""))
+                    .replace(0, "SECRET", "HI", font()).policy(POLICY).prepare();
+            var output = write(prepared);
+            assertEquals(1, prepared.to(new ByteArrayOutputStream()).changes(), barrier);
+            assertFalse(text(output).contains("SECRET"), barrier); assertTrue(text(output).contains("HI"), barrier);
+            assertEquals(positions(source).subList(6, 11), positions(output).subList(2, 7), barrier);
+            assertTrue(prepared.preview().losses().stream().anyMatch(issue -> issue.feature().equals("TEXT_STYLE")));
+        }
+    }
+    @Test void styleLossIsStrictByDefaultAndIgnoreStillReportsActualLoss() throws Exception {
+        var adapter = new PdfAdapter(); var input = adapter.input(splitSource("1 0 0 rg", false), "");
+        var strictStyle = ProcessingPolicy.builder().feature("TEXT_FONT", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
+        assertEquals("TEXT_STYLE", assertThrows(ProcessingException.class, () -> adapter.editText(input).replace(0, "SECRET", "HI", font()).policy(strictStyle).prepare()).issue().feature());
+        var ignored = ProcessingPolicy.builder().feature("TEXT_FONT", ProcessingPolicy.Action.IGNORE, ProcessingPolicy.Treatment.DEGRADE)
+                .feature("TEXT_STYLE", ProcessingPolicy.Action.IGNORE, ProcessingPolicy.Treatment.DEGRADE).build();
+        var output = adapter.editText(input).replace(0, "SECRET", "HI", font()).policy(ignored).prepare();
+        assertEquals(2, output.preview().losses().size()); assertTrue(output.preview().warnings().isEmpty());
     }
     @Test void crossShowStrictWarnIgnoreBudgetsAndCancellationKeepTheirContracts() throws Exception {
         var adapter = new PdfAdapter(); var input = adapter.input(splitSource("", false), "");
@@ -173,6 +210,9 @@ class PdfTextEditorTest {
         return splitSource(barrier, kerned, 1);
     }
     private static byte[] splitSource(String barrier, boolean kerned, int copies) throws Exception {
+        return splitSource(barrier, kerned, copies, false);
+    }
+    private static byte[] splitSource(String barrier, boolean kerned, int copies, boolean followingLine) throws Exception {
         try (var pdf = new PDDocument()) {
             var page = new PDPage(new PDRectangle(240, 120)); pdf.addPage(page);
             var original = PDType0Font.load(pdf, new ByteArrayInputStream(Files.readAllBytes(Path.of("../assets/fonts/LiberationSans-Regular.ttf"))), false);
@@ -181,8 +221,11 @@ class PdfTextEditorTest {
             String right = java.util.HexFormat.of().formatHex(original.encode("RET"));
             String keep = java.util.HexFormat.of().formatHex(original.encode(" KEEP"));
             var content = new org.apache.pdfbox.pdmodel.common.PDStream(pdf); page.setContents(content);
+            barrier = barrier.replace("ADVANCE", Double.toString(original.getStringWidth("SEC") * 14 / 1000))
+                    .replace("ABSOLUTE", Double.toString(20 + original.getStringWidth("SEC") * 14 / 1000));
             String sequence = "<" + left + "> Tj " + barrier + " [" + (kerned ? "-50 " : "") + "<" + right + ">] TJ ";
-            String commands = "BT /Original 14 Tf 20 80 Td " + sequence.repeat(copies) + "<" + keep + "> Tj ET";
+            String nextLine = followingLine ? "0 -20 Td <" + java.util.HexFormat.of().formatHex(original.encode("BODY")) + "> Tj " : "";
+            String commands = "BT /Original 14 Tf 20 80 Td " + sequence.repeat(copies) + "<" + keep + "> Tj " + nextLine + "ET";
             try (var output = content.createOutputStream()) { output.write(commands.getBytes(StandardCharsets.US_ASCII)); }
             var output = new ByteArrayOutputStream(); pdf.save(output); return output.toByteArray();
         }

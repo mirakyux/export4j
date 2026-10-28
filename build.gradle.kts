@@ -103,7 +103,10 @@ val reviewedRuntimeLicenses = mapOf(
     "commons-logging:commons-logging:1.4.0" to "Apache-2.0",
     "org.commonmark:commonmark:0.24.0" to "BSD-2-Clause",
     "org.commonmark:commonmark-ext-gfm-tables:0.24.0" to "BSD-2-Clause",
-    "org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0" to "BSD-2-Clause"
+    "org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0" to "BSD-2-Clause",
+    "org.bouncycastle:bcpkix-jdk18on:1.86" to "MIT",
+    "org.bouncycastle:bcprov-jdk18on:1.86" to "MIT",
+    "org.bouncycastle:bcutil-jdk18on:1.86" to "MIT"
 )
 fun jsonQuoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 for (library in inventoryLibraries) {

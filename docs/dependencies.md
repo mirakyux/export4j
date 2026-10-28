@@ -1,5 +1,7 @@
 # 依赖与资源管理
 
+PDF 信任链、OCSP／CRL 与 PAdES 使用 Bouncy Castle 1.86：PDF 后端内部直接依赖 `bcpkix-jdk18on`，传递依赖同版本 `bcprov-jdk18on` 和 `bcutil-jdk18on`。三者采用 MIT，实际 JAR／POM 的 SHA-256、原始许可和来源均登记在依赖清单；公共 API 只使用项目类型与 JDK 密钥／证书字节，不暴露第三方类型。独立验签使用 pyHanko 0.33.0，固定在验证 requirements，仅用于验证环境，不进入 Java 制品。
+
 外部 PDF 的显式源字体映射、不透明图形状态恢复和独立合成语料由项目自主实现，没有新增运行依赖、字体文件或第三方样本。固定 AFM 度量来自既有 PDFBox 3.0.8，验收复用已登记的 Liberation Sans 及原始许可。映射字体由调用方显式提供并遵守其嵌入权限，见[字体兼容](pdf-font-compatibility-api.md)和[阶段九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)。
 
 普通 Form XObject 的有界语义恢复同样复用既有 PDFBox 3.0.8；独立夹具由 pypdf 自主生成，使用已登记字体的确切字节及自定义源字宽，不增加依赖、字体或外部样本。来源与双渲染证据见[阶段九十二](verification/phase-92-pdf-form-recovery.md)。
@@ -59,7 +61,7 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 
 ## 正式依赖记录
 
-完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 19 个 Maven 坐标，包含 BOM 与测试依赖。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
+完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 22 个 Maven 坐标，包含 BOM 与测试依赖。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
 
 | 依赖 | 版本 | 范围 | 许可依据与处理 |
 | --- | --- | --- | --- |
@@ -67,6 +69,9 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 | `org.apache.pdfbox:fontbox` | 3.0.8 | 字体模块直接运行、PDF 后端／适配器传递运行 | Apache-2.0 及内嵌资源许可；保留完整 LICENSE / NOTICE |
 | `org.apache.pdfbox:pdfbox-io` | 3.0.8 | 字体模块直接运行、PDF 后端／适配器传递运行 | Apache-2.0；保留 LICENSE / NOTICE |
 | `commons-logging:commons-logging` | 1.4.0 | 传递运行 | Apache-2.0；保留 LICENSE / NOTICE |
+| `org.bouncycastle:bcpkix-jdk18on` | 1.86 | PDF 后端内部运行 | MIT；保留实际 JAR 原始许可 |
+| `org.bouncycastle:bcprov-jdk18on` | 1.86 | PDF 后端传递运行 | MIT；保留实际 JAR 原始许可 |
+| `org.bouncycastle:bcutil-jdk18on` | 1.86 | PDF 后端传递运行 | MIT；保留实际 JAR 原始许可 |
 | `org.jsoup:jsoup` | 1.21.2 | Web 适配器内部运行 | MIT；保留实际 JAR 原始许可 |
 | `org.commonmark:commonmark` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
 | `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
@@ -165,7 +170,7 @@ Liberation Sans 粗体、斜体与粗斜体来自官方 2.1.5 发布包，未经
 
 根目录 [NOTICE](../NOTICE) 汇集当前运行依赖的原始归属声明。构建出的 JAR 携带自研 LICENSE、NOTICE 和第三方许可原文；示例发行包同时携带未修改的依赖 JAR。
 
-当前 `sbom` 生成 CycloneDX 1.6 库运行清单，目标集合为 15 个自研库及 8 个第三方制品，携带实际 JAR 的 SHA-256；字段与字体资源另按本文件登记。每批须重新生成并由生产验证器核对最终制品，不能沿用前一批哈希。候选清单不能替代 SBOM。
+当前 `sbom` 生成 CycloneDX 1.6 库运行清单，目标集合为 15 个自研库及 11 个第三方制品，携带实际 JAR 的 SHA-256；字段与字体资源另按本文件登记。每批须重新生成并由生产验证器核对最终制品，不能沿用前一批哈希。候选清单不能替代 SBOM。
 
 XML 模板源码与普通 ZIP 打包复用既有适配器及 JDK ZIP／UTF-8 API，没有增加模块或第三方依赖。示例继续使用已登记的 Liberation Sans Regular 字节，原版权及 OFL 文本随模板 ZIP 的 `licenses/` 条目保存；图片由自编样例生成。独立输入由 Python 标准库 ZIP 与既有 Pillow 生成，二者不进入 Java 运行清单。
 

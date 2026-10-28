@@ -97,3 +97,7 @@ Released to the public domain under the Creative Commons CC0 license by Clinton 
 Includes jsoup 1.21.2, licensed under the MIT License.
 Copyright (c) 2009-2025 Jonathan Hedley <https://jsoup.org/>
 Original license: third-party/licenses/jsoup-1.21.2-LICENSE.txt
+
+Includes Bouncy Castle bcprov, bcutil and bcpkix 1.86, licensed under the MIT License.
+Copyright (c) 2000-2026 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org).
+Original licenses: third-party/licenses/*-jdk18on-1.86-LICENSE.md

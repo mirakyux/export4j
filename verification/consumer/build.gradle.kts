@@ -5,6 +5,7 @@ java { toolchain.languageVersion.set(JavaLanguageVersion.of(21)) }
 dependencies {
     implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-SNAPSHOT"))
     implementation("com.mirakyux.export4j:export4j-components")
+    implementation("com.mirakyux.export4j:export4j-graphics-core")
     implementation("com.mirakyux.export4j:export4j-backend-pdf")
     implementation("com.mirakyux.export4j:export4j-backend-svg")
     implementation("com.mirakyux.export4j:export4j-backend-raster")
@@ -191,6 +192,27 @@ tasks.register<JavaExec>("xmlTemplateBundle") {
     systemProperty("java.awt.headless", "true")
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
 }
+for ((taskName, className) in mapOf(
+    "pdfInstanceEditing" to "consumer.PdfInstanceEditingConsumer",
+    "pdfAutomaticRecovery" to "consumer.PdfAutomaticRecoveryConsumer",
+    "pdfExtendedForms" to "consumer.PdfExtendedFormsConsumer",
+    "pdfStandards" to "consumer.PdfStandardsConsumer",
+    "pdfSelectiveRedaction" to "consumer.PdfSelectiveRedactionConsumer"
+)) {
+    tasks.register<JavaExec>(taskName) {
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set(className)
+        workingDir = projectDir
+        systemProperty("java.awt.headless", "true")
+        systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+        if (taskName == "pdfStandards") {
+            providers.gradleProperty("consumer.verificationPython").orNull?.let {
+                systemProperty("consumer.verificationPython", it)
+            }
+        }
+    }
+}
+
 tasks.register("resolvedLibraries") {
     val runtime = configurations.named("runtimeClasspath")
     inputs.files(runtime)

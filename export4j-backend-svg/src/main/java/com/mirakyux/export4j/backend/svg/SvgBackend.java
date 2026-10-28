@@ -38,6 +38,7 @@ public final class SvgBackend implements DocumentBackend {
     @Override
     public void write(DisplayDocument document, OutputStream output) throws IOException {
         Objects.requireNonNull(output, "output");
+        if (!document.accessibility().children().isEmpty()) { throw new IllegalArgumentException("SVG output does not map the explicit accessibility tree"); }
         var pages = StaticBackendSupport.outlines(document, standardFonts);
         double width = pages.stream().mapToDouble(p -> p.size().width()).max().orElseThrow();
         double height = pages.stream().mapToDouble(p -> p.size().height()).sum() + 20.0 * (pages.size() - 1);

@@ -47,6 +47,8 @@ final class PdfPreflight {
     final PdfLimits limits;
     private final boolean interactive;
     private final boolean passiveStructures;
+    private final boolean allowXfa;
+    private COSDictionary xfaOwner;
     private PdfPassiveStructures structures;
     private final Set<COSStream> decoded = Collections.newSetFromMap(new IdentityHashMap<>());
     private final IdentityHashMap<COSStream, CommandDepth> commands = new IdentityHashMap<>();
@@ -68,7 +70,10 @@ final class PdfPreflight {
     PdfPreflight(PdfLimits limits) { this(limits, false); }
     PdfPreflight(PdfLimits limits, boolean interactive) { this(limits, interactive, false); }
     PdfPreflight(PdfLimits limits, boolean interactive, boolean passiveStructures) {
-        this.limits = limits; this.interactive = interactive; this.passiveStructures = passiveStructures;
+        this(limits, interactive, passiveStructures, false);
+    }
+    PdfPreflight(PdfLimits limits, boolean interactive, boolean passiveStructures, boolean allowXfa) {
+        this.limits = limits; this.interactive = interactive; this.passiveStructures = passiveStructures; this.allowXfa = allowXfa;
     }
 
     PdfPassiveStructures structures() { return structures; }
@@ -87,6 +92,7 @@ final class PdfPreflight {
     }
 
     void inspect(PDDocument document) throws IOException {
+        if (allowXfa) { xfaOwner = document.getDocumentCatalog().getCOSObject().getCOSDictionary(COSName.ACRO_FORM); }
         int count = document.getNumberOfPages();
         if (count <= 0) { throw failure(PdfOperationException.Code.INVALID_PDF); }
         if (count > limits.maxPages() - pages) { throw failure(PdfOperationException.Code.PAGE_LIMIT); }
@@ -221,20 +227,21 @@ final class PdfPreflight {
         String action = dictionary.getNameAsString(COSName.S, "");
         boolean passiveType = interactive && Set.of("Filespec", "EmbeddedFile", "Annot", "Action").contains(type)
                 || passiveStructures && Set.of("OCG", "OCMD", "StructElem").contains(type);
-        boolean actionOwner = type.equals("Annot") || Set.of("Text", "Link", "Widget").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))
+        boolean actionOwner = type.equals("Annot") || Set.of("Text", "Link", "Widget", "Highlight", "Underline", "StrikeOut", "Ink", "Square", "Circle").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))
                 || dictionary.containsKey(COSName.TITLE);
         if (interactive && (type.equals("Action") || actionOwner && dictionary.containsKey(COSName.A))) {
             var actionDictionary = dictionary.containsKey(COSName.A) ? dictionary.getCOSDictionary(COSName.A) : dictionary;
             if (actionDictionary == null || !Set.of("URI", "GoTo").contains(actionDictionary.getNameAsString(COSName.S, ""))) { throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
         }
         if (interactive && action.equals("URI")) { new com.mirakyux.export4j.model.ExternalDestination(dictionary.getString(COSName.URI, "")); }
-        if (interactive && type.equals("Annot") && !Set.of("Text", "Link", "Widget").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))) { throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
+        if (interactive && type.equals("Annot") && !Set.of("Text", "Link", "Widget", "Highlight", "Underline", "StrikeOut", "Ink", "Square", "Circle").contains(dictionary.getNameAsString(COSName.SUBTYPE, ""))) { throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE); }
         if ("Sig".equals(dictionary.getNameAsString(COSName.FT)) || REJECTED_TYPES.contains(type) && !passiveType
                 || ACTIONS.contains(action) && !(interactive && Set.of("URI", "GoTo").contains(action))) {
             throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE);
         }
         for (var key : dictionary.keySet()) {
             boolean supported = interactive && Set.of("Annots", "AcroForm", "Outlines", "Names", "EmbeddedFiles").contains(key.getName());
+            supported |= allowXfa && dictionary == xfaOwner && key.getName().equals("XFA");
             boolean passive = passiveStructures && Set.of("StructTreeRoot", "StructParent", "StructParents", "OCProperties", "OC", "MarkInfo").contains(key.getName());
             if (REJECTED_KEYS.contains(key.getName()) && !supported && !passive
                     || type.equals("Catalog") && !CATALOG_KEYS.contains(key.getName()) && !supported && !passive) {

@@ -113,3 +113,4 @@
 | 0094 | [显式 PDF 源字体映射与不透明图形状态恢复](0094-explicit-pdf-source-fonts-and-passive-graphics-state.md) | 已采纳；调用方字体、源编码／字宽保持、替代损失及 ExtGState 独立白名单 |
 | 0095 | [有界 Form XObject 语义恢复](0095-bounded-form-xobject-semantic-recovery.md) | 已采纳；实际调用、资源作用域、重复实例及隐式 BBox 可见性 |
 | 0096 | [外部 PDF 的保留、绘制与语义恢复分离](0096-pdf-compatibility-paths.md) | 已采纳；显式被动结构、原对象保留、默认视图及整页光栅恢复的独立契约 |
+| 0097 | [PDF 原对象编辑、语义推断与标准输出分离](0097-explicit-pdf-editing-recovery-and-standards.md) | 已采纳；实例隔离、选择性重建、显式推断、后端中立标签及离线标准证据 |

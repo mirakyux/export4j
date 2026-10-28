@@ -39,6 +39,7 @@ import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlin
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineNode;
 import org.apache.pdfbox.pdmodel.interactive.form.PDCheckBox;
 import org.apache.pdfbox.pdmodel.interactive.form.PDComboBox;
+import org.apache.pdfbox.pdmodel.interactive.form.PDChoice;
 import org.apache.pdfbox.pdmodel.interactive.form.PDField;
 import org.apache.pdfbox.pdmodel.interactive.form.PDRadioButton;
 import org.apache.pdfbox.pdmodel.interactive.form.PDTextField;
@@ -75,6 +76,13 @@ public final class PdfObjectEditor {
             var target = state.page(page); var note = new PDAnnotationText(); note.setRectangle(nativeBox(rectangle)); note.setContents(contents); note.setPage(target);
             note.constructAppearances(state.document); target.getAnnotations().add(note); return true;
         });
+    }
+    /** Adds passive markup with a concrete normal appearance and explicit native geometry. */
+    public PdfObjectEditor addAnnotation(int page, PdfAnnotationSpec specification) {
+        Objects.requireNonNull(specification, "specification"); pageIndex(page); textValue(specification.contents());
+        long points = (long) specification.quads().size() * 4 + specification.ink().stream().mapToLong(List::size).sum();
+        if (points > limits.maxObjects()) { throw new IllegalArgumentException("annotation point budget exceeded"); }
+        return add(state -> { var target=state.page(page); var annotation=PdfPassiveAnnotations.create(state.document,specification,limits); annotation.setPage(target); target.getAnnotations().add(annotation); return true; });
     }
     /** Index is in the current page's annotation array, after all preceding edits. */
     public PdfObjectEditor updateComment(int page, int index, String contents) {
@@ -129,25 +137,78 @@ public final class PdfObjectEditor {
         text(name);
         return add(state -> { var values = PdfObjects.files(state.document, limits); if (values.remove(name) == null) { throw new IllegalArgumentException("attachment not found"); } files(state.document, values); return true; });
     }
-    /** Single-line plain text only, fixed font size in native user units. Full font embedding preserves editability. */
+    /** Plain single-line, multiline or comb text with an explicit fixed size and concrete appearances. */
     public PdfObjectEditor fillText(String name, String value, PdfFont font, double size) {
-        text(name); text(value); Objects.requireNonNull(font, "font"); size(size);
+        text(name); textValue(value); Objects.requireNonNull(font, "font"); size(size);
         return add(state -> {
             var field = state.field(name);
-            if (!(field instanceof PDTextField target) || target.isMultiline() || target.isPassword() || target.isFileSelect() || target.isComb()
-                    || target.getCOSObject().containsKey(COSName.RV) || target.getCOSObject().containsKey(COSName.DS)) { return state.skip("FIELD_FORMAT", "FILL_TEXT", "FIELD_UNCHANGED"); }
+            if (!(field instanceof PDTextField target) || target.isPassword() || target.isFileSelect()) { return state.skip("FIELD_FORMAT", "FILL_TEXT", "FIELD_UNCHANGED"); }
             if (target.getMaxLen() > 0 && value.codePointCount(0, value.length()) > target.getMaxLen()) { throw new IllegalArgumentException("PDF field maximum length exceeded"); }
-            if (!state.variable(target, value, font, size)) { return false; } target.setValue(value); return true;
+            if (!state.variable(target, value, font, size)) { return false; }
+            if (target.isRichText() || target.getCOSObject().containsKey(COSName.RV) || target.getCOSObject().containsKey(COSName.DS)) {
+                state.loss("FIELD_RICH_TEXT", "FILL_TEXT", ProcessingPolicy.Treatment.DISCARD, "REPLACED_VALUE_HAS_EXPLICIT_PLAIN_STYLE"); target.setRichText(false); target.getCOSObject().removeItem(COSName.RV); target.getCOSObject().removeItem(COSName.DS);
+            }
+            target.getCOSObject().setString(COSName.V, value); state.paint(target, value, font, size); return true;
+        });
+    }
+    /** Explicit bounded font-size search, retaining the chosen fixed size in DA and every AP. */
+    public PdfObjectEditor fillTextAuto(String name, String value, PdfFont font, double minimum, double maximum) {
+        text(name); textValue(value); Objects.requireNonNull(font); size(minimum); size(maximum); if (minimum>maximum) { throw new IllegalArgumentException("invalid font-size interval"); }
+        return add(state -> {
+            if (!(state.field(name) instanceof PDTextField target) || target.isPassword() || target.isFileSelect() || target.isRichText()) { return state.skip("FIELD_FORMAT", "FILL_TEXT", "FIELD_UNCHANGED"); }
+            if (target.getMaxLen()>0 && value.codePointCount(0,value.length())>target.getMaxLen()) { throw new IllegalArgumentException("PDF field maximum length exceeded"); }
+            if (!PdfPageEditor.simpleText(value)) { return state.skip("TEXT_SHAPING","FILL_VALUE","FIELD_UNCHANGED"); }
+            String appearance=target.getDefaultAppearance();if(appearance==null){appearance=target.getAcroForm().getDefaultAppearance();}String color=appearanceColor(appearance); if (color==null) { return state.skip("FIELD_FORMAT","FILL_VALUE","FIELD_UNCHANGED"); }
+            var actual=state.font(font); double low=minimum, high=maximum;
+            if (!PdfFieldAppearance.fits(target,List.of(new PdfFieldAppearance.Run(value,actual,low,color,false)),limits)) { throw new IllegalArgumentException("PDF field value exceeds minimum font-size capacity"); }
+            state.work((long)value.length()*32*Math.max(1,target.getWidgets().size()));
+            for(int i=0;i<32;i++){ExecutionContext.checkpoint();double middle=(low+high)/2;if(PdfFieldAppearance.fits(target,List.of(new PdfFieldAppearance.Run(value,actual,middle,color,false)),limits)){low=middle;}else{high=middle;}}
+            if (!state.variable(target,value,font,low)) { return false; } target.getCOSObject().setString(COSName.V,value);state.paint(target,value,font,low);return true;
+        });
+    }
+    /** Rich field runs use caller-selected physical fonts; generated XHTML and appearance agree. */
+    public PdfObjectEditor fillRichText(String name, List<PdfFieldText.Run> value) {
+        text(name); var runs=List.copyOf(value);if(runs.isEmpty()){throw new IllegalArgumentException("rich field needs a run");}for(var run:runs){textValue(run.text());}
+        return add(state -> {
+            if (!(state.field(name) instanceof PDTextField target) || target.isPassword()||target.isFileSelect()||target.isComb()) { return state.skip("FIELD_FORMAT","FILL_RICH_TEXT","FIELD_UNCHANGED"); }
+            String plain=runs.stream().map(PdfFieldText.Run::text).collect(java.util.stream.Collectors.joining());
+            if(target.getMaxLen()>0&&plain.codePointCount(0,plain.length())>target.getMaxLen()){throw new IllegalArgumentException("PDF field maximum length exceeded");}
+            var actual=new ArrayList<PdfFieldAppearance.Run>();var rich=new StringBuilder("<body xmlns=\"http://www.w3.org/1999/xhtml\"><p>");
+            for(var run:runs){if(!PdfPageEditor.simpleText(run.text())){return state.skip("TEXT_SHAPING","FILL_RICH_TEXT","FIELD_UNCHANGED");}var font=state.font(run.font());actual.add(new PdfFieldAppearance.Run(run.text(),font,run.size(),PdfPassiveAnnotations.rgb(run.rgb(),false),run.underline()));
+                rich.append("<span style=\"font-family:").append(xml(font.getName())).append(";font-size:").append(PdfPassiveAnnotations.n(run.size())).append("pt;color:#").append(String.format(java.util.Locale.ROOT,"%06x",run.rgb())).append(run.underline()?";text-decoration:underline":"").append("\">").append(xml(run.text()).replace("\r\n","\n").replace("\r","\n").replace("\n","<br/>")).append("</span>");}
+            rich.append("</p></body>");if(!PdfFieldAppearance.fits(target,actual,limits)){throw new IllegalArgumentException("PDF rich field exceeds its appearance box");}
+            var first=runs.getFirst();if(!state.variable(target,"",first.font(),first.size())){return false;}target.setRichText(true);target.setRichTextValue(rich.toString());target.getCOSObject().setString(COSName.V,plain);PdfFieldAppearance.paint(state.document,target,actual,limits);return true;
         });
     }
     public PdfObjectEditor fillChoice(String name, String exportValue, PdfFont font, double size) {
         text(name); text(exportValue); Objects.requireNonNull(font, "font"); size(size);
         return add(state -> {
             var field = state.field(name);
-            if (!(field instanceof PDComboBox target) || target.isMultiSelect()) { return state.skip("FIELD_FORMAT", "FILL_CHOICE", "FIELD_UNCHANGED"); }
+            if (!(field instanceof PDChoice target) || target.isMultiSelect()) { return state.skip("FIELD_FORMAT", "FILL_CHOICE", "FIELD_UNCHANGED"); }
             int index = target.getOptionsExportValues().indexOf(exportValue); if (index < 0) { throw new IllegalArgumentException("unknown PDF choice option"); }
-            if (!state.variable(target, target.getOptionsDisplayValues().get(index), font, size)) { return false; } target.setValue(exportValue); return true;
+            if (!state.variable(target, target.getOptionsDisplayValues().get(index), font, size)) { return false; } target.setValue(exportValue); state.paint(target,target.getOptionsDisplayValues().get(index),font,size);return true;
         });
+    }
+    public PdfObjectEditor fillChoices(String name,List<String> exportValues,PdfFont font,double size){
+        text(name);var values=List.copyOf(exportValues);for(String value:values){text(value);}Objects.requireNonNull(font);size(size);
+        if(new java.util.HashSet<>(values).size()!=values.size()){throw new IllegalArgumentException("duplicate choice value");}
+        return add(state->{if(!(state.field(name)instanceof PDChoice target)||!target.isMultiSelect()||target.isCombo()){return state.skip("FIELD_FORMAT","FILL_CHOICES","FIELD_UNCHANGED");}
+            for(String value:values){if(!target.getOptionsExportValues().contains(value)){throw new IllegalArgumentException("unknown PDF choice option");}}
+            if(!state.variable(target,"",font,size)){return false;}target.setValue(values);state.paint(target,"",font,size);return true;});
+    }
+    /** Applies exact field names from already parsed FDF/XFDF. Unknown names require FIELD_MAPPING/SKIP_MATCH. */
+    public PdfObjectEditor importFormData(PdfFormData value,PdfFont font,double size){
+        Objects.requireNonNull(value);Objects.requireNonNull(font);size(size);if(value.fields().size()>limits.maxObjects()){throw new IllegalArgumentException("form data field budget exceeded");}for(var field:value.fields()){text(field.name());for(String item:field.values()){textValue(item);}textValue(field.richText());}
+        return add(state->{if(value.report().issues().size()>limits.maxObjects()-state.issues.size()){throw new IllegalArgumentException("form data issue budget exceeded");}state.issues.addAll(value.report().issues());boolean changed=false;
+            for(var data:value.fields()){ExecutionContext.checkpoint();var form=state.document.getDocumentCatalog().getAcroForm(null);var raw=form==null?null:form.getField(data.name());if(raw==null){state.skip("FIELD_MAPPING","IMPORT_FORM_DATA","UNMATCHED_DATA_FIELD_NOT_APPLIED");continue;}var field=state.field(data.name());
+                if(!data.richText().isEmpty()){state.loss("FORM_DATA_RICH_TEXT","IMPORT_FORM_DATA",ProcessingPolicy.Treatment.DISCARD,"DATA_STYLING_REPLACED_BY_EXPLICIT_FIELD_FONT");}
+                String text=data.values().isEmpty()?"":data.values().getFirst();
+                if(field instanceof PDTextField target){if(data.values().size()>1||target.isPassword()||target.isFileSelect()){state.skip("FIELD_FORMAT","IMPORT_FORM_DATA","FIELD_UNCHANGED");continue;}if(target.getMaxLen()>0&&text.codePointCount(0,text.length())>target.getMaxLen()){throw new IllegalArgumentException("PDF field maximum length exceeded");}if(!state.variable(target,text,font,size)){continue;}if(data.richText().isEmpty()&&(target.isRichText()||target.getCOSObject().containsKey(COSName.RV))){state.loss("FIELD_RICH_TEXT","IMPORT_FORM_DATA",ProcessingPolicy.Treatment.DISCARD,"TARGET_RICH_STYLING_REPLACED_BY_EXPLICIT_PLAIN_STYLE");}target.setRichText(false);target.getCOSObject().removeItem(COSName.RV);target.getCOSObject().removeItem(COSName.DS);target.getCOSObject().setString(COSName.V,text);state.paint(target,text,font,size);changed=true;}
+                else if(field instanceof PDChoice target){if(!target.isMultiSelect()&&data.values().size()>1){throw new IllegalArgumentException("multiple values for single choice");}for(String item:data.values()){if(!target.getOptionsExportValues().contains(item)){throw new IllegalArgumentException("unknown PDF choice option");}}String display=data.values().isEmpty()?"":target.getOptionsDisplayValues().get(target.getOptionsExportValues().indexOf(text));if(!state.variable(target,display,font,size)){continue;}target.setValue(data.values());state.paint(target,display,font,size);changed=true;}
+                else if(field instanceof PDCheckBox target){if(data.values().size()!=1||!text.equals("Off")&&!target.getOnValues().contains(text)){throw new IllegalArgumentException("unknown checkbox data value");}target.setValue(text);changed=true;}
+                else if(field instanceof PDRadioButton target){if(data.values().size()!=1||!text.equals("Off")&&!target.getOnValues().contains(text)){throw new IllegalArgumentException("unknown radio data value");}target.setValue(text);changed=true;}
+                else{state.skip("FIELD_FORMAT","IMPORT_FORM_DATA","FIELD_UNCHANGED");}}
+            return changed;});
     }
     public PdfObjectEditor setChecked(String name, boolean checked) {
         text(name);
@@ -201,7 +262,7 @@ public final class PdfObjectEditor {
     private final class State {
         final PDDocument document; final ProcessingPolicy strategy;
         final List<ProcessingIssue> issues = new ArrayList<>(); final Map<PdfFont, PDType0Font> fonts = new IdentityHashMap<>();
-        long fontBytes;
+        long fontBytes;long appearanceWork;
         State(PDDocument document, ProcessingPolicy strategy) { this.document = document; this.strategy = strategy; }
         org.apache.pdfbox.pdmodel.PDPage page(int index) throws IOException { if (index >= document.getNumberOfPages()) { throw new PdfOperationException(PdfOperationException.Code.INVALID_SELECTION, 0, index); } return document.getPage(index); }
         PDField field(String name) throws IOException {
@@ -212,39 +273,33 @@ public final class PdfObjectEditor {
         }
         boolean variable(PDVariableText field, String value, PdfFont font, double size) throws IOException {
             if (!PdfPageEditor.simpleText(value)) { return skip("TEXT_SHAPING", "FILL_VALUE", "FIELD_UNCHANGED"); }
+            if(field instanceof PDChoice choice&&!choice.isCombo()){for(String option:choice.getOptionsDisplayValues()){ExecutionContext.checkpoint();if(option.indexOf('\r')>=0||option.indexOf('\n')>=0){return skip("FIELD_FORMAT","FILL_VALUE","FIELD_UNCHANGED");}if(!PdfPageEditor.simpleText(option)){return skip("TEXT_SHAPING","FILL_VALUE","FIELD_UNCHANGED");}}}
             String appearance = field.getDefaultAppearance();
             if (appearance == null) { appearance = field.getAcroForm().getDefaultAppearance(); }
             String color = appearanceColor(appearance);
             if (color == null) { return skip("FIELD_FORMAT", "FILL_VALUE", "FIELD_UNCHANGED"); }
-            var actual = fonts.get(font);
-            if (actual == null) {
-                if (font.bytes().length > limits.maxTotalInputBytes() - snapshotBytes - fontBytes) { throw new PdfOperationException(PdfOperationException.Code.INPUT_LIMIT, 0, -1); }
-                fontBytes += font.bytes().length; actual = PDType0Font.load(document, new ByteArrayInputStream(font.bytes()), false); fonts.put(font, actual);
-            }
-            double width = actual.getStringWidth(value) / 1000 * size;
-            double height = (actual.getFontDescriptor().getAscent() - actual.getFontDescriptor().getDescent()) / 1000 * size;
+            var actual = font(font);
             for (var widget : field.getWidgets()) {
                 var rectangle = widget.getRectangle();
                 var characteristics = widget.getAppearanceCharacteristics();
                 if (characteristics != null && characteristics.getRotation() != 0) { return skip("FIELD_FORMAT", "FILL_VALUE", "FIELD_UNCHANGED"); }
-                double border = widget.getBorderStyle() == null ? 1 : widget.getBorderStyle().getWidth();
-                var legacyBorder = widget.getBorder();
-                if (widget.getBorderStyle() == null && legacyBorder != null && legacyBorder.size() >= 3) {
-                    if (!(legacyBorder.getObject(2) instanceof COSNumber number)) { throw PdfObjects.invalid(); }
-                    border = number.floatValue();
-                }
-                if (!Double.isFinite(border) || border < 0) { throw PdfObjects.invalid(); }
-                double inset = 2 + border * 2;
-                if (width > rectangle.getWidth() - inset * 2 || height > rectangle.getHeight() - inset * 2) { throw new IllegalArgumentException("PDF field value exceeds its fixed appearance box"); }
+                if(widget.getBorderStyle()!=null&&!"S".equals(widget.getBorderStyle().getStyle())){return skip("FIELD_FORMAT","FILL_VALUE","FIELD_UNCHANGED");}
             }
+            long characters=value.length();if(field instanceof PDChoice choice&&!choice.isCombo()){characters=choice.getOptionsDisplayValues().stream().mapToLong(String::length).sum();}work(Math.max(1,characters)*Math.max(1,field.getWidgets().size())*2);
+            if(!PdfFieldAppearance.fits(field,List.of(new PdfFieldAppearance.Run(value,actual,size,color,false)),limits)){throw new IllegalArgumentException("PDF field value exceeds its fixed appearance box");}
+            if(field.getWidgets().stream().anyMatch(widget->widget.getAppearance()!=null&&(widget.getAppearance().getCOSObject().containsKey(COSName.R)||widget.getAppearance().getCOSObject().containsKey(COSName.D)))){loss("FIELD_APPEARANCE_STATES","FILL_VALUE",ProcessingPolicy.Treatment.DEGRADE,"ROLLOVER_DOWN_REGENERATED_WITH_EXPLICIT_VALUE_AND_WIDGET_STYLE");}
             var form = field.getAcroForm(); var resources = form.getDefaultResources(); if (resources == null) { resources = new PDResources(); form.setDefaultResources(resources); }
             COSName key = resources.add(actual); field.setDefaultAppearance("/" + key.getName() + " " + BigDecimal.valueOf(size).toPlainString() + " Tf " + color);
             // Every edited field gets a concrete appearance; unedited fields retain their existing state.
             return true;
         }
+        PDType0Font font(PdfFont font)throws IOException{var actual=fonts.get(font);if(actual==null){if(font.bytes().length>limits.maxTotalInputBytes()-snapshotBytes-fontBytes){throw new PdfOperationException(PdfOperationException.Code.INPUT_LIMIT,0,-1);}fontBytes+=font.bytes().length;actual=PDType0Font.load(document,new ByteArrayInputStream(font.bytes()),false);fonts.put(font,actual);}return actual;}
+        void paint(PDVariableText field,String value,PdfFont font,double size)throws IOException{PdfFieldAppearance.paint(document,field,List.of(new PdfFieldAppearance.Run(value,font(font),size,appearanceColor(field.getDefaultAppearance()),false)),limits);}
+        void work(long count)throws IOException{if(count>limits.maxContentOperators()-appearanceWork){throw new PdfOperationException(PdfOperationException.Code.OPERATOR_LIMIT,0,-1);}appearanceWork+=count;}
         boolean skip(String feature, String operation, String effect) { issue(feature, operation, ProcessingPolicy.Treatment.SKIP_MATCH, effect); return false; }
         void loss(String feature, String operation, ProcessingPolicy.Treatment treatment, String effect) { issue(feature, operation, treatment, effect); }
         void issue(String feature, String operation, ProcessingPolicy.Treatment treatment, String effect) {
+            if(issues.size()>=limits.maxObjects()){throw new IllegalArgumentException("PDF object issue budget exceeded");}
             var rule = strategy.resolve("PDF", feature, operation);
             var issue = new ProcessingIssue("EDIT", "PDF", "PDF", feature, operation, new ProcessingIssue.Location("", "PDF_OBJECTS", "", List.of(), -1, -1),
                     "explicit object operation requires the declared treatment", rule.action(), rule.treatment(), List.of(effect));
@@ -295,11 +350,16 @@ public final class PdfObjectEditor {
         for (var bookmark : bookmarks) { ExecutionContext.checkpoint(); var item = new PDOutlineItem(); item.setTitle(bookmark.title()); if (bookmark.page() >= 0) { item.setDestination(state.page(bookmark.page())); } parent.addLast(item); appendBookmarks(state, item, bookmark.children()); }
     }
     private void text(String text) {
+        text(text,false);
+    }
+    private void textValue(String text){text(text,true);}
+    private void text(String text,boolean multiline) {
         Objects.requireNonNull(text, "text"); if (text.length() > limits.maxTextCharacters()) { throw new IllegalArgumentException("PDF object text budget exceeded"); }
-        for (int index = 0; index < text.length(); index++) { char c = text.charAt(index); if (Character.isHighSurrogate(c)) { if (++index >= text.length() || !Character.isLowSurrogate(text.charAt(index))) { throw new IllegalArgumentException("invalid Unicode"); } } else if (Character.isLowSurrogate(c) || Character.isISOControl(c)) { throw new IllegalArgumentException("invalid PDF object text"); } }
+        for (int index = 0; index < text.length(); index++) { char c = text.charAt(index); if (Character.isHighSurrogate(c)) { if (++index >= text.length() || !Character.isLowSurrogate(text.charAt(index))) { throw new IllegalArgumentException("invalid Unicode"); } } else if (Character.isLowSurrogate(c) || Character.isISOControl(c)&&!(multiline&&(c=='\n'||c=='\r'))) { throw new IllegalArgumentException("invalid PDF object text"); } }
         if (text.length() > limits.maxTextCharacters() - snapshotText) { throw new IllegalArgumentException("PDF cumulative edit text budget exceeded"); }
         snapshotText += text.length();
     }
+    private static String xml(String value){return value.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;");}
     private static void filename(String name) { if (!Objects.requireNonNull(name, "name").matches("[A-Za-z0-9][A-Za-z0-9._-]{0,119}") || name.contains("..")) { throw new IllegalArgumentException("attachment requires a plain logical filename"); } }
     private static void pageIndex(int page) { if (page < 0) { throw new IllegalArgumentException("negative page index"); } }
     private static void size(double value) { if (!Double.isFinite(value) || value <= 0 || value > 10_000) { throw new IllegalArgumentException("invalid PDF field font size"); } }

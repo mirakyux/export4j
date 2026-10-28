@@ -102,12 +102,27 @@ public final class PdfAdapter {
     public static Builder builder() { return new Builder(); }
 
     PdfPreflight preflight(boolean interactive) { return new PdfPreflight(limits, interactive, allowPassiveStructures); }
+    PdfPreflight preflightXfa() { return new PdfPreflight(limits, true, allowPassiveStructures, true); }
 
     /** Starts real, bounded content-stream replacement in the static page-text subset. */
     public PdfTextEditor editText(PdfInput input) { return new PdfTextEditor(this, Objects.requireNonNull(input, "input"), limits); }
 
+    /** Edits selected image drawing instances without changing their source transformation or other uses. */
+    public PdfImageEditor editImages(PdfInput input) { return new PdfImageEditor(this, Objects.requireNonNull(input, "input"), limits); }
+
+    /** Reads or flattens the explicitly supported, passive XFA template/dataset subset. */
+    public PdfXfaRequest xfa(PdfInput input) { return new PdfXfaRequest(this, Objects.requireNonNull(input, "input"), limits); }
+
+    /** Exports explicitly selected passive form values as bounded FDF or XFDF. */
+    public PdfFormDataRequest formData(PdfInput input) { return new PdfFormDataRequest(this, Objects.requireNonNull(input, "input"), limits); }
+
     /** Starts irreversible raster redaction into a fresh image-only PDF; source objects are not copied. */
     public PdfRedactor redact(PdfInput input) { return new PdfRedactor(this, Objects.requireNonNull(input, "input"), limits); }
+    /** Rebuilds a supported content subset while deleting selected glyphs, pixels and path geometry.
+     * Unsupported drawing structures reject the complete candidate. Original history and passive objects
+     * are not copied. Regions use the rotated CropBox view in physical pt with a top-left origin.
+     */
+    public PdfSelectiveRedactor redactSelective(PdfInput input) { return new PdfSelectiveRedactor(this, Objects.requireNonNull(input, "input"), limits); }
 
     /** Starts explicit-loss geometric recovery into editable semantic blocks, without OCR. */
     public PdfSemanticImporter importDocument(PdfInput input) { return new PdfSemanticImporter(this, Objects.requireNonNull(input, "input"), limits); }

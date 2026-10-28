@@ -13,8 +13,19 @@ import java.util.Objects;
 public final class PreparedPdfImport {
     /** Source boxes are unrotated page coordinates, physical pt, with a top-left origin.
      * Text boxes approximate font metrics; they are not exact glyph outlines or redaction regions.
+     * AUTO recovery records leaf paragraph line boxes and table bounds. A block may have several
+     * source boxes, including different pages for a continued table or repeated header. These are
+     * provenance fragments, not additional copies of the block's semantic content.
+     * An empty cellPath addresses the block itself. For inline table-cell content,
+     * cellPath is a sequence of zero-based physical row/column pairs from that table
+     * (including slots covered by spans); a nested pair descends through that cell.
+     * It identifies a semantic cell, not a character offset in its text.
      */
-    public record Source(String blockId, int page, double x, double y, double width, double height) { }
+    public record Source(String blockId, int page, double x, double y, double width, double height, List<Integer> cellPath) {
+        public Source { cellPath = List.copyOf(cellPath); }
+        /** Compatibility constructor for a block or leaf paragraph without an inline-cell path. */
+        public Source(String blockId, int page, double x, double y, double width, double height) { this(blockId, page, x, y, width, height, List.of()); }
+    }
     public record Result(SectionedDocument document, List<Source> sources, ProcessingReport report) {
         public Result {
             Objects.requireNonNull(document, "document"); sources = List.copyOf(sources); Objects.requireNonNull(report, "report");
