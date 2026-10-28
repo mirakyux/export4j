@@ -15,6 +15,8 @@ For accepted export losses, [`reimportOnLoss`](docs/model-recovery-api.md#有损
 
 Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [single-page PNG](docs/model-recovery-api.md#单页-png-内嵌恢复) uses a private ancillary chunk, and [PDF, DOCX and PNG page ZIPs](docs/model-recovery-api.md#pdfdocx-与-png-页-zip-可选内嵌恢复) use standard attachments or package members. Ordinary output stays smaller. External edits invalidate the binding, and third-party saves may remove recovery data; see the [compatibility and size measurements](docs/verification/phase-86-standard-container-recovery.md).
 
+[Portable navigation](docs/portable-navigation-api.md) saves heading selection, manual bookmarks and contents typography/colors with the model. Recovery resolves current headings and final page numbers automatically. Combined multi-round conversions and a real Word edit/save/reopen are covered in [GAP-24 acceptance](docs/verification/phase-90-recovery-closure.md); lossy targets retain their actual reduced model and loss history.
+
 **Early development:** no stable artifacts have been published, and APIs may change. Supported PDF reports and dense static forms are ready for scoped trials; see the [readiness assessment](docs/readiness-assessment.md) and [capability matrix](docs/capabilities-api.md) for the evidence and limits.
 
 - Java 21 LTS · Gradle Wrapper · Apache-2.0
@@ -85,6 +87,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | `:examples:authoring` | `examples/build/authoring/` | Java authoring, typography and semantic DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML report templates and data binding |
 | `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | Edit, save and reopen XML sources/resources in ordinary ZIP files, then bind different data |
+| `:examples:recoveryClosure` | `examples/build/recovery-closure/` | Combined navigation/notes/sections/layers/tables/images recovery, actual edits and loss-aware cycles |
 | `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | Save semantic models as XML, reopen/edit and export; three-cycle unchanged controls and explicit loss reports |
 | `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | Shared page-region sources, variants, overlays and save/reopen/edit controls |
 | `:examples:xmlCrossReferenceSaving` | `examples/build/xml-cross-reference-saving/` | Independent reference round trips, section page/number resolution, retargeting and Web losses |

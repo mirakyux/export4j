@@ -33,12 +33,13 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
 /** Task-confined literal replacement in page Tj/TJ operators, without page reflow.
- * Explicit replacement fonts are embedded. Marked text, Form text and nondefault text spacing are
- * outside this subset. This edits content; it does not sanitize other copies or document history.
+ * Explicit replacement fonts are embedded. Passive Span marked content can be retained while editing
+ * outside it; matches inside remain unsupported. Form text and nondefault text spacing are outside
+ * this subset. This edits content; it does not sanitize other copies or document history.
  */
 public final class PdfTextEditor {
     private record Replacement(int page, String search, String replacement, PdfFont font) { }
-    private static final Set<String> UNSUPPORTED = Set.of("BDC", "BMC", "EMC", "MP", "DP", "gs", "'", "\"");
+    private static final Set<String> UNSUPPORTED = Set.of("MP", "DP", "gs", "'", "\"");
     private final PdfAdapter adapter;
     private final PdfInput input;
     private final PdfLimits limits;
@@ -98,11 +99,7 @@ public final class PdfTextEditor {
             try (var content = page.getContents()) { var buffer = new byte[8192]; int length; while ((length = content.read(buffer)) != -1) { bytes.write(buffer, 0, length); } }
             List<Object> tokens; var parser = new PDFStreamParser(bytes.data());
             try { tokens = parser.parse(); } finally { parser.close(); }
-            for (var token : tokens) {
-                if (token instanceof Operator operator && UNSUPPORTED.contains(operator.getName())) {
-                    loss("TEXT_STRUCTURE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_TEXT_UNCHANGED", edit.page()); return;
-                }
-            }
+            if (!structure(page, tokens)) { loss("TEXT_STRUCTURE", ProcessingPolicy.Treatment.SKIP_BLOCK, "PAGE_TEXT_UNCHANGED", edit.page()); return; }
             // A Form can be shared by other pages; editing only this page must not mutate that source.
             if (page.getResources() != null) {
                 for (var name : page.getResources().getXObjectNames()) {
@@ -110,14 +107,21 @@ public final class PdfTextEditor {
                 }
             }
             var output = new ArrayList<Object>(); var operands = new ArrayList<COSBase>(); var stack = new ArrayDeque<TextState>();
-            var state = new TextState(); boolean inText = false; int pageChanges = 0;
+            var state = new TextState(); boolean inText = false; int pageChanges = 0, markedDepth = 0;
+            boolean markedMatchReported = false;
             PDResources resources = copy(page.getResources());
             for (int tokenIndex = 0; tokenIndex < tokens.size(); tokenIndex++) {
                 var token = tokens.get(tokenIndex);
                 ExecutionContext.checkpoint();
                 if (!(token instanceof Operator operator)) { operands.add((COSBase) token); continue; }
                 String name = operator.getName();
-                if (name.equals("q")) { stack.push(state.copy()); }
+                if (name.equals("BDC") || name.equals("BMC")) {
+                    markedDepth++;
+                    if (!markedMatchReported && markedText(page, operands, name).contains(edit.search())) {
+                        loss("MARKED_TEXT", ProcessingPolicy.Treatment.SKIP_MATCH, "MARKED_CONTENT_UNCHANGED", edit.page()); markedMatchReported = true;
+                    }
+                } else if (name.equals("EMC")) { markedDepth--; }
+                else if (name.equals("q")) { stack.push(state.copy()); }
                 else if (name.equals("Q")) { if (stack.isEmpty()) { throw PdfObjects.invalid(); } state = stack.pop(); }
                 else if (name.equals("BT")) { if (inText) { throw PdfObjects.invalid(); } inText = true; }
                 else if (name.equals("ET")) { if (!inText) { throw PdfObjects.invalid(); } inText = false; }
@@ -134,7 +138,9 @@ public final class PdfTextEditor {
                     var group = shows(tokens, tokenIndex, operands.getFirst(), font);
                     var shown = group.shown();
                     if (shown.text().contains(edit.search())) {
-                        if (font.isVertical() || !state.simple() || !PdfPageEditor.simpleText(shown.text()) || !PdfPageEditor.simpleText(edit.replacement())) {
+                        if (markedDepth > 0) {
+                            if (!markedMatchReported) { loss("MARKED_TEXT", ProcessingPolicy.Treatment.SKIP_MATCH, "MARKED_CONTENT_UNCHANGED", edit.page()); markedMatchReported = true; }
+                        } else if (font.isVertical() || !state.simple() || !PdfPageEditor.simpleText(shown.text()) || !PdfPageEditor.simpleText(edit.replacement())) {
                             loss("TEXT_SHAPING", ProcessingPolicy.Treatment.SKIP_MATCH, "SHOW_SEQUENCE_UNCHANGED", edit.page());
                         } else {
                             int replaced = replaceShown(shown, edit, state, resources, output);
@@ -151,6 +157,42 @@ public final class PdfTextEditor {
                 try (var target = stream.createOutputStream(COSName.FLATE_DECODE)) { target.write(data.data()); }
                 page.setContents(stream); page.setResources(resources); changes = Math.addExact(changes, pageChanges);
             }
+        }
+        /** Validate the whole marked structure before any edit or resource mutation. */
+        boolean structure(PDPage page, List<Object> tokens) throws IOException {
+            int depth = 0; boolean supported = true; var operands = new ArrayList<COSBase>();
+            for (var token : tokens) {
+                ExecutionContext.checkpoint();
+                if (!(token instanceof Operator operator)) { operands.add((COSBase) token); continue; }
+                String name = operator.getName();
+                if (UNSUPPORTED.contains(name)) { supported = false; }
+                if (name.equals("BMC") || name.equals("BDC")) {
+                    if (++depth > limits.maxDepth()) { throw new IllegalArgumentException("PDF marked content nesting budget exceeded"); }
+                    var text = markedText(page, operands, name);
+                    if (text == null) { supported = false; } else { count(text.length()); }
+                } else if (name.equals("EMC")) {
+                    if (!operands.isEmpty() || --depth < 0) { throw PdfObjects.invalid(); }
+                }
+                operands.clear();
+            }
+            if (depth != 0 || !operands.isEmpty()) { throw PdfObjects.invalid(); }
+            return supported;
+        }
+        /** null means a valid but unsupported tag/property. Malformed syntax never enters policy fallback. */
+        String markedText(PDPage page, List<COSBase> operands, String operator) throws IOException {
+            int count = operator.equals("BMC") ? 1 : 2;
+            if (operands.size() != count || !(operands.getFirst() instanceof COSName tag)) { throw PdfObjects.invalid(); }
+            if (count == 1) { return tag.getName().equals("Span") ? "" : null; }
+            COSBase value = operands.get(1);
+            if (value instanceof COSName name) {
+                var properties = page.getResources() == null ? null : page.getResources().getCOSObject().getCOSDictionary(COSName.PROPERTIES);
+                value = properties == null ? null : properties.getDictionaryObject(name);
+            }
+            if (!(value instanceof COSDictionary properties)) { throw PdfObjects.invalid(); }
+            var actual = properties.getDictionaryObject(COSName.ACTUAL_TEXT);
+            if (actual != null && !(actual instanceof COSString)) { throw PdfObjects.invalid(); }
+            if (!tag.getName().equals("Span") || properties.size() != 1 || !(actual instanceof COSString text)) { return null; }
+            return text.getString();
         }
         ShowGroup shows(List<Object> tokens, int index, COSBase first, PDFont font) throws IOException {
             var text = new StringBuilder(); var atoms = new ArrayList<Atom>(); var originals = new ArrayList<Object>();

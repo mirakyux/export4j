@@ -86,7 +86,7 @@ final class EditSupport {
             sections.add(body.equals(section.blocks()) && regions.equals(section.pageRegions()) ? section
                     : new Section(section.id(), section.pageSettings(), body, section.firstPageNumber(), regions));
         }
-        return sections.equals(source.sections()) ? source : new SectionedDocument(source.metadata(), sections);
+        return sections.equals(source.sections()) ? source : new SectionedDocument(source.metadata(), sections, source.navigation());
     }
     private static PageRegion mapRegion(PageRegion source, Map<PageRegion, PageRegion> cache,
             String section, String region, State state, BiFunction<Block, ProcessingIssue.Location, List<Block>> blocks,

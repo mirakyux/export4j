@@ -15,6 +15,8 @@ Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档�
 
 单文件恢复由调用方显式选择：HTML、Markdown、SVG 使用末尾注释，[单页 PNG](docs/model-recovery-api.md#单页-png-内嵌恢复) 使用私有辅助块，[PDF、DOCX 与 PNG 页 ZIP](docs/model-recovery-api.md#pdfdocx-与-png-页-zip-可选内嵌恢复) 使用标准附件或包成员。普通导出没有这部分体积。外部修改会使旧绑定失效，第三方另存也可能移除恢复信息；见[兼容与体积实测](docs/verification/phase-86-standard-container-recovery.md)。
 
+[声明式导航](docs/portable-navigation-api.md)随模型保存标题筛选、手工书签和目录排版／颜色，恢复后自动使用当前标题及最终页码。[GAP-24 验收](docs/verification/phase-90-recovery-closure.md)覆盖跨特性组合多轮转换和真实 Word 编辑／保存／重开；有损目标只恢复实际降级后的模型与损失历史。
+
 **当前处于早期开发阶段，尚未发布稳定制品，API 可能调整。** 受支持的 PDF 报告和密集静态表单已具备限定范围的试用条件，具体证据与限制见[就绪评估](docs/readiness-assessment.md)和[能力矩阵](docs/capabilities-api.md)。
 
 - Java 21 LTS · Gradle Wrapper · Apache-2.0。
@@ -85,6 +87,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | `:examples:authoring` | `examples/build/authoring/` | Java 编写、文字排版与语义 DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告模板与数据绑定 |
 | `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | 编辑、保存和重开普通 ZIP 中的 XML 源码／资源，再绑定不同数据 |
+| `:examples:recoveryClosure` | `examples/build/recovery-closure/` | 导航／注释／分节／图层／表格／图片组合恢复、实际编辑及有损多轮 |
 | `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | 语义模型保存为 XML，再重开编辑导出；三轮无编辑控制及明确损失报告 |
 | `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | 共享页区、变体／图层及保存／重开／编辑控制 |
 | `:examples:xmlCrossReferenceSaving` | `examples/build/xml-cross-reference-saving/` | 独立引用三轮保存、跨节页码／编号、目标改写和 Web 损失 |

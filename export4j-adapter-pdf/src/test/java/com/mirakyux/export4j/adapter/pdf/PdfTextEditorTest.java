@@ -35,6 +35,7 @@ class PdfTextEditorTest {
             .feature("TEXT_SPACING", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
             .feature("TEXT_CAPACITY", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.SKIP_MATCH)
             .feature("TEXT_SHAPING", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.SKIP_MATCH)
+            .feature("MARKED_TEXT", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.SKIP_MATCH)
             .feature("TEXT_STRUCTURE", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.SKIP_BLOCK).build();
     @Test void replacesRealBytesAndPreservesFollowingTextPosition() throws Exception {
         var adapter = new PdfAdapter(); byte[] bytes = source(false, false); var input = adapter.input(bytes, "");
@@ -71,10 +72,33 @@ class PdfTextEditorTest {
         var complex = adapter.editText(input).replace(0, "SECRET", "e\u0301", font()).policy(POLICY).prepare();
         assertTrue(text(write(complex)).contains("SECRET")); assertEquals("TEXT_SHAPING", complex.preview().issues().getFirst().feature());
     }
-    @Test void markedContentRequiresWholePageSkipEvenIfLogicalActualTextDiffers() throws Exception {
+    @Test void markedMatchesRequireExplicitSkipAndKeepMarkedTextUnchanged() throws Exception {
         var adapter = new PdfAdapter(); var prepared = adapter.editText(adapter.input(source(true, false), ""))
                 .replace(0, "SECRET", "PUBLIC", font()).policy(POLICY).prepare();
-        assertEquals("TEXT_STRUCTURE", prepared.preview().issues().getFirst().feature()); assertTrue(text(write(prepared)).contains("SECRET"));
+        assertEquals("MARKED_TEXT", prepared.preview().issues().getFirst().feature()); assertTrue(text(write(prepared)).contains("SECRET"));
+    }
+    @Test void unmarkedReplacementPreservesNestedActualTextAndUnmatchedPositions() throws Exception {
+        byte[] source = mixedMarked(false, false); var adapter = new PdfAdapter();
+        var strategy = ProcessingPolicy.builder().feature("TEXT_FONT", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
+        var prepared = adapter.editText(adapter.input(source, "")).replace(0, "SECRET", "PUBLIC", font()).policy(strategy).prepare();
+        var output = write(prepared);
+        assertTrue(text(output).contains("PUBLIC")); assertTrue(text(output).contains("KEEP"));
+        assertEquals(positions(source).subList(7, positions(source).size()), positions(output).subList(7, positions(output).size()));
+        assertEquals(1, prepared.preview().losses().size());
+        try (var pdf = Loader.loadPDF(output)) {
+            var properties = pdf.getPage(0).getResources().getCOSObject().getCOSDictionary(org.apache.pdfbox.cos.COSName.PROPERTIES);
+            assertEquals("LOGICAL-CONTROL", properties.getCOSDictionary(properties.keySet().iterator().next()).getString(org.apache.pdfbox.cos.COSName.ACTUAL_TEXT));
+            var bytes = new String(pdf.getPage(0).getContents().readAllBytes(), StandardCharsets.ISO_8859_1);
+            assertTrue(bytes.contains("BMC") && bytes.contains("BDC") && bytes.contains("EMC"));
+        }
+    }
+    @Test void malformedMarkedBalanceAndUnsupportedPropertiesCannotBeSilentlyEdited() throws Exception {
+        var adapter = new PdfAdapter();
+        assertThrows(java.io.IOException.class, () -> adapter.editText(adapter.input(mixedMarked(true, false), ""))
+                .replace(0, "SECRET", "PUBLIC", font()).policy(POLICY).prepare());
+        var rejected = assertThrows(ProcessingException.class, () -> adapter.editText(adapter.input(mixedMarked(false, true), ""))
+                .replace(0, "SECRET", "PUBLIC", font()).prepare());
+        assertEquals("TEXT_STRUCTURE", rejected.issue().feature());
     }
     @Test void cancellationBudgetAndInvalidUnicodeDoNotPublish() throws Exception {
         var adapter = new PdfAdapter(); var input = adapter.input(source(false, false), ""); var cancelled = new AtomicBoolean();
@@ -164,6 +188,23 @@ class PdfTextEditorTest {
         }
     }
     static PdfFont font() throws Exception { return PdfFont.of(Files.readAllBytes(Path.of("../assets/fonts/LiberationSans-Regular.ttf"))); }
+    private static byte[] mixedMarked(boolean malformed, boolean unsupported) throws Exception {
+        try (var pdf = new PDDocument()) {
+            var page = new PDPage(new PDRectangle(240, 160)); pdf.addPage(page);
+            var font = PDType0Font.load(pdf, new ByteArrayInputStream(Files.readAllBytes(Path.of("../assets/fonts/LiberationSans-Regular.ttf"))));
+            var property = new org.apache.pdfbox.cos.COSDictionary(); property.setString(org.apache.pdfbox.cos.COSName.ACTUAL_TEXT, "LOGICAL-CONTROL");
+            if (unsupported) { property.setInt(org.apache.pdfbox.cos.COSName.MCID, 1); }
+            try (var content = new PDPageContentStream(pdf, page)) {
+                content.beginText(); content.setFont(font, 14); content.newLineAtOffset(20, 120); content.showText("SECRET KEEP"); content.endText();
+                var span = org.apache.pdfbox.cos.COSName.getPDFName("Span"); content.beginMarkedContent(span);
+                content.beginMarkedContent(span, org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList.create(property));
+                content.beginText(); content.setFont(font, 14); content.newLineAtOffset(20, 80); content.showText("KEEP"); content.endText();
+                content.endMarkedContent(); content.endMarkedContent();
+                if (malformed) { content.endMarkedContent(); }
+            }
+            var output = new ByteArrayOutputStream(); pdf.save(output); return output.toByteArray();
+        }
+    }
     static byte[] source(boolean marked, boolean array) throws Exception {
         try (var pdf = new PDDocument()) {
             var page = new PDPage(new PDRectangle(240, 120)); pdf.addPage(page);

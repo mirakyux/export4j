@@ -8,6 +8,7 @@ import com.mirakyux.export4j.model.CellLocation;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.DocumentNavigation;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.Heading;
@@ -190,9 +191,11 @@ public final class XmlTemplateWriter {
                 reserved.add(note.id());
             }
             Note.validate(document, notes);
+            document.navigation().validate(document);
             regionSources.clear();
             add("<document version=\"1\" literal-text=\"true\""); attr("title", document.metadata().title()); attr("author", document.metadata().author()); add(">");
             if (sections) {
+                navigation();
                 notes();
                 for (var section : document.sections()) {
                     location = new ProcessingIssue.Location(section.id(), "BODY", "", List.of(), -1, -1);
@@ -209,9 +212,37 @@ public final class XmlTemplateWriter {
             location = new ProcessingIssue.Location(section.id(), "BODY", "", List.of(), -1, -1);
             page(section.pageSettings());
             regions(section.pageRegions());
-            if (!sections) { notes(); }
+            if (!sections) { navigation(); notes(); }
             location = new ProcessingIssue.Location(section.id(), "BODY", "", List.of(), -1, -1);
             for (var block : section.blocks()) { block(block, List.of()); }
+        }
+        private void navigation() {
+            var value = document.navigation();
+            if (value.equals(DocumentNavigation.NONE)) { return; }
+            add("<navigation"); attr("headings", value.headings()); attr("max-level", value.maxHeadingLevel()); add(">");
+            for (var bookmark : value.bookmarks()) {
+                ExecutionContext.checkpoint();
+                if (++blocks > limits.maxBlocks()) { throw new IllegalArgumentException("XML navigation budget exceeded"); }
+                add("<bookmark"); attr("target", identifier(bookmark.blockId())); attr("level", bookmark.level());
+                attr("title", bookmark.title()); add("/>");
+            }
+            var toc = value.contents();
+            add("<contents"); attr("enabled", toc.enabled()); attr("title", toc.title()); add(">");
+            navigationStyle("ENTRY", toc.entries());
+            for (var part : List.of(DocumentNavigation.Part.TITLE, DocumentNavigation.Part.PAGE_LABEL)) {
+                if (toc.styles().containsKey(part)) { navigationStyle(part.name(), toc.styles().get(part)); }
+            }
+            for (var part : DocumentNavigation.Part.values()) {
+                if (toc.colors().containsKey(part)) {
+                    add("<color"); attr("part", part); attr("value", String.format(Locale.ROOT, "#%06X", toc.colors().get(part))); add("/>");
+                }
+            }
+            add("</contents></navigation>");
+        }
+        private void navigationStyle(String part, DocumentNavigation.TextStyle style) {
+            add("<typography"); attr("part", part); attr("size", style.size()); attr("line-height", style.lineHeight());
+            attr("first-indent", style.firstIndent()); attr("subsequent-indent", style.subsequentIndent());
+            attr("align", style.alignment()); attr("line-break", style.lineBreak()); add("/>");
         }
         private void notes() {
             if (notes.isEmpty()) { return; }

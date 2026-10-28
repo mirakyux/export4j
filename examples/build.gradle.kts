@@ -19,6 +19,18 @@ application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
 }
 
+for (external in listOf(false, true)) {
+    tasks.register<JavaExec>(if (external) "recoveryClosureExternal" else "recoveryClosure") {
+        group = "application"
+        description = "Verifies combined self-generated recovery, portable navigation, preserved edits and actual reader saves."
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set("com.mirakyux.export4j.examples.RecoveryClosureExample")
+        workingDir = rootProject.projectDir
+        systemProperty("java.awt.headless", "true")
+        if (external) args("external")
+    }
+}
+
 tasks.register<JavaExec>("navigationRecovery") {
     group = "application"
     description = "Checks note/reference recovery and explicit current-heading contents rebuilding."

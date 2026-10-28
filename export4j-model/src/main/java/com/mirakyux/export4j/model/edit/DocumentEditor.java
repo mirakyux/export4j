@@ -38,18 +38,27 @@ public final class DocumentEditor {
     public static Request<Document> edit(Document source) {
         Objects.requireNonNull(source, "source");
         return new Request<>(new SectionedDocument(source.metadata(), List.of(new Section("document", source.pageSettings(), source.blocks(), 0))),
-                value -> new Document(value.metadata(), value.sections().getFirst().pageSettings(), value.sections().getFirst().blocks()));
+                value -> {
+                    requireNoNavigation(value);
+                    return new Document(value.metadata(), value.sections().getFirst().pageSettings(), value.sections().getFirst().blocks());
+                });
     }
     public static Request<PageDocument> edit(PageDocument source) {
         Objects.requireNonNull(source, "source");
         return new Request<>(new SectionedDocument(source.document().metadata(), List.of(new Section("document", source.document().pageSettings(),
                 source.document().blocks(), 0, source.pageRegions()))), value -> {
+                    requireNoNavigation(value);
                     var section = value.sections().getFirst();
                     return new PageDocument(new Document(value.metadata(), section.pageSettings(), section.blocks()), section.pageRegions());
                 });
     }
     public static Request<SectionedDocument> edit(SectionedDocument source) {
         return new Request<>(Objects.requireNonNull(source, "source"), Function.identity());
+    }
+    private static void requireNoNavigation(SectionedDocument value) {
+        if (!value.navigation().equals(com.mirakyux.export4j.model.DocumentNavigation.NONE)) {
+            throw new IllegalArgumentException("portable navigation requires a SectionedDocument result");
+        }
     }
     /** Actual intentional change. Location refers to the input of its sequential operation. */
     public record Change(String operation, ProcessingIssue.Location location) {
@@ -103,6 +112,15 @@ public final class DocumentEditor {
         public Request<T> execution(ExecutionOptions value) { execution = Objects.requireNonNull(value, "execution"); return this; }
         /** Supplies the complete borrowed note snapshot; no automatic cascade deletion or renumbering. */
         public Request<T> notes(List<Note> values) { notes = List.copyOf(values); return this; }
+        /** Replaces portable navigation explicitly; no automatic deletion of static targets.
+         * Nonempty declarations require edit(SectionedDocument); narrower result types reject them. */
+        public Request<T> navigation(com.mirakyux.export4j.model.DocumentNavigation value) {
+            Objects.requireNonNull(value, "navigation");
+            return add((input, state) -> {
+                state.change("SET_NAVIGATION", new ProcessingIssue.Location("", "NAVIGATION", "", List.of(), -1, -1));
+                return input.withNavigation(value);
+            });
+        }
         public Request<T> remove(String id) { return blockOperation(id, "REMOVE_BLOCK", block -> List.of()); }
         /** Appends to the sole section body, including an initially empty document. */
         public Request<T> append(Block value) {
@@ -121,7 +139,7 @@ public final class DocumentEditor {
                     state.change("APPEND_BLOCK", new ProcessingIssue.Location(sectionId, "BODY", value.id(), List.of(), -1, -1));
                 }
                 if (!found) { throw new IllegalArgumentException("destination section missing"); }
-                return new SectionedDocument(input.metadata(), sections);
+                return new SectionedDocument(input.metadata(), sections, input.navigation());
             });
         }
         public Request<T> replaceBlock(String id, Block replacement) {
@@ -215,6 +233,9 @@ public final class DocumentEditor {
                     EditSupport.map(prepared.semantic, state, (block, location) -> {
                         var paragraph = paragraph(block);
                         if (paragraph != null) { matches.addAll(TextEdits.find(paragraph, needle, location, state)); }
+                        else if (block instanceof com.mirakyux.export4j.model.CrossReference reference) {
+                            matches.addAll(TextEdits.find(new Paragraph(reference.id(), reference.prefix(), reference.format()), needle, location, state));
+                        }
                         else if (!(block instanceof Table) && !(block instanceof com.mirakyux.export4j.model.PageBreak)) {
                             state.unsupported("OPAQUE_BLOCK", "FIND_TEXT", location, "block has no searchable semantic text",
                                     List.of("BLOCK_NOT_SEARCHED"), ProcessingPolicy.Treatment.SKIP_BLOCK,
@@ -246,6 +267,12 @@ public final class DocumentEditor {
                     if (paragraph != null) {
                         var changed = TextEdits.replace(paragraph, needle, replacement, location, state);
                         return List.of(changed == paragraph ? block : rebuild(block, changed));
+                    }
+                    if (block instanceof com.mirakyux.export4j.model.CrossReference reference) {
+                        var prefix = new Paragraph(reference.id(), reference.prefix(), reference.format());
+                        var changed = TextEdits.replace(prefix, needle, replacement, location, state);
+                        return List.of(changed == prefix ? block : new com.mirakyux.export4j.model.CrossReference(reference.id(), changed.text(),
+                                reference.targetId(), reference.kind(), reference.format()));
                     }
                     if (!(block instanceof Table) && !(block instanceof com.mirakyux.export4j.model.PageBreak)) {
                         state.unsupported("OPAQUE_BLOCK", "REPLACE_TEXT", location, "block has no editable semantic text",
@@ -321,6 +348,7 @@ public final class DocumentEditor {
                     var issue = state.issues.getLast(); state.issues.clear(); state.issues.add(issue);
                     state.changes.clear(); candidate = source;
                 }
+                candidate.navigation().validate(candidate);
                 var result = new Result<>(finish.apply(candidate), noteSnapshot, state.changes,
                         new ProcessingReport(ProcessingReport.Phase.ACTUAL, state.issues));
                 return new Prepared<>(result, candidate, executionSnapshot);

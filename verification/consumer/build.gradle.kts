@@ -15,6 +15,14 @@ dependencies {
 }
 application { mainClass.set("consumer.Consumer") }
 
+tasks.register<JavaExec>("recoveryClosure") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.RecoveryClosureConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
 tasks.register<JavaExec>("navigationRecovery") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.NavigationRecoveryConsumer")

@@ -137,7 +137,7 @@ final class SemanticBlocks {
             }
         }
         sections.add(new Section(last.id(), last.pageSettings(), tail, last.firstPageNumber()));
-        return new Result(new SectionedDocument(document.metadata(), sections), Map.copyOf(labels), Map.copyOf(refs), notes);
+        return new Result(new SectionedDocument(document.metadata(), sections, document.navigation()), Map.copyOf(labels), Map.copyOf(refs), notes);
     }
 
     static ParagraphStyle style(ParagraphFormat format) {

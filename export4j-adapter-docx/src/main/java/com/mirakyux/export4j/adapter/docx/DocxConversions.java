@@ -50,6 +50,12 @@ final class DocxConversions {
     static DocumentConversion.Target target(DocxAdapter adapter) {
         return new DocumentConversion.Target("DOCX", (source, notes, policy, output) -> {
             var issues = new ArrayList<ProcessingIssue>();
+            source.navigation().validate(source);
+            if (!source.navigation().equals(com.mirakyux.export4j.model.DocumentNavigation.NONE)) {
+                add(issues, policy, "EXPORT", "MODEL", "DOCX", "NAVIGATION",
+                        new ProcessingIssue.Location("", "NAVIGATION", "", List.of(), -1, -1),
+                        "portable navigation has no native DOCX mapping", "NAVIGATION_DECLARATIONS_REMOVED", ProcessingPolicy.Treatment.DISCARD);
+            }
             for (var note : notes) {
                 add(issues, policy, "EXPORT", "MODEL", "DOCX", "NOTES",
                         new ProcessingIssue.Location("", "BODY", note.paragraphId(), List.of(), -1, -1),

@@ -78,6 +78,24 @@ class BlockCellLayouterTest {
         assertFalse(DocumentPainter.paint(layout(List.of(source), 100)).pages().getFirst().commands().isEmpty());
     }
 
+    @Test void decimalFixedColumnsAtParentBoundaryAbsorbOnlyArithmeticRounding() {
+        var nested = new Table("inner", List.of(new ColumnWidth.Fixed(110.7), new ColumnWidth.Fixed(80.65)),
+                List.of(row(inline("LEFT"), inline("RIGHT"))), 0, new TableFormat(PageMargins.uniform(6), 0, 0));
+        var parent = new Table("outer", List.of(new ColumnWidth.Fixed(203.35), new ColumnWidth.Fixed(83.05)),
+                List.of(row(block(nested), inline("OUTSIDE"))), 0, new TableFormat(PageMargins.uniform(6), 0, 0));
+        var settings = PageSettings.builder().size(420, 420).margins(24).build();
+        var result = new DocumentLayouter().layout(new Document(DocumentMetadata.EMPTY, settings, List.of(parent)), fonts);
+        var fragment = (TableFragment) firstTable(result).rows().getFirst().cells().getFirst().blocks().getFirst();
+        assertEquals(191.35, fragment.width(), 1e-12);
+        assertEquals(110.7, fragment.rows().getFirst().cells().getFirst().bounds().width());
+        assertEquals(80.65, fragment.rows().getFirst().cells().getLast().bounds().width());
+        var oversized = new Table("overflow", List.of(new ColumnWidth.Fixed(110.71), new ColumnWidth.Fixed(80.65)),
+                nested.rows(), 0, nested.format());
+        var cursor = new DocumentLayouter();
+        assertThrows(DocumentLayoutException.class, () -> cursor.prepareTable(oversized,
+                new ComponentContext(191.35, 100, fonts, 0, 0, 1)));
+    }
+
     @Test void atomicCellMovesOnceAndFollowingBodyResumesAfterIt() {
         var source = outer(block(new Paragraph("child", "A\nB\nC", TEXT)), PageMargins.uniform(2));
         var lead = new Paragraph("lead", "LEAD", TEXT.toBuilder().lineHeight(30).build());

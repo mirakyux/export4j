@@ -2,6 +2,8 @@
 
 `TableOfContents.style` 继续控制目录条目的完整排版。新增 `appearance` 独立配置目录标题和页码标签的完整排版，以及标题、条目、页码三处颜色。它不改变正文格式、书签文字、最终目标解析或固定 48 pt 页码列。
 
+需要保存并恢复目录时，使用[模型声明 DocumentNavigation](portable-navigation-api.md)。它保留同样的排版／颜色意图并由默认引擎消费；本文运行时 API 继续适用于调用方自行管理的导航配置。
+
 ## 链式配置
 
 ~~~java

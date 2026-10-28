@@ -470,7 +470,7 @@ final class WebRenderer {
             String target = html ? "HTML" : "MARKDOWN";
             var rule = processing.resolve(target, feature.name(), "EXPORT");
             var treatment = switch (feature) {
-                case CUSTOM_BLOCK, METADATA, PAGE_NUMBERING -> ProcessingPolicy.Treatment.DISCARD;
+                case CUSTOM_BLOCK, METADATA, PAGE_NUMBERING, NAVIGATION -> ProcessingPolicy.Treatment.DISCARD;
                 default -> ProcessingPolicy.Treatment.DEGRADE;
             };
             String section = location.sectionIndex() < 0 ? "" : document.sections().get(location.sectionIndex()).id();
@@ -491,6 +491,14 @@ final class WebRenderer {
     }
 
     private void preflight() throws IOException {
+        document.navigation().validate(document);
+        sourceText(document.navigation().contents().title(), DOCUMENT);
+        for (var bookmark : document.navigation().bookmarks()) {
+            sourceText(bookmark.title(), DOCUMENT); sourceText(bookmark.blockId(), DOCUMENT);
+        }
+        if (!document.navigation().equals(com.mirakyux.export4j.model.DocumentNavigation.NONE)) {
+            loss(ExportFeature.NAVIGATION, DOCUMENT, "Portable navigation declarations omitted from flowing output");
+        }
         if (document.sections().size() > limits.maxSections()) { limit(DOCUMENT, "Section budget exceeded"); }
         sourceText(document.metadata().title(), DOCUMENT); sourceText(document.metadata().author(), DOCUMENT);
         var headers = new HashSet<PageRegion>(); var footers = new HashSet<PageRegion>();

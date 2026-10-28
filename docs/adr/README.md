@@ -109,3 +109,4 @@
 | 0090 | [单页 PNG 使用私有辅助块恢复模型](0090-embedded-png-model-recovery.md) | 已采纳；准确像素字节绑定、有界私有块、单页后端及无读取器拒绝 |
 | 0091 | [标准容器中的恢复信息按调用显式写入](0091-optional-standard-container-recovery.md) | 已采纳；DOCX／PNG 页 ZIP 成员、PDF 附件、准确绑定与显式体积代价 |
 | 0092 | [有损输出从当前文件重建恢复模型](0092-reimport-lossy-output-for-recovery.md) | 已采纳；显式当前字节读取器、目标损失降级、实际导入损失及源内容排除 |
+| 0093 | [声明式导航与自生成文档恢复验收](0093-portable-navigation-and-recovery-acceptance.md) | 已采纳；后端中立导航、当前标题解析、明确目标损失及 GAP-24 验收范围 |

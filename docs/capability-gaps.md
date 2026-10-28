@@ -1,6 +1,6 @@
 # 能力缺口与推进表
 
-更新日期：2026-10-27。依据当前源码和独立验收记录。目标是易用、可控的 Java 文档生产引擎；不以功能名称数量计算完成率。
+更新日期：2026-10-28。依据当前源码和独立验收记录。目标是易用、可控的 Java 文档生产引擎；不以功能名称数量计算完成率。
 
 状态含义：**待实现**尚无完整实现；**推进中**已有实现但未完成验收；**部分支持**只有明确子集；**已验收**所列目标及边界均有证据；**范围外**记录未提供的能力，不进入当前执行队列。每项独立关闭，不能以 Builder 或同名方法代替行为验收。
 
@@ -8,7 +8,7 @@
 
 [阶段七十七](verification/phase-77-xml-template-bundle.md)补齐既有 XML 模板源码编辑、普通 ZIP 保存／重开及显式资源复用，继续使用 `XmlTemplate → DocumentTemplate`。这是 GAP-07 的模板编写能力；任意语义模型恢复、原生格式恢复信息及完整往返仍按 GAP-24 独立跟踪。
 
-[阶段七十八](verification/phase-78-xml-model-saving.md)完成支持的语义文档到既有 XML 的保存／重开／编辑，[阶段七十九](verification/phase-79-xml-region-saving.md)完成页区、变体和有序图层的共享来源保存。[阶段八十](verification/phase-80-xml-semantic-saving.md)进一步保留注释／标记、Caption 和标题／列表文字外链，完整绑定及统一转换传递注释，三轮控制、实际编辑、10 页 PDF 和 Web 损失对账通过。[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)补齐独立 CrossReference 的保存／绑定与目标改写，跨节显示页码、题注／列表编号、循环目标和 16 页 PDF 验收通过。GAP-24.1 仍为部分支持；自定义运行时组件、主题编写意图及标准格式内嵌恢复继续独立推进。
+[阶段七十八](verification/phase-78-xml-model-saving.md)完成支持的语义文档到既有 XML 的保存／重开／编辑，[阶段七十九](verification/phase-79-xml-region-saving.md)完成页区、变体和有序图层的共享来源保存。[阶段八十](verification/phase-80-xml-semantic-saving.md)进一步保留注释／标记、Caption 和标题／列表文字外链，完整绑定及统一转换传递注释，三轮控制、实际编辑、10 页 PDF 和 Web 损失对账通过。[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)补齐独立 CrossReference 的保存／绑定与目标改写，跨节显示页码、题注／列表编号、循环目标和 16 页 PDF 验收通过。后续[阶段九十](verification/phase-90-recovery-closure.md)补齐声明式导航和组合验收，GAP-24 的当前完成边界见后文；主题编写意图保留原 XML，自定义运行时代码不序列化。
 
 [阶段七十六](verification/phase-76-pdf-font-compatibility.md)补齐嵌入静态 CFF 的渲染、文字替换、光栅脱敏及语义恢复，并支持同一字体／状态下连续 Tj／TJ 之间的范围匹配。连续多次替换在下一次读取前完成字体子集嵌入；外部字体与内容流的更广组合继续按 GAP-10.6／10.7 独立跟踪。
 
@@ -47,7 +47,7 @@
 | GAP-21 | P2 | 高级色彩、矢量合成和 SVG 兼容有限 | 在绘制契约中表达色彩空间、透明度及合成，扩大静态 SVG 子集；各后端逐项保留或明确报损 | 部分支持：RGB 路径、PNG／JPEG 与图片 alpha、受限离线 SVG 已有；矢量透明度／混合、CMYK／专色及更广 SVG 见 GAP-21.1／21.2 |
 | GAP-22 | P3 | 其他文档及页面格式缺少转换入口 | XLSX、PPTX、EPUB、XPS、PS／PCL 等按格式及输入／输出方向分别定义语义映射、资源、损失和验收；不由扩展名推断兼容 | 待实现：候选范围见后文；已有 PDF／DOCX／HTML／Markdown 转换及 SVG／PNG 静态输出不因此扩大 |
 | GAP-23 | — | 扫描件文字识别与可搜索文字层缺失 | 当前只登记边界；若后续纳入范围，须独立设计可选识别模块及模型／语言资源、文字与像素坐标对应、置信度、预算、取消和许可验收 | 范围外（未实现）：PDF 渲染、图片提取和语义恢复均不执行 OCR，不把扫描图片当作已恢复正文 |
-| GAP-24 | P1 | 有限模型／资源保存及七种标准输出的可选内嵌恢复已提供，通用复杂往返仍有限 | 分别验收模型／资源恢复、标准格式恢复信息、原文档保留编辑及跨格式往返；内容、结构、外观和文件字节分开判定；沿用 GAP-19 的拒绝／警告／忽略及实际损失报告 | 部分支持：[阶段八十二](verification/phase-82-model-recovery.md)提供伴随恢复及七格式矩阵；[八十三](verification/phase-83-embedded-html-recovery.md)、[八十四](verification/phase-84-embedded-comment-recovery.md)、[八十五](verification/phase-85-embedded-png-recovery.md)逐项提供 HTML／Markdown／SVG／单 PNG 内嵌；[八十六](verification/phase-86-standard-container-recovery.md)补齐 PDF／DOCX／PNG 页 ZIP 的可选内嵌和独立兼容／体积证据。任意运行时组件、一般复杂往返和外部应用无损重存仍开放；分项见下文 GAP-24.1～24.4 |
+| GAP-24 | P1 | 自生成文档的恢复与往返编辑 | 已支持模型／显式资源的可编辑恢复、可选标准容器、原文档保留路径和多轮损失对账 | 已验收（已支持声明模型与目标子集）：模型／资源保存、七格式可选恢复、原包／原页面保留路径、三轮及跨格式矩阵和真实 Word 保存回读；见[四项明细](#自生成文档的恢复与往返编辑)及[阶段九十](verification/phase-90-recovery-closure.md)。任意外部文件识别、运行时代码和更多原对象编辑仍归各自独立缺口 |
 
 ## 编辑、导入与转换的分项边界
 
@@ -63,7 +63,7 @@ GAP-15～20 为新增跟踪项；GAP-17／18 细化 GAP-07 的输入方向，分
 | GAP-10.4 | P2 | PDF 压缩优化、资源去重和图片重采样 | 分别定义无损／有损目标，报告资源变化及质量损失；检查输出大小、可见差异、结构、预算和失败原子性 | 已验收明确子集：[阶段五十三](verification/phase-53-pdf-optimization.md)；流压缩、相同简单图片／程序流去重、显式 RGB／Gray 降采样／JPEG；复杂蒙版等保留并报损，不保证输出更小 |
 | GAP-10.5 | P3 | PDF 内容流文字替换与区域脱敏 | 限定可处理字体编码和内容结构；替换验证定位与版面差异，脱敏验证目标文字／图片及受支持可达副本的实际清除；覆盖矩形不能作为删除证据 | 明确子集分别验收：[阶段五十四](verification/phase-54-pdf-text-editing.md)仅修改 Tj／TJ 命中字形范围并保持未命中位置；[阶段五十五](verification/phase-55-pdf-redaction.md)清除区域像素后新建纯图片 PDF，不复制源对象／文字／附件／历史。后者损失全文搜索和矢量编辑，不支持保留其他可编辑文字的选择性矢量脱敏 |
 | GAP-11.1 | P2 | 认证签名、现有签名验证、可信时间戳和长期验证资料不完整 | 逐项实现证书链信任、OCSP／CRL、可信时间戳及 DSS 验证资料；分别验收 PAdES B／T／LT／LTA、DocMDP 修改符合性、证据过期／缺失和后续资料更新。编辑先识别签名影响，无支持路径时失败 | 部分支持：CMS 及[认证签名](verification/phase-68-pdf-certification.md)的结构、权限声明、独立完整性验签和篡改拒绝已验收；[已有签名字节完整性](verification/phase-72-pdf-signature-verification.md)已验收；信任／撤销／时间戳／长期验证、修改符合性及阅读器执行仍开放 |
-| GAP-12.1 | P2 | 首页／奇偶页区的语义映射、浮动图片／文本框、复杂图片变换及更深内表有限 | 逐结构保留语义、关系和声明意图；源页区缺少固定高度时仍显式配置；Word 的读取／字段更新／保存回读／视觉结果分别登记 | 部分支持：[阶段四十八](verification/phase-48-docx-editing.md)验收样式级联／显式物理字体映射；原包编辑保留三类页区；[阶段六十一](verification/phase-61-page-variants.md)进一步完成首页／奇偶固定页区语义映射；Word 读取通过，保存／导出控制组也超时 |
+| GAP-12.1 | P2 | 首页／奇偶页区的语义映射、浮动图片／文本框、复杂图片变换及更深内表有限 | 逐结构保留语义、关系和声明意图；源页区缺少固定高度时仍显式配置；Word 的读取／字段更新／保存回读／视觉结果分别登记 | 部分支持：[阶段四十八](verification/phase-48-docx-editing.md)验收样式级联／显式物理字体映射；原包编辑保留三类页区；[阶段六十一](verification/phase-61-page-variants.md)进一步完成首页／奇偶固定页区语义映射；早期 Word 保存／导出控制组超时；[阶段九十](verification/phase-90-recovery-closure.md)已补齐生成 DOCX 的真实编辑／保存／重开及当前文件受限回读。浮动图片／文本框、复杂变换及更广外部 DOCX 结构仍开放 |
 | GAP-12.2 | P2 | DOCX 目录、评论、修订和表单缺完整模型映射 | 分别确定模型与损失规则；改动普通正文时也检查未编辑部分是否被丢弃；不把输出可打开视为完整保留 | 部分支持：[原包编辑](docx-editing-api.md)已独立验证普通文字编辑时保留未编辑结构及字节；复杂边界不能编辑、字段不更新，完整语义编辑继续开放 |
 | GAP-14.1 | P1 | 编辑与转换的跨格式语料和损失对账 | 覆盖导入→编辑→导出链路、嵌套格／页区／跨运行替换、ID／引用及未编辑内容；预检与实际报告逐项核对，独立验证输出、取消／失败及旧目标保护；同时保持 API 文档事实一致 | 已验收本次明确子集：[阶段四十四至五十六](remaining-capabilities-plan.md)包含语义／源包编辑、四种输入、实际输出编码、PDF 对象／文字／像素处理、独立双渲染和隔离调用方；未来扩大格式范围仍须添加对应语料 |
 
@@ -76,7 +76,7 @@ GAP-15～20 为新增跟踪项；GAP-17／18 细化 GAP-07 的输入方向，分
 | 分项 | 优先级 | 当前缺口 | 独立验收目标 | 状态 |
 | --- | --- | --- | --- | --- |
 | GAP-10.6 | P1 | 外部 PDF 的字体、内容流及资源组合兼容仍有边界 | 按读取／编辑／渲染／恢复入口分别扩大字体、Form XObject、ExtGState、图层和标签结构支持；显式声明仅保留、可编辑或可恢复，核对资源引用与视觉结果。未嵌入字体须有明确字体来源及映射，禁止隐式系统回退；脚本与未知活动动作继续拒绝 | 部分支持：[嵌入静态 CFF](pdf-font-compatibility-api.md)已贯通渲染、文字替换、光栅脱敏及语义恢复，见[七十六](verification/phase-76-pdf-font-compatibility.md)；未嵌入字体映射、传统 Type1／Type3、Form／ExtGState 编辑与恢复、图层／标签结构仍待扩展 |
-| GAP-10.7 | P1 | 跨字体／定位／样式边界的 show 匹配、复杂文字状态仍受限 | 从同一行跨 Tj／TJ 的匹配开始，保留原编码来源、样式、字形簇和未命中文字位置；明确容量不足、塑形及定位歧义的处理，独立验证实际命中数、文字唯一性和旧目标保护 | 部分支持：[同状态连续 Tj／TJ 的范围替换](pdf-text-editing-api.md)及顺序多次替换已由[七十六](verification/phase-76-pdf-font-compatibility.md)验收；任何其他操作符结束序列，跨字体／定位／颜色变化及 Form 搜索仍待扩展 |
+| GAP-10.7 | P1 | 跨字体／定位／样式边界的 show 匹配、复杂文字状态仍受限 | 从同一行跨 Tj／TJ 的匹配开始，保留原编码来源、样式、字形簇和未命中文字位置；明确容量不足、塑形及定位歧义的处理，独立验证实际命中数、文字唯一性和旧目标保护 | 部分支持：[同状态连续 Tj／TJ 的范围替换](pdf-text-editing-api.md)及顺序多次替换已由[七十六](verification/phase-76-pdf-font-compatibility.md)验收；任何其他操作符结束序列，跨字体／定位／颜色变化及 Form 搜索仍待扩展；[九十](verification/phase-90-recovery-closure.md)增加被动 Span／ActualText 标记外普通文字编辑，标记内部仍拒绝或明确跳过。 |
 | GAP-10.8 | P2 | 已有 PDF 缺少面向图片绘制实例的替换入口 | 区分共享图像资源和单次绘制，替换指定实例时保持其他实例；明确变换、尺寸、蒙版／alpha 与色彩规则，独立核对像素、引用和未编辑页面 | 待实现：语义模型图片替换及页面图片叠加不能代替内容流中的原位图片编辑 |
 | GAP-10.9 | P2 | 区域脱敏不能保留选区外的可搜索文字与矢量 | 在明确内容流子集中实际清除指定文字、图片及路径；覆盖受支持嵌套资源、隐藏替代文本、副本和历史，独立验证敏感内容不可提取及未选内容保留。不支持的结构不得产生部分脱敏成功结果 | 待实现：当前[脱敏](pdf-redaction-api.md)重建纯图片 PDF，全文搜索及矢量编辑损失继续明确报告 |
 | GAP-20.1 | P1 | 表格恢复依赖调用方显式网格 | 分别验收有线／无线表格的行列检测、合并格及嵌套结构；保留来源位置，提供不确定性诊断和显式网格覆盖。覆盖误识别、缺线、相邻正文及跨页情形；不能恢复的结构按策略报损 | 待实现：当前[显式网格恢复](pdf-semantic-import-api.md)已验收；普通文字对齐不自动视为表格 |
@@ -116,10 +116,10 @@ GAP-24 优先解决 Export4j 自己导出的文档能否重新打开并继续编
 
 | 分项 | 优先级 | 当前缺口 | 独立验收目标 | 状态 |
 | --- | --- | --- | --- | --- |
-| GAP-24.1 | P1 | 任意语义模型及资源的完整持久化／恢复未提供 | 明确文档／分节／页区、主题及样式意图、表格／字段／列表、稳定 ID／引用、图片和字体资源的可保留范围；复用已有公开语法与格式能力，不为保存额外引入专用扩展名。以结构、资源、实际编辑及重导出验收 | 部分支持：[XmlTemplateWriter](xml-model-saving-api.md)保存正文／分节、完整格式、表格／列表／字段、ID／引用、图片及显式字体／许可；[七十九](verification/phase-79-xml-region-saving.md)保留页区、变体及共享图层来源；[八十](verification/phase-80-xml-semantic-saving.md)保留注释／标记、Caption 与标题／列表文字外链，完整绑定／转换、三轮控制、实际编辑及 10 页 PDF 验收通过。[八十一](verification/phase-81-xml-cross-reference-saving.md)保留独立 CrossReference 的类型／目标／前缀／格式，三轮保存、目标改写及 16 页 PDF 验收通过。[八十二](verification/phase-82-model-recovery.md)补齐编辑后显式字体／许可传递及已删图片不复活；原主题／变量／条件意图直接保留原 XML 源码，渲染模型不反推。自定义运行时组件仍明确报损，字体句柄／回调不序列化。Navigation／TableOfContents 运行时配置同样未持久化；[八十九](verification/phase-89-navigation-recovery.md)仅验收调用方从恢复后的当前标题显式重建目录／书签，原样式和过滤规则须另外保留 |
-| GAP-24.2 | P1 | 声明的七种输出均可显式内嵌；任意应用另存后保持恢复信息未保证 | 按格式选定标准容器；明确支持版本、资源一致性、缺失／过期／冲突与外部编辑后的行为，禁止旧信息覆盖当前可见内容；独立验证标准阅读器 | 格式内嵌子目标已完成：[八十三](verification/phase-83-embedded-html-recovery.md) HTML、[八十四](verification/phase-84-embedded-comment-recovery.md) Markdown／SVG、[八十五](verification/phase-85-embedded-png-recovery.md) 单页 PNG、[八十六](verification/phase-86-standard-container-recovery.md) PDF／DOCX／PNG 页 ZIP。普通文件仍可选；version 1 清单准确绑定标准字节和资源摘要。缺失／过期默认拒绝，显式策略及当前文件读取器才受限导入；损坏、预算和有损源快照不能绕过。Word 打开通过，但本轮另存未完成；自动发现及任意应用重存后准确恢复未提供，见 [ADR-0091](adr/0091-optional-standard-container-recovery.md) |
-| GAP-24.3 | P2 | 原包／原页面继续编辑的更广结构保留有限 | 复用 GAP-10.1／10.2／10.5 与 GAP-12.1／12.2，逐项扩大可保留或可编辑的源结构；未编辑包条目、对象关系、文字位置、页面外观与当前字段值分别核对，覆盖无编辑重存及局部修改后回读；遇到没有已验证保留路径的内容按策略明确失败或报损，签名影响独立处理 | 部分支持：既有[DOCX 原包编辑](docx-editing-api.md)和[PDF 处理](pdf-adapter-api.md)子集保持；[八十二](verification/phase-82-model-recovery.md)补齐 DOCX 无编辑准确字节、局部改字后的未修改包条目，PDF 改字后的未修改区域、脱敏无源对象及旧恢复数据失效，受限导入当前模型再保存。更广源结构／阅读器保存仍开放，不关闭原 GAP-10／12 |
-| GAP-24.4 | P1 | 一般复杂模型与更广阅读器往返矩阵尚未覆盖 | 对每个声明支持方向验收模型→导出→导入→编辑→再导出，包含 A→B→A、多轮与无编辑控制；分别核对内容、模型、外观、ID／引用及资源，逐次定位不可逆损失。ERROR 拒绝不能满足保留目标的转换，WARN／IGNORE 均记录实际损失 | 部分支持：[七十八](verification/phase-78-xml-model-saving.md)至[八十一](verification/phase-81-xml-cross-reference-saving.md)覆盖复杂语义 XML 三轮；[八十二](verification/phase-82-model-recovery.md)至[八十六](verification/phase-86-standard-container-recovery.md)覆盖简单语义、49 组 A→B→A、七种格式内嵌及外部改动。[八十七](verification/phase-87-complex-lossy-recovery.md)增加标题／列表／合并格／图片的七格式三轮、49 组复杂 A→B→A、四方向编号引用及有损实际文件重导入；[八十八](verification/phase-88-section-recovery.md)补充两节四页、共享页区／变体／图层／嵌套表／纵向合并格六格式三轮及 36 组矩阵，修复 HTML 格内滚动容器重导入。[八十九](verification/phase-89-navigation-recovery.md)补脚注／尾注／题注／行内及独立引用四格式三轮、16 组矩阵、实际注释编辑与目标改写，以及当前标题的显式目录重建；DOCX 注释／标记丢弃与题注／独立引用降级均有明确策略。真实损失累计且已丢内容不返回。静态后端仍拒绝引用交互链接，无匹配恢复信息时不从 SVG／PNG 像素推断语义；原运行时目录配置持久化、更广跨特性组合及真实应用重存仍开放 |
+| GAP-24.1 | P1 | 已支持声明模型与显式资源的持久化／恢复 | 文档／分节／页区、完整格式、表格／字段／列表、ID／引用、注释、图片、字体／许可及声明式导航；保留原 XML 编写意图，不序列化 Java 回调或句柄 | **已验收**：[七十八](verification/phase-78-xml-model-saving.md)至[八十一](verification/phase-81-xml-cross-reference-saving.md)的完整语义 XML 保存和[八十二](verification/phase-82-model-recovery.md)的编辑后资源传递保持；[九十](verification/phase-90-recovery-closure.md)新增 DocumentNavigation，保存标题筛选、手工目标、目录排版与颜色的声明意图，恢复后自动使用当前标题和最终页码。原 XML 保留主题／变量／条件／循环，自定义代码明确拒绝或报损 |
+| GAP-24.2 | P1 | 七种标准输出的显式恢复信息与一致性 | 可选伴随／内嵌、版本及资源绑定、缺失／过期／冲突拒绝；显式策略及读取器只导入当前文件，损坏不可放行 | **已验收**：[八十三](verification/phase-83-embedded-html-recovery.md)至[八十六](verification/phase-86-standard-container-recovery.md)完成七种容器和体积实测，普通输出无内嵌开销；[九十](verification/phase-90-recovery-closure.md)完成 Word 实际编辑／Save／关闭／重开与三动作回读。应用可能移除或改写恢复信息，默认拒绝，明确配置才受限导入当前内容；不保证任意应用保存仍保留扩展信息 |
+| GAP-24.3 | P2 | 已支持原包／原页面路径的保留编辑与恢复失效 | 核对无编辑准确字节、未选包条目／页面及文字位置，局部修改后回读；未知结构按已验证处理拒绝或报损 | **已验收**：[八十二](verification/phase-82-model-recovery.md)完成 DOCX 原字节／未修改条目、PDF 改字／脱敏及旧恢复信息失效；[九十](verification/phase-90-recovery-closure.md)增加复杂 DOCX 仅正文条目改变、四页 PDF 未选页像素不变，保留被动 Span／ActualText 外部的普通文字编辑。标记内部仍明确跳过或拒绝；更广源对象／签名编辑继续归 GAP-10／12，不由本项关闭 |
+| GAP-24.4 | P1 | 已声明格式方向的多轮、实际编辑与组合矩阵 | 每方向三轮、XML 控制、A→B→A、当前目标重导入、内容／模型／外观／ID／资源和累计损失；ERROR 拒绝、WARN／IGNORE 同处理且可查询损失 | **已验收**：[八十二](verification/phase-82-model-recovery.md)至[八十九](verification/phase-89-navigation-recovery.md)覆盖七格式简单／复杂 49 组、分节 36 组及注释引用 16 组矩阵；[九十](verification/phase-90-recovery-closure.md)将导航、注释、引用、分节变体、图层、嵌套合并表与图片合并为四格式三轮、16 组矩阵，完成独立文件检查、全部新增 PDF 页双渲染、发布坐标调用方及真实 Word 保存回读。交互组合不支持的静态输出明确拒绝，无匹配信息时不从 SVG／PNG 猜测语义 |
 
 恢复数据的解析、解压、资源加载和迁移同样受预算、取消及格式校验约束；损坏或不可信结构不能靠 WARN／IGNORE 放行。有效标准文件缺少恢复信息时，应按请求的保留目标和明确损失规则选择受限导入或拒绝，不能静默声称完整恢复。编辑、删除、脱敏及转换丢弃须同步更新或移除恢复信息，防止隐藏副本恢复已删除内容。公开验收须覆盖外部工具重存、移除恢复信息、可见内容与恢复信息不一致、缺少显式资源、未知版本、失败时旧目标保护及多轮损失累积。
 

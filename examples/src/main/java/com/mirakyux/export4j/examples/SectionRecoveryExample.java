@@ -180,7 +180,7 @@ public final class SectionRecoveryExample {
             default -> throw new IllegalArgumentException("unknown section target");
         };
     }
-    private static SectionedDocument source() throws IOException {
+    static SectionedDocument source() throws IOException {
         var blue = layer("blue-layer", 0x2255aa, "BLUE-LAYER", 80); var purple = layer("purple-layer", 0x882244, "PURPLE-LAYER", 40);
         var regions = PageRegions.builder().header(band("shared-header", "SHARED-ORIGINAL")).footer(band("footer", "FOOT-BAND"))
                 .variant(PageRegions.Variant.FIRST, new PageRegions.Bands(band("first-header", "FIRST-BAND"), PageRegion.EMPTY))

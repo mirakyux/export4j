@@ -20,7 +20,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 [阶段八十八](verification/phase-88-section-recovery.md)补充两节四页、共享页区／变体／重叠图层与嵌套表／纵向合并格的六格式三轮及 36 组 A→B→A。HTML 格内导出滚动容器可按 `TABLE_CELL_CONTAINER` 明确降级／丢弃；DOCX 的图层丢弃、Web 的分节与选择规则损失按当前实际文件记录。单 PNG 仍拒绝多页输入，注释／引用的更广组合和真实应用另存继续独立验收。
 
-[阶段八十九](verification/phase-89-navigation-recovery.md)补充脚注／尾注、题注与行内／独立引用的四格式三轮、实际注释编辑／目标改写及 16 组 A→B→A。PDF 保留本语料完整模型；DOCX 统一转换可明确丢弃注释与显式标记、降级题注／独立引用，Web 另损失动态字段与分页。恢复后的目录与书签由调用方根据当前标题显式重建；Navigation／TableOfContents 运行时配置未持久化，无导航时仅输出正文。更广组合及真实应用另存仍开放。
+[阶段八十九](verification/phase-89-navigation-recovery.md)补充注释／题注／引用的四格式三轮及 16 组矩阵。[阶段九十](verification/phase-90-recovery-closure.md)进一步完成 GAP-24 的整体验收：[DocumentNavigation](portable-navigation-api.md)保存自动标题筛选、手工书签、目录文字／排版／颜色，恢复后自动解析当前标题与最终页码；分节、页区变体、图层、嵌套合并表、图片、注释和引用的组合完成三轮及 16 组 A→B→A。PDF 保留本组合完整模型，DOCX／Web 按明确损失从实际文件重新导入，已丢声明不会回来。真实 Word 编辑／Save／关闭／重开后，默认拒绝缺失／过期信息，显式页区几何及损失策略才读取当前内容。任意应用兼容和外部结构识别仍按独立缺口推进。
 
 [PdfAdapter](pdf-adapter-api.md)提供各自独立的静态复制、页级编辑、被动对象编辑／组合、渲染／提取、优化、文字替换、区域脱敏和语义恢复入口；公共签名不暴露第三方类型。所有入口保留权限、签名、安全解析、预算、取消和原子路径输出边界，不能因另一入口支持某对象而自动放宽。
 
@@ -30,7 +30,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 | [对象编辑](pdf-object-editing-api.md)／[组合](pdf-object-composition-api.md) | 四类字段／外观／扁平化、被动批注／链接／书签／附件／Info；选页及跨来源关系／命名空间重映射；[五十](verification/phase-50-pdf-object-editing.md)／[五十一](verification/phase-51-pdf-object-composition.md) |
 | [渲染与图片](pdf-raster-api.md) | CropBox／旋转／UserUnit、明确 DPI／背景、PNG／JPEG 及去重资源提取；字体必须嵌入，未知外观可明确跳页；[五十二](verification/phase-52-pdf-raster.md) |
 | [优化](pdf-optimization-api.md) | 无损流压缩、相同简单图片／字体程序流去重；显式图片降采样／JPEG，返回确切大小与像素统计，不保证更小；[五十三](verification/phase-53-pdf-optimization.md) |
-| [文字替换](pdf-text-editing-api.md) | 同一指令及同状态连续 Tj／TJ 间的范围匹配、显式字体、容量限制及后续坐标保持；不等于脱敏；[七十六](verification/phase-76-pdf-font-compatibility.md) |
+| [文字替换](pdf-text-editing-api.md) | 同一指令及同状态连续 Tj／TJ 范围匹配、显式字体及后续坐标保持；被动 Span／ActualText 外部可编辑，内部命中明确拒绝或跳过；不等于脱敏；[七十六](verification/phase-76-pdf-font-compatibility.md)／[九十](verification/phase-90-recovery-closure.md) |
 | [区域脱敏](pdf-redaction-api.md) | 清除选区像素后新建纯图片 PDF，不复制源对象、文字层、附件、元数据及历史；牺牲全文搜索与矢量编辑；[五十五](verification/phase-55-pdf-redaction.md) |
 | [语义恢复](pdf-semantic-import-api.md) | 逐行段落、字号标题、显式表格网格及流图片，再编辑并转换 DOCX／HTML／Markdown／PDF；普通输出的不可见图片锚点已嵌入字体并验证重新导入；近似源框、推断损失及原版重排限制见[五十六](verification/phase-56-pdf-semantic-import.md) |
 

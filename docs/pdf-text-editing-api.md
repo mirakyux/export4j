@@ -26,10 +26,13 @@ candidate.to(target);
 | TEXT_CAPACITY | SKIP_MATCH | 保留超宽的原匹配范围 |
 | TEXT_SHAPING | SKIP_MATCH | 复杂塑形、竖排或非默认文字间距／渲染状态保留原操作 |
 | TEXT_BOUNDARY | SKIP_MATCH | 匹配切开一个编码字形的 Unicode 映射时保留该匹配 |
-| TEXT_STRUCTURE | SKIP_BLOCK | marked content、Form、ExtGState 或引号 show 指令使该页不编辑 |
+| MARKED_TEXT | SKIP_MATCH | 匹配位于保留的 Span 标记范围或其 ActualText 中，保留该范围，其他普通匹配继续编辑 |
+| TEXT_STRUCTURE | SKIP_BLOCK | 非支持的标记／属性、Form、ExtGState 或引号 show 指令使该页不编辑 |
 | TEXT_RESOURCE | SKIP_BLOCK | 无受支持显式嵌入字体等资源时该页不编辑 |
 
 源字体接受[静态 TrueType 与嵌入 CFF 子集](pdf-font-compatibility-api.md)；替换字体仍为调用方显式 TrueType，没有系统字体扫描或隐式替代。非法 Unicode、指令、字体映射、实际缺字、预算、权限、取消及 I/O 均不能忽略。输入使用原静态适配器边界；对象编辑的批注／字段不是本入口的文字对象。
+
+允许原样保留有界、平衡的 `/Span BMC` 和仅含字符串 ActualText 的 `/Span ... BDC`，包括命名 Properties 和嵌套标记。它们不再使标记外普通文字的替换整页失败；标记内部的显示文字和逻辑文字均不修改。命中内部时默认 ERROR，显式 MARKED_TEXT／SKIP_MATCH 才跳过；ActualText 与未命中图像、页码、表格和页区保持。未知标签、MCID／其他属性仍按 TEXT_STRUCTURE 拒绝或整页跳过，错误嵌套、非法属性和预算无条件失败。更广标记内容编辑、标签及图层仍归原能力缺口，组合保留证据见[阶段九十](verification/phase-90-recovery-closure.md)。
 
 `prepare()` 完成确切编码，`to` 返回实际替换次数和 ACTUAL 报告。目标路径原子替换，借用输出不 close／flush。未命中可返回零修改。其他对象、元数据或独立副本不因此清理，此 API 不提供安全脱敏；脱敏见[独立入口](pdf-redaction-api.md)。
 

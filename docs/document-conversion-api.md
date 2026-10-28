@@ -42,7 +42,7 @@ assert preview.issues().equals(result.report().issues());
 
 导入器上的 `.conversion(source)`、DOCX 的 `.conversion(packageBytes)` 和 `DocumentConversion.from(document)` 返回同一请求类型。DOCX 输入字节在入口复制；Web 导入器保留显式资源快照。预检时读取一次源，调用一次编辑回调，编码一次目标。请求和回调均限当前任务线程使用。
 
-PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget("PDF", new PdfBackend())` 作为目标。字体、角色、页区和导航来自引擎快照；注释从转换输入传入，引擎预配置注释会冲突并被拒绝。后端中立的格式键由调用方如实指定；适配器内置键为 HTML、MARKDOWN、DOCX 和 XML_TEMPLATE。
+PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget("PDF", new PdfBackend())` 作为目标。字体、角色及运行时配置来自引擎快照；模型中的页区和[导航声明](portable-navigation-api.md)由默认引擎自动消费，与非空运行时配置冲突时拒绝。注释从转换输入传入，引擎预配置注释会冲突并被拒绝。后端中立的格式键由调用方如实指定；适配器内置键为 HTML、MARKDOWN、DOCX 和 XML_TEMPLATE。
 
 ## 动作与实际损失
 
@@ -70,6 +70,8 @@ PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget
 未编辑内容同样完整检查。导出位置为原文已知点位或范围；没有可确定范围时不伪造字符区间。要求不可用处理会失败，例如没有源包通道的 PRESERVE、把样式降级配置为 DISCARD。非法结构、宏、安全限制、权限、预算、取消、超时和 I/O 不受动作策略压制。
 
 上述 DOCX 处理仅适用于 `conversionTarget()`；直接 `DocxAdapter.write` 仍严格拒绝题注、独立引用及未映射标记。原生行内 PAGEREF／REF 继续遵守[字段子集](docx-fields-api.md)，不能把题注降为文本后仍声称保留其自动编号引用。注释／引用的实际文件重导入及三动作证据见[阶段八十九](verification/phase-89-navigation-recovery.md)。
+
+模型导航在 DOCX／HTML／Markdown 中须单独声明 NAVIGATION／DISCARD，默认拒绝；WARN／IGNORE 都报告实际丢弃。统一转换与恢复不可把已丢导航藏回恢复包，完整组合与真实 Word 保存回读见[阶段九十](verification/phase-90-recovery-closure.md)。
 
 ## 预检、预算与输出
 

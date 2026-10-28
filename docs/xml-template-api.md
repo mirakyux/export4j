@@ -4,6 +4,8 @@
 
 已有 Java 语义文档可用 [XmlTemplateWriter](xml-model-saving-api.md) 按支持子集保存为同一 XML／ZIP，再重开编辑；无法映射的内容使用共享动作与损失策略。
 
+根级 [navigation](portable-navigation-api.md) 可保存目录与书签声明，放在 page／页区之后、notes／正文／section 之前。使用 `renderSections` 或 `renderComplete` 保留，默认引擎自动根据编辑后的标题解析；较窄的旧绑定入口会拒绝丢失导航。
+
 主源支持固定 header/footer、[首页／奇偶变体](page-variants-api.md)与独立主题，放在可选 page 后、正文前。使用 `DocumentTemplate.renderWithPageRegions` 和 `DocumentEngine.export(PageDocument)` 保留页区及最终页码；旧 render 遇到页区会明确拒绝。图片／语义表格和最终字段均保留；分节使用 renderSections，包含各节纸张／页码、页区继承／覆盖和清空。语法、限制及完整调用见[页区指南](xml-page-regions-api.md)、[分节指南](xml-sections-api.md)和[固定页面图层](page-overlays-api.md)。
 
 正文／列表、六级标题和单元格可分别设置默认字体角色与颜色，局部 `role`／`color` 按存在性覆盖，链接与四类字段继承所在范围。使用 `.bodyText(...)`／`.headingText(...)`／`.cellText(...)`，完整规则见[文字默认值指南](xml-text-defaults-api.md)。字体资源仍由 Java 显式注册，模板不加载系统或网络字体。

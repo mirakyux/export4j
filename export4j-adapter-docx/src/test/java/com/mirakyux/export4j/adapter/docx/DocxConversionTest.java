@@ -29,6 +29,27 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocxConversionTest {
+    @Test void portableNavigationIsExplicitlyDiscardedWithoutHidingOldDeclarations() throws Exception {
+        var source = new com.mirakyux.export4j.model.SectionedDocument(com.mirakyux.export4j.model.DocumentMetadata.EMPTY,
+                List.of(new com.mirakyux.export4j.model.Section("s", com.mirakyux.export4j.model.PageSettings.A4,
+                        List.of(new Paragraph("body", "Visible", ParagraphFormat.of(12))), 0)),
+                com.mirakyux.export4j.model.DocumentNavigation.builder().bookmark("PRIVATE-NAVIGATION", "body", 1).build());
+        var adapter = new DocxAdapter();
+        assertThrows(java.io.IOException.class, () -> adapter.write(source, new ByteArrayOutputStream()));
+        assertEquals("NAVIGATION", assertThrows(ProcessingException.class, () -> DocumentConversion.from(source, List.of()).prepare(adapter.conversionTarget())).issue().feature());
+        for (var action : List.of(ProcessingPolicy.Action.WARN, ProcessingPolicy.Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().feature("NAVIGATION", action, ProcessingPolicy.Treatment.DISCARD).build();
+            var prepared = DocumentConversion.from(source, List.of()).policy(policy).prepare(adapter.conversionTarget());
+            var bytes = new ByteArrayOutputStream(); var actual = prepared.to(bytes);
+            assertEquals(prepared.preview().issues(), actual.report().issues()); assertEquals(1, actual.report().losses().size());
+            assertEquals(action == ProcessingPolicy.Action.WARN ? 1 : 0, actual.report().warnings().size());
+            var read = adapter.read(new ByteArrayInputStream(bytes.toByteArray()), DocxAdapter.Policy.STRICT).document();
+            assertEquals(com.mirakyux.export4j.model.DocumentNavigation.NONE, read.navigation());
+            assertEquals("Visible", ((Paragraph) read.sections().getFirst().blocks().getFirst()).text());
+        }
+        var wrong = ProcessingPolicy.builder().feature("NAVIGATION", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.PRESERVE).build();
+        assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(source, List.of()).policy(wrong).prepare(adapter.conversionTarget()));
+    }
     @Test void captionAndIndependentReferenceRequireExplicitTextDegradation() throws Exception {
         var format = ParagraphFormat.of(12);
         var source = Document.builder().add(new Caption("figure", "Figure", "CAPTION", format))

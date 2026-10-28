@@ -43,6 +43,30 @@ public record Navigation(List<Bookmark> bookmarks, TableOfContents contents, Lis
                 document.sections().stream().flatMap(section -> section.blocks().stream()).toList()));
     }
 
+    /** Resolves portable declarations against current heading text; no source model is cached. */
+    public static Navigation fromDocument(SectionedDocument document) {
+        var value = document.navigation(); value.validate(document);
+        var bookmarks = value.headings() ? document.sections().stream().flatMap(section -> section.blocks().stream())
+                .filter(Heading.class::isInstance).map(Heading.class::cast).filter(heading -> heading.level() <= value.maxHeadingLevel())
+                .map(heading -> new Bookmark(heading.text(), heading.id(), heading.level())).toList()
+                : value.bookmarks().stream().map(bookmark -> new Bookmark(bookmark.title(), bookmark.blockId(), bookmark.level())).toList();
+        var source = value.contents(); var appearance = ContentsStyle.builder();
+        source.styles().forEach((part, style) -> {
+            if (part == com.mirakyux.export4j.model.DocumentNavigation.Part.TITLE) { appearance.titleStyle(typography(style)); }
+            else { appearance.pageLabelStyle(typography(style)); }
+        });
+        source.colors().forEach((part, color) -> {
+            var rgb = new com.mirakyux.export4j.graphics.RgbColor(((color >> 16) & 255) / 255.0, ((color >> 8) & 255) / 255.0, (color & 255) / 255.0);
+            switch (part) { case TITLE -> appearance.titleColor(rgb); case ENTRY -> appearance.entryColor(rgb); case PAGE_LABEL -> appearance.pageLabelColor(rgb); }
+        });
+        return new Navigation(bookmarks, new TableOfContents(source.enabled(), source.title(), typography(source.entries()), appearance.build()), List.of(), List.of());
+    }
+
+    private static ParagraphStyle typography(com.mirakyux.export4j.model.DocumentNavigation.TextStyle style) {
+        return new ParagraphStyle(style.size(), style.lineHeight(), style.firstIndent(), style.subsequentIndent(),
+                com.mirakyux.export4j.text.TextAlignment.valueOf(style.alignment().name()), style.lineBreak());
+    }
+
     public static Navigation fromHeadings(Document document, TableOfContents contents, List<Comment> comments, List<Field> fields) {
         Objects.requireNonNull(document, "document");
         var bookmarks = document.blocks().stream().filter(Heading.class::isInstance).map(Heading.class::cast)

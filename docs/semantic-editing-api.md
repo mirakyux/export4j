@@ -37,6 +37,8 @@ var matches = DocumentEditor.edit(edited).find("READY").matches();
 
 ## 已支持操作
 
+`find`／`replaceText` 同时支持独立 CrossReference 的字面前缀，保留 ID、目标、PAGE／NUMBER 类型和完整格式；实际解析出的页码／编号不是可搜索的源文字。目录声明随模型保留，自动标题来源使用编辑后的当前文字；`navigation(value)` 明确替换声明并登记 SET_NAVIGATION，静态目标不能悬空，见[导航指南](portable-navigation-api.md)。
+
 | 方法 | 行为 |
 | --- | --- |
 | `append` | 向唯一节或指定节正文末尾增加块，支持空文档 |

@@ -45,6 +45,7 @@ request.prepare().to(Path.of("edited.zip"));
 | 行内对象 | 段落／行内格的原 PNG／JPEG、尺寸／位移／替代文字／外链；PAGE、PAGES、页码引用、编号引用及其宽度／样式 |
 | 独立交叉引用 | CrossReference 的 PAGE／NUMBER、原始前缀、目标 ID 和完整格式；最终分页后解析跨节显示页码、题注／列表标签及跳转，多行预留沿用既有布局 |
 | 注释／题注 | 显式传入的脚注／尾注顺序、正文、种类、ID／锚点；段落显式标记宽度／样式或旧段末标记；Caption 原始 kind／text／format，编号仍在布局阶段计算 |
+| 声明式导航 | 自动当前标题及最大级别、手工书签；目录启用状态／标题／完整条目排版及标题／页码样式、三处颜色的显式意图；见[导航指南](portable-navigation-api.md) |
 | 显式资源 | 原图片字节去重；字体原字节及许可文本，文件名由调用方指定 |
 
 所有几何单位为 pt。原文 UTF-16 顺序、字段／图片的 U+FFFC 位置保留。保存的 XML 使用 `literal-text="true"`，`${...}`、未闭合 `${`、CR／LF／TAB 和补充平面字符均按正文保存；XML 特殊字符安全转义，换行／制表使用数字实体避免属性归一化。非法 XML 1.0 Unicode 无条件失败。
@@ -52,6 +53,8 @@ request.prepare().to(Path.of("edited.zip"));
 已有纯文本短构造器可能在重开后表现为显式默认运行；空文本及对象运行也可被既有绑定器规范化。这不改变文字、完整格式或行内对象，但不承诺 Java record 的内部表示、主题名称／继承意图、原始 XML 排版或 ZIP 压缩字节相同。默认运行控制与富模型完整值分别验收。
 
 XML 能表示的 Auto／递归结构不等于所有布局组合可用；含块格表格的 Auto 等既有布局限制继续适用。字体角色不会自动关联 ZIP 内的某个文件，重导出仍须显式加载并配置引擎角色。
+
+导航属于 `SectionedDocument`，保存后使用 `renderSections` 或 `renderComplete` 重开；`render`／`renderWithPageRegions` 遇到导航明确拒绝。默认引擎和直接渲染器从当前候选消费声明；不序列化运行时 Navigation 的评论、表单或回调。旧构造器默认 `DocumentNavigation.NONE`，新增 record 组件要求调用方重新编译，见 [ADR-0093](adr/0093-portable-navigation-and-recovery-acceptance.md)。
 
 ## 页区共享来源
 

@@ -784,7 +784,10 @@ public final class DocumentLayouter {
                 for (double value : automatic) { autoPreferred += value; }
             }
             double autoSpace = availableWidth - fixed - (autoPreferred > 0 ? fractionMinimum : 0);
-            if (autoMinimum > autoSpace) { throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(), -1, -1, -1, "minimum column widths exceed page", null); }
+            if (!fits(fixed + autoMinimum + (autoPreferred > 0 ? fractionMinimum : 0), availableWidth)) {
+                throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(), -1, -1, -1, "minimum column widths exceed page", null);
+            }
+            autoSpace = Math.max(autoMinimum, autoSpace);
             double ratio = autoPreferred > autoMinimum ? Math.min(1, (autoSpace - autoMinimum) / (autoPreferred - autoMinimum)) : 1;
             double autoUsed = 0;
             for (int column = 0; column < automatic.length; column++) {
@@ -794,7 +797,7 @@ public final class DocumentLayouter {
                 }
             }
             double remaining = availableWidth - fixed - autoUsed;
-            if (!Double.isFinite(fixed) || fixed > availableWidth || maxWeight > 0 && remaining <= 0) {
+            if (!fits(fixed, availableWidth) || maxWeight > 0 && remaining <= 0) {
                 throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(),
                         -1, -1, -1, "column widths exceed the content area", null);
             }

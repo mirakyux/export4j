@@ -164,6 +164,9 @@ public final class DocxAdapter {
 
     public void write(SectionedDocument document, OutputStream output) throws IOException {
         Objects.requireNonNull(document, "document");
+        if (!document.navigation().equals(com.mirakyux.export4j.model.DocumentNavigation.NONE)) {
+            throw new IOException("DOCX navigation requires an explicit conversion loss policy");
+        }
         Objects.requireNonNull(output, "output");
         if (document.sections().stream().anyMatch(section -> !section.pageRegions().background().isEmpty()
                 || !section.pageRegions().foreground().isEmpty())) {

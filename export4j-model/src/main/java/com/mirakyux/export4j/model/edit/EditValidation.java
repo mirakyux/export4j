@@ -28,6 +28,13 @@ final class EditValidation {
         var refs = new ArrayList<Reference>();
         Map<String, String> markers = new HashMap<>();
         long[] counts = { 0, 0 };
+        var navigation = document.navigation();
+        EditSupport.unicode(navigation.contents().title(), state);
+        count(counts, 0, navigation.contents().title().length(), state);
+        for (var bookmark : navigation.bookmarks()) {
+            state.work(1); EditSupport.unicode(bookmark.title(), state); EditSupport.unicode(bookmark.blockId(), state);
+            count(counts, 1, (long) bookmark.title().length() + bookmark.blockId().length(), state);
+        }
         EditSupport.map(document, state, (block, location) -> {
             count(counts, 1, 0, state);
             if (!ids.add(block.id())) { throw new IllegalArgumentException("duplicate block ID in edited document"); }

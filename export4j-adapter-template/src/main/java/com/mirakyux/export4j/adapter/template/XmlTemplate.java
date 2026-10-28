@@ -25,6 +25,7 @@ import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.DocumentNavigation;
 import com.mirakyux.export4j.model.DocumentTemplate;
 import com.mirakyux.export4j.model.DocumentTheme;
 import com.mirakyux.export4j.model.Note;
@@ -532,6 +533,10 @@ public final class XmlTemplate {
             var prefix = regionPrefix(root, content, 0, PageRegions.EMPTY, settings);
             var regions = prefix.regions();
             var body = content.subList(prefix.end(), content.size());
+            var navigation = DocumentNavigation.NONE;
+            if (!body.isEmpty() && body.getFirst().name().equals("navigation")) {
+                navigation = navigation(body.getFirst()); body = body.subList(1, body.size());
+            }
             var notes = new ArrayList<Note>();
             if (!body.isEmpty() && body.getFirst().name().equals("notes")) {
                 var declarations = body.getFirst(); attributes(declarations, Set.of());
@@ -566,9 +571,46 @@ public final class XmlTemplate {
                     sections.add(new DocumentTemplate.SectionNode(sectionId, sectionSettings,
                             nodes(children.subList(selected.end(), children.size())), first, selected.regions()));
                 }
-                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText, notes);
+                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText, notes, navigation);
             }
-            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates, literalText, notes);
+            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates, literalText, notes, navigation);
+        }
+
+        private DocumentNavigation navigation(Element element) {
+            if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
+            attributes(element, Set.of("headings", "max-level"));
+            var result = DocumentNavigation.builder().headings(flag(element, "headings", false))
+                    .maxHeadingLevel(element.attributes().containsKey("max-level") ? integer(element, "max-level") : 6);
+            boolean hasContents = false;
+            for (var child : children(element)) {
+                if (child.name().equals("bookmark") && !hasContents) {
+                    attributes(child, Set.of("title", "target", "level")); empty(child);
+                    validated(child, () -> result.bookmark(required(child, "title"), literalId(child, "target"), integer(child, "level")));
+                } else if (child.name().equals("contents") && !hasContents) {
+                    hasContents = true;
+                    attributes(child, Set.of("enabled", "title"));
+                    var styles = new java.util.EnumMap<DocumentNavigation.Part, DocumentNavigation.TextStyle>(DocumentNavigation.Part.class);
+                    var colors = new java.util.EnumMap<DocumentNavigation.Part, Integer>(DocumentNavigation.Part.class);
+                    for (var option : children(child)) {
+                        var part = validated(option, () -> DocumentNavigation.Part.valueOf(required(option, "part")));
+                        if (option.name().equals("typography")) {
+                            attributes(option, Set.of("part", "size", "line-height", "first-indent", "subsequent-indent", "align", "line-break")); empty(option);
+                            var style = validated(option, () -> new DocumentNavigation.TextStyle(number(option, "size", 12), number(option, "line-height", 18),
+                                    number(option, "first-indent", 0), number(option, "subsequent-indent", 0), alignment(option, ParagraphAlignment.LEFT),
+                                    LineBreakPolicy.valueOf(value(option, "line-break", "STANDARD"))));
+                            if (styles.putIfAbsent(part, style) != null) { throw error(option, Code.INVALID_STRUCTURE); }
+                        } else if (option.name().equals("color")) {
+                            attributes(option, Set.of("part", "value")); empty(option);
+                            if (!option.attributes().containsKey("value") || colors.putIfAbsent(part, color(option, "value", 0)) != null) { throw error(option, Code.INVALID_STRUCTURE); }
+                        } else { throw error(option, Code.UNSUPPORTED_ELEMENT); }
+                    }
+                    var entry = styles.remove(DocumentNavigation.Part.ENTRY);
+                    if (entry == null) { entry = DocumentNavigation.TextStyle.of(12); }
+                    var entries = entry;
+                    result.contents(validated(child, () -> new DocumentNavigation.Contents(flag(child, "enabled", true), value(child, "title", "Contents"), entries, styles, colors)));
+                } else { throw error(child, Code.INVALID_STRUCTURE); }
+            }
+            return validated(element, result::build);
         }
 
         private String expression(Element element, String text) {

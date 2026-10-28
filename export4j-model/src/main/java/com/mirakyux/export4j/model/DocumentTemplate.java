@@ -15,7 +15,7 @@ import java.util.Objects;
  */
 public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
         PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText,
-        List<Note> notes) {
+        List<Note> notes, DocumentNavigation navigation) {
     private static final double LOG10_2 = 0.3010299956639812;
 
     public DocumentTemplate {
@@ -27,6 +27,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         pageRegions.requireContained(pageSettings.size());
         sections = List.copyOf(sections);
         notes = List.copyOf(notes);
+        Objects.requireNonNull(navigation, "navigation");
         if (notes.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("note template budget exceeded"); }
         hyperlinkTemplates = Map.copyOf(hyperlinkTemplates);
         if (hyperlinkTemplates.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("hyperlink template budget exceeded"); }
@@ -37,6 +38,12 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             }
         }
         if (!sections.isEmpty() && !nodes.isEmpty()) { throw new IllegalArgumentException("sections cannot mix with root body nodes"); }
+    }
+
+    /** Compatibility constructor for templates without portable navigation. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
+            PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText, List<Note> notes) {
+        this(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, DocumentNavigation.NONE);
     }
 
     /** Compatibility constructor for templates without note declarations. */
@@ -187,6 +194,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * Use this entry for templates declaring page regions; render() rejects those declarations.
      */
     public PageDocument renderWithPageRegions(Map<String, ?> data) {
+        if (!navigation.equals(DocumentNavigation.NONE)) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "navigation"); }
         if (!sections.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "sections"); }
         requireNoNotes();
         var bound = renderComplete(data).document();
@@ -242,7 +250,11 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             state.consume(note.id()); state.consume(note.paragraphId());
             boundNotes.add(new Note(note.id(), note.paragraphId(), state.text(note.text(), root), note.kind()));
         }
-        return new Rendered(new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values), boundNotes);
+        state.consume(navigation.contents().title());
+        for (var bookmark : navigation.bookmarks()) { state.visit("navigation"); state.consume(bookmark.title()); state.consume(bookmark.blockId()); }
+        var document = new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values, navigation);
+        navigation.validate(document);
+        return new Rendered(document, boundNotes);
     }
 
     /** One immutable lexical declaration; iteration does not copy the entire outer data snapshot. */
@@ -623,7 +635,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }
     /** Starts an independent builder from this value; referenced resources remain borrowed. */
-    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates).literalText(literalText).notes(notes); }
+    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates).literalText(literalText).notes(notes).navigation(navigation); }
 
     /** Mutable, task-confined construction state; built values do not retain this builder. */
     public static final class Builder {
@@ -636,6 +648,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private Map<String, String> hyperlinkTemplates = Map.of();
         private boolean literalText;
         private List<Note> notes = List.of();
+        private DocumentNavigation navigation = DocumentNavigation.NONE;
 
         private Builder() { }
         public Builder metadata(DocumentMetadata value) { metadata = java.util.Objects.requireNonNull(value, "metadata"); return this; }
@@ -647,6 +660,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder literalText(boolean value) { literalText = value; return this; }
         /** Static global IDs/anchors; text is bound in root scope and shares the render budget. */
         public Builder notes(List<Note> values) { notes = List.copyOf(values); return this; }
+        public Builder navigation(DocumentNavigation value) { navigation = Objects.requireNonNull(value, "navigation"); return this; }
         /** Maps passive prototype URI keys to expressions bound in the link's lexical scope.
          * Keys are valid ExternalDestination URIs; final values undergo the same validation after binding.
          * Does not fetch resources. Copies the map immediately; each render uses independent state.
@@ -661,6 +675,6 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder each(String path, String variable, java.util.function.Consumer<Nodes> configure) {
             var value = new Nodes(); configure.accept(value); return node(new Each(path, variable, value.snapshot()));
         }
-        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes); }
+        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, navigation); }
     }
 }

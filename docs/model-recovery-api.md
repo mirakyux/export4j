@@ -32,34 +32,34 @@ var next = XmlModelRecovery.capture(edited)
         .prepare();
 ```
 
-`capture` 读取预检已固定的编码和编辑后的 candidate，不重新执行导入、编辑或目标编码。完整语义子集沿用 [XML 模型保存](xml-model-saving-api.md)：正文、分节、页区／变体／图层、表格、列表、字段、ID／引用、注释、题注与图片。没有编辑时模型和资源可以保持一致；重新布局外观仍要求相同字体、字体角色映射、引擎和配置。未注册的角色、缺少字体或不支持的布局不会由恢复入口补造。
+`capture` 读取预检已固定的编码和编辑后的 candidate，不重新执行导入、编辑或目标编码。完整语义子集沿用 [XML 模型保存](xml-model-saving-api.md)：正文、分节、页区／变体／图层、表格、列表、字段、ID／引用、注释、题注、图片及[声明式导航](portable-navigation-api.md)。没有编辑时模型和资源可以保持一致；重新布局外观仍要求相同字体、字体角色映射、引擎和配置。未注册的角色、缺少字体或不支持的布局不会由恢复入口补造。
 
 `resources(bundle)` 仅复制显式字体字节及许可；保存图片重新遍历当前模型。旧模板、片段和已删除图片不会进入新的恢复包。`XmlTemplateWriter.from(...).resources(bundle)` 与 `conversionTarget(bundle)` 提供同样的资源传递方式。模板编写意图应直接用 `XmlTemplateBundle` 保存原 XML 和片段；展开后的模型不能推回主题、原变量、条件或循环。运行时组件代码、字体句柄和配置回调不持久化；自定义块继续按已验证的 ERROR 或 WARN／IGNORE + DISCARD 处理。
 
-### 注释编辑与目录重建
+<a id="注释编辑与目录重建"></a>
+
+### 注释编辑与目录恢复
 
 匹配恢复信息可保留已保存的 Note ID、锚点、脚注／尾注类型及文字，显式 NOTE_MARKER、Caption 和独立 CrossReference 同样沿用 XML 模型契约。正文 `replaceText` 不修改外部注释集合；编辑注释时显式提供 `editor.notes(revisedNotes)`，再从新的模型／注释捕获恢复包。
 
-`Navigation`／`TableOfContents` 是引擎运行时配置，没有写入上述模型。需要恢复后继续生成目录时，调用方应在每次 PDF 编码中从**当前候选**重建标题书签，再显式提供目录样式与其他导航选项：
+需要保存目录时，使用模型中的 `DocumentNavigation`；恢复后默认引擎自动从当前标题解析书签、目录页码和链接：
 
 ```java
-var target = new DocumentConversion.Target("PDF", (current, notes, policy, output) -> {
-    var navigation = new Navigation(Navigation.fromHeadings(current).bookmarks(),
-            TableOfContents.builder().title("Contents")
-                    .style(ParagraphStyle.of(10)).build(), List.of(), List.of());
-    return DocumentEngine.builder(explicitFonts).navigation(navigation).build()
-            .conversionTarget("PDF", new PdfBackend()).writer()
-            .write(current, notes, policy, output);
-});
+var declaration = DocumentNavigation.builder().headings(true).maxHeadingLevel(3)
+        .contents(DocumentNavigation.Contents.of("Contents", 10)).build();
+// 初次保存前将声明加入 SectionedDocument；此后随模型保存和恢复。
+var source = document.withNavigation(declaration);
+var target = DocumentEngine.builder(explicitFonts).build()
+        .conversionTarget("PDF", new PdfBackend());
 var edited = openRequest.conversion()
         .edit(editor -> editor.notes(revisedNotes)
                 .replaceText("heading-a", "Draft", "Final"))
         .prepare(target);
 ```
 
-该调用会在最终分页后解析目录页码和链接；没有提供运行时导航时，只重排正文及模型中的注释／引用，不会自动恢复原目录配置。[NavigationRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/NavigationRecoveryExample.java)验证两节、脚注／尾注、题注、行内／独立引用和标题改名后的目录重建；三页无导航对照与四页显式目录分别验收。原目录的标题、样式、过滤规则、评论及其他运行时设置仍须由调用方保留，不能从标题模型反推。
+模型声明保存自动标题选择／最大级别、手工书签及目录标题／排版／颜色意图，编辑标题后不复用旧标题。非空运行时 `Navigation` 与模型声明冲突时拒绝；评论、表单及任意运行时回调仍由调用方管理，不从对象反向推断保存。未声明导航的旧模型继续不自动产生目录。[RecoveryClosureExample](../examples/src/main/java/com/mirakyux/export4j/examples/RecoveryClosureExample.java)验收完整组合及实际应用保存；[阶段八十九](verification/phase-89-navigation-recovery.md)的手工重建入口作为原有运行时用法保留。
 
-PDF 恢复可保留该组合的完整模型；DOCX 须明确丢弃注释与标记、降级题注／独立引用，Web 还会丢失原分页和动态字段。实际当前文件重导入后保存的恢复包只含降级结果，不会恢复已丢注释，详见[阶段八十九](verification/phase-89-navigation-recovery.md)。
+PDF 恢复可保留该组合的完整声明模型；DOCX 须明确丢弃导航、注释与标记、降级题注／独立引用，Web 还会丢失原分页和动态字段。实际当前文件重导入后保存的恢复包只含降级结果，不恢复已丢声明或注释，详见[阶段九十](verification/phase-90-recovery-closure.md)。
 
 ## 有损转换后保存当前文件模型
 
@@ -71,6 +71,7 @@ var policy = ProcessingPolicy.builder()
         .feature("METADATA", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
         .feature("PAGE_NUMBERING", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
         .feature("NOTES", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
+        .feature("NAVIGATION", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD)
         .build();
 var prepared = DocumentConversion.from(document, notes).policy(policy)
         .prepare(htmlAdapter.conversionTarget());
@@ -211,7 +212,7 @@ pdfSaved.writeEmbedded(pdfCodec, Path.of("editable.pdf"));
 var pdfReopened = XmlModelRecovery.openEmbedded("PDF", Files.readAllBytes(Path.of("editable.pdf")), pdfCodec).prepare();
 ```
 
-三种容器均沿用准确标准文件字节与模型／资源摘要绑定。第三方软件修改、重压或移除内嵌信息时，不用旧模型覆盖当前可见内容；缺失／过期须明确的 WARN／IGNORE + DEGRADE 策略及读取**当前文件**的 fallback，否则拒绝。损坏、冲突、超预算和取消直接失败。PDF 签名、加密及带输出意图的文件不加入附件；PDF/A／PDF/UA 合规须独立验证。Word 可打开本轮 DOCX，但本轮自动 `SaveAs2` 未完成，不能保证外部另存保留内嵌信息。
+三种容器均沿用准确标准文件字节与模型／资源摘要绑定。第三方软件修改、重压或移除内嵌信息时，不用旧模型覆盖当前可见内容；缺失／过期须明确的 WARN／IGNORE + DEGRADE 策略及读取**当前文件**的 fallback，否则拒绝。损坏、冲突、超预算和取消直接失败。PDF 签名、加密及带输出意图的文件不加入附件；PDF/A／PDF/UA 合规须独立验证。[阶段九十](verification/phase-90-recovery-closure.md)实际验证 Word 16.0 编辑、Save、关闭和重开，以及当前文件回退；不保证任意应用另存后保留恢复信息。Word 移除固定页区元数据时，须由调用方显式提供 `DocxAdapter.RegionGeometry`；其节点 ID 规范化也作为损失记录，并从当前新 XML 重导入。阶段八十六的 SaveAs2 未完成记录仅代表当时的证据。
 
 内嵌恢复会增大文件，并随包携带明文模型、字体及许可。本轮小样例增量为 PDF 212,367 B、DOCX 285,771 B、PNG 页 ZIP 214,281 B；具体值随模型、资源和压缩效果变化。普通文件没有这部分开销，伴随包则把开销放在独立 ZIP。详见 [ADR-0091](adr/0091-optional-standard-container-recovery.md)和[阶段八十六](verification/phase-86-standard-container-recovery.md)。
 
@@ -223,7 +224,7 @@ var pdfReopened = XmlModelRecovery.openEmbedded("PDF", Files.readAllBytes(Path.o
 | --- | --- | --- |
 | 当前文件与受支持清单完全匹配 | 恢复完整已保存模型 | 同样恢复；保留历史实际损失 |
 | 缺少伴随包、格式冲突、文件已修改、未知恢复版本 | 拒绝恢复 | 仅允许 `MODEL_RECOVERY` + DEGRADE，且须显式提供当前文件的 `FallbackReader`；返回 `recovered=false`，资源为空并报告受限导入损失 |
-| 本次目标导出发生降级、丢弃或跳过 | 拒绝保存恢复信息 | 仅允许 `MODEL_RECOVERY` + DISCARD，保留标准输出，`companionBytes()` 为空；不把更丰富的源模型藏进恢复包 |
+| 本次目标导出发生降级、丢弃或跳过 | 拒绝保存恢复信息 | `MODEL_RECOVERY` + DISCARD 只保留标准输出、无伴随包；或 DEGRADE 并提供 `reimportOnLoss`，只保存实际当前文件重导入后的模型及真实损失 |
 | 清单／ZIP 损坏、模型／资源摘要冲突、非法语法、资源损坏、超限、取消或 I/O 失败 | 直接失败 | 同样失败；不调用 fallback、不被策略放行 |
 
 WARN 与 IGNORE 的处理相同；IGNORE 隐藏当前警告，实际 issue／loss 不消失。历史 issue 保留原来的 action，不因下一轮换为严格策略而被删除或重复累计。`DocumentConversion.Prepared.exportReport()` 只返回本次目标编码的诊断，便于把历史损失与本次导出损失分开判断；编码成功不等于最终路径出版成功。
@@ -261,4 +262,4 @@ DOCX 原包无编辑重存的既有路径保留原始字节，原绑定仍有效
 
 默认当前标准文件不超过 64 MiB、清单不超过 1 MiB、累计诊断不超过 10,000 条；普通 ZIP 沿用 `XmlTemplateBundle.Limits` 的编码／展开／条目／文字／像素预算。清单使用安全 XML，拒绝 DTD、外部实体、未知结构及过深树；源 XML 继续编译并完整绑定。SHA-256 按块检查取消；`execution` 支持同步取消及超时，借用流不关闭或刷新。路径使用同目录临时文件和原子替换，失败保留旧目标，无非原子回退。
 
-可运行样例见 [ModelRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/ModelRecoveryExample.java)，设计见 [ADR-0087](adr/0087-bound-standard-output-recovery.md)，证据见[阶段八十二](verification/phase-82-model-recovery.md)。七种输出的三轮、49 组 A→B→A、实际编辑及独立重写只证明登记的有限语料；一般复杂模型、任意应用重存和无匹配恢复信息的 SVG／PNG 语义识别仍按 [GAP-24](capability-gaps.md#自生成文档的恢复与往返编辑)及各输入缺口登记。
+可运行样例见 [ModelRecoveryExample](../examples/src/main/java/com/mirakyux/export4j/examples/ModelRecoveryExample.java)，设计见 [ADR-0087](adr/0087-bound-standard-output-recovery.md)，证据见[阶段八十二](verification/phase-82-model-recovery.md)。七种输出的三轮、49 组 A→B→A、实际编辑及独立重写只证明登记的有限语料；[阶段九十](verification/phase-90-recovery-closure.md)补齐声明式导航、跨特性组合及真实 Word 保存回读，完成 [GAP-24](capability-gaps.md#自生成文档的恢复与往返编辑) 所列目标；任意应用兼容和无匹配信息的 SVG／PNG 语义识别仍归各自独立缺口。

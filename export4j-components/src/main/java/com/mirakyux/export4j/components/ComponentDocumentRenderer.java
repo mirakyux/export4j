@@ -85,6 +85,12 @@ public final class ComponentDocumentRenderer {
      * Named font groups are snapshotted per layout and preserved in fixed page-region component contexts. */
     public ComponentDocumentLayout layout(SectionedDocument source, List<SectionTemplate> templates, Navigation navigation,
             FontGroup fonts, Map<String, FontGroup> roles, List<Note> notes) {
+        Objects.requireNonNull(source, "document");
+        Objects.requireNonNull(navigation, "navigation");
+        if (!source.navigation().equals(com.mirakyux.export4j.model.DocumentNavigation.NONE)) {
+            if (!navigation.equals(Navigation.EMPTY)) { throw new IllegalStateException("portable navigation conflicts with runtime navigation"); }
+            navigation = Navigation.fromDocument(source);
+        }
         roles = Map.copyOf(roles);
         var semantic = SemanticBlocks.compile(source, notes);
         SectionedDocument document = semantic.document();
