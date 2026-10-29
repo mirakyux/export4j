@@ -119,3 +119,6 @@
 | 0100 | [原生颜色画刷与离线 SVG 资源](0100-native-paints-and-offline-svg-resources.md) | 已采纳；高级色彩、混合／隔离组、渐变／图案和明确降级 |
 | 0101 | [显式原生 OpenType 与 CFF 嵌入](0101-explicit-native-opentype-and-cff-embedding.md) | 已采纳；可选塑形模块、方向／轴／彩色字形及原生 CFF PDF |
 | 0102 | [有界语义流、显式重放与 PDF 磁盘索引](0102-bounded-semantic-streaming-replay-and-pdf-spool.md) | 已采纳；单次语义源、快照摘要、未来语义和逐页对象释放 |
+| 0103 | [类型化 DOCX 专有语义](0103-typed-native-docx-semantics.md) | 已采纳；标准结构重建、锚点编辑、批注／修订／控件／目录及明确投影损失 |
+| 0104 | [有界离线 HTML/CSS 布局](0104-bounded-html-css-layout.md) | 已采纳；显式模式、组件树、媒体／分页与 Flex／Grid，源和布局预算保持 |
+| 0105 | [显式 API 基线与签名分发](0105-explicit-api-baseline-and-signed-distribution.md) | 已采纳；固定旧提交、保守兼容检查、显式平台与本地签名包，远端发布独立授权 |

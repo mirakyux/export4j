@@ -100,7 +100,7 @@ final class SemanticFragments {
                         }
                         if (rows != null) { rows.add(new TableRowFragment(row.rowIndex(), row.header(), row.repeatedHeader(), cells, row.continuedRow())); }
                     }
-                    yield rows == null ? table : new TableFragment(table.blockId(), table.blockIndex(), table.origin(), table.width(), table.height(), rows);
+                    yield rows == null ? table : new TableFragment(table.blockId(), table.blockIndex(), table.origin(), table.width(), table.height(), rows, table.drawBorders());
                 }
                 case ComponentFragment component -> {
                     var placements = mapper == null ? null : new ArrayList<SemanticPlacement>();

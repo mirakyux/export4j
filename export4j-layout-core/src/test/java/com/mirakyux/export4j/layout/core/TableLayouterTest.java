@@ -315,6 +315,69 @@ class TableLayouterTest {
         assertThrows(UnsupportedOperationException.class, () -> cell.layout().lines().clear());
     }
 
+    @Test
+    void borderlessTablesKeepPaginationTextAndHeaderBackgrounds() {
+        var bordered = numbered(7, 1);
+        var borderless = new Table(bordered.id(), bordered.columns(), bordered.rows(), bordered.headerRows(),
+                bordered.format().toBuilder().drawBorders(false).build());
+        var original = layout(100, 30, bordered);
+        var result = layout(100, 30, borderless);
+        assertEquals(3, result.pages().size());
+        var expected = tables(original);
+        var actual = tables(result);
+        for (int i = 0; i < actual.size(); i++) {
+            assertFalse(actual.get(i).drawBorders());
+            assertEquals(expected.get(i).origin(), actual.get(i).origin());
+            assertEquals(expected.get(i).width(), actual.get(i).width());
+            assertEquals(expected.get(i).height(), actual.get(i).height());
+            assertEquals(expected.get(i).rows(), actual.get(i).rows());
+        }
+        var painted = DocumentPainter.paint(result);
+        var oldPainted = DocumentPainter.paint(original);
+        for (int i = 0; i < painted.pages().size(); i++) {
+            assertEquals(oldPainted.pages().get(i).commands().stream()
+                    .filter(command -> !(command instanceof DrawCommand.StrokePath)).toList(),
+                    painted.pages().get(i).commands());
+            assertTrue(painted.pages().get(i).commands().stream().anyMatch(DrawCommand.FillRect.class::isInstance));
+        }
+    }
+
+    @Test
+    void borderlessAccessibleCellsBindAllTextWithoutTreatingItAsDecoration() {
+        for (int headers : List.of(0, 1)) {
+            var sourceTable = numbered(7, headers);
+            var table = new Table(sourceTable.id(), sourceTable.columns(), sourceTable.rows(), headers,
+                    PLAIN.toBuilder().drawBorders(false).build());
+            var source = document(100, 30, table);
+            var result = DocumentPainter.paintAccessible(source,
+                    new DocumentLayouter().layout(source, List.of(font)), "en-US");
+            result.accessibility().validatePages(result.pages());
+            var logical = result.accessibility().children().getFirst();
+            assertEquals(7, logical.children().size());
+            for (int row = 0; row < 7; row++) {
+                var cell = logical.children().get(row).children().getFirst();
+                assertEquals(1, cell.content().size());
+                var range = cell.content().getFirst();
+                assertEquals(Integer.toString(row), ((DrawCommand.GlyphText) result.pages()
+                        .get(range.pageIndex()).commands().get(range.firstCommand())).run().text());
+            }
+        }
+    }
+
+    @Test
+    void nestedBorderlessTablesKeepIndependentOutlines() {
+        var nested = new Table("inner", List.of(new ColumnWidth.Fixed(60)), List.of(row("Inner")), 0,
+                PLAIN.toBuilder().drawBorders(false).build());
+        var outer = new Table("outer", List.of(new ColumnWidth.Fixed(80)), List.of(new TableRow(List.of(
+                TableCell.builder().blocks(List.of(nested)).build()))), 0, PLAIN);
+        var result = layout(100, 100, outer);
+        var innerFragment = (TableFragment) tables(result).getFirst().rows().getFirst().cells().getFirst()
+                .blocks().getFirst();
+        assertFalse(innerFragment.drawBorders());
+        assertEquals(1, DocumentPainter.paint(result).pages().getFirst().commands().stream()
+                .filter(DrawCommand.StrokePath.class::isInstance).count());
+    }
+
     private static void assertContained(DocumentLayout layout) {
         for (var page : layout.pages()) {
             for (var table : page.elements().stream().filter(TableFragment.class::isInstance).map(TableFragment.class::cast).toList()) {

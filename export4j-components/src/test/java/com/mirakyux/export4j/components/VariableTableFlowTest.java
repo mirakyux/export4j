@@ -50,7 +50,8 @@ class VariableTableFlowTest {
     }
 
     @Test void wrapsAtEachActualWidthAndKeepsEverySourceRowExactlyOnce() {
-        var builder = Table.builder("variable").cellFormat(CELL).format(format -> format.padding(2)).header("HEADER");
+        var builder = Table.builder("variable").cellFormat(CELL)
+                .format(format -> format.padding(2).drawBorders(false)).header("HEADER");
         for (int index = 1; index <= 18; index++) { builder.row("R" + index + " alpha beta gamma delta"); }
         var table = builder.build();
         var parts = new SemanticTable(table).layoutVariableRegions(context(150, 100),
@@ -65,6 +66,7 @@ class VariableTableFlowTest {
             double width = part.regionIndex() % 2 == 0 ? 70 : 150;
             assertEquals(width, part.layout().width());
             var fragment = placement.fragment();
+            assertFalse(fragment.drawBorders());
             assertEquals(placement.fragmentIndex() > 0, fragment.rows().getFirst().repeatedHeader());
             for (var row : fragment.rows()) {
                 if (row.header()) { continue; }

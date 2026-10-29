@@ -7,7 +7,7 @@ A Java Document Layout and Generation Engine
 
 Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档导出库**。通过链式 Java API 或离线 XML 模板编写内容，生成 PDF、导出 DOCX、HTML、Markdown，或渲染 SVG、PNG。PDF、SVG 和 PNG 使用共享布局引擎；独立适配器将文档语义映射为 DOCX 子集、自包含 HTML 和 CommonMark/GFM Markdown。
 
-[统一转换](docs/document-conversion-api.md)串联受支持的 Markdown、HTML/CSS、DOCX 导入和 [PDF 语义恢复](docs/pdf-semantic-import-api.md)，再编辑、预检损失并导出。DOCX 另有[样式级联](docs/docx-style-import-api.md)及[保留原包的文字编辑](docs/docx-editing-api.md)，具体边界分别登记。
+[统一转换](docs/document-conversion-api.md)串联受支持的 Markdown、HTML/CSS、DOCX 导入和 [PDF 语义恢复](docs/pdf-semantic-import-api.md)，再编辑、预检损失并导出。DOCX 支持浮动图片、文本框、批注、修订、控件及目录声明的[类型化语义编辑](docs/docx-semantic-api.md)，并保留[原包文字编辑](docs/docx-editing-api.md)入口。[离线 HTML/CSS 导入](docs/html-import-api.md)另有显式布局模式，处理受支持的 Flex／Grid、尺寸及定位规则。
 
 [模型恢复](docs/model-recovery-api.md)使用与标准文件准确绑定的普通 XML／资源 ZIP，重新打开并编辑已保存模型及显式字体资源。文件修改后须拒绝旧恢复数据或显式受限导入当前内容；有损导出不能隐藏更丰富的源模型。
 
@@ -20,7 +20,7 @@ Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档�
 **当前处于早期开发阶段，尚未发布稳定制品，API 可能调整。** 受支持的 PDF 报告和密集静态表单已具备限定范围的试用条件，具体证据与限制见[就绪评估](docs/readiness-assessment.md)和[能力矩阵](docs/capabilities-api.md)。
 
 - Java 21 LTS · Gradle Wrapper · Apache-2.0。
-- 显式字体和资源，生成 PDF 无需浏览器。
+- 显式字体和资源，生成和转换不依赖打印机驱动、打印服务、Office 或浏览器。
 - 文档语义、布局算法和输出后端保持独立。
 
 ## 目录
@@ -209,7 +209,7 @@ HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出
 | --- | --- |
 | PDF | 报告输出；另有受限页／对象编辑、渲染、优化、脱敏与语义恢复入口，见 [PDF 指南](docs/pdf-adapter-api.md) |
 | SVG／PNG | 复用共享 Display List 的静态输出；非空交互数据明确拒绝 |
-| DOCX | 明确的语义子集，包含受支持文字、表格、图片、编号、字段和各节默认页眉页脚；不支持项按策略拒绝或返回诊断 |
+| DOCX | 类型化语义子集，包含文字、递归内表、分节页区、浮动图片／文本框、批注、修订、控件及目录声明；转换为更简单的目标时报告实际损失 |
 | HTML | 语义 HTML5 导出和离线元素／CSS 子集导入；嵌入／显式图片、受支持合并／嵌套表格及显式损失策略 |
 | Markdown 输出 | CommonMark/GFM 内容；不支持的几何／结构按报错、警告或忽略策略处理 |
 | 输入与编辑 | 离线 XML／严格 Markdown 模板；通用 Markdown／HTML/CSS／DOCX 子集和受限 PDF 语义恢复；[统一转换](docs/document-conversion-api.md)含编辑、损失预检和结果报告 |
@@ -275,7 +275,7 @@ Java 根包名与 Gradle group 为 `com.mirakyux.export4j`。依赖边界及设�
 | 适配器 | [HTML／Markdown 导出](docs/web-export-api.md) · [DOCX 页区](docs/docx-page-regions-api.md) · [DOCX 字段](docs/docx-fields-api.md) · [静态 PDF](docs/pdf-adapter-api.md) |
 | 编辑 | [语义编辑与损失报告](docs/semantic-editing-api.md) |
 | 转换 | [统一导入、编辑与导出](docs/document-conversion-api.md) · [完整样例](examples/src/main/java/com/mirakyux/export4j/examples/DocumentConversionExample.java) |
-| 导入 | [通用 Markdown](docs/markdown-import-api.md) · [离线 HTML/CSS](docs/html-import-api.md) · [PDF 语义恢复](docs/pdf-semantic-import-api.md)，支持导入后编辑及损失报告 |
+| 导入 | [通用 Markdown](docs/markdown-import-api.md) · [离线 HTML/CSS](docs/html-import-api.md) · [DOCX 语义编辑](docs/docx-semantic-api.md) · [PDF 语义恢复](docs/pdf-semantic-import-api.md)，支持导入后编辑及损失报告 |
 | PDF 编辑 | [页面](docs/pdf-page-editing-api.md) · [对象](docs/pdf-object-editing-api.md) · [合并](docs/pdf-object-composition-api.md) · [渲染／图片](docs/pdf-raster-api.md) · [优化](docs/pdf-optimization-api.md) · [文字](docs/pdf-text-editing-api.md) · [脱敏](docs/pdf-redaction-api.md) |
 | 工程维护 | [开发规约](docs/development.md) · [验收记录](docs/verification) · [发布规范](docs/releasing.md) |
 

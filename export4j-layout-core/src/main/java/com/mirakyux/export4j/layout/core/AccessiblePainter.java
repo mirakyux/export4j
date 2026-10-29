@@ -66,9 +66,9 @@ final class AccessiblePainter {
                         for (var cell : row.cells()) {
                             if (cell.hasBlocks()) { throw new IllegalArgumentException("accessible block cells require explicit bindings"); }
                             var single = new TableFragment(table.blockId(), table.blockIndex(), table.origin(), table.width(), table.height(),
-                                    List.of(new TableRowFragment(row.rowIndex(), row.header(), row.repeatedHeader(), List.of(cell), row.continuedRow())));
+                                    List.of(new TableRowFragment(row.rowIndex(), row.header(), row.repeatedHeader(), List.of(cell), row.continuedRow())), table.drawBorders());
                             var painted = fragment(page, single); int first = commands.size(); commands.addAll(painted);
-                            int decoration = row.header() ? 2 : 1;
+                            int decoration = (row.header() ? 1 : 0) + (table.drawBorders() ? 1 : 0);
                             range(artifacts, page.pageIndex(), first, first + decoration);
                             if (row.repeatedHeader()) { range(artifacts, page.pageIndex(), first + decoration, commands.size()); }
                             else {

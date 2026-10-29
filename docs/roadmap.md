@@ -1,6 +1,6 @@
 # 研发路线与验收
 
-本文以[立项文档](project-proposal.md)为范围基线。当前已完成 PDF 报告首版，并推进首批 OpenType 文字、绕排、多栏、拆行／续注、语义编排、DOCX 子集和 SVG／PNG 静态输出。并发、大文档、本地制品与独立工具已有证据，见[生产能力验收](verification/phase-4-production.md)。新增公共复杂文本、字体集合／CFF、模板、外链、自动列宽、末页平衡、执行控制及 PDF 加密／归档／签名，见[本地验收](verification/phase-5-capabilities.md)。完整格式兼容、长期容量、稳定 API 和正式发布仍未完成。
+本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。跨平台／阅读器矩阵、正式分发、设计器及更多格式继续按原有独立缺口验收。
 
 ## 阶段总览
 
@@ -163,4 +163,10 @@
 
 本轮按原剩余清单统一推进，未增加编号或删减关闭条件：变宽递归格／组件网格与轮廓锚点；可变／CFF2／彩色字体、方向塑形与静态 CFF 原生 PDF；单次语义长表、显式重放与磁盘索引 PDF；CMYK／ICC／专色、混合／透明组、渐变／图案和 SVG 本地资源。当前接口见[变宽续排](variable-table-continuation-api.md)、[轮廓浮动](contour-floats-api.md)、[原生文字](native-opentype-api.md)、[语义重放](streaming-replay-api.md)及[高级图形](advanced-graphics-api.md)。最终构建、独立输出及容量结果统一登记在[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)。
 
-历史阶段中的“下一项”及“仍开放”描述保留当时范围，当前状态以缺口表和最新验收为准。跨平台／阅读器矩阵、外部 DOCX、完整浏览器 CSS、设计器及正式发布继续归原有独立缺口；不把这四项已定义内容重复加入后续队列。
+历史阶段中的“下一项”及“仍开放”描述保留当时范围，当前状态以缺口表和最新验收为准；不把已经完成的既定内容重复加入后续队列。HTML/CSS 的文档布局扩展已由[阶段一百零四](verification/phase-104-html-css-layout.md)验收，完整浏览器功能不属于该明确子集。
+
+## GAP-12／14／18：原生语义、CSS 布局与分发检查
+
+[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)完成 DOCX 有类型浮动图／真实文本框、图片变换、评论／六类修订／控件／旧式表单／目录，GAP-12.1／12.2 明确子集均已验收。真实 Word 字段更新、编辑、保存重开与发布 JAR 回读通过，4 页原生页面、4 页 Word PDF 和 4 页语义投影 PDF 完成独立渲染及逐页复查；五包标准校验零错误。验收脚本改为强类型 Office 互操作后解决导出超时，生成／转换链路在无桌面且禁止加载打印类的 JVM 下通过，不依赖打印驱动、打印服务或 Word。既有目录缓存由调用方显式刷新，不以强制全局重算破坏表单当前值。
+
+[阶段一百零四](verification/phase-104-html-css-layout.md)验收 GAP-18.1 的静态选择器、媒体／分页、Flex／Grid、尺寸及定位：14 页 PDF、8 份 SVG、Chromium 源几何、四项负控制和真实损失通过。[阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成 API 固定基线和兼容门禁、本地完整签名分发及实际坐标 JAR 摘要对账；候选远端 CI、正式版本／身份／命名空间、Central 上传及远端消费继续保留未验。当前统一构建 1,783 项测试通过，不能由本地结果推断跨平台应用或正式发布成功。

@@ -2,6 +2,18 @@
 plugins {
     base
 }
+apply(from = "gradle/native-platform.gradle.kts")
+
+val publicationVersion = providers.gradleProperty("export4jVersion").orElse("0.1.0-SNAPSHOT").get()
+require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?").matches(publicationVersion)) {
+    "export4jVersion must be an explicit semantic version"
+}
+val publicationDirectory = providers.gradleProperty("export4jRepositoryDirectory")
+    .map { rootProject.file(it) }.getOrElse(layout.buildDirectory.dir("repository").get().asFile)
+val signPublications = providers.gradleProperty("export4jSign").orElse("false").get().toBooleanStrict()
+require(!signPublications || !publicationVersion.endsWith("-SNAPSHOT")) {
+    "Signed distribution verification requires an explicit non-SNAPSHOT version"
+}
 
 val junitBom = libs.junit.bom
 val junitJupiter = libs.junit.jupiter
@@ -9,7 +21,7 @@ val junitLauncher = libs.junit.launcher
 
 allprojects {
     group = "com.mirakyux.export4j"
-    version = "0.1.0-SNAPSHOT"
+    version = publicationVersion
 }
 
 subprojects {
@@ -67,17 +79,35 @@ subprojects {
                     pom {
                         name.set(project.name)
                         description.set(provider { project.description ?: project.name })
+                        url.set("https://github.com/mirakyux/export4j")
+                        scm {
+                            url.set("https://github.com/mirakyux/export4j")
+                            connection.set("scm:git:https://github.com/mirakyux/export4j.git")
+                            developerConnection.set("scm:git:ssh://git@github.com/mirakyux/export4j.git")
+                        }
+                        developers { developer { id.set("mirakyux"); name.set("Export4j contributors"); url.set("https://github.com/mirakyux") } }
                         licenses { license { name.set("Apache License, Version 2.0"); url.set("https://www.apache.org/licenses/LICENSE-2.0") } }
                     }
                 }
             }
-            repositories { maven { name = "isolated"; url = rootProject.layout.buildDirectory.dir("repository").get().asFile.toURI() } }
+            repositories { maven { name = "isolated"; url = publicationDirectory.toURI() } }
+        }
+        if (signPublications) {
+            apply(plugin = "signing")
+            extensions.configure<SigningExtension> {
+                val key = providers.environmentVariable("EXPORT4J_SIGNING_KEY").orNull
+                    ?: error("Explicit signing requires EXPORT4J_SIGNING_KEY")
+                val password = providers.environmentVariable("EXPORT4J_SIGNING_PASSWORD").orNull
+                useInMemoryPgpKeys(key, password)
+                sign(project.extensions.getByType<PublishingExtension>().publications["library"])
+            }
         }
     }
 }
 
 tasks.named("check") {
     dependsOn(subprojects.map { "${it.path}:check" })
+    dependsOn("apiCheck")
 }
 tasks.named("assemble") {
     dependsOn(subprojects.map { "${it.path}:assemble" })
@@ -92,6 +122,35 @@ tasks.register("publishLocalBundle") {
     group = "publishing"
     description = "Publishes all libraries and the BOM to build/repository, without remote access or user Maven writes."
     dependsOn(subprojects.filter { it.name != "examples" }.map { "${it.path}:publishLibraryPublicationToIsolatedRepository" })
+}
+
+tasks.register("publishSignedBundle") {
+    group = "publishing"
+    description = "Stages explicitly signed Maven artifacts locally; never uploads or chooses a release version."
+    if (signPublications) { dependsOn("publishLocalBundle", "sbom") }
+    doFirst {
+        check(signPublications) { "Use -Pexport4jSign=true and externally supplied signing material" }
+        check(!publicationVersion.endsWith("-SNAPSHOT")) { "Signed distribution verification requires an explicit non-SNAPSHOT version" }
+    }
+}
+
+val verificationPython = providers.gradleProperty("export4jVerificationPython").orElse("python")
+tasks.register<Exec>("apiSnapshot") {
+    group = "verification"
+    description = "Snapshots public/protected Java 21 declarations from the assembled library JARs."
+    dependsOn("assemble")
+    commandLine(verificationPython.get(), "scripts/verify_api_compatibility.py", "snapshot",
+        "--root", rootDir.absolutePath, "--version", publicationVersion,
+        "--output", layout.buildDirectory.file("reports/api/current.json").get().asFile.absolutePath)
+}
+tasks.register<Exec>("apiCheck") {
+    group = "verification"
+    description = "Rejects removed/changed API declarations and newly required abstract members against the reviewed baseline."
+    dependsOn("apiSnapshot")
+    commandLine(verificationPython.get(), "scripts/verify_api_compatibility.py", "compare",
+        "--baseline", "verification/api/baseline-0.1.0-preview.json",
+        "--candidate", layout.buildDirectory.file("reports/api/current.json").get().asFile.absolutePath,
+        "--report", layout.buildDirectory.file("reports/api/compatibility.json").get().asFile.absolutePath)
 }
 
 val inventoryLibraries = subprojects.filter { it.name != "examples" && it.name != "export4j-bom" }

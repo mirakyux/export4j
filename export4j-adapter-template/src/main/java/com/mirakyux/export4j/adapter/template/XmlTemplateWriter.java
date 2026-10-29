@@ -380,6 +380,7 @@ public final class XmlTemplateWriter {
         private void table(Table table, List<CellLocation> path) {
             var owner = location; add("<table"); attr("id", identifier(table.id())); var format = table.format();
             attr("row-split", format.allowRowSplit()); attr("space-before", format.spaceBefore()); attr("space-after", format.spaceAfter());
+            if (!format.drawBorders()) { attr("draw-borders", false); }
             var padding = format.padding(); attr("padding-top", padding.top()); attr("padding-right", padding.right());
             attr("padding-bottom", padding.bottom()); attr("padding-left", padding.left()); add("><columns>");
             for (var column : table.columns()) {

@@ -703,7 +703,7 @@ public final class DocumentLayouter {
                     throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, table, index,
                             pages.size(), body, -1, -1, "header and body row cannot fit the content area", null);
                 }
-                elements.add(new TableFragment(table.id(), index, start, tableWidth, height, placed));
+                elements.add(new TableFragment(table.id(), index, start, tableWidth, height, placed, table.format().drawBorders()));
                 used += height;
                 if (body < rows.size()) {
                     nextPage(table, index, body, 0);
@@ -1040,7 +1040,7 @@ public final class DocumentLayouter {
                     throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, table, index, pages.size(), row, -1, 0,
                             "table headers and one line per active cell cannot fit", null);
                 }
-                elements.add(new TableFragment(table.id(), index, start, tableWidth, height, placed));
+                elements.add(new TableFragment(table.id(), index, start, tableWidth, height, placed, table.format().drawBorders()));
                 used += height;
                 if (row < table.rows().size()) { nextPage(table, index, row, 0); repeated = true; }
             }
@@ -1359,7 +1359,7 @@ public final class DocumentLayouter {
                 }
                 lineCount += lines;
                 result.add(new TableRegion(region, new TableFragment(table.id(), 0, new Point(0, 0),
-                        java.util.Arrays.stream(measured.widths()).sum(), height, placed)));
+                        java.util.Arrays.stream(measured.widths()).sum(), height, placed, table.format().drawBorders())));
                 row = next;
             }
             return List.copyOf(result);
@@ -1517,7 +1517,7 @@ public final class DocumentLayouter {
                 }
                 lineCount += lines;
                 result.add(new TableRegion(region, new TableFragment(table.id(), 0, new Point(0, 0),
-                        java.util.Arrays.stream(active.widths()).sum(), height, coalesceRows(placed))));
+                        java.util.Arrays.stream(active.widths()).sum(), height, coalesceRows(placed), table.format().drawBorders())));
             }
 
             private void advance(int row) {
@@ -1704,7 +1704,7 @@ public final class DocumentLayouter {
                             "document line budget exceeded", null);
                 }
                 var fragment = new TableFragment(table.id(), 0, new Point(0, 0),
-                        java.util.Arrays.stream(measured.widths()).sum(), height, placed);
+                        java.util.Arrays.stream(measured.widths()).sum(), height, placed, table.format().drawBorders());
                 row = next;
                 consumed = offsets;
                 outputs++;
@@ -1729,7 +1729,7 @@ public final class DocumentLayouter {
                 }
                 used += spacing;
                 var placed = part.orElseThrow();
-                elements.add(new TableFragment(table.id(), index, origin(), placed.width(), placed.height(), placed.rows()));
+                elements.add(new TableFragment(table.id(), index, origin(), placed.width(), placed.height(), placed.rows(), placed.drawBorders()));
                 used += placed.height();
                 spacing = 0;
                 if (!cursor.done()) { nextPage(table, index, cursor.rowIndex(), 0); }
@@ -1932,7 +1932,7 @@ public final class DocumentLayouter {
                 if (!progressed) { return null; }
                 next.outputs++;
                 return new TableAttempt(next, new TableFragment(table.id(), index, new Point(0, 0),
-                        java.util.Arrays.stream(measured.widths()).sum(), height, coalesceRows(rows)), extras);
+                        java.util.Arrays.stream(measured.widths()).sum(), height, coalesceRows(rows), table.format().drawBorders()), extras);
             }
 
             private List<TableGrid.Anchor> owners() {
@@ -2073,7 +2073,7 @@ public final class DocumentLayouter {
                         var part = current.take(capacity);
                         if (part == null) { break; }
                         var f = part.fragment();
-                        output = new TableFragment(f.blockId(), index, new Point(0, height + spacing), f.width(), f.height(), f.rows());
+                        output = new TableFragment(f.blockId(), index, new Point(0, height + spacing), f.width(), f.height(), f.rows(), f.drawBorders());
                         usedHeight = f.height(); extras += part.extraLines(); next.nested = part.next();
                         if (next.nested.done()) { next.block++; next.nested = null; }
                     }
@@ -2133,7 +2133,7 @@ public final class DocumentLayouter {
                                         row, column, -1, "atomic nested table exceeds a fresh content region", null);
                             }
                             fragments.add(new TableFragment(nested.id(), index, new Point(0, height),
-                                    java.util.Arrays.stream(measured.widths()).sum(), nestedHeight, nestedRows));
+                                    java.util.Arrays.stream(measured.widths()).sum(), nestedHeight, nestedRows, nested.format().drawBorders()));
                             height += nestedHeight;
                         } else {
                             throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, child, index,

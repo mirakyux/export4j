@@ -332,7 +332,7 @@ final class WebRenderer {
                     var padding = table.format().padding();
                     out.add("<" + tag + " colspan=\"" + cell.columnSpan() + "\" rowspan=\"" + cell.rowSpan()
                             + "\" style=\"padding:" + number(padding.top()) + "pt " + number(padding.right()) + "pt "
-                            + number(padding.bottom()) + "pt " + number(padding.left()) + "pt\">");
+                            + number(padding.bottom()) + "pt " + number(padding.left()) + "pt" + (table.format().drawBorders() ? "" : ";border:none") + "\">");
                     if (cell.hasBlocks()) {
                         for (int i = 0; i < cell.blocks().size(); i++) {
                             var child = cell.blocks().get(i);
@@ -405,7 +405,7 @@ final class WebRenderer {
         boolean simpleWidths = table.columns().stream().allMatch(column -> column instanceof ColumnWidth.Fraction value
                 && value.weight() == ((ColumnWidth.Fraction) table.columns().getFirst()).weight());
         if (!simpleWidths || !table.format().equals(TableFormat.DEFAULT)) {
-            loss(ExportFeature.TABLE_GEOMETRY, location, "Table widths, padding and pagination omitted from Markdown");
+            loss(ExportFeature.TABLE_GEOMETRY, location, "Table widths, padding, borders and pagination omitted from Markdown");
         }
     }
 

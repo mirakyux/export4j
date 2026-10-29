@@ -134,7 +134,7 @@ class DocxConversionTest {
     }
     @Test void uneditedUnknownMarkupIsReportedUnderIgnoreAndStrictFails() throws Exception {
         var original = encode(Document.builder().paragraph("p", "Keep").build());
-        var changed = rewrite(original, "word/document.xml", "<w:p", "<w:commentRangeStart w:id=\"1\"/><w:p");
+        var changed = rewrite(original, "word/document.xml", "<w:body>", "<w:background w:color=\"FFFF00\"/><w:body>");
         assertThrows(ProcessingException.class, () -> new DocxAdapter().conversion(changed).prepare(new DocxAdapter().conversionTarget()));
         var prepared = new DocxAdapter().conversion(changed).policy(IGNORE).prepare(new DocxAdapter().conversionTarget());
         var result = prepared.to(new ByteArrayOutputStream());

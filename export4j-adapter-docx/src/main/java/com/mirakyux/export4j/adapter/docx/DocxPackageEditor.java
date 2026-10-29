@@ -322,6 +322,10 @@ public final class DocxPackageEditor {
         }
         return roots;
     }
+    /** Shared security gate for typed semantic import; loss policy never bypasses this validation. */
+    static Map<String, Element> validateSemanticPackage(Map<String, byte[]> parts) throws IOException {
+        return validate(parts, new State(EditLimits.DEFAULT, ProcessingPolicy.STRICT));
+    }
     private static void validateTree(Element element, State state) throws IOException {
         state.work(1); if (++state.nodes > state.limits.maxNodes()) { throw new IllegalArgumentException("DOCX XML node budget exceeded"); }
         if (W.equals(element.getNamespaceURI())) {

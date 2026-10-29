@@ -77,6 +77,19 @@ class XmlTemplateWriterTest {
         assertEquals(source, XmlTemplateBundle.read(again.bundle().encode()).compile().render(Map.of()));
     }
 
+    @Test void borderlessTableDeclarationSurvivesBundleAndNestedTemplateExpansion() throws IOException {
+        var inner = Table.builder("inner").columns(new ColumnWidth.Fixed(80))
+                .row(TableCell.rich(List.of(new InlineText("Inner", InlineStyle.of(12))), CellFormat.of(12)))
+                .format(TableFormat.builder().drawBorders(false).build()).build();
+        var outer = Table.builder("outer").columns(new ColumnWidth.Fixed(140))
+                .row(TableCell.builder().blocks(List.of(inner)).build())
+                .format(TableFormat.builder().drawBorders(false).build()).build();
+        var source = new Document(DocumentMetadata.EMPTY, PAGE, List.of(outer));
+        var bundle = XmlTemplateWriter.from(source).prepare().bundle();
+        assertTrue(bundle.source().contains("draw-borders=\"false\""));
+        assertEquals(source, XmlTemplateBundle.read(bundle.encode()).compile().render(Map.of()));
+    }
+
     @Test void sectionsPageNumbersAndPaperSurviveWithoutFlattening() throws IOException {
         var source = new SectionedDocument(new DocumentMetadata("${raw", "A\r\nB\tC"), List.of(
                 new Section("first", PAGE, List.of(paragraph("p1", "First")), 3),

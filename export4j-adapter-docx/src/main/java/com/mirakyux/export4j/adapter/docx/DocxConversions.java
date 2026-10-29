@@ -35,17 +35,7 @@ import java.util.Set;
 final class DocxConversions {
     private DocxConversions() { }
     static DocumentConversion.Request source(DocxAdapter adapter, byte[] encoded) {
-        byte[] snapshot = Objects.requireNonNull(encoded, "encoded").clone();
-        return DocumentConversion.from("DOCX", policy -> {
-            var imported = adapter.read(new ByteArrayInputStream(snapshot), DocxAdapter.Policy.ALLOW_LOSS);
-            var issues = new ArrayList<ProcessingIssue>();
-            for (var diagnostic : imported.diagnostics()) {
-                add(issues, policy, "IMPORT", "DOCX", "MODEL", "OOXML_MARKUP",
-                        new ProcessingIssue.Location("", "PACKAGE_PART:" + diagnostic.part(), "", List.of(), -1, -1),
-                        "OOXML structure omitted or simplified by semantic import", "UNMODELED_OOXML_REMOVED_OR_FLATTENED", ProcessingPolicy.Treatment.DEGRADE);
-            }
-            return new DocumentConversion.Input(imported.document(), List.of(), new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues));
-        });
+        return adapter.semanticConversion(Objects.requireNonNull(encoded, "encoded")).project();
     }
     static DocumentConversion.Target target(DocxAdapter adapter) {
         return new DocumentConversion.Target("DOCX", (source, notes, policy, output) -> {

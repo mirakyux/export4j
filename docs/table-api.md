@@ -56,12 +56,15 @@ var source = new Document(DocumentMetadata.EMPTY, PageSettings.A4,
 | 全部为固定列 | 保持固定总宽度，左对齐，不自动拉伸 |
 | `CellFormat(fontSize, lineHeight, alignment)` | 独立字号、固定基线间距及左／中／右对齐 |
 | `TableFormat(padding, spaceBefore, spaceAfter)` | 全表统一单元格内边距，以及表格块前后间距 |
+| `TableFormat.builder().drawBorders(false)` | 关闭单元格轮廓；几何、文字、表头背景和语义关系保持 |
 
 固定列宽之和不得超过页面内容宽度。有比例列时，剩余宽度必须为正。比例权重先归一化，避免大权重求和溢出；无法表示的极小列宽明确失败。所有配置长度必须有限，列宽、权重和文字尺寸为正，内边距与间距非负。
 
 内边距使用 `PageMargins(top, right, bottom, left)`，单位 point。每个单元格的文字宽度等于覆盖列宽之和减去一次左右内边距，必须为正。行高等于该行最大文字布局高度，加上上下内边距。所有单元格顶对齐，同一行使用相同行高；没有固定行高、内容裁切或自动缩小。
 
 `CellFormat.of(size)` 默认左对齐，行距为字号的 1.5 倍。`TableFormat.DEFAULT` 使用四边 6 pt 内边距、表前 0 pt、表后 6 pt。文字仍受显式字体回退、行框和复杂塑形限制。
+
+边框默认开启，原有三参／四参构造器保持此默认。关闭轮廓的设置跨普通分页、嵌套格、变宽区域及组件的最终字段解析保留；每个内表独立决定自己的轮廓。XML 用 `draw-borders="false"` 保存，默认开启时省略该属性。DOCX 用标准 `w:tblBorders` 的六边 `nil` 表达关闭，HTML 显式输出对应边框样式；不把此开关解释为任意线型、颜色或逐边样式。
 
 ## 单元格动态字段
 

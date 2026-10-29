@@ -71,6 +71,29 @@ public final class DocxAdapter {
     public record ReadResult(SectionedDocument document, List<Diagnostic> diagnostics) {
         public ReadResult { Objects.requireNonNull(document, "document"); diagnostics = List.copyOf(diagnostics); }
     }
+    /** Typed native Word objects, independent of the original package representation. */
+    public record SemanticReadResult(DocxSemanticDocument document, List<Diagnostic> diagnostics) {
+        public SemanticReadResult { Objects.requireNonNull(document, "document"); diagnostics = List.copyOf(diagnostics); }
+    }
+    public SemanticReadResult readSemantic(InputStream input, Policy policy) throws IOException {
+        return DocxSemanticReader.read(this, limits, Objects.requireNonNull(input, "input"), Objects.requireNonNull(policy, "policy"));
+    }
+    public DocxSemanticConversion.Request semanticConversion(byte[] encoded) { return DocxSemanticConversion.request(this, limits, encoded); }
+    /** Explicit projection; strict policy rejects any native behavior lacking a portable mapping. */
+    public DocumentConversion.Input project(DocxSemanticDocument document, com.mirakyux.export4j.model.processing.ProcessingPolicy policy) throws IOException {
+        return DocxSemanticProjection.project(Objects.requireNonNull(document, "document"), Objects.requireNonNull(policy, "policy"));
+    }
+    /** Rebuilds standard Word objects. Output is touched only after complete package validation. */
+    public void writeSemantic(DocxSemanticDocument document, OutputStream output) throws IOException {
+        Objects.requireNonNull(output, "output"); byte[] bytes = DocxSemanticWriter.write(this, limits, Objects.requireNonNull(document, "document")); output.write(bytes);
+    }
+    boolean materializeSemanticStyles(Map<String, byte[]> parts, Policy policy, List<Diagnostic> diagnostics) throws IOException {
+        return DocxStyles.materialize(parts, fontFamilies, policy, diagnostics, limits);
+    }
+    ReadResult readSemanticBody(InputStream input, Policy policy, boolean stylesMaterialized) throws IOException {
+        try { return readPackage(input, policy, 0, stylesMaterialized); }
+        catch (IllegalArgumentException | ArithmeticException failure) { throw new IOException("invalid imported DOCX semantics", failure); }
+    }
     private static final String W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     private static final String R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static final String OD = "urn:com.mirakyux.export4j:semantic:1";
@@ -80,7 +103,7 @@ public final class DocxAdapter {
     private static final Set<String> MARKUP = Set.of("document", "body", "p", "pPr", "pStyle", "r", "rPr", "rStyle", "t", "br", "tab", "b", "i", "u", "strike", "sz", "color", "position",
             "jc", "kinsoku", "spacing", "ind", "keepLines", "keepNext", "pageBreakBefore", "numPr", "ilvl", "numId", "sectPr", "type", "pgSz", "pgMar", "pgNumType",
             "tbl", "tblPr", "tblCellMar", "tblGrid", "gridCol", "tr", "trPr", "tblHeader", "cantSplit", "tc", "tcPr", "gridSpan", "vMerge", "top", "right", "bottom", "left", "proofErr", "hyperlink", "drawing",
-            "fldSimple", "fldChar", "instrText", "bookmarkStart", "bookmarkEnd", "hdr", "ftr", "headerReference", "footerReference", "titlePg");
+            "fldSimple", "fldChar", "instrText", "bookmarkStart", "bookmarkEnd", "hdr", "ftr", "headerReference", "footerReference", "titlePg", "tblBorders", "insideH", "insideV");
     private static final Set<String> EMPTY_CONTINUATION_MARKUP = Set.of("p", "pPr", "pStyle", "r", "rPr", "rStyle", "t",
             "b", "i", "u", "strike", "sz", "color", "position", "jc", "kinsoku", "spacing", "ind",
             "keepLines", "keepNext", "pageBreakBefore", "proofErr");
@@ -336,8 +359,8 @@ public final class DocxAdapter {
         parts.put("word/numbering.xml", numbering.toString()); parts.put("word/_rels/document.xml.rels", wordRels);
         if (fields.present() || hasEvenVariants) {
             parts.put("word/settings.xml", XML + "<w:settings" + NS + ">"
-                    + (fields.present() ? "<w:updateFields w:val=\"true\"/>" : "")
-                    + (hasEvenVariants ? "<w:evenAndOddHeaders/>" : "") + "</w:settings>");
+                    + (hasEvenVariants ? "<w:evenAndOddHeaders/>" : "")
+                    + (fields.present() ? "<w:updateFields w:val=\"true\"/>" : "") + "</w:settings>");
             parts.put("[Content_Types].xml", contentTypes.replace("</Types>", "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/></Types>"));
             parts.put("word/_rels/document.xml.rels", wordRels.replace("</Relationships>", "<Relationship Id=\"rSettings\" Type=\"" + reltype + "settings\" Target=\"settings.xml\"/></Relationships>"));
         }
@@ -374,7 +397,10 @@ public final class DocxAdapter {
     private static void properties(StringBuilder xml, ParagraphFormat f, int heading, int number, int level) {
         xml.append("<w:pPr od:minBefore=\"").append(f.pagination().minLinesBeforeBreak()).append("\" od:minAfter=\"").append(f.pagination().minLinesAfterBreak()).append("\">");
         if (heading > 0) { xml.append("<w:pStyle w:val=\"Heading").append(heading).append("\"/>"); }
-        xml.append("<w:jc w:val=\"").append(f.alignment() == ParagraphAlignment.JUSTIFY ? "both" : f.alignment().name().toLowerCase(Locale.ROOT)).append("\"/>");
+        if (f.pagination().keepWithNext()) { xml.append("<w:keepNext/>"); }
+        if (f.keepTogether()) { xml.append("<w:keepLines/>"); }
+        if (f.pagination().pageBreakBefore()) { xml.append("<w:pageBreakBefore/>"); }
+        if (number > 0) { xml.append("<w:numPr><w:ilvl w:val=\"").append(level - 1).append("\"/><w:numId w:val=\"").append(number).append("\"/></w:numPr>"); }
         if (f.lineBreakPolicy() == com.mirakyux.export4j.model.LineBreakPolicy.CJK_STRICT) {
             xml.append("<w:kinsoku od:policy=\"CJK_STRICT\"/>");
         }
@@ -384,11 +410,8 @@ public final class DocxAdapter {
         if (f.firstLineIndent() >= f.subsequentLineIndent()) { xml.append(" w:firstLine=\"").append(twips(f.firstLineIndent() - f.subsequentLineIndent())); }
         else { xml.append(" w:hanging=\"").append(twips(f.subsequentLineIndent() - f.firstLineIndent())); }
         xml.append("\"/>");
-        if (f.keepTogether()) { xml.append("<w:keepLines/>"); }
-        if (f.pagination().keepWithNext()) { xml.append("<w:keepNext/>"); }
-        if (f.pagination().pageBreakBefore()) { xml.append("<w:pageBreakBefore/>"); }
+        xml.append("<w:jc w:val=\"").append(f.alignment() == ParagraphAlignment.JUSTIFY ? "both" : f.alignment().name().toLowerCase(Locale.ROOT)).append("\"/>");
         xml.append("<w:rPr><w:sz w:val=\"").append(Math.round(f.fontSize() * 2)).append("\"/></w:rPr>");
-        if (number > 0) { xml.append("<w:numPr><w:ilvl w:val=\"").append(level - 1).append("\"/><w:numId w:val=\"").append(number).append("\"/></w:numPr>"); }
         xml.append("</w:pPr>");
     }
 
@@ -422,11 +445,13 @@ public final class DocxAdapter {
     }
 
     static void runProperties(StringBuilder xml, InlineStyle s) {
-        xml.append("<w:rPr><w:sz w:val=\"").append(Math.round(s.fontSize() * 2)).append("\"/><w:color w:val=\"")
-                .append(String.format(Locale.ROOT, "%06X", s.rgb())).append("\"/><w:position w:val=\"").append(Math.round(-s.baselineShift() * 2)).append("\"/>");
+        xml.append("<w:rPr>");
         if (!s.fontRole().isEmpty()) { xml.append("<w:rStyle w:val=\"").append(escape(s.fontRole())).append("\"/>"); }
-        if (s.underline()) { xml.append("<w:u w:val=\"single\"/>"); }
         if (s.strikeThrough()) { xml.append("<w:strike/>"); }
+        xml.append("<w:color w:val=\"").append(String.format(Locale.ROOT, "%06X", s.rgb()))
+                .append("\"/><w:position w:val=\"").append(Math.round(-s.baselineShift() * 2))
+                .append("\"/><w:sz w:val=\"").append(Math.round(s.fontSize() * 2)).append("\"/>");
+        if (s.underline()) { xml.append("<w:u w:val=\"single\"/>"); }
         xml.append("</w:rPr>");
     }
 
@@ -518,10 +543,16 @@ public final class DocxAdapter {
             DocxImages.Writer images, DocxFields.Writer fields, Set<String> roles, List<String> ancestorAnchors) throws IOException {
         var padding = table.format().padding();
         xml.append("<w:tbl od:id=\"").append(escape(table.id())).append("\" od:split=\"").append(table.format().allowRowSplit()).append("\" od:before=\"")
-                .append(table.format().spaceBefore()).append("\" od:after=\"").append(table.format().spaceAfter()).append("\"><w:tblPr><w:tblCellMar>");
-        xml.append("<w:top w:w=\"").append(twips(padding.top())).append("\" w:type=\"dxa\"/><w:right w:w=\"").append(twips(padding.right()))
-                .append("\" w:type=\"dxa\"/><w:bottom w:w=\"").append(twips(padding.bottom())).append("\" w:type=\"dxa\"/><w:left w:w=\"")
-                .append(twips(padding.left())).append("\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
+                .append(table.format().spaceBefore()).append("\" od:after=\"").append(table.format().spaceAfter()).append("\"><w:tblPr>");
+        xml.append("<w:tblBorders>");
+        for (String edge : List.of("top", "left", "bottom", "right", "insideH", "insideV")) {
+            xml.append("<w:").append(edge).append(" w:val=\"").append(table.format().drawBorders() ? "single" : "nil").append("\"/>");
+        }
+        xml.append("</w:tblBorders><w:tblCellMar><w:top w:w=\"").append(twips(padding.top()))
+                .append("\" w:type=\"dxa\"/><w:left w:w=\"").append(twips(padding.left()))
+                .append("\" w:type=\"dxa\"/><w:bottom w:w=\"").append(twips(padding.bottom()))
+                .append("\" w:type=\"dxa\"/><w:right w:w=\"").append(twips(padding.right()))
+                .append("\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
         double fixed = table.columns().stream().filter(ColumnWidth.Fixed.class::isInstance).map(ColumnWidth.Fixed.class::cast).mapToDouble(ColumnWidth.Fixed::points).sum();
         double weights = table.columns().stream().mapToDouble(c -> c instanceof ColumnWidth.Fraction f ? f.weight() : c instanceof ColumnWidth.Auto ? 1 : 0).sum();
         if (!Double.isFinite(fixed) || !Double.isFinite(weights)) { throw new IOException("DOCX column width sum is not finite"); }
@@ -551,8 +582,8 @@ public final class DocxAdapter {
                 active.put(anchor.columnIndex(), anchor);
             }
             xml.append("<w:tr><w:trPr>");
-            if (row < table.headerRows()) { xml.append("<w:tblHeader/>"); }
             if (!table.format().allowRowSplit()) { xml.append("<w:cantSplit/>"); }
+            if (row < table.headerRows()) { xml.append("<w:tblHeader/>"); }
             xml.append("</w:trPr>");
             boolean firstCell = row == 0;
             for (var anchor : active.values()) {
@@ -637,10 +668,13 @@ public final class DocxAdapter {
     }
 
     private ReadResult readPackage(InputStream input, Policy policy, double defaultFieldWidth) throws IOException {
+        return readPackage(input, policy, defaultFieldWidth, false);
+    }
+    private ReadResult readPackage(InputStream input, Policy policy, double defaultFieldWidth, boolean alreadyMaterialized) throws IOException {
         var parts = unzip(Objects.requireNonNull(input, "input"));
         if (!parts.containsKey("[Content_Types].xml") || !parts.containsKey("word/document.xml")) { throw new IOException("DOCX document parts are missing"); }
         List<Diagnostic> diagnostics = new ArrayList<>();
-        boolean stylesMaterialized = DocxStyles.materialize(parts, fontFamilies, policy, diagnostics, limits);
+        boolean stylesMaterialized = alreadyMaterialized || DocxStyles.materialize(parts, fontFamilies, policy, diagnostics, limits);
         Element relations = parts.containsKey("word/_rels/document.xml.rels") ? parse(parts.get("word/_rels/document.xml.rels")) : null;
         var decoded = new HashMap<String, com.mirakyux.export4j.model.ImageResource>();
         var images = new DocxImages.Reader(parts, relations, decoded);
@@ -929,12 +963,27 @@ public final class DocxAdapter {
         var padding = new PageMargins(attributeNumber(child(margin, "top"), W, "w", 120) / 20, attributeNumber(child(margin, "right"), W, "w", 120) / 20,
                 attributeNumber(child(margin, "bottom"), W, "w", 120) / 20, attributeNumber(child(margin, "left"), W, "w", 120) / 20);
         var result = new Table(ids.get(table), columns, rows, headers, new TableFormat(padding, attributeNumber(table, OD, "before", 0), attributeNumber(table, OD, "after", 6),
-                attribute(table, OD, "split", "false").equals("true")));
+                attribute(table, OD, "split", "false").equals("true"), readBorders(table)));
         checkBlockTable(result);
         return result;
     }
 
     private enum VerticalMerge { NONE, RESTART, CONTINUE }
+
+    private static boolean readBorders(Element table) throws IOException {
+        var borders = child(child(table, "tblPr"), "tblBorders");
+        if (borders == null) { return true; }
+        Boolean drawn = null;
+        for (String edge : List.of("top", "left", "bottom", "right", "insideH", "insideV")) {
+            var border = child(borders, edge);
+            if (border == null) { throw new IOException("DOCX mixed or incomplete table borders require explicit normalization"); }
+            String value = border.getAttributeNS(W, "val");
+            boolean current = !Set.of("nil", "none").contains(value);
+            if (current && !value.equals("single") || drawn != null && drawn != current) { throw new IOException("DOCX mixed table borders are unsupported"); }
+            drawn = current;
+        }
+        return Boolean.TRUE.equals(drawn);
+    }
 
     /** Task-confined normalization state; continuation rows never become model content anchors. */
     private static final class ReadAnchor {
@@ -1187,7 +1236,7 @@ public final class DocxAdapter {
             case "pgNumType" -> Set.of("start");
             case "br", "proofErr" -> Set.of("type");
             case "gridCol" -> Set.of("w");
-            case "top", "right", "bottom", "left" -> Set.of("w", "type");
+            case "top", "right", "bottom", "left", "insideH", "insideV" -> Set.of("w", "type", "val", "sz", "color", "space");
             case "fldSimple" -> Set.of("instr", "dirty", "fldLock");
             case "fldChar" -> Set.of("fldCharType", "dirty", "fldLock");
             case "bookmarkStart" -> Set.of("id", "name");

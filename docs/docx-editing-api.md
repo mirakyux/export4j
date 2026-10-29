@@ -1,6 +1,6 @@
 # 保留源包的 DOCX 文字编辑
 
-`DocxAdapter.editPackage` 直接编辑 DOCX 包中的普通文字，保留语义模型不能表达的未编辑结构。它与[语义转换](document-conversion-api.md)是不同通道。
+`DocxAdapter.editPackage` 直接编辑 DOCX 包中的普通文字，保留通用语义模型不能表达的未编辑结构。需要编辑浮动图形、批注、修订、控件或目录声明时，使用[类型化 DOCX 语义编辑](docx-semantic-api.md)；两者与[通用语义转换](document-conversion-api.md)分别检查自己的结构和损失边界。
 
 ```java
 import com.mirakyux.export4j.adapter.docx.DocxAdapter;

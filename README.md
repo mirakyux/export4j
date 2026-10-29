@@ -7,7 +7,7 @@ Java 文档排版与生成引擎
 
 Export4j is an open-source **Java PDF generation and document export library** for reports and structured documents. Generate PDF, export DOCX, HTML and Markdown, or render SVG and PNG from a fluent Java API or offline XML templates. PDF, SVG and PNG share a layout engine; separate adapters map the semantic model to a DOCX subset, self-contained HTML and CommonMark/GFM Markdown.
 
-[Document conversion](docs/document-conversion-api.md) combines supported Markdown, HTML/CSS, DOCX and [PDF semantic recovery](docs/pdf-semantic-import-api.md) with editing, loss previews and export. DOCX also supports [style inheritance](docs/docx-style-import-api.md) and [package-preserving text edits](docs/docx-editing-api.md) within explicit limits.
+[Document conversion](docs/document-conversion-api.md) combines supported Markdown, HTML/CSS, DOCX and [PDF semantic recovery](docs/pdf-semantic-import-api.md) with editing, loss previews and export. DOCX supports [typed semantic editing](docs/docx-semantic-api.md) of floating images, text boxes, comments, revisions, controls and contents declarations, alongside [package-preserving text edits](docs/docx-editing-api.md). [Offline HTML/CSS import](docs/html-import-api.md) also offers an explicit layout mode for supported Flex/Grid, sizing and positioning rules.
 
 [Model recovery](docs/model-recovery-api.md) pairs a standard output with an ordinary XML/resource ZIP bound to its exact bytes. Reopen and edit the saved model with explicit fonts; changed files require rejection or an explicit restricted import. Lossy exports cannot retain a richer hidden source model.
 
@@ -20,7 +20,7 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 **Early development:** no stable artifacts have been published, and APIs may change. Supported PDF reports and dense static forms are ready for scoped trials; see the [readiness assessment](docs/readiness-assessment.md) and [capability matrix](docs/capabilities-api.md) for the evidence and limits.
 
 - Java 21 LTS · Gradle Wrapper · Apache-2.0
-- Explicit fonts and resources; no browser required for PDF generation
+- Explicit fonts and resources; generation and conversion require no printer driver, print service, Office installation or browser
 - Semantic model, layout and output backends remain separate
 
 ## Contents
@@ -209,7 +209,7 @@ HTML preserves semantic styles, embedded images and merged/nested tables. Markdo
 | --- | --- |
 | PDF | Report output plus separate bounded page/object editing, rendering, optimization, redaction and semantic-recovery APIs; see the [PDF guide](docs/pdf-adapter-api.md) |
 | SVG / PNG | Static output from the shared display list; nonempty interactive data is rejected |
-| DOCX | Explicit semantic subset, including supported text, tables, images, numbering, fields and default section headers/footers; unsupported content is rejected or reported according to policy |
+| DOCX | Typed semantic subset including text, nested tables, section page bands, floating images/text boxes, comments, revisions, controls and contents declarations; conversion to simpler targets reports actual losses |
 | HTML | Semantic HTML5 export and offline element/CSS-subset import; embedded/explicit images, supported merged/nested tables and explicit loss policies |
 | Markdown output | CommonMark/GFM content; unsupported geometry/structure follows error/warn/ignore policies |
 | Input and editing | Offline XML/strict Markdown templates; general Markdown, HTML/CSS, DOCX subsets and bounded PDF recovery; [shared conversion](docs/document-conversion-api.md) includes editing and loss reports |
@@ -274,7 +274,7 @@ Most detailed guides are currently written in Chinese.
 | Templates | [XML](docs/xml-template-api.md) · [Markdown](docs/markdown-template-api.md) · [XML themes](docs/xml-themes-api.md) |
 | Adapters | [HTML/Markdown export](docs/web-export-api.md) · [DOCX page regions](docs/docx-page-regions-api.md) · [DOCX fields](docs/docx-fields-api.md) · [Static PDF](docs/pdf-adapter-api.md) |
 | Editing | [Semantic editing and loss reports](docs/semantic-editing-api.md) |
-| Import and conversion | [General Markdown](docs/markdown-import-api.md) · [Offline HTML/CSS](docs/html-import-api.md) · [PDF recovery](docs/pdf-semantic-import-api.md) · [Shared conversion](docs/document-conversion-api.md) |
+| Import and conversion | [General Markdown](docs/markdown-import-api.md) · [Offline HTML/CSS](docs/html-import-api.md) · [DOCX semantic editing](docs/docx-semantic-api.md) · [PDF recovery](docs/pdf-semantic-import-api.md) · [Shared conversion](docs/document-conversion-api.md) |
 | PDF editing | [Pages](docs/pdf-page-editing-api.md) · [Objects](docs/pdf-object-editing-api.md) · [Composition](docs/pdf-object-composition-api.md) · [Raster/images](docs/pdf-raster-api.md) · [Optimization](docs/pdf-optimization-api.md) · [Text](docs/pdf-text-editing-api.md) · [Redaction](docs/pdf-redaction-api.md) |
 | Engineering | [Development](docs/development.md) · [Verification records](docs/verification) · [Release process](docs/releasing.md) |
 

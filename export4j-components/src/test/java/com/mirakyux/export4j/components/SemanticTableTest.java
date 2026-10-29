@@ -35,6 +35,7 @@ import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.layout.core.Placement;
 import com.mirakyux.export4j.layout.core.Position;
 import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ImageResource;
@@ -96,6 +97,23 @@ class SemanticTableTest {
         var toNested = result.display().extras().links().stream().filter(link -> link.pageIndex() == 2 && link.targetPageIndex() == 1).findFirst().orElseThrow();
         assertEquals(new Point(32, 32), toNested.destination());
         assertEquals(List.of(1, 2), result.display().extras().bookmarks().stream().map(bookmark -> bookmark.pageIndex()).toList());
+    }
+
+    @Test void borderlessComponentTablesKeepOutlinesDisabledAfterIndexShiftAndFinalFieldResolution() {
+        var sourceTable = Table.builder("borderless").cellFormat(CELL)
+                .columns(new ColumnWidth.Fixed(150)).format(format -> format.drawBorders(false))
+                .row(TableCell.mixed(List.of(text("PAGE="), field(InlineField.Kind.PAGE, "")), CELL)).build();
+        var component = FlowColumn.builder().semanticTable(sourceTable).build();
+        var source = new Document(DocumentMetadata.EMPTY, PAGE, List.of(
+                new Paragraph("prefix", "Before", ParagraphFormat.of(10)),
+                new ComponentBlock("host", component, 0, 0)));
+        var result = DocumentEngine.builder(fonts).build().layout(source);
+        var fragment = (ComponentFragment) result.body().pages().getFirst().elements().getLast();
+        var placement = fragment.layout().semanticPlacements().getFirst();
+        assertFalse(placement.fragment().drawBorders());
+        assertEquals("PAGE=1", logical(placement.fragment().rows().getFirst().cells().getFirst().layout()));
+        assertTrue(result.display().pages().stream().flatMap(page -> page.commands().stream())
+                .noneMatch(DrawCommand.StrokePath.class::isInstance));
     }
 
     @Test void composedImageAndTextLinksKeepFinalGeometryAndOriginalImageSources() throws IOException {

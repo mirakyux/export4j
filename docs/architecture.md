@@ -14,12 +14,17 @@ flowchart TD
     DL --> R[Raster Backend]
     DOCX[DOCX / OOXML] --> I[DOCX Importer]
     I --> M
+    I --> DS[Typed DOCX Semantics]
+    DS -->|Explicit loss projection| M
     M <--> Web[HTML / Markdown Adapter]
     M --> E[DOCX Exporter]
+    DS --> E
     E --> DOCX
     XML[Offline XML / Markdown Template] --> T[Template Compiler]
     T --> B[DocumentTemplate + Explicit Data]
     B --> M
+    CSS[Offline HTML/CSS Layout] --> C[Immutable Components]
+    C --> L
     Existing[Existing static PDF] --> PA[PDF Adapter]
     PA --> Combined[Checked extraction / selected PDF pages]
     PA --> Recovery[Explicit-loss semantic recovery]
@@ -27,6 +32,12 @@ flowchart TD
 ~~~
 
 文档模型表达内容的含义；布局结果表达内容的位置；绘制指令表达具体绘制操作；后端负责把指令映射到目标格式。DOCX 使用独立的模型映射路径。
+
+生成、导入、编辑及转换不依赖打印机驱动、打印后台服务或 Office／浏览器进程。字体和资源由调用方显式提供，普通导出支持无桌面 JVM；Word、Chromium 等只用于独立兼容性验收，不进入运行依赖。`scripts/verify_driverless.py` 在拒绝加载全部 JDK 打印相关类的 JVM 中运行发布坐标调用方，同时检查生产字节码和运行 JAR 摘要。
+
+DOCX 专有语义由适配器内的不可变 `DocxSemanticDocument` 持有，使用项目自有类型表达浮动定位、图片变换、文本框、批注范围、修订、控件和目录声明。它包含通用分节正文及显式锚点，不持有原始包或 XML 片段。语义编辑后重建标准 OOXML；投影到通用文档时逐项报告无法表达的内容，不能把未编辑结构的丢失隐藏在普通文字修改中。
+
+HTML 默认导入路径仍映射通用语义模型；显式 CSS 布局模式将离线样式编译为不可变组件树。选择器及媒体级联在导入时确定，尺寸、Flex／Grid 和定位在布局阶段求值。文字叶使用无边框语义插槽，将链接和字段保留到最终页面解析；后端只消费已完成的布局。组件布局无法由某个语义目标表达时继续执行明确的损失策略，不以保存 CSS 原文代替实际排版。
 
 变宽递归表格与网格在布局层从完整来源重测剩余内容，已接受的行保留实际宽度，不切断原始 UTF-16 或重编号 owner；轮廓浮动也在排版阶段确定行带和锚点。原生 OpenType 模块在绘制前完成方向、轴及彩色字形处理，输出自有字形／轮廓／图像指令。后端无需持有或调用塑形引擎。
 
@@ -67,9 +78,9 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-backend-pdf` | PDF 输出 | 绘制层与字体层 |
 | `export4j-backend-svg` | SVG 输出 | 绘制层 |
 | `export4j-backend-raster` | 图像输出和预览 | 绘制层 |
-| `export4j-adapter-docx` | OOXML 导入与导出 | 文档模型与资源抽象 |
+| `export4j-adapter-docx` | 通用及类型化 OOXML 语义读写、编辑与显式投影 | 文档模型与资源抽象 |
 | `export4j-adapter-template` | 离线 XML／Markdown 子集编译为 DocumentTemplate | 仅文档模型与 JDK |
-| `export4j-adapter-web` | 语义 HTML5／CommonMark-GFM 导入／导出与逐功能损失策略 | 文档模型；CommonMark／jsoup 解析封装在内部 |
+| `export4j-adapter-web` | 语义 HTML5／CommonMark-GFM 读写、显式离线 CSS 布局与逐功能损失策略 | 文档模型；组件／图形核心；CommonMark／jsoup 解析封装在内部 |
 | `export4j-adapter-pdf` | 有界 PDF 读取、页／被动对象编辑和组合、渲染提取、优化、脱敏及语义恢复 | 模型及执行控制；PDFBox 隔离在内部 |
 | `export4j-testing` | 测试样本、断言和比较工具 | 按测试需要依赖各层 |
 | `export4j-conformance-tests` | 格式与行为一致性测试 | 被测模块与测试工具 |

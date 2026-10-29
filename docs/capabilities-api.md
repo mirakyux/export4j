@@ -4,7 +4,7 @@
 
 [语义模型保存为 XML](xml-model-saving-api.md)支持正文／分节、富文本／独立列表标记、表格／递归块格、四类字段和图片，保留现有格式与原文字面值，并接入统一转换。[页区保存](verification/phase-79-xml-region-saving.md)保留默认／首页／偶数页眉页脚、共享来源及有序图层位置。[阶段八十](verification/phase-80-xml-semantic-saving.md)进一步保留显式注释及标记、Caption 和标题／列表文字外链，`renderComplete(data)` 同时返回文档与注释，三轮控制、编辑、10 页 PDF 双渲染及 Web 损失对账通过。[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)补齐独立 CrossReference 的完整 XML 保存／绑定，覆盖跨节 PAGE／NUMBER、多行引用、片段／循环目标与实际改写。未映射块默认拒绝，显式策略才报损继续；字体／许可由调用方明确提供。XML 保留范围不扩大 DOCX／Web 适配器能力。
 
-XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-settings.md)验收：主根首个可选 `page` 支持纸张／成对宽高／方向／四边边距，页面长度支持 pt／mm／cm／in。未声明项保留 Java 默认，详见[页面指南](xml-page-settings-api.md)。[阶段四十一](verification/phase-41-xml-page-regions.md)补齐[固定页眉页脚](xml-page-regions-api.md)、独立主题及最终页码；[阶段四十二](verification/phase-42-sections-and-docx-regions.md)补齐页区图片／表格、XML 分节与 DOCX 默认页区。全局字体角色／颜色已由[阶段六十](verification/phase-60-theme-appearance.md)接入；首页／奇偶页区已由[阶段六十一](verification/phase-61-page-variants.md)验收；[XML 背景／前景](page-overlays-api.md)已由[阶段六十二](verification/phase-62-page-overlays.md)验收；完整 CSS 级联仍开放。
+XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-settings.md)验收：主根首个可选 `page` 支持纸张／成对宽高／方向／四边边距，页面长度支持 pt／mm／cm／in。未声明项保留 Java 默认，详见[页面指南](xml-page-settings-api.md)。[阶段四十一](verification/phase-41-xml-page-regions.md)补齐[固定页眉页脚](xml-page-regions-api.md)、独立主题及最终页码；[阶段四十二](verification/phase-42-sections-and-docx-regions.md)补齐页区图片／表格、XML 分节与 DOCX 默认页区。全局字体角色／颜色已由[阶段六十](verification/phase-60-theme-appearance.md)接入；首页／奇偶页区已由[阶段六十一](verification/phase-61-page-variants.md)验收；[XML 背景／前景](page-overlays-api.md)已由[阶段六十二](verification/phase-62-page-overlays.md)验收。HTML/CSS 的静态级联与显式文档布局模式见[导入指南](html-import-api.md)，不将其等同于完整浏览器。
 
 [固定页区字体角色](page-region-fonts-api.md)保留引擎注册角色、缺字策略及最终页上下文。标准组件现在可用 [FontRoleScope／RichTextComponent](component-text-api.md) 直接选择字体组和编写固定富文本，无需自定义委托；延迟 SemanticTable 仍不能进入固定页区。XML 页区通过 PageDocument 和 PageRegionTemplates 接入相同预留／最终组合路径，主题不向正文级联。
 
@@ -66,7 +66,9 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 ## 公共文本和字体
 
-DOCX [样式级联](docx-style-import-api.md)支持默认值、basedOn、字符样式和直接格式，并通过显式字体族映射选择真实角色；图展开损失明确报告。[原包编辑](docx-editing-api.md)可修改普通文字并保留未编辑目录、评论、修订、表单及页区。两种通道均由[阶段四十八](verification/phase-48-docx-editing.md)验收；[阶段九十](verification/phase-90-recovery-closure.md)进一步完成生成 DOCX 的真实 Word 编辑、保存、重开及当前内容受限回读，不能推断一般 Word 无损语义编辑或跨应用兼容。
+DOCX [样式级联](docx-style-import-api.md)支持默认值、basedOn、字符样式和直接格式，并通过显式字体族映射选择真实角色；图展开损失明确报告。[原包编辑](docx-editing-api.md)可修改普通文字并保留未编辑结构。[类型化语义模型](docx-semantic-api.md)另行表达浮动图片／真实文本框、图片变换、批注范围、插入／删除／移动／格式修订、内容控件／旧式表单及可更新目录声明，编辑时重定位锚点，再生成标准 OOXML。投影到通用模型时逐项报告损失，旧的普通语义入口也检查未编辑的专有结构；不承诺任意 Word 无损往返或与 PDF 同分页。
+
+[HTML/CSS 导入](html-import-api.md)保持默认语义模式，并提供显式 CSS 布局模式。离线选择器／媒体级联、页面／分页规则、Flex／Grid、尺寸和相对／绝对定位映射为确定的组件树，显式字体和资源由调用方提供。布局叶保留真实段落及最终外链／字段；不能表达组件布局的语义输出按 ERROR／WARN／IGNORE 与明确处理返回损失，不执行脚本或隐式外联。
 
 默认 `ParagraphLayouter` 对组合字符、阿拉伯语、希伯来语等需要塑形的文本，以及静态 CFF 字体，使用显式物理字体的 JDK OpenType 布局。语义段落、富文本单元格、`FlowText`、页眉页脚、脚注和目录文本因此共享该能力。简单文字仍保持原有度量；需要对纯拉丁文字显式启用 kerning／连字时继续使用 `OpenTypeText`。
 
@@ -162,7 +164,7 @@ engine.writeAtomically(document, backend, targetPath, options);
 
 DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关系；外链只保存语义，不访问目标。PNG／JPEG 媒体、替代文字与标准 DrawingML 的范围见[行内图像 API](inline-images-api.md)。自动列宽以项目扩展属性往返保存，目标 Word 视觉列宽不等于本引擎 PDF 结果。
 
-语义 Table 支持[列合并](column-spans-api.md)、[跨行合并](row-spans-api.md)及[有界递归块格／内表](block-cells-api.md)，DOCX 读写标准 gridSpan／vMerge 和 p/tbl/p，Java 深绑定保留后代 ID 与层级来源。默认纵向连通组整体分页；显式拆行支持递归格及纵向 owner 续排，覆盖行没有重复内容。合并跨度、完整父链、覆盖及续接区间非法时拒绝，允许损失也不猜测几何或丢弃非空续格；空续格仍校验样式及隐藏语义。多段格保持独立 Paragraph，真实空尾段保留；自有结构尾段／书签 owner 必须验证。其他不支持结构在 STRICT 下失败，在 ALLOW_LOSS 下返回诊断。不等于完整 OOXML Schema 校验；递归续排与纵向拆组见[阶段五十七](verification/phase-57-recursive-tables.md)；一般 Word 保存回读仍未完成。
+语义 Table 支持[列合并](column-spans-api.md)、[跨行合并](row-spans-api.md)及[有界递归块格／内表](block-cells-api.md)，DOCX 读写标准 gridSpan／vMerge 和 p/tbl/p，Java 深绑定保留后代 ID 与层级来源。默认纵向连通组整体分页；显式拆行支持递归格及纵向 owner 续排，覆盖行没有重复内容。合并跨度、完整父链、覆盖及续接区间非法时拒绝，允许损失也不猜测几何或丢弃非空续格；空续格仍校验样式及隐藏语义。多段格保持独立 Paragraph，真实空尾段保留；自有结构尾段／书签 owner 必须验证。其他不支持结构在 STRICT 下失败，在 ALLOW_LOSS 下返回诊断。不等于完整 OOXML Schema 校验；递归续排与纵向拆组见[阶段五十七](verification/phase-57-recursive-tables.md)。[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)已验收四层组合表、页区与浮动对象的 Word 编辑／保存回读、原生页面和 PDF；不由该子集推断任意 Word 文件兼容。
 
 原生 PAGE／NUMPAGES／PAGEREF／编号 REF 已接入正文及普通单元格，支持显式宽度和扁平复杂字段导入；本地 Word 16.0 已实测更新并导出样例 PDF。重复表头 PAGE、非块起点页码书签、注释标记和题注编号仍有限制，见[DOCX 字段 API](docx-fields-api.md)与[阶段十二验收](verification/phase-12-docx-fields.md)。
 

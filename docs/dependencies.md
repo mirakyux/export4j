@@ -2,6 +2,8 @@
 
 可选 `export4j-opentype` 内部依赖 LWJGL 3.4.3 的 `lwjgl`／`lwjgl-harfbuzz` 两个 Java 制品（BSD-3-Clause）。应用显式选择平台 native classifier，生产 POM 不自动传递平台二进制。Windows 实际内含 HarfBuzz 14.3.0，与绑定头版本分别核对；HarfBuzz、libffi、liburing 等内含许可原文随清单保存，见[原生制品记录](../third-party/native-artifacts.csv)。核心原有 JDK 路径不强制加载 JNI。
 
+Linux／macOS x64 与 arm64 的 native JAR 校验值已按实际下载及 Central 发布摘要审查，进入严格依赖验证；此状态只证明固定制品被识别，不代表跨平台加载／渲染或阅读器测试通过。库测试与隔离调用方共享显式 classifier 选择逻辑，未知平台／架构拒绝。平台实际运行结果另见[阶段一百零五](verification/phase-105-publication-and-compatibility.md)。
+
 SVG 独立渲染增加验证依赖 resvg-py 0.5.0（MIT）及其 resvg（MPL-2.0）实现；只在 Python 验证环境使用，不加入 Java 运行清单。字体检查使用 fontTools／uharfbuzz 的固定版本，字体来源、SHA-256 与原始许可独立登记于[字体记录](../assets/fonts/README.md)。
 
 PDF 信任链、OCSP／CRL 与 PAdES 使用 Bouncy Castle 1.86：PDF 后端内部直接依赖 `bcpkix-jdk18on`，传递依赖同版本 `bcprov-jdk18on` 和 `bcutil-jdk18on`。三者采用 MIT，实际 JAR／POM 的 SHA-256、原始许可和来源均登记在依赖清单；公共 API 只使用项目类型与 JDK 密钥／证书字节，不暴露第三方类型。独立验签使用 pyHanko 0.33.0，固定在验证 requirements，仅用于验证环境，不进入 Java 制品。
@@ -18,7 +20,7 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 
 通用 Markdown 导入使用 commonmark-java 0.24.0 及同版本 GFM tables／strikethrough 扩展，作为 Web 适配器内部实现依赖，公共签名不暴露解析器类型。三者采用 BSD-2-Clause，原始许可从实际 JAR 提取并随分发保留；源码目标 Java 11、实际 class major 55，与 Java 21 基线兼容。Maven Central 的 7 个 POM／JAR 与上游 SHA-1 对照，并将实际 SHA-256 写入依赖验证元数据和制品清单。没有新增字体或第三方样本。
 
-2026-10-21 新增自研 `export4j-adapter-web`，工程共 17 个模块、15 个库及 BOM。生产仅依赖模型与 JDK，无新增第三方 Java 坐标；HTML／Markdown、合成样例、Java 生成蓝色 PNG 及验证脚本采用 Apache-2.0，不含外部素材。见[阶段四十三](verification/phase-43-web-exports.md)。
+2026-10-21 新增自研 `export4j-adapter-web`，当时工程共 17 个模块、15 个库及 BOM。阶段四十三的生产代码仅依赖模型与 JDK，无新增第三方 Java 坐标；HTML／Markdown、合成样例、Java 生成蓝色 PNG 及验证脚本采用 Apache-2.0，不含外部素材。见[阶段四十三](verification/phase-43-web-exports.md)。当前模块另封装已登记的 CommonMark／jsoup，并为显式 CSS 布局复用自研组件和图形核心；此布局扩展没有增加第三方版本或资源。
 
 2026-10-21 XML 固定页眉页脚、页区主题、合成报告及验证脚本由项目自主实现，采用 Apache-2.0。复用既有模型、JDK XML／文字路径和已登记的 Liberation Sans；没有新增模块、外部依赖、字体或第三方素材。见[阶段四十一](verification/phase-41-xml-page-regions.md)。
 

@@ -1,6 +1,9 @@
 # This is a Gradle generated file for dependency locking.
 # Manual edits can break the build and are not advised.
 # This file is expected to be part of source control.
+commons-logging:commons-logging:1.4.0=runtimeClasspath,testRuntimeClasspath
+org.apache.pdfbox:fontbox:3.0.8=runtimeClasspath,testRuntimeClasspath
+org.apache.pdfbox:pdfbox-io:3.0.8=runtimeClasspath,testRuntimeClasspath
 org.apiguardian:apiguardian-api:1.1.2=testCompileClasspath
 org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.commonmark:commonmark-ext-gfm-tables:0.24.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath

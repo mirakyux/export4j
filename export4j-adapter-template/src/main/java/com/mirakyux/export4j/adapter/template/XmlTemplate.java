@@ -903,7 +903,7 @@ public final class XmlTemplate {
         private ParsedTable tableParts(Element element, int tableDepth) {
             if (tableDepth > com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH) { throw error(element, Code.INVALID_STRUCTURE); }
             boolean dynamic = element.name().equals("rows");
-            var allowed = new HashSet<>(Set.of("id", "row-split", "padding-top", "padding-right", "padding-bottom", "padding-left", "space-before", "space-after"));
+            var allowed = new HashSet<>(Set.of("id", "row-split", "draw-borders", "padding-top", "padding-right", "padding-bottom", "padding-left", "space-before", "space-after"));
             if (dynamic) { allowed.addAll(Set.of("items", "as")); }
             attributes(element, allowed);
             String id = id(element);
@@ -932,6 +932,7 @@ public final class XmlTemplate {
             var defaults = theme.tableFormat();
             var padding = defaults.padding();
             var format = validated(element, () -> defaults.toBuilder().allowRowSplit(flag(element, "row-split", defaults.allowRowSplit()))
+                    .drawBorders(flag(element, "draw-borders", defaults.drawBorders()))
                     .padding(new PageMargins(number(element, "padding-top", padding.top()), number(element, "padding-right", padding.right()),
                             number(element, "padding-bottom", padding.bottom()), number(element, "padding-left", padding.left())))
                     .spaceBefore(number(element, "space-before", defaults.spaceBefore())).spaceAfter(number(element, "space-after", defaults.spaceAfter())).build());

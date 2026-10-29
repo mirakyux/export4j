@@ -62,7 +62,7 @@ final class DocxStyles {
         for (var entry : parts.entrySet()) {
             if (!entry.getKey().startsWith("word/") || !entry.getKey().endsWith(".xml") || entry.getKey().equals("word/styles.xml")) { continue; }
             var document = DocxAdapter.parse(entry.getValue());
-            if (!W.equals(document.getNamespaceURI()) || !Set.of("document", "hdr", "ftr").contains(document.getLocalName())) { continue; }
+            if (!W.equals(document.getNamespaceURI()) || !Set.of("document", "hdr", "ftr", "comments").contains(document.getLocalName())) { continue; }
             var paragraphs = document.getElementsByTagNameNS(W, "p");
             for (int index = 0; index < paragraphs.getLength(); index++) { mapper.paragraph((Element) paragraphs.item(index)); }
             entry.setValue(encode(document, limits.maxEntryBytes()));

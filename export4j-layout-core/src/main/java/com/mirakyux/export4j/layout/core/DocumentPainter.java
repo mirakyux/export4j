@@ -109,15 +109,17 @@ public final class DocumentPainter {
                 if (row.header()) {
                     builder.fillRect(new Rect(x, y, bounds.width(), bounds.height()), new RgbColor(0.93, 0.95, 0.97));
                 }
-                // Center the stroke inside each cell so outer borders stay in the content area.
-                double stroke = Math.min(0.5, Math.min(bounds.width(), bounds.height()));
-                double left = x + stroke / 2;
-                double top = y + stroke / 2;
-                double right = x + bounds.width() - stroke / 2;
-                double bottom = y + bounds.height() - stroke / 2;
-                builder.strokePath(new VectorPath(List.of(new VectorPath.MoveTo(new Point(left, top)),
-                        new VectorPath.LineTo(new Point(right, top)), new VectorPath.LineTo(new Point(right, bottom)),
-                        new VectorPath.LineTo(new Point(left, bottom)), new VectorPath.Close())), RgbColor.BLACK, stroke);
+                if (table.drawBorders()) {
+                    // Center the stroke inside each cell so outer borders stay in the content area.
+                    double stroke = Math.min(0.5, Math.min(bounds.width(), bounds.height()));
+                    double left = x + stroke / 2;
+                    double top = y + stroke / 2;
+                    double right = x + bounds.width() - stroke / 2;
+                    double bottom = y + bounds.height() - stroke / 2;
+                    builder.strokePath(new VectorPath(List.of(new VectorPath.MoveTo(new Point(left, top)),
+                            new VectorPath.LineTo(new Point(right, top)), new VectorPath.LineTo(new Point(right, bottom)),
+                            new VectorPath.LineTo(new Point(left, bottom)), new VectorPath.Close())), RgbColor.BLACK, stroke);
+                }
                 var contentOrigin = new Point(table.origin().x() + cell.textOrigin().x(),
                         table.origin().y() + cell.textOrigin().y());
                 if (cell.hasBlocks()) {

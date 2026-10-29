@@ -7,7 +7,13 @@ import com.mirakyux.export4j.graphics.Point;
 
 /** Complete table rows on one page; dimensions in points, origin page-local. Lists are immutable snapshots. */
 public record TableFragment(String blockId, int blockIndex, Point origin, double width, double height,
-        List<TableRowFragment> rows) implements LayoutFragment {
+        List<TableRowFragment> rows, boolean drawBorders) implements LayoutFragment {
+    /** Existing fragments retain visible outlines. */
+    public TableFragment(String blockId, int blockIndex, Point origin, double width, double height,
+            List<TableRowFragment> rows) {
+        this(blockId, blockIndex, origin, width, height, rows, true);
+    }
+
     public TableFragment {
         Objects.requireNonNull(blockId, "blockId");
         Objects.requireNonNull(origin, "origin");

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>External heading</w:t></w:r></w:p>
+    <w:p><w:fldSimple w:instr="TOC \o &quot;1-3&quot; \h"><w:r><w:t>External heading</w:t><w:tab/><w:t>1</w:t></w:r></w:fldSimple></w:p>
+    <w:p><w:r><w:t xml:space="preserve">Before </w:t></w:r><w:ins w:id="3" w:author="External author"><w:r><w:t>ADDED</w:t></w:r></w:ins><w:del w:id="4" w:author="External author"><w:r><w:delText>DELETED</w:delText></w:r></w:del></w:p>
+    <w:p><w:commentRangeStart w:id="7"/><w:r><w:t>Comment start</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Comment end</w:t></w:r><w:commentRangeEnd w:id="7"/><w:r><w:commentReference w:id="7"/></w:r></w:p>
+    <w:p><w:sdt><w:sdtPr><w:alias w:val="External control"/><w:tag w:val="external-name"/><w:id w:val="42"/><w:text/></w:sdtPr><w:sdtContent><w:r><w:t>EXTERNAL-NAME</w:t></w:r></w:sdtContent></w:sdt></w:p>
+    <w:p><w:r><w:fldChar w:fldCharType="begin"><w:ffData><w:name w:val="external-form"/><w:enabled/><w:textInput><w:type w:val="regular"/><w:default w:val="Default"/><w:maxLength w:val="20"/></w:textInput></w:ffData></w:fldChar></w:r><w:r><w:instrText xml:space="preserve"> FORMTEXT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>FORM-VALUE</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>
+    <w:p><w:moveFromRangeStart w:id="10" w:name="external-move" w:author="External author"/><w:moveFrom w:id="11" w:author="External author"><w:r><w:delText>MOVED</w:delText></w:r></w:moveFrom><w:moveFromRangeEnd w:id="10"/></w:p>
+    <w:p><w:moveToRangeStart w:id="12" w:name="external-move" w:author="External author"/><w:moveTo w:id="13" w:author="External author"><w:r><w:t>MOVED</w:t></w:r></w:moveTo><w:moveToRangeEnd w:id="12"/></w:p>
+    <w:p><w:pPr><w:pPrChange w:id="21" w:author="External author"><w:pPr><w:jc w:val="center"/></w:pPr></w:pPrChange></w:pPr><w:r><w:rPr><w:rPrChange w:id="20" w:author="External author"><w:rPr><w:i/><w:color w:val="224488"/></w:rPr></w:rPrChange></w:rPr><w:t>FORMAT-CHANGED</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080"/></w:sectPr>
+  </w:body>
+</w:document>

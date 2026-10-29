@@ -22,6 +22,8 @@ import org.jsoup.parser.Parser;
  * Immutable, thread-safe and owns no resources. Dimensions in the model are points.
  */
 public final class HtmlImporter {
+    /** Explicit offline media environment; never inferred from a browser or machine. */
+    public enum Media { PRINT, SCREEN }
     final ProcessingPolicy policy;
     final ImportLimits limits;
     final DocumentMetadata metadata;
@@ -30,11 +32,15 @@ public final class HtmlImporter {
     final Map<String, InlineImage> images;
     final Map<String, java.util.List<String>> families;
     final URI baseUri;
+    final boolean layoutMode;
+    final Media media;
+    final com.mirakyux.export4j.model.PageSize viewport;
     public HtmlImporter() { this(new Builder()); }
     private HtmlImporter(Builder builder) {
         policy = builder.policy; limits = builder.limits; metadata = builder.metadata;
         pageSettings = builder.pageSettings; format = builder.format; images = Map.copyOf(builder.images);
         families = Map.copyOf(builder.families); baseUri = builder.baseUri;
+        layoutMode = builder.layoutMode; media = builder.media; viewport = builder.viewport == null ? pageSettings.size() : builder.viewport;
     }
     public static Builder builder() { return new Builder(); }
     public Request read(String source) { return new Request(Objects.requireNonNull(source, "source"), this); }
@@ -44,6 +50,7 @@ public final class HtmlImporter {
         return com.mirakyux.export4j.model.processing.DocumentConversion.from("HTML", shared -> {
             var builder = new Builder().policy(shared).limits(limits).metadata(metadata).pageSettings(pageSettings).paragraphFormat(format);
             builder.images.putAll(images); builder.families.putAll(families); builder.baseUri = baseUri;
+            builder.layoutMode = layoutMode; builder.media = media; builder.viewport = viewport;
             var imported = builder.build().read(source).execute();
             return com.mirakyux.export4j.model.processing.DocumentConversion.Input.of(imported.document(), imported.report());
         }).policy(policy);
@@ -58,12 +65,26 @@ public final class HtmlImporter {
         private final Map<String, InlineImage> images = new HashMap<>();
         private final Map<String, java.util.List<String>> families = new HashMap<>();
         private URI baseUri;
+        private boolean layoutMode;
+        private Media media = Media.PRINT;
+        private com.mirakyux.export4j.model.PageSize viewport;
         private Builder() { }
         public Builder policy(ProcessingPolicy value) { policy = Objects.requireNonNull(value, "policy"); return this; }
         public Builder limits(ImportLimits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
         public Builder metadata(DocumentMetadata value) { metadata = Objects.requireNonNull(value, "metadata"); return this; }
         public Builder pageSettings(PageSettings value) { pageSettings = Objects.requireNonNull(value, "pageSettings"); return this; }
         public Builder paragraphFormat(ParagraphFormat value) { format = Objects.requireNonNull(value, "format"); return this; }
+        /** Enables bounded CSS boxes, flex/grid and positioning, compiled to runtime layout components.
+         * The default remains editable semantic flow. Component descendants are not a generic editable
+         * document model; conversions without a layout representation require an explicit loss policy.
+         * Physical fonts are supplied later by DocumentEngine, never by the importer.
+         */
+        public Builder layoutMode(boolean value) { layoutMode = value; return this; }
+        public Builder media(Media value) { media = Objects.requireNonNull(value, "media"); return this; }
+        /** Media-query viewport in points. Defaults to the caller's initial page size, independently
+         * of @page rules; changing output pages never creates a responsive-style feedback loop.
+         */
+        public Builder viewport(com.mirakyux.export4j.model.PageSize value) { viewport = Objects.requireNonNull(value, "viewport"); return this; }
         /** Registers exact src text with explicit encoded bytes and point dimensions. No I/O occurs. */
         public Builder image(String source, InlineImage value) { images.put(key(source), Objects.requireNonNull(value, "image")); return this; }
         /** Maps one CSS family to a semantic font role; the output caller supplies its physical fonts.

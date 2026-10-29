@@ -11,3 +11,5 @@
 示例与测试的字体独立登记在[字体资源](../assets/fonts/README.md)，同目录保存各自许可原文。它们不属于 Maven 坐标清单。
 
 `native-artifacts.csv` 单独记录应用显式选择的原生 classifier；普通 OpenType 模块 POM 不默认携带平台二进制。已验收的 Windows x64 包含 LWJGL、HarfBuzz、libffi、libpng 和 zlib，其完整声明保存在 `licenses/`。libpng 1.6.55 与 zlib 1.3.2 来自原生包记录的 HarfBuzz 提交 `9f2f03173b7fee860cc00d999857d09fa4a362e2` 下 `subprojects/libpng.wrap` 和 `subprojects/zlib.wrap`；libpng 版本另经实际二进制字符串核对。其他 classifier 的存在不等于已经执行跨平台验收。
+
+Linux／macOS x64 与 arm64 的八个 JAR 已实际下载并与 Central 发布 SHA-1 对照，SHA-256 同步进入 Gradle 严格校验与原生制品清单；二进制中的 libpng 1.6.55／zlib 1.3.2 字符串和 libffi 符号另作核对，Linux 内含声明保留 liburing 许可。复用保存的 HarfBuzz 原始版权声明不表示已经在这些平台测得相同运行版本。完整平台执行状态见[阶段一百零五](../docs/verification/phase-105-publication-and-compatibility.md)。

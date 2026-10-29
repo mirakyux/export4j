@@ -298,7 +298,7 @@ public final class ComponentDocumentRenderer {
     private static LayoutFragment shift(LayoutFragment fragment, int base) {
         return switch (fragment) {
             case ParagraphFragment p -> new ParagraphFragment(p.blockId(), p.blockIndex() + base, p.firstLineIndex(), p.origin(), p.layout());
-            case TableFragment t -> new TableFragment(t.blockId(), t.blockIndex() + base, t.origin(), t.width(), t.height(), t.rows());
+            case TableFragment t -> new TableFragment(t.blockId(), t.blockIndex() + base, t.origin(), t.width(), t.height(), t.rows(), t.drawBorders());
             case ComponentFragment c -> new ComponentFragment(c.blockId(), c.blockIndex() + base, c.origin(), c.layout());
         };
     }

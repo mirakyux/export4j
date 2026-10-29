@@ -14,6 +14,8 @@ import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.Paragraph;
+import com.mirakyux.export4j.model.PageBreak;
+import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableFormat;
@@ -52,6 +54,8 @@ final class HtmlImportMapper {
     private final Map<Element, String> ids = new IdentityHashMap<>();
     private final Map<Element, Boolean> omitted = new IdentityHashMap<>();
     private final Set<Element> checkedAttributes = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+    private boolean compilingBox;
+    private final Set<Element> layoutAnchors = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
     HtmlImportMapper(HtmlImporter importer, ImportSupport.State state) { this.importer = importer; this.state = state; css = new HtmlCss(importer, state); }
 
     void validate(org.jsoup.nodes.Document tree) {
@@ -97,8 +101,10 @@ final class HtmlImportMapper {
             if (child.normalName().equals("meta") && child.attributesSize() == 1 && child.attr("charset").equalsIgnoreCase("utf-8")) { continue; }
             loss(child, "HTML_METADATA", "HTML head metadata has no explicit model mapping", "HEAD_METADATA_REMOVED", "", List.of());
         }
-        var output = new ArrayList<Block>(); blocks(tree.body(), output, new Context("", List.of(), 0));
-        return new Document(importer.metadata, importer.pageSettings, output);
+        var output = new ArrayList<Block>();
+        if (importer.layoutMode && needsBox(tree.body())) { block(tree.body(), output, new Context("", List.of(), 0)); }
+        else { blocks(tree.body(), output, new Context("", List.of(), 0)); }
+        return new Document(importer.metadata, css.pageSettings(), output);
     }
     private String id(Element source) {
         return ids.computeIfAbsent(source, element -> {
@@ -130,9 +136,18 @@ final class HtmlImportMapper {
     }
     private void block(Element element, List<Block> output, Context context) {
         state.work(1); String tag = element.normalName(); String id = id(element);
+        if (importer.layoutMode && !compilingBox && needsBox(element) && CONTAINERS.contains(tag)) { layoutAnchors.add(element); }
         attributes(element, id, context.cells()); if (hidden(element, id, context.cells())) { return; }
         var own = new Context(id, context.cells(), context.indent());
-        var format = css.get(element).paragraph(importer.format, context.indent());
+        var style = css.get(element); var format = style.paragraph(importer.format, context.indent());
+        if (style.breakBefore) { output.add(new PageBreak(generatedId())); }
+        if (importer.layoutMode && !compilingBox && needsBox(element)) {
+            if (style.box.getOrDefault("position", "static").equals("absolute")) { throw new IllegalArgumentException("top-level absolute CSS content requires a positioned containing box"); }
+            var component = box(element, own, 0, false);
+            if (component != null) { output.add(new com.mirakyux.export4j.layout.core.ComponentBlock(CONTAINERS.contains(tag) ? id : generatedId(), component)); }
+            if (style.breakAfter) { output.add(new PageBreak(generatedId())); }
+            return;
+        }
         if (tag.equals("p")) { output.add(Paragraph.mixed(id, content(element.childNodes(), element, own), format)); }
         else if (tag.matches("h[1-6]")) { output.add(Heading.rich(id, textOnly(content(element.childNodes(), element, own), element, own), tag.charAt(1) - '0', format)); }
         else if (CONTAINERS.contains(tag)) {
@@ -150,6 +165,137 @@ final class HtmlImportMapper {
             }
         } else if (tag.equals("style")) { /* Parsed once above, never emitted as document text. */ }
         else if (loss(element, "HTML_ELEMENT", "HTML element has no semantic mapping", "ELEMENT_CONTAINER_FLATTENED", id, context.cells()) == Treatment.DEGRADE) { blocks(element, output, own); }
+        if (style.breakAfter) { output.add(new PageBreak(generatedId())); }
+    }
+    private boolean needsBox(Element element) {
+        var style = css.get(element); return !style.box.isEmpty() && !(style.box.size() == 1 && Set.of("block", "inline").contains(style.box.get("display")));
+    }
+    private HtmlCssBox box(Element source, Context context, int depth, boolean containing) {
+        state.work(1); if (depth > 32) { throw new IllegalArgumentException("compiled CSS box depth exceeded"); }
+        attributes(source, context.block(), context.cells()); if (hidden(source, context.block(), context.cells())) { return null; }
+        var computed = css.get(source); var declarations = new HashMap<>(computed.box); var tag = source.normalName();
+        if (tag.equals("ul") || tag.equals("ol")) {
+            state.unsupported("CSS_LAYOUT_LEAF", location(source, context.block(), context.cells()), "list semantics have no compiled CSS leaf mapping", List.of("LIST_SUBTREE_REMOVED"), Treatment.DISCARD);
+            return null;
+        }
+        boolean positioned = !declarations.getOrDefault("position", "static").equals("static");
+        if (depth == 0 && declarations.getOrDefault("position", "static").equals("relative")
+                && List.of("left", "right", "top", "bottom").stream().anyMatch(name -> declarations.containsKey(name) && !declarations.get(name).equals("auto") && CssBoxStyle.dimension(declarations.get(name), false).value() != 0)) {
+            state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "relative root offsets need an explicit containing layout box", List.of("ROOT_RELATIVE_OFFSETS_REMOVED"), Treatment.DEGRADE);
+            for (String name : List.of("left", "right", "top", "bottom")) { declarations.remove(name); }
+        }
+        if (declarations.getOrDefault("position", "static").equals("absolute") && !containing) { throw new IllegalArgumentException("absolute CSS content requires an explicit positioned parent"); }
+        if (declarations.getOrDefault("position", "static").equals("absolute")) {
+            for (var axis : List.of(List.of("left", "right"), List.of("top", "bottom"))) {
+                if (axis.stream().allMatch(name -> declarations.getOrDefault(name, "auto").equals("auto"))) {
+                    state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "absolute static-position offsets require explicit axis constraints", List.of("STATIC_POSITION_REPLACED_WITH_ZERO"), Treatment.DEGRADE);
+                    declarations.put(axis.getFirst(), "0pt");
+                }
+            }
+            if (declarations.getOrDefault("width", "auto").equals("auto") && (declarations.getOrDefault("left", "auto").equals("auto") || declarations.getOrDefault("right", "auto").equals("auto"))) {
+                state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "absolute intrinsic width requires a width or two explicit horizontal constraints", List.of("INTRINSIC_WIDTH_REPLACED_WITH_EDGE_CONSTRAINTS"), Treatment.DEGRADE);
+                declarations.putIfAbsent("left", "0pt"); declarations.putIfAbsent("right", "0pt");
+                if (declarations.get("left").equals("auto")) { declarations.put("left", "0pt"); }
+                if (declarations.get("right").equals("auto")) { declarations.put("right", "0pt"); }
+            }
+        }
+        if (depth > 0 && (computed.breakBefore || computed.breakAfter)) {
+            state.unsupported("CSS_PAGINATION_CONTEXT", location(source, id(source), context.cells()), "page breaks cannot occur inside an atomic CSS layout box", List.of("NESTED_PAGE_BREAK_REMOVED"), Treatment.DEGRADE);
+        }
+        var children = new ArrayList<HtmlCssBox>(); com.mirakyux.export4j.layout.core.Component leaf = null;
+        if (CONTAINERS.contains(tag)) {
+            var inline = new ArrayList<Node>();
+            for (var node : source.childNodes()) {
+                if (node instanceof Comment || node instanceof TextNode text && text.isBlank() && inline.isEmpty()) { continue; }
+                if (node instanceof Element child && !INLINE.contains(child.normalName())) {
+                    boxText(source, inline, children, context); var nested = box(child, new Context(id(child), context.cells(), 0), depth + 1, positioned);
+                    if (nested != null) { children.add(nested); }
+                } else { inline.add(node); }
+            }
+            boxText(source, inline, children, context);
+        } else {
+            var blocks = new ArrayList<Block>(); boolean previous = compilingBox; compilingBox = true;
+            try { block(source, blocks, context); } finally { compilingBox = previous; }
+            blocks.removeIf(block -> block instanceof PageBreak);
+            if (!blocks.isEmpty()) { leaf = semanticBox(blocks, computed); }
+            declarations.putIfAbsent("margin-top", computed.before + "pt"); declarations.putIfAbsent("margin-bottom", computed.after + "pt");
+        }
+        if (declarations.getOrDefault("display", "block").equals("flex")) {
+            for (int i = 0; i < children.size(); i++) {
+                var child = children.get(i);
+                for (String name : List.of("flex-grow", "flex-shrink")) {
+                    double factor = child.style.number(name, name.equals("flex-grow") ? 0 : 1);
+                    if (!child.absolute() && factor > 0 && factor < 1) {
+                        state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "subunit flex factors are outside the finite distribution subset", List.of("SUBUNIT_FLEX_FACTOR_REPLACED_WITH_ONE"), Treatment.DEGRADE);
+                        child = child.withDeclaration(name, "1"); children.set(i, child);
+                    }
+                }
+            }
+            boolean column = declarations.getOrDefault("flex-direction", "row").startsWith("column");
+            for (var child : children) {
+                if (!child.absolute() && child.style.length("flex-basis").automatic() && child.style.length(column ? "height" : "width").automatic()) {
+                    state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "flex items require an explicit main-axis size/basis in this finite layout subset", List.of("FLEX_REPLACED_WITH_BLOCK_FLOW"), Treatment.DEGRADE);
+                    declarations.put("display", "block"); break;
+                }
+            }
+            if (column && (!declarations.containsKey("height") || !declarations.getOrDefault("flex-wrap", "nowrap").equals("nowrap"))) {
+                state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "column flex needs an explicit height and nowrap", List.of("FLEX_REPLACED_WITH_BLOCK_FLOW"), Treatment.DEGRADE); declarations.put("display", "block");
+            }
+        }
+        boolean grid = declarations.getOrDefault("display", "block").equals("grid");
+        if (grid) {
+            for (String name : List.of("height", "min-height", "max-height", "align-content", "justify-content")) {
+                if (declarations.containsKey(name) && !Set.of("auto", "none").contains(declarations.get(name))) {
+                    state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "grid container block size and track-group alignment use content-sized start alignment in this subset", List.of("GRID_CONTAINER_CONSTRAINT_REMOVED"), Treatment.DEGRADE);
+                    declarations.remove(name);
+                }
+            }
+        }
+        boolean columnFlex = declarations.getOrDefault("display", "block").equals("flex") && declarations.getOrDefault("flex-direction", "row").startsWith("column");
+        if (grid || columnFlex) {
+            String self = grid ? "justify-self" : "align-self", items = grid ? "justify-items" : "align-items";
+            for (int i = 0; i < children.size(); i++) {
+                var child = children.get(i); String alignment = child.style.text(self, "auto");
+                if (alignment.equals("auto")) { alignment = declarations.getOrDefault(items, "stretch"); }
+                if (!child.absolute() && child.style.length("width").automatic() && !alignment.equals("stretch")) {
+                    state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "non-stretch horizontal alignment requires an explicit item width", List.of("INTRINSIC_ALIGNMENT_REPLACED_WITH_STRETCH"), Treatment.DEGRADE);
+                    children.set(i, child.withDeclaration(self, "stretch"));
+                }
+            }
+        }
+        if (declarations.getOrDefault("height", "auto").equals("auto")) {
+            for (int i = 0; i < children.size(); i++) {
+                var child = children.get(i);
+                if (!child.style.text("position", "static").equals("relative")) { continue; }
+                for (String name : List.of("top", "bottom")) {
+                    if (child.style.length(name).percent()) {
+                        state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "percentage relative block offsets require an explicit containing height", List.of("PERCENTAGE_BLOCK_OFFSET_REMOVED"), Treatment.DEGRADE);
+                        child = child.withDeclaration(name, "0pt"); children.set(i, child);
+                    }
+                }
+            }
+        }
+        return new HtmlCssBox(new CssBoxStyle(declarations), children, leaf);
+    }
+    private void boxText(Element owner, List<Node> nodes, List<HtmlCssBox> children, Context context) {
+        if (nodes.isEmpty()) { return; } String id = generatedId(); var content = content(nodes, owner, new Context(id, context.cells(), 0)); nodes.clear();
+        if (!content.isEmpty()) { var style = css.get(owner); children.add(new HtmlCssBox(new CssBoxStyle(Map.of()), List.of(), semanticBox(List.of(Paragraph.mixed(id, content, style.paragraph(importer.format, 0))), style))); }
+    }
+    private com.mirakyux.export4j.layout.core.Component semanticBox(List<Block> source, HtmlCss.Computed computed) {
+        if (source.size() == 1 && source.getFirst() instanceof Table table) { return new com.mirakyux.export4j.components.SemanticTable(table); }
+        var blocks = new ArrayList<Block>();
+        for (var block : source) {
+            if (block instanceof Heading heading) { block = heading.paragraph(); }
+            if (block instanceof Paragraph paragraph) {
+                var format = paragraph.format().toBuilder().spaceBefore(0).spaceAfter(0).firstLineIndent(paragraph.format().firstLineIndent() - computed.indent).subsequentLineIndent(paragraph.format().subsequentLineIndent() - computed.indent).build();
+                blocks.add(new Paragraph(paragraph.id(), paragraph.text(), format, paragraph.inlines(), paragraph.images(), paragraph.fields()));
+            } else if (block instanceof Table) { blocks.add(block); }
+            else { throw new IllegalArgumentException("CSS layout leaf supports paragraphs, headings and semantic tables"); }
+        }
+        var cell = TableCell.builder().blocks(blocks).format(new CellFormat(computed.size, computed.lineHeight(), computed.alignment)).build();
+        var table = new Table(generatedId(), List.of(new ColumnWidth.Fraction(1)), List.of(new TableRow(List.of(cell))), 0,
+                TableFormat.builder().padding(PageMargins.uniform(0)).spaceAfter(0).drawBorders(false).build());
+        return new com.mirakyux.export4j.components.SemanticTable(table);
     }
     private boolean hidden(Element element, String id, List<CellLocation> cells) {
         if (!css.get(element).hidden) { return false; }
@@ -205,6 +351,12 @@ final class HtmlImportMapper {
                     if (element.hasAttr("height")) { height = dimension(element.attr("height")); }
                     if (element.hasAttr("width") && !element.hasAttr("height")) { height = image.height() * width / image.width(); }
                     if (element.hasAttr("height") && !element.hasAttr("width")) { width = image.width() * height / image.height(); }
+                    var imageStyle = css.get(element).box;
+                    boolean cssWidth = imageStyle.containsKey("width") && !imageStyle.get("width").equals("auto"), cssHeight = imageStyle.containsKey("height") && !imageStyle.get("height").equals("auto");
+                    if (cssWidth) { width = HtmlCss.length(imageStyle.get("width")); }
+                    if (cssHeight) { height = HtmlCss.length(imageStyle.get("height")); }
+                    if (cssWidth && !cssHeight && !element.hasAttr("height")) { height = image.height() * width / image.width(); }
+                    if (cssHeight && !cssWidth && !element.hasAttr("width")) { width = image.width() * height / image.height(); }
                     output.add(new InlineImage(image.resource(), width, height, image.baselineShift(), element.attr("alt"), link)); state.text(1); space.beginning = false;
                 }
             } else if (INLINE.contains(tag) || tag.equals("code")) {
@@ -307,7 +459,7 @@ final class HtmlImportMapper {
                 headers++;
             }
         }
-        var rows = new ArrayList<TableRow>(); var occupied = new HashMap<Integer, Set<Integer>>(); int columns = 0;
+        var rows = new ArrayList<TableRow>(); var occupied = new HashMap<Integer, Set<Integer>>(); int columns = 0, borderless = 0, cellCount = 0;
         for (int rowIndex = 0; rowIndex < inputRows.size(); rowIndex++) {
             state.work(1); var row = inputRows.get(rowIndex); attributes(row, context.block(), context.cells());
             if (css.get(row).hidden) { throw new IllegalArgumentException("hidden HTML rows cannot preserve table coverage"); }
@@ -329,6 +481,7 @@ final class HtmlImportMapper {
                     for (int x = column; x < column + width; x++) { if (!coverage.add(x)) { throw new IllegalArgumentException("overlapping HTML table cells"); } }
                 }
                 var style = css.get(cell); var format = new CellFormat(style.size, style.lineHeight(), style.alignment);
+                cellCount++; if (style.borderless) { borderless++; }
                 var own = new Context(context.block(), List.copyOf(path), 0); TableCell value;
                 if (cell.children().stream().anyMatch(child -> Set.of("p", "table", "div").contains(child.normalName()))) {
                     var blocks = new ArrayList<Block>();
@@ -368,7 +521,8 @@ final class HtmlImportMapper {
         if (headers >= rows.size()) { throw new IllegalArgumentException("HTML table requires body rows"); }
         if (declaredColumns > columns) { throw new IllegalArgumentException("HTML column declarations exceed cell grid"); }
         var widths = new ArrayList<ColumnWidth>(); for (int column = 0; column < columns; column++) { widths.add(new ColumnWidth.Fraction(1)); }
-        return new Table(context.block(), widths, rows, headers, TableFormat.DEFAULT);
+        if (borderless != 0 && borderless != cellCount) { state.unsupported("TABLE_BORDERS", location(source, context.block(), context.cells()), "the model uses one border flag for the complete table", List.of("MIXED_CELL_BORDER_OVERRIDES_REMOVED"), Treatment.DEGRADE); }
+        return new Table(context.block(), widths, rows, headers, TableFormat.DEFAULT.toBuilder().drawBorders(borderless != cellCount).build());
     }
     private int columnGroup(Element group, Context context) {
         attributes(group, context.block(), context.cells());
@@ -397,7 +551,7 @@ final class HtmlImportMapper {
     private void attributes(Element element, String id, List<CellLocation> cells) {
         if (element == null || !checkedAttributes.add(element)) { return; }
         String tag = element.normalName();
-        if (element.hasAttr("id") && !tag.matches("p|h[1-6]|table|li")) {
+        if (element.hasAttr("id") && !tag.matches("p|h[1-6]|table|li") && !layoutAnchors.contains(element)) {
             loss(element, "SOURCE_ANCHOR", "source anchor has no corresponding model block", "ANCHOR_REMOVED", id, cells);
         }
         for (var attribute : element.attributes()) {

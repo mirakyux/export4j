@@ -4,6 +4,10 @@
 
 ## 构建与依赖
 
+- DOCX 原生语义变更使用新隔离调用方的 `docxSemanticComplete` 和 `verification/verify_docx_semantics.py`；核对标准浮动图／文本框、修订实际删除、评论／控件／目录及全部关系。Windows Word 使用 `verification/verify_docx_semantics_word.ps1` 在自有后台实例中实际编辑、更新字段、保存、重开、逐页原生渲染和导出 PDF，再用调用方 `--args=read-back` 检查保存结果。执行 `verification/verify_docx_word_rendering.py <样例目录> --output-directory <独立渲染目录>`，核对文件摘要、实际页区／目录页码和双引擎渲染，逐页复查；后台原生渲染、程序化应用动作与人工界面操作分别记录。
+- 运行依赖变更执行 `scripts/verify_driverless.py --consumer-build-directory <本次成功调用方目录> --output-directory <新证据目录>`。从真实 distZip 核对运行 JAR 摘要及生产打印 API 引用，在无桌面且拒绝加载 JDK 打印类的 JVM 中运行生成／转换；三类打印 API 负控制必须真实失败。不得要求安装打印驱动、启用打印服务或通过 Office／浏览器完成生产导出；外部应用仅用于独立验收。
+- HTML/CSS 布局模式变更使用 `htmlCssLayout` 和 `scripts/verify_html_css_layout.py --chromium <Chromium可执行文件>`，传入本次成功隔离目录；核对源 Chromium 几何、PDF 双引擎及 SVG 独立渲染、分页、最终链接和真实策略降级，不把有限盒布局称为浏览器兼容。
+- API 和分发变更运行 `scripts/test_api_compatibility.py`、`apiCheck` 及 `scripts/verify_signed_distribution.py`；固定提交基线与当前 JAR 分别生成，临时签名身份只用于本地验证。核对 16 个库 JAR、BOM 共 17 个组件、全部制品签名及篡改拒绝；本地分发与远端 CI、正式发布分别登记。
 - 变宽递归格／组件网格及轮廓浮动使用新隔离调用方的 `complexFlows` 和 `scripts/verify_complex_flows.py`，核对完整 UTF-16 来源、递归 owner、最终字段、图文外链、实际曲线行带及全部新页独立渲染。
 - 可选原生 OpenType 使用 `openType` 和 `scripts/verify_native_opentype.py`；平台 native classifier 必须显式配置。分别验证真实可变轮廓、彩色字形、方向塑形、分页、静态 CFF 原生 PDF、提取／查询／选中及新页双渲染，不能将绑定头版本当作实际原生版本。
 - 语义长表／重放／磁盘索引 PDF 使用 `streamingReplay` 和 `scripts/verify_streaming_replay.py`；容量运行 `scripts/measure_streaming_replay.ps1` 后由 `scripts/verify_streaming_replay_capacity.py` 核对全部源行及首中末页。分录堆、进程工作集／私有字节、临时盘和退出清理，不把有限组解释为长期无泄漏。

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import java.security.MessageDigest
+
 plugins { application }
+apply(from = "../../gradle/native-platform.gradle.kts")
 layout.buildDirectory.set(layout.projectDirectory.dir(providers.gradleProperty("consumerBuildDirectory").orElse("build").get()))
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(21)) }
 dependencies {
-    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-SNAPSHOT"))
+    implementation(platform("com.mirakyux.export4j:export4j-bom:${providers.gradleProperty("export4jVersion").orElse("0.1.0-SNAPSHOT").get()}"))
     implementation("com.mirakyux.export4j:export4j-components")
     implementation("com.mirakyux.export4j:export4j-graphics-core")
     implementation("com.mirakyux.export4j:export4j-backend-pdf")
@@ -14,9 +17,9 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-pdf")
     implementation("com.mirakyux.export4j:export4j-adapter-web")
     implementation("com.mirakyux.export4j:export4j-opentype")
-    val nativeClassifier = providers.gradleProperty("export4jNativeClassifier").orElse("natives-windows")
-    runtimeOnly("org.lwjgl:lwjgl:3.4.3:${nativeClassifier.get()}")
-    runtimeOnly("org.lwjgl:lwjgl-harfbuzz:3.4.3:${nativeClassifier.get()}")
+    val nativeClassifier = rootProject.extra["export4jNativeClassifierResolved"] as String
+    runtimeOnly("org.lwjgl:lwjgl:3.4.3:$nativeClassifier")
+    runtimeOnly("org.lwjgl:lwjgl-harfbuzz:3.4.3:$nativeClassifier")
 }
 application { mainClass.set("consumer.Consumer") }
 
@@ -243,11 +246,29 @@ for ((taskName, className) in mapOf(
 
 tasks.register("resolvedLibraries") {
     val runtime = configurations.named("runtimeClasspath")
+    val selectedComponents = runtime.map { configuration ->
+        configuration.incoming.resolutionResult.allComponents.mapNotNull { component ->
+            (component.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let {
+                "${it.group}:${it.module}:${it.version}"
+            }
+        }.distinct().sorted()
+    }
     inputs.files(runtime)
+    inputs.property("selectedComponents", selectedComponents)
     outputs.file(layout.buildDirectory.file("resolved-libraries.txt"))
+    outputs.file(layout.buildDirectory.file("resolved-components.txt"))
+    outputs.file(layout.buildDirectory.file("resolved-library-sha256.txt"))
     doLast {
-        val ids = runtime.get().resolvedConfiguration.resolvedArtifacts.map { it.moduleVersion.id.toString() }.distinct().sorted()
+        val artifacts = runtime.get().resolvedConfiguration.resolvedArtifacts
+        val ids = artifacts.map { it.moduleVersion.id.toString() }.distinct().sorted()
         layout.buildDirectory.file("resolved-libraries.txt").get().asFile.writeText(ids.joinToString("\n") + "\n")
+        layout.buildDirectory.file("resolved-components.txt").get().asFile.writeText(selectedComponents.get().joinToString("\n") + "\n")
+        val hashes = artifacts.map { artifact ->
+            val sha = MessageDigest.getInstance("SHA-256").digest(artifact.file.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            "${artifact.moduleVersion.id}\t${artifact.file.name}\t$sha"
+        }.sorted()
+        layout.buildDirectory.file("resolved-library-sha256.txt").get().asFile.writeText(hashes.joinToString("\n") + "\n")
     }
 }
 // Named isolated acceptance entry point for recursive, grid and contour continuation.
@@ -265,4 +286,17 @@ tasks.register<JavaExec>("gap21Complete") {
     workingDir = projectDir
     systemProperty("java.awt.headless", "true")
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+for ((taskName, className) in listOf(
+    "docxSemanticComplete" to "consumer.DocxSemanticCompleteConsumer",
+    "htmlCssLayout" to "consumer.HtmlCssLayoutConsumer"
+)) {
+    tasks.register<JavaExec>(taskName) {
+        classpath = sourceSets.main.get().runtimeClasspath
+        mainClass.set(className)
+        workingDir = projectDir
+        systemProperty("java.awt.headless", "true")
+        systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+    }
 }

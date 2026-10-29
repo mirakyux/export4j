@@ -4,6 +4,7 @@ package com.mirakyux.export4j.adapter.docx;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
+import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -56,6 +57,15 @@ class DocxStylesTest {
     @Test void styleGraphLossIsNeverHiddenByStrictMode() throws Exception {
         byte[] source = fixture(style("Body", "paragraph", "", "<w:rPr><w:color w:val='123456'/></w:rPr>"), "<w:p><w:pPr><w:pStyle w:val='Body'/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p>");
         assertThrows(IOException.class, () -> new DocxAdapter().read(new ByteArrayInputStream(source), DocxAdapter.Policy.STRICT));
+    }
+    @Test void nativePipelineMaterializesStylesOnceAndReportsTheActualGraphLossOnce() throws Exception {
+        byte[] source = fixture(style("Body", "paragraph", "", "<w:rPr><w:color w:val='123456'/></w:rPr>"), "<w:p><w:pPr><w:pStyle w:val='Body'/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p>");
+        var adapter = new DocxAdapter(); var policy = ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
+        var nativeRead = adapter.readSemantic(new ByteArrayInputStream(source), DocxAdapter.Policy.ALLOW_LOSS);
+        assertEquals(1, nativeRead.diagnostics().size()); assertEquals("styleGraph", nativeRead.diagnostics().getFirst().element());
+        var prepared = adapter.conversion(source).policy(policy).prepare(adapter.conversionTarget()); var actual = prepared.to(new ByteArrayOutputStream());
+        assertEquals(1, actual.report().issues().size()); assertEquals("STYLE_GRAPH", actual.report().issues().getFirst().feature()); assertEquals(prepared.preview().issues(), actual.report().issues());
+        assertEquals(0x123456, ((Paragraph)actual.document().sections().getFirst().blocks().getFirst()).inlines().getFirst().style().rgb());
     }
     @Test void cyclesMissingBasesWrongTypesAndUnusedInvalidFormattingAlwaysFail() {
         for (String styles : new String[]{style("A", "paragraph", "B", "") + style("B", "paragraph", "A", ""),
