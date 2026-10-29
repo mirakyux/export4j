@@ -2,7 +2,20 @@
 
 本阶段推进 GAP-14.2 的平台验证和 GAP-14.3 的 API／分发准备。签名分发包与远端发布分别记录，有限平台和阅读器样例不推断通用兼容。
 
-## 固定主分支远端基线
+## 远端 CI 验收
+
+2026-10-29，提交 `cc132e7bc0ae93d273e53727773729e49cdfc9da` 的 [Build 运行](https://github.com/mirakyux/export4j/actions/runs/40801776289)已完成，四个任务全部成功：
+
+| 环境／检查 | 实际状态 | 验收范围 |
+| --- | --- | --- |
+| Windows x64、Temurin Java 21 | 通过 | 构建／测试、API 兼容、本地 Maven 制品消费、原生 OpenType 及无打印依赖运行 |
+| Linux x64、Temurin Java 21 | 通过 | 同上，另执行独立 PDF 结构／可编辑表单／视觉基线检查 |
+| macOS Intel、Temurin Java 21 | 通过 | 构建／测试、API 兼容、本地 Maven 制品消费、原生 OpenType 及无打印依赖运行 |
+| `signed-distribution`、Linux x64 | 通过 | 临时密钥签名、校验／许可／BOM／SBOM、篡改拒绝及隔离坐标消费 |
+
+工作流在推送 `main`、拉取请求或手动触发时执行，配置见 [build.yml](../../.github/workflows/build.yml)。本次结果关闭了该提交的远端 CI 补验；不包含 ARM 平台运行、桌面阅读器交互、正式签名身份或 Maven Central 发布。应用／阅读器兼容及正式分发继续分别归 GAP-14.2／14.3。
+
+### 修复前的主分支基线
 
 对提交 `1665cd7597609e9c7db561cea12b8ca1083e99bb` 实际调度原有 GitHub Actions：
 [Build 运行记录](https://github.com/mirakyux/export4j/actions/runs/40655943053)。
@@ -12,8 +25,8 @@
 | Linux、Temurin Java 21、原有 Build | 失败 | `export4j-opentype:test` 被严格依赖验证拒绝：两个 `natives-linux` JAR 尚无审查过的校验值；不是测试成功后遗漏报告 |
 | Windows、Temurin Java 21、原有 Build | 取消 | 原工作流启用 matrix fail-fast；不能计为失败或通过 |
 | macOS、Java 21、原有 Build | 未执行 | 原工作流没有该平台 |
-| 新 Windows／Linux／macOS 工作流 | 本地配置已补，远端未执行 | 显式 classifier、关闭 fail-fast、API／制品／坐标调用方及原生 OpenType；远端需要包含该配置的提交 |
-| 新签名分发 CI job | 本地配置已补，远端未执行 | 临时验证密钥，不读取正式发布秘密，不上传 Central |
+
+以上失败／取消是修复前基准的实际结果。补齐 classifier、原生校验值并关闭 matrix fail-fast 后，当前工作流的通过记录见本节开头；不再将旧失败作为当前状态。
 
 已从 Maven Central 下载并对照其发布 SHA-1，补入 Linux／macOS x64 与 arm64 共八个原生 JAR 的 SHA-256。它们进入严格校验清单不代表在这四种平台都运行成功。运行时实际 native 版本必须分别读取，不以 Java 绑定头版本代替。
 

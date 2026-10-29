@@ -59,7 +59,7 @@ HTML 默认导入路径仍映射通用语义模型；显式 CSS 布局模式将�
 
 Graphics API 支持调用方直接生成 Display List。此路径用于精确绘制，不强制构建语义文档。
 
-## 模块规划
+## 模块与依赖
 
 模块按实际需要创建。下表规定职责和主要生产依赖方向；实际依赖清单由构建文件给出。核心模块可以依赖 JDK 与已审查的内部基础抽象，但不得反向依赖后端或测试模块。
 
@@ -74,7 +74,6 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-layout-model` | Layout IR、布局片段和来源映射 | 绘制 API 的几何类型及传递的模型、字形与行数据 |
 | `export4j-layout-core` | 约束、换行、分页与绘制转换 | 布局结果、文本层与绘制层 |
 | `export4j-components` | 标准绘制组件、目录与导航编排 | 布局核心定义的组件接口与绘制核心 |
-| `export4j-api`（未创建） | 当前由组件模块 `DocumentEngine` 提供入口 | 有明确拆分需求时再建模块 |
 | `export4j-backend-pdf` | PDF 输出 | 绘制层与字体层 |
 | `export4j-backend-svg` | SVG 输出 | 绘制层 |
 | `export4j-backend-raster` | 图像输出和预览 | 绘制层 |
@@ -82,8 +81,6 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-adapter-template` | 离线 XML／Markdown 子集编译为 DocumentTemplate | 仅文档模型与 JDK |
 | `export4j-adapter-web` | 语义 HTML5／CommonMark-GFM 读写、显式离线 CSS 布局与逐功能损失策略 | 文档模型；组件／图形核心；CommonMark／jsoup 解析封装在内部 |
 | `export4j-adapter-pdf` | 有界 PDF 读取、页／被动对象编辑和组合、渲染提取、优化、脱敏及语义恢复 | 模型及执行控制；PDFBox 隔离在内部 |
-| `export4j-testing` | 测试样本、断言和比较工具 | 按测试需要依赖各层 |
-| `export4j-conformance-tests` | 格式与行为一致性测试 | 被测模块与测试工具 |
 | `export4j-bom` | 对外发布模块的版本约束 | 发布模块的制品坐标 |
 | `examples` | 可执行用例和集成方式 | 公共 API 与所用后端 |
 
@@ -95,13 +92,13 @@ PDF 原对象处理不调用布局引擎；[语义恢复](adr/0064-bounded-pdf-s
 
 `export4j-bom` 对齐对外模块版本。第三方依赖版本优先由 Gradle version catalog 集中管理，不混淆两者职责。
 
-## 第一阶段最小结构
+## 历史设计起点
 
 第一阶段从文档模型、绘制接口、绘制核心、PDF 后端和可执行示例开始。测试先放在对应模块中；存在复用需求时再提取测试工具模块。
 
 阶段一 `export4j-model` 提供页面尺寸与文档元数据，绘制 API 引用这两个基础类型，打通 Graphics API 直接生成 Display List 的路径。阶段三在基础模型中加入语义文档、段落、格式及页边距，保持模型无项目外部依赖。
 
-阶段二已补齐字体抽象、普通换行与行布局。阶段三已实现段落流式分页与基础表格，完整语义布局仍在后续范围内。
+阶段二补齐字体抽象、普通换行与行布局，阶段三建立段落分页和基础表格。后续语义布局、递归续排和流式能力见[能力指南](capabilities-api.md)；这些历史阶段说明不作为当前未完成清单。公共入口仍由组件模块的 `DocumentEngine` 提供，尚未拆出单独 API 或测试工具模块。
 
 ## 第二阶段文本路径
 

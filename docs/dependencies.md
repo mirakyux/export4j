@@ -132,7 +132,7 @@ distribution: 72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f
 wrapper jar: 423cb469ccc0ecc31f0e4e1c309976198ccb734cdcbb7029d4bda0f18f57e8d9
 ~~~
 
-保留的 CI 草案使用 `actions/checkout` 与 `actions/setup-java`，按完整提交 SHA 固定，源项目许可证为 MIT。它们不进入自研库或发行包。工作流仅支持手动触发，未覆盖完整验收流程，也未在托管平台执行验证。
+[CI 工作流](../.github/workflows/build.yml)使用 `actions/checkout`、`actions/setup-java` 和 `actions/upload-artifact`，按完整提交 SHA 固定，源项目许可证为 MIT；这些工具不进入自研库或发行包。工作流由推送 `main`、拉取请求及手动操作触发，执行 Java 21 的 Windows／Linux／macOS 构建和独立签名验证任务。已完成的远端运行及未覆盖范围见[平台与签名验收](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。
 
 独立 PDF 验证使用 Python 3.11+、[pypdf 6.10.0](https://pypi.org/project/pypdf/6.10.0/)（BSD-3-Clause）、[pypdfium2 5.13.0](https://pypi.org/project/pypdfium2/5.13.0/)（Apache-2.0 / BSD-3-Clause，随 wheel 保留 PDFium 及第三方许可）和 [Pillow 12.3.0](https://pypi.org/project/Pillow/12.3.0/)（MIT-CMU，wheel 另带所含第三方库声明）。版本固定于 `scripts/requirements-verification.txt`。外部 Poppler 为 GPL-2.0-or-later 验证工具，由环境或系统包管理器安装。这些工具不进入 Java 依赖、JAR 或示例发行包；本地验证版本见[进阶验收](verification/phase-3-advanced.md)。如未来打包工具环境，须连同 wheel 和原生依赖逐项保留许可。
 

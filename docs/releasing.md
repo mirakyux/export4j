@@ -17,7 +17,7 @@ python scripts/verify_capabilities.py
 
 独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，证明本地制品可消费；这不是 Maven Central、签名或远程 CI 验证。
 
-根 `check` 包含 `apiCheck`。固定开发期基线、差异规则和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。三平台 CI、真实主分支远端基线及尚未执行范围见[阶段一百零五](verification/phase-105-publication-and-compatibility.md)；未运行的新工作流不能标为远端通过。
+根 `check` 包含 `apiCheck`。固定开发期基线、差异规则和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发已在远端通过，准确提交和运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。这些检查使用本地构建的 Maven 仓库，不替代正式身份、Central 上传或真实远端仓库消费。
 
 脚本每次使用独立消费者构建目录，避免之前打开的输出文件阻塞清理。模板、受控导出、CFF 与 PDF 安全／归档／签名的附加验收见[能力记录](verification/phase-5-capabilities.md)；省略外部验证器参数时不包含归档合规或验签结论。
 

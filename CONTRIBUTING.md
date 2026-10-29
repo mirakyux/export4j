@@ -1,5 +1,7 @@
 # 贡献指南
 
+首次了解项目见[文档导航](docs/README.md)，可运行任务及输出目录见[示例索引](docs/examples.md)。
+
 Export4j 是 Java 文档排版与生成引擎。贡献范围以[支持矩阵](docs/capabilities-api.md)、[能力缺口表](docs/capability-gaps.md)和[研发路线](docs/roadmap.md)为准。
 
 ## 参与前

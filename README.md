@@ -5,23 +5,11 @@ Java 文档排版与生成引擎
 
 **English** | [简体中文](README.zh-CN.md)
 
-Export4j is an open-source **Java PDF generation and document export library** for reports and structured documents. Generate PDF, export DOCX, HTML and Markdown, or render SVG and PNG from a fluent Java API or offline XML templates. PDF, SVG and PNG share a layout engine; separate adapters map the semantic model to a DOCX subset, self-contained HTML and CommonMark/GFM Markdown.
+Export4j is an open-source **Java PDF generation and document export library** for reports, forms and structured documents. Create PDF, DOCX, HTML, Markdown, SVG and PNG using a fluent Java API or XML templates.
 
-[Document conversion](docs/document-conversion-api.md) combines supported Markdown, HTML/CSS, DOCX and [PDF semantic recovery](docs/pdf-semantic-import-api.md) with editing, loss previews and export. DOCX supports [typed semantic editing](docs/docx-semantic-api.md) of floating images, text boxes, comments, revisions, controls and contents declarations, alongside [package-preserving text edits](docs/docx-editing-api.md). [Offline HTML/CSS import](docs/html-import-api.md) also offers an explicit layout mode for supported Flex/Grid, sizing and positioning rules.
+Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert between formats with explicit policies for incompatible features. Save reusable XML templates and reopen supported document models for further editing.
 
-[Model recovery](docs/model-recovery-api.md) pairs a standard output with an ordinary XML/resource ZIP bound to its exact bytes. Reopen and edit the saved model with explicit fonts; changed files require rejection or an explicit restricted import. Lossy exports cannot retain a richer hidden source model.
-
-For accepted export losses, [`reimportOnLoss`](docs/model-recovery-api.md#有损转换后保存当前文件模型) can explicitly rebuild recovery from the actual output bytes. Import losses remain visible; removed source content and unused images stay out of the recovery package. See the [complex conversion examples](docs/verification/phase-87-complex-lossy-recovery.md).
-
-Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [single-page PNG](docs/model-recovery-api.md#单页-png-内嵌恢复) uses a private ancillary chunk, and [PDF, DOCX and PNG page ZIPs](docs/model-recovery-api.md#pdfdocx-与-png-页-zip-可选内嵌恢复) use standard attachments or package members. Ordinary output stays smaller. External edits invalidate the binding, and third-party saves may remove recovery data; see the [compatibility and size measurements](docs/verification/phase-86-standard-container-recovery.md).
-
-[Portable navigation](docs/portable-navigation-api.md) saves heading selection, manual bookmarks and contents typography/colors with the model. Recovery resolves current headings and final page numbers automatically. Combined multi-round conversions and a real Word edit/save/reopen are covered in [GAP-24 acceptance](docs/verification/phase-90-recovery-closure.md); lossy targets retain their actual reduced model and loss history.
-
-**Early development:** no stable artifacts have been published, and APIs may change. Supported PDF reports and dense static forms are ready for scoped trials; see the [readiness assessment](docs/readiness-assessment.md) and [capability matrix](docs/capabilities-api.md) for the evidence and limits.
-
-- Java 21 LTS · Gradle Wrapper · Apache-2.0
-- Explicit fonts and resources; generation and conversion require no printer driver, print service, Office installation or browser
-- Semantic model, layout and output backends remain separate
+**Early development:** no stable release has been published, and APIs may change. See the [format limits](#formats-and-limitations) and [capability matrix](docs/capabilities-api.md) before integrating.
 
 ## Contents
 
@@ -32,7 +20,6 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 - [HTML and Markdown export](#html-and-markdown-export)
 - [Formats and limitations](#formats-and-limitations)
 - [Roadmap](#roadmap)
-- [Architecture and modules](#architecture-and-modules)
 - [Documentation](#documentation)
 - [Build and verification](#build-and-verification)
 - [Contributing](#contributing)
@@ -41,29 +28,22 @@ Single-file recovery is opt-in: HTML, Markdown and SVG use inert comments, [sing
 
 ## Features
 
-| Area | Available capabilities |
+| Area | Capabilities |
 | --- | --- |
-| Document authoring | Fluent builders, headings, paragraphs, rich text, lists, reusable themes with global/domain font and color defaults, named styles |
-| Text and fonts | Explicit font groups and real variants, missing-glyph policies, JDK OpenType shaping, bidirectional text and justification; an optional [native OpenType module](docs/native-opentype-api.md) adds variable/CFF2/color fonts, vertical shaping and script controls; native static CFF PDF embedding |
-| Layout | Automatic pagination, sections, page bands/backgrounds, balanced equal/unequal columns, rectangular wrapping and [contour floats with source/page anchors](docs/contour-floats-api.md) |
-| Tables | Repeated headers, automatic columns, row/column spans, complete-line splitting, bounded recursive block cells and component grids that continue across unequal columns while preserving sources, fields, images and links |
-| Images and graphics | Inline PNG/JPEG, vector paths, shapes and watermarks; [CMYK/ICC/spot colors, gradients, patterns, 16 blend modes, isolated groups and local SVG resources](docs/advanced-graphics-api.md), with explicit loss policies for RGB targets |
-| Navigation and forms | Contents, bookmarks, links, comments, page/reference fields, continued footnotes, static form components and four basic editable PDF field types |
-| Templates | Offline XML with variables, conditions, loops, dynamic rows, themes, static page settings, image/table headers/footers, sections, bounded recursive includes, dynamic links and fields; strict lightweight Markdown |
-| Output | PDF, self-contained SVG, PNG pages/ZIP, a semantic DOCX subset, HTML and Markdown |
-| PDF processing | Page edits/overlays, passive forms/comments/navigation/attachments, object-preserving composition, rendering/extraction, optimization, same-line text replacement across supported styles, individual image replacement, raster or selective text/vector-preserving redaction; extended forms, six passive annotation types, FDF/XFDF and a separate XFA subset |
-| Import and editing | Markdown/HTML/CSS/DOCX subsets, opt-in automatic PDF columns/paragraphs/table recovery with explicit grid overrides and uncertainty reports, immutable semantic edits, package-preserving DOCX text edits and structured loss previews/reports |
-| Template saving | Editable XML sources/resources in ordinary ZIP files; save supported semantic models as the same XML, reopen, edit and export with explicit loss policies |
-| PDF security and standards | AES-256; selected PDF/A-1b/2b/3b/4f generation and conversion; explicit PDF/UA-1 tags; PAdES B/T/LT/LTA, offline trust/revocation evidence, timestamps, renewal and DocMDP change classification |
-| Large tables and execution | Single-pass text/rich-text/image and recursive semantic rows, bounded spans and line continuations; [explicit replay](docs/streaming-replay-api.md) for sampled automatic widths, final totals, future references, contents/bookmarks and group footnotes; optional disk-indexed PDF output, budgets, cancellation and atomic path writes |
+| Reports and forms | Headings, rich text, lists, images, themes, headers/footers, page numbers, contents, bookmarks, links and static/editable forms |
+| Pagination and tables | Sections, columns, floating content, repeated table headers, merged cells, nested tables and cross-page continuation |
+| Import, editing and conversion | PDF recovery, DOCX semantic and package-preserving edits, HTML/CSS and Markdown import; loss previews and error/warn/ignore policies |
+| Templates and reuse | XML variables, conditions, loops and includes; editable XML/resource ZIPs and optional document-model recovery |
+| Text and graphics | Explicit fonts, complex text, vector graphics, CMYK/ICC/spot colors, transparency and gradients; optional native OpenType for variable/color fonts and vertical text |
+| PDF processing | Page/object edits, composition, rendering, image extraction, optimization, text/image replacement, two redaction modes, form data and a separate XFA subset |
+| PDF security and standards | AES-256, selected PDF/A profiles, PDF/UA-1 and PAdES B/T/LT/LTA, with explicit keys, trust and validation evidence |
+| Large documents | Streaming tables, explicit replay for totals/references, optional disk-indexed PDF output, execution budgets, cancellation and atomic file writes |
 
-Each feature has explicit limits. A component table, semantic table and streaming table serve different contracts; see the [authoring guide](docs/authoring-api.md), [fluent API](docs/fluent-api.md) and [streaming-table guide](docs/streaming-table-api.md).
-
-The native OpenType module is optional. Applications select their target LWJGL native classifiers and supply licensed fonts explicitly; the core keeps its existing Java-only path. See the [native module setup and limits](docs/native-opentype-api.md).
+Support applies to the documented input subsets. See the [API guides](docs/README.md) for configuration and examples.
 
 ## Getting started
 
-Requirements: **JDK 21**. The first build needs access to the Gradle distribution and Maven Central. A global Gradle installation is unnecessary.
+Requirements: **JDK 21**. Document generation does not require Office or a browser. The first build needs access to the Gradle distribution and Maven Central; the repository includes the Gradle Wrapper.
 
 ```shell
 git clone https://github.com/mirakyux/export4j.git
@@ -86,36 +66,20 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 
 | Example | Output directory | Demonstrates |
 | --- | --- | --- |
-| `:examples:authoring` | `examples/build/authoring/` | Java authoring, typography and semantic DOCX |
-| `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML report templates and data binding |
-| `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | Edit, save and reopen XML sources/resources in ordinary ZIP files, then bind different data |
-| `:examples:recoveryClosure` | `examples/build/recovery-closure/` | Combined navigation/notes/sections/layers/tables/images recovery, actual edits and loss-aware cycles |
-| `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | Save semantic models as XML, reopen/edit and export; three-cycle unchanged controls and explicit loss reports |
-| `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | Shared page-region sources, variants, overlays and save/reopen/edit controls |
-| `:examples:xmlCrossReferenceSaving` | `examples/build/xml-cross-reference-saving/` | Independent reference round trips, section page/number resolution, retargeting and Web losses |
-| `:examples:xmlSemanticSaving` | `examples/build/xml-semantic-saving/` | Complete note/caption/text-link binding, three-cycle controls, caption editing and explicit Web losses |
-| `:examples:pageOverlays` | `examples/build/page-overlays/` | Fixed XML backgrounds/foregrounds, visible occlusion and explicit conversion losses |
-| `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | Themed XML headers/footers and final page numbers, including contents |
-| `:examples:xmlSections` | `examples/build/xml-sections/` | Image/table page bands, section paper/numbering and strict native DOCX round trip |
-| `:examples:webExports` | `examples/build/web-exports/` | HTML/Markdown, embedded images and per-feature error/warn/ignore policies |
-| `:examples:documentConversion` | `examples/build/document-conversion/` | Import, edit, preview actual losses and write four output formats |
-| `:examples:pdfObjectEditing` | `examples/build/pdf-object-editing/` | Passive fields/objects and selection/merge with relationship remapping |
-| `:examples:pdfContentEditing` | `examples/build/pdf-content-editing/` | Real text replacement and region redaction into a fresh image-only PDF |
-| `:examples:pdfSemanticImport` | `examples/build/pdf-semantic-import/` | Recover PDF headings, explicit tables and images, then edit and convert |
-| `:examples:production` | `examples/build/production/` | Pagination, columns, wrapping, tables and multiple formats |
-| `:examples:staticForms` | `examples/build/static-forms/` | Dense static forms and vector controls |
-| `:examples:streamingTable` | `examples/build/streaming-table/` | Single-pass large-table output |
-| `:examples:variableTables` | `examples/build/variable-tables/` | Semantic rows, merged owners and atomic nested cells at actual column widths |
-| `:examples:variableSplitTables` | `examples/build/variable-split-tables/` | Complete-line cell continuations across unequal columns, with final fields, images and links |
-| `:examples:verifyPdfSignatures` | `examples/build/pdf-signature-verification/` | Explicit offline CMS verification, unsigned append detection and signed-byte tamper rejection |
+| `:examples:authoring` | `examples/build/authoring/` | Java authoring and semantic DOCX |
+| `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML reports and data binding |
+| `:examples:production` | `examples/build/production/` | Pagination, columns, tables and multiple formats |
+| `:examples:documentConversion` | `examples/build/document-conversion/` | Import, edit, preview losses and export |
+| `:examples:staticForms` | `examples/build/static-forms/` | Dense static forms |
+| `:examples:streamingTable` | `examples/build/streaming-table/` | Single-pass large tables |
 
-The examples use bundled, explicitly loaded fonts; no font download is required at runtime. The core libraries do not bundle the example fonts. See [font sources and licenses](assets/fonts/README.md).
+More runnable tasks are listed in the [example index](docs/examples.md). Examples load bundled fonts; applications supply their own licensed fonts. See [font sources and licenses](assets/fonts/README.md). The optional [native OpenType module](docs/native-opentype-api.md) also requires the target platform's native artifacts.
 
-There is no published stable Maven dependency to install yet. Build from source, or use the [isolated Maven bundle](docs/releasing.md) to evaluate the current snapshot with its BOM.
+There is no stable Maven release to install yet. Build from source, or use the [local Maven bundle and BOM](docs/releasing.md) to evaluate the current snapshot.
 
 ## Java example
 
-This complete class uses the public authoring API. Run it from the repository root with the components and PDF-backend runtime dependencies on the classpath. The font paths refer to repository fixtures; applications provide their own licensed font resources.
+This complete class uses the public authoring API. Run from the repository root with the components and PDF-backend runtime dependencies on the classpath. The font paths refer to repository fixtures.
 
 ```java
 import java.io.IOException;
@@ -157,13 +121,11 @@ public class QuickStart {
 }
 ```
 
-The generated file is `build/readme-report.pdf`. `DocumentEngine` handles layout; `PdfBackend` renders the result. Font selection stays explicit, and unsupported glyphs fail under the strict policy.
-
-For an executable Gradle example and more layouts, see [AuthoringExample](examples/src/main/java/com/mirakyux/export4j/examples/AuthoringExample.java) and the [authoring guide](docs/authoring-api.md).
+The result is `build/readme-report.pdf`. For a Gradle task that runs without setting up a classpath manually, use `:examples:authoring`; see [AuthoringExample](examples/src/main/java/com/mirakyux/export4j/examples/AuthoringExample.java) and the [authoring guide](docs/authoring-api.md).
 
 ## XML templates
 
-Keep report structure in XML and supply data, fonts, images and output configuration through Java:
+Describe the document in XML and supply data, fonts, images and output settings from Java:
 
 ```xml
 <document version="1" title="${title}">
@@ -175,19 +137,13 @@ Keep report structure in XML and supply data, fonts, images and output configura
 </document>
 ```
 
-Templates compile to the existing document model. Resources are explicitly registered, all branches are checked at compile time, and the compiler does not fetch files or network resources. Unknown syntax and unsafe XML are rejected.
+Templates support variables, conditions, loops, tables, sections, page bands and includes. Save XML sources and resources in an ordinary ZIP, or save supported Java models as editable XML. See the [XML guide](docs/xml-template-api.md), [template bundles](docs/xml-template-bundle-api.md), [model saving](docs/xml-model-saving-api.md) and [complete Java example](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java).
 
-XML supports image/table headers and footers with independent themes and final page fields. Use `template.renderWithPageRegions(data)` for a uniform document, or `template.renderSections(data)` for per-section paper, numbering and inherited or overridden bands. Static default/first/even variants follow displayed section numbering, including blank first pages. Fixed XML background/foreground boxes preserve their paint order and final fields; see [page overlays](docs/page-overlays-api.md). Both work with `engine.export(document)` and native DOCX header/footer export. See [page variants](docs/page-variants-api.md). See [page regions](docs/xml-page-regions-api.md), [sections](docs/xml-sections-api.md) and [DOCX page regions](docs/docx-page-regions-api.md).
-
-Use [XML template bundles](docs/xml-template-bundle-api.md) to edit, save and reopen the XML sources and explicit resources in an ordinary ZIP. Plain XML remains supported. This preserves templates, rather than reconstructing them from rendered PDF or DOCX files.
-
-[XmlTemplateWriter](docs/xml-model-saving-api.md) also saves supported Java semantic documents as this XML/ZIP for reopening, editing and export. Text such as `${literal}` stays literal. Headers/footers, first/even variants and ordered background/foreground boxes retain shared sources and placement. Footnotes/endnotes, explicit markers, captions and heading/list text links are preserved; use `renderComplete(data)` to retrieve both document and notes. Unmapped blocks require explicit loss policies; fonts and licenses remain caller supplied. See the [complete binding verification](docs/verification/phase-80-xml-semantic-saving.md) and [independent reference saving](docs/verification/phase-81-xml-cross-reference-saving.md), including page/number targets, retargeting and final PDF links. Other output formats retain their own limits and loss policies.
-
-See the [XML guide](docs/xml-template-api.md), [page settings](docs/xml-page-settings-api.md), [report template](examples/src/main/resources/templates/report.xml) and [complete Java call](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java).
+[Document-model recovery](docs/model-recovery-api.md) is optional: use a companion XML/resource bundle or embed it in a supported output. Recovery data increases file size, and external edits may invalidate or remove it. The guide explains binding checks, compatibility and conversion losses.
 
 ## HTML and Markdown export
 
-Add `com.mirakyux.export4j:export4j-adapter-web` with the project BOM. These adapters use the semantic model directly and need no browser to generate files:
+Use `export4j-adapter-web` with the project BOM. In the following snippet, `document` is a semantic document such as the one in the Java example. Import the adapter types from `com.mirakyux.export4j.adapter.web` and `Path` from `java.nio.file`.
 
 ```java
 new HtmlAdapter().export(document).to(Path.of("build/report.html"));
@@ -199,105 +155,66 @@ var result = MarkdownAdapter.builder().policy(policy).build()
         .export(document).to(Path.of("build/report.md"));
 ```
 
-Import these adapter types from `com.mirakyux.export4j.adapter.web`; `Path` is `java.nio.file.Path`. The default action is `ERROR`. Choose `WARN` for documented fallbacks with structured diagnostics, or `IGNORE` for the same fallback without a warning; override individual features as needed. Invalid input, limits, cancellation and I/O still fail. See the [complete support/fallback matrix](docs/web-export-api.md).
+The default action is `ERROR`. `WARN` applies the documented fallback and returns diagnostics; `IGNORE` applies the same fallback without a warning. Invalid input, exceeded limits, cancellation and I/O failures still fail. See the [support and fallback matrix](docs/web-export-api.md).
 
-HTML preserves semantic styles, embedded images and merged/nested tables. Markdown exports CommonMark/GFM content, with explicit policies for unsupported geometry and table structure. Reader layout determines wrapping and pagination; some readers disable embedded data images or generated inline HTML. This output is separate from the strict Markdown template input grammar. Run `:examples:webExports` for both targets.
+HTML preserves supported styles, embedded images and merged/nested tables. Markdown targets CommonMark/GFM. Their readers determine wrapping and pagination. Run `:examples:webExports` to generate both formats; see [shared import/edit/export](docs/document-conversion-api.md) for conversion.
 
 ## Formats and limitations
 
-| Format | Current scope |
-| --- | --- |
-| PDF | Report output plus separate bounded page/object editing, rendering, optimization, redaction and semantic-recovery APIs; see the [PDF guide](docs/pdf-adapter-api.md) |
-| SVG / PNG | Static output from the shared display list; nonempty interactive data is rejected |
-| DOCX | Typed semantic subset including text, nested tables, section page bands, floating images/text boxes, comments, revisions, controls and contents declarations; conversion to simpler targets reports actual losses |
-| HTML | Semantic HTML5 export and offline element/CSS-subset import; embedded/explicit images, supported merged/nested tables and explicit loss policies |
-| Markdown output | CommonMark/GFM content; unsupported geometry/structure follows error/warn/ignore policies |
-| Input and editing | Offline XML/strict Markdown templates; general Markdown, HTML/CSS, DOCX subsets and bounded PDF recovery; [shared conversion](docs/document-conversion-api.md) includes editing and loss reports |
+| Format | Import / reading | Output / editing |
+| --- | --- | --- |
+| PDF | Bounded parsing and semantic recovery | Generation, page/object editing, composition, rendering, optimization and redaction |
+| DOCX | Typed OOXML subset | Semantic export/editing; package-preserving text edits |
+| HTML/CSS | Offline semantic or explicit CSS-layout subset | Self-contained semantic HTML5 |
+| Markdown | CommonMark/GFM subset; separate strict template syntax | CommonMark/GFM content |
+| SVG / PNG | Image/vector resources within their respective supported subsets | Static pages and PNG page ZIPs |
 
-- General Word documents are not guaranteed to round-trip without loss or paginate identically to PDF.
-- PDFs commonly store glyphs, paths and coordinates without reliable table relationships. The default recovery keeps lines; opt-in automatic analysis infers columns, paragraphs and supported tables with uncertainty/loss reports. Explicit grids override inferred tables. Neither path guarantees the original editable layout.
-- PDF recovery accepts valid embedded static TrueType, CFF and traditional Type1 [subsets](docs/pdf-font-compatibility-api.md), avoiding machine-dependent font substitution and measurements. Complex pages, including supported Type3 drawing, can explicitly become page images with reported editing and structure losses. Invisible inline-image/outline anchors use a fixed embedded font; see [PDF recovery boundaries](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档).
-- Redaction rasterizes all pages and removes source objects, sacrificing text search and vector editing; callers identify every sensitive region.
-- Complex-text coverage, extraction, search and selection depend on the tested scripts and readers. PDF/UA-1 requires explicit semantic bindings and its validated output path; ordinary output does not become accessible automatically. Full OpenType and Unicode segmentation are not claimed.
-- PDF/A and PDF/UA output need final-file compliance validation. Signing requires explicit caller-owned keys or signer callbacks, trust anchors and evidence; no private key or implicit trust service is bundled. See the [standards guide](docs/pdf-standards-api.md).
-- Fixed-size fields and atomic content must fit their reserved area. The engine does not silently shrink or clip unsupported content.
-- Streaming layout is bounded, but the PDFBox page tree still grows. This is not a constant-memory guarantee for the entire PDF or a long-term leak-free claim.
-- Resource limits are not a hostile-input sandbox. Callers remain responsible for access policy and untrusted-input isolation.
+- Formats preserve different information. Unsupported features follow explicit loss policies; general Word round trips and identical DOCX/PDF pagination are not guaranteed.
+- PDF recovery infers editable structure from text, coordinates and drawings. It reports uncertainty, accepts explicit table grids and does not perform OCR. Font requirements and image fallbacks are described in the [recovery guide](docs/pdf-semantic-import-api.md).
+- [PDF redaction](docs/pdf-redaction-api.md) offers rasterization and selective reconstruction. The first loses searchable text and vectors; the second preserves supported content outside selected regions. Callers identify all sensitive regions.
+- Complex text, search and selection depend on the documented font/script/reader coverage. PDF/A and PDF/UA require their specific output paths and final-file validation; signing requires caller-owned keys and trust evidence.
+- Streaming layout and optional disk-indexed PDF output have separate resource contracts. The ordinary PDF backend retains its page tree; finite capacity tests do not imply unlimited documents or indefinite operation without leaks. See [streaming and replay](docs/streaming-replay-api.md).
+- Fixed-size content must fit its reserved area. Resource budgets do not replace isolation for untrusted input.
 
 ## Roadmap
 
-The following areas remain open; they are not current features:
+The remaining work is tracked in the [capability gaps](docs/capability-gaps.md):
 
-- Broader page-layer composition, DOCX layer mappings and cross-reader acceptance.
-- Cross-platform and cross-reader font search/selection compatibility beyond the verified corpus.
-- Broader HTML/CSS compatibility and a visual template designer.
-- Stable public API and Maven Central distribution, with repeatable cross-platform release validation.
+- **GAP-13:** visual template designer and broader scenario examples.
+- **GAP-14.2:** broader compatibility corpus and application/reader checks across platforms.
+- **GAP-14.3:** stable API/release, official signing and Maven Central distribution.
+- **GAP-22:** additional formats, including XLSX, PPTX, EPUB and XPS.
 
-Priorities, partial implementations and acceptance criteria are maintained in the [capability gaps](docs/capability-gaps.md), [remaining plan](docs/remaining-capabilities-plan.md) and [roadmap](docs/roadmap.md). OCR is outside the current scope.
-
-## Architecture and modules
-
-```text
-Document Model → Layout Engine → Layout IR → Display List → PDF / SVG / Raster
-DOCX / OOXML  ↔ DOCX Adapter   ↔ Document Model
-HTML / Markdown ↔ Web Adapter ↔ Document Model
-Existing PDF → Bounded Semantic Recovery → Document Model
-```
-
-The layout engine owns line breaking and pagination. Backends consume the final drawing instructions; the DOCX adapter works directly with document semantics.
-
-| Modules | Responsibility |
-| --- | --- |
-| `export4j-model` | Semantic document model, styles and execution contracts |
-| `export4j-font-core`, `export4j-text-core` | Font resources, metrics, shaping and text layout |
-| `export4j-opentype` | Optional native shaping, variable/color fonts and vertical flow |
-| `export4j-graphics-api`, `export4j-graphics-core` | Graphics contracts, display list and common drawing |
-| `export4j-layout-model`, `export4j-layout-core` | Layout IR, measurement, regions and pagination |
-| `export4j-components` | Fluent authoring, composed components and `DocumentEngine` |
-| `export4j-backend-pdf`, `export4j-backend-svg`, `export4j-backend-raster` | Output backends |
-| `export4j-adapter-docx`, `export4j-adapter-template`, `export4j-adapter-pdf`, `export4j-adapter-web` | Format and template adapters |
-| `export4j-bom`, `examples` | Version alignment and executable examples |
-
-The Java root package and Gradle group are `com.mirakyux.export4j`. See the [architecture](docs/architecture.md) and [ADRs](docs/adr/README.md) for dependency boundaries and design decisions.
+See the [execution plan](docs/remaining-capabilities-plan.md) for acceptance criteria. OCR is outside the current scope.
 
 ## Documentation
 
-Most detailed guides are currently written in Chinese.
+The [documentation index](docs/README.md) groups guides by task. Most detailed guides are currently written in Chinese.
 
-| Topic | Guides |
+| Task | Start here |
 | --- | --- |
-| Start here | [Authoring](docs/authoring-api.md) · [Fluent API](docs/fluent-api.md) · [Themes](docs/themes-api.md) |
-| Capabilities | [Capability matrix](docs/capabilities-api.md) · [Readiness](docs/readiness-assessment.md) |
-| Text and layout | [Fonts/text](docs/text-api.md) · [Layout](docs/layout-api.md) · [Continuous columns](docs/continuous-columns-api.md) |
-| Tables | [Semantic tables](docs/table-api.md) · [Block cells](docs/block-cells-api.md) · [Streaming tables](docs/streaming-table-api.md) |
-| Forms and navigation | [Static forms](docs/static-forms-api.md) · [Editable forms](docs/form-styles-api.md) · [Fields](docs/inline-fields-api.md) |
-| Templates | [XML](docs/xml-template-api.md) · [Markdown](docs/markdown-template-api.md) · [XML themes](docs/xml-themes-api.md) |
-| Adapters | [HTML/Markdown export](docs/web-export-api.md) · [DOCX page regions](docs/docx-page-regions-api.md) · [DOCX fields](docs/docx-fields-api.md) · [Static PDF](docs/pdf-adapter-api.md) |
-| Editing | [Semantic editing and loss reports](docs/semantic-editing-api.md) |
-| Import and conversion | [General Markdown](docs/markdown-import-api.md) · [Offline HTML/CSS](docs/html-import-api.md) · [DOCX semantic editing](docs/docx-semantic-api.md) · [PDF recovery](docs/pdf-semantic-import-api.md) · [Shared conversion](docs/document-conversion-api.md) |
-| PDF editing | [Pages](docs/pdf-page-editing-api.md) · [Objects](docs/pdf-object-editing-api.md) · [Composition](docs/pdf-object-composition-api.md) · [Raster/images](docs/pdf-raster-api.md) · [Optimization](docs/pdf-optimization-api.md) · [Text](docs/pdf-text-editing-api.md) · [Redaction](docs/pdf-redaction-api.md) |
-| Engineering | [Development](docs/development.md) · [Verification records](docs/verification) · [Release process](docs/releasing.md) |
+| Author documents | [Authoring](docs/authoring-api.md) · [Fluent API](docs/fluent-api.md) · [Themes](docs/themes-api.md) |
+| Use templates | [XML](docs/xml-template-api.md) · [Template bundles](docs/xml-template-bundle-api.md) |
+| Import, edit and convert | [Shared conversion](docs/document-conversion-api.md) · [DOCX semantics](docs/docx-semantic-api.md) · [HTML/CSS](docs/html-import-api.md) |
+| Process PDF | [PDF adapter](docs/pdf-adapter-api.md) · [Recovery](docs/pdf-semantic-import-api.md) · [Standards](docs/pdf-standards-api.md) |
+| Explore examples and internals | [Examples](docs/examples.md) · [Architecture](docs/architecture.md) · [ADRs](docs/adr/README.md) |
 
 ## Build and verification
-
-`build` aggregates module builds, JUnit tests, Javadoc and source JARs. Tool versions and resolved dependencies are fixed in the version catalog, Wrapper configuration, dependency locks and verification metadata.
 
 ```powershell
 .\gradlew.bat build sbom publishLocalBundle
 powershell -NoProfile -File scripts/verify_local_consumer.ps1
 ```
 
-`publishLocalBundle` writes the libraries and BOM to `build/repository`. The isolated consumer resolves these Maven artifacts and actually generates documents. This does not publish to Maven Central or modify the user's Maven repository.
+Use `bash ./gradlew` on Linux/macOS. The local bundle is written to `build/repository`; the consumer resolves Maven coordinates and generates documents.
 
-Independent format and visual checks use Python 3.11+, the pinned [verification requirements](scripts/requirements-verification.txt) in an isolated environment, and Poppler. Some checks additionally need veraPDF, OpenSSL or Word. Select checks for the affected features from the [verification matrix](.agents/skills/develop-export4j/references/verification.md); do not update visual baselines just to obtain a passing result.
-
-The GitHub Actions workflow is manually triggered. Its configured checks cover only part of the full acceptance process; no hosted CI result is claimed here.
+[GitHub Actions](https://github.com/mirakyux/export4j/actions/workflows/build.yml) runs on pushes to `main`, pull requests and manual dispatch. It covers Java 21 builds on Windows, Linux and macOS, API checks, local artifact consumption and temporary-key signing verification. Application/reader acceptance is recorded separately. See [development](docs/development.md) and [release verification](docs/releasing.md) for the full procedure.
 
 ## Contributing
 
-Bug reports, reproducible samples, tests, documentation and focused feature contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), the [development rules](docs/development.md) and [AGENTS.md](AGENTS.md) before making changes. Shared project skills live in [.agents](.agents/README.md).
+Bug reports, reproducible examples, documentation and focused changes are welcome. Read the [contribution guide](CONTRIBUTING.md) before opening a pull request.
 
-Use [GitHub Issues](https://github.com/mirakyux/export4j/issues) for bugs and proposals. Report security issues privately through [GitHub private vulnerability reporting](https://github.com/mirakyux/export4j/security/advisories/new); see [SECURITY.md](SECURITY.md).
+Use [GitHub Issues](https://github.com/mirakyux/export4j/issues) for bugs and proposals. Report security issues through [private vulnerability reporting](https://github.com/mirakyux/export4j/security/advisories/new); see the [security policy](SECURITY.md).
 
 ## Acknowledgments
 

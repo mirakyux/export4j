@@ -1,4 +1,6 @@
-# 模板、复杂文本与受控导出
+# 能力与 API 导航
+
+本文汇总已提供的文档生成、导入、编辑与转换入口。首次使用见[文档索引](README.md)和[可运行示例](examples.md)；各 API 指南说明准确的输入子集及调用契约。段落中引用的历史验收记录只证明当时批次，当前完成状态以[缺口表](capability-gaps.md)为准。
 
 [XML 模板源码编辑与资源 ZIP](xml-template-bundle-api.md)复用现有模板适配器：保留可编辑主源、片段、图片、显式字体及许可文本，普通 ZIP 保存／重开后继续使用 `XmlTemplate → DocumentTemplate`。不是任意已渲染文档的模型恢复入口。
 
@@ -140,7 +142,7 @@ engine.writeAtomically(document, backend, targetPath, options);
 
 输出流入口 `engine.write(document, backend, stream, options)` 保留流所有权，失败可能已写入部分字节。`writeAtomically` 要求目标父目录已存在及文件系统支持原子移动：临时文件写入成功后才替换目标，失败删除临时文件并保留原文件。PDF 使用 `PdfOptions.storage(TEMP_FILE)` 可把后端流缓冲放到临时文件；Layout IR、Display List 和资源仍驻留内存，不能称为完整流式大文档引擎。
 
-固定列普通／纯富文本长表可采用独立的 [单向源 API](streaming-table-api.md)，同步逐页测量和输出，返回扁平计数。[阶段二十四](verification/phase-24-streaming-tables.md)已验收 7 组独立 JVM：布局丢弃页和真实 PDF 各 1k／10k／100k 行，另有 64 MiB 堆的 100k 行布局控制；退出临时文件数／字节均为 0。[阶段二十九](verification/phase-29-streaming-rich-text.md)进一步验收纯富文本／真实字体角色和空运行额度，9 组普通／富文本独立 JVM 包含 64 MiB 布局控制；[指南](streaming-rich-text-api.md)说明明确拒绝的语义。单向路径不保留完整 IR／Display List，但 PDFBox 页树仍随页数增长；不支持未来引用或可编辑交互，也不代表一般文档恒内存。
+固定列普通／纯富文本长表可采用独立的 [单向源 API](streaming-table-api.md)，同步逐页测量和输出，返回扁平计数。[阶段二十四](verification/phase-24-streaming-tables.md)已验收 7 组独立 JVM：布局丢弃页和真实 PDF 各 1k／10k／100k 行，另有 64 MiB 堆的 100k 行布局控制；退出临时文件数／字节均为 0。[阶段二十九](verification/phase-29-streaming-rich-text.md)进一步验收纯富文本／真实字体角色和空运行额度，9 组普通／富文本独立 JVM 包含 64 MiB 布局控制；[指南](streaming-rich-text-api.md)说明该入口明确拒绝的语义。单次源不保留完整 IR／Display List，也不解析未来引用；需要未来引用、自动列宽或未知总数时使用[显式重放](streaming-replay-api.md)。普通 PDF 后端仍累计页树，可选 `PdfSpoolBackend` 使用单页工作集及磁盘索引，两者均按各自预算和资源契约运行。
 
 单向固定列横向合并已由[阶段六十四](verification/phase-64-streaming-column-spans.md)验收：表头／正文完整覆盖，按真实物理列测量与呈现，锚点和覆盖槽分别计数，单行预读及原子输出保护保持；图片和被动链接已由[阶段六十五](verification/phase-65-streaming-media.md)验收；完整行续排见[阶段六十七](verification/phase-67-streaming-row-split.md)；实际页码及准确总数见[单向字段 API](streaming-fields-api.md)；[显式有界纵向合并](streaming-row-spans-api.md)现已接入，默认单行路径保持；它与完整行拆分不能组合。
 

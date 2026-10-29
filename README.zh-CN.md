@@ -5,65 +5,45 @@ A Java Document Layout and Generation Engine
 
 [English](README.md) | **简体中文**
 
-Export4j 是面向报告和结构化文档的开源 **Java PDF 生成与文档导出库**。通过链式 Java API 或离线 XML 模板编写内容，生成 PDF、导出 DOCX、HTML、Markdown，或渲染 SVG、PNG。PDF、SVG 和 PNG 使用共享布局引擎；独立适配器将文档语义映射为 DOCX 子集、自包含 HTML 和 CommonMark/GFM Markdown。
+Export4j 是面向报告、表单和结构化文档的开源 **Java PDF 生成与文档导出库**。通过链式 Java API 或 XML 模板生成 PDF、DOCX、HTML、Markdown、SVG 和 PNG。
 
-[统一转换](docs/document-conversion-api.md)串联受支持的 Markdown、HTML/CSS、DOCX 导入和 [PDF 语义恢复](docs/pdf-semantic-import-api.md)，再编辑、预检损失并导出。DOCX 支持浮动图片、文本框、批注、修订、控件及目录声明的[类型化语义编辑](docs/docx-semantic-api.md)，并保留[原包文字编辑](docs/docx-editing-api.md)入口。[离线 HTML/CSS 导入](docs/html-import-api.md)另有显式布局模式，处理受支持的 Flex／Grid、尺寸及定位规则。
+可导入明确子集内的 PDF、DOCX、HTML 和 Markdown 内容，编辑后转换为其他格式，并对不兼容特性执行明确策略。可保存 XML 模板，也可恢复已保存的受支持文档模型，继续编辑与导出。
 
-[模型恢复](docs/model-recovery-api.md)使用与标准文件准确绑定的普通 XML／资源 ZIP，重新打开并编辑已保存模型及显式字体资源。文件修改后须拒绝旧恢复数据或显式受限导入当前内容；有损导出不能隐藏更丰富的源模型。
-
-接受导出损失后，可显式使用 [`reimportOnLoss`](docs/model-recovery-api.md#有损转换后保存当前文件模型) 从实际输出字节重建恢复模型，保留真实导入损失报告；被丢弃的源内容和未使用图片不会夹带回来。复杂转换样例见[阶段八十七](docs/verification/phase-87-complex-lossy-recovery.md)。
-
-单文件恢复由调用方显式选择：HTML、Markdown、SVG 使用末尾注释，[单页 PNG](docs/model-recovery-api.md#单页-png-内嵌恢复) 使用私有辅助块，[PDF、DOCX 与 PNG 页 ZIP](docs/model-recovery-api.md#pdfdocx-与-png-页-zip-可选内嵌恢复) 使用标准附件或包成员。普通导出没有这部分体积。外部修改会使旧绑定失效，第三方另存也可能移除恢复信息；见[兼容与体积实测](docs/verification/phase-86-standard-container-recovery.md)。
-
-[声明式导航](docs/portable-navigation-api.md)随模型保存标题筛选、手工书签和目录排版／颜色，恢复后自动使用当前标题及最终页码。[GAP-24 验收](docs/verification/phase-90-recovery-closure.md)覆盖跨特性组合多轮转换和真实 Word 编辑／保存／重开；有损目标只恢复实际降级后的模型与损失历史。
-
-**当前处于早期开发阶段，尚未发布稳定制品，API 可能调整。** 受支持的 PDF 报告和密集静态表单已具备限定范围的试用条件，具体证据与限制见[就绪评估](docs/readiness-assessment.md)和[能力矩阵](docs/capabilities-api.md)。
-
-- Java 21 LTS · Gradle Wrapper · Apache-2.0。
-- 显式字体和资源，生成和转换不依赖打印机驱动、打印服务、Office 或浏览器。
-- 文档语义、布局算法和输出后端保持独立。
+**当前处于早期开发阶段，尚未发布稳定版本，API 可能调整。** 接入前请查看[格式限制](#格式支持与限制)和[能力矩阵](docs/capabilities-api.md)。
 
 ## 目录
 
-- [功能特性](#功能特性)
+- [功能概览](#功能概览)
 - [快速开始](#快速开始)
 - [Java 使用示例](#java-使用示例)
 - [XML 模板](#xml-模板)
 - [HTML 与 Markdown 导出](#html-与-markdown-导出)
 - [格式支持与限制](#格式支持与限制)
 - [待完成与路线图](#待完成与路线图)
-- [架构与模块](#架构与模块)
 - [文档导航](#文档导航)
 - [构建与验证](#构建与验证)
 - [参与贡献](#参与贡献)
 - [开源致谢](#开源致谢)
 - [许可证](#许可证)
 
-## 功能特性
+## 功能概览
 
-| 领域 | 当前能力 |
+| 领域 | 已有能力 |
 | --- | --- |
-| 文档编写 | 链式 Builder、标题、段落、富文本、列表、全局及分域字体／颜色主题与命名样式 |
-| 文字与字体 | 显式字体组、真实变体、缺字策略、JDK 塑形、双向文本和两端对齐；可选[原生 OpenType 模块](docs/native-opentype-api.md)提供可变／CFF2／彩色字体、竖排塑形及脚本控制；静态 CFF 原生 PDF 嵌入 |
-| 页面布局 | 自动分页、分节、页眉页脚／背景、等宽／变宽栏及平衡、矩形绕排和[原文／页区锚定的任意轮廓浮动](docs/contour-floats-api.md) |
-| 表格 | 重复表头、自动列宽、双跨度及完整行拆分；递归块格和组件网格按实际变宽区域续排，保留原文来源、字段、图片及链接 |
-| 图片与绘制 | 行内 PNG／JPEG、矢量路径、形状、水印；[CMYK／ICC／专色、渐变、图案、16 种混合、隔离组及 SVG 本地资源](docs/advanced-graphics-api.md)，RGB 目标按明确策略报告损失 |
-| 导航与表单 | 目录、书签、链接、评论、页码／引用字段、脚注续页、静态表单组件及四类基础可编辑 PDF 字段 |
-| 模板 | 离线 XML 变量、条件、循环、动态行、主题、静态页面配置、图文／表格页眉页脚、分节、有界递归 include、动态链接和字段；严格轻量 Markdown |
-| 输出格式 | PDF、自包含 SVG、PNG 单页／ZIP、DOCX 语义子集、HTML 和 Markdown |
-| PDF 处理 | 页级编辑／叠加、被动对象及关系重映射、渲染／提取、优化、同一行跨受支持样式文字替换、指定图片实例替换、光栅或保留选区外文字／矢量的脱敏；扩展字段、六种被动标记批注、FDF／XFDF 及独立 XFA 子集 |
-| 导入与编辑 | Markdown／HTML/CSS／DOCX 子集、显式启用的 PDF 栏／段落／表格自动恢复及网格覆盖和不确定性报告、不可变语义编辑、DOCX 原包文字编辑及结构化损失预检／结果报告 |
-| 模板保存 | 普通 ZIP 中的可编辑 XML 源码／资源；支持的语义模型也可保存为同一 XML，再重开、编辑和导出，不兼容内容明确报损 |
-| PDF 安全与标准 | AES-256；选定 PDF/A-1b／2b／3b／4f 生成与转换；显式 PDF/UA-1 标签；PAdES B／T／LT／LTA、离线信任／撤销证据、时间戳、续期及 DocMDP 修改符合性 |
-| 长表与执行控制 | 单次源支持普通／富文本／图片及递归语义格、有界跨度和完整行续排；[显式重放](docs/streaming-replay-api.md)计算采样自动宽、最终总数、未来引用、目录／书签及组脚注；可选磁盘索引 PDF 输出、预算、取消及原子路径写入 |
+| 报告与表单 | 标题、富文本、列表、图片、主题、页眉页脚、页码、目录、书签、链接及静态／可编辑表单 |
+| 分页与表格 | 分节、分栏、浮动内容、重复表头、合并单元格、嵌套表格及跨页续排 |
+| 导入、编辑与转换 | PDF 语义恢复、DOCX 语义编辑与原包文字编辑、HTML/CSS 和 Markdown 导入；损失预检及报错／警告／忽略策略 |
+| 模板与复用 | XML 变量、条件、循环和 include；可编辑 XML／资源 ZIP 及可选文档模型恢复 |
+| 文字与图形 | 显式字体、复杂文字、矢量图形、CMYK／ICC／专色、透明度和渐变；可选原生 OpenType 提供可变／彩色字体及竖排 |
+| PDF 处理 | 页面／对象编辑、组合、渲染、图片提取、优化、文字／图片替换、两种脱敏模式、表单数据及独立 XFA 子集 |
+| PDF 安全与标准 | AES-256、选定 PDF/A 等级、PDF/UA-1 及 PAdES B／T／LT／LTA；密钥、信任和验证资料显式提供 |
+| 大文档 | 流式长表、用于总数／引用的显式重放、可选磁盘索引 PDF、执行预算、取消及原子文件输出 |
 
-各项能力都有明确边界。组件网格、语义表格和单向长表分别服务不同契约，选择入口时参阅[编写指南](docs/authoring-api.md)、[链式 API](docs/fluent-api.md)与[长表指南](docs/streaming-table-api.md)。
-
-原生 OpenType 模块按需引入，应用显式选择目标平台的 LWJGL native classifier 并提供合法字体；核心仍保留原有纯 Java 路径。配置方式和限制见[原生模块指南](docs/native-opentype-api.md)。
+各项能力适用于文档声明的输入子集，配置与示例见 [API 指南](docs/README.md)。
 
 ## 快速开始
 
-前置条件：**JDK 21**。首次构建需要访问 Gradle 分发服务和 Maven Central，无需全局安装 Gradle。
+环境要求：**JDK 21**，生成文档无需安装 Office 或浏览器。首次构建需要访问 Gradle 分发与 Maven Central；仓库已包含 Gradle Wrapper。
 
 ```shell
 git clone https://github.com/mirakyux/export4j.git
@@ -84,38 +64,22 @@ bash ./gradlew build
 bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 ```
 
-| 示例任务 | 输出目录 | 展示内容 |
+| 示例 | 输出目录 | 演示内容 |
 | --- | --- | --- |
-| `:examples:authoring` | `examples/build/authoring/` | Java 编写、文字排版与语义 DOCX |
-| `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告模板与数据绑定 |
-| `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | 编辑、保存和重开普通 ZIP 中的 XML 源码／资源，再绑定不同数据 |
-| `:examples:recoveryClosure` | `examples/build/recovery-closure/` | 导航／注释／分节／图层／表格／图片组合恢复、实际编辑及有损多轮 |
-| `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | 语义模型保存为 XML，再重开编辑导出；三轮无编辑控制及明确损失报告 |
-| `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | 共享页区、变体／图层及保存／重开／编辑控制 |
-| `:examples:xmlCrossReferenceSaving` | `examples/build/xml-cross-reference-saving/` | 独立引用三轮保存、跨节页码／编号、目标改写和 Web 损失 |
-| `:examples:xmlSemanticSaving` | `examples/build/xml-semantic-saving/` | 注释／题注／文字外链完整绑定、三轮控制、实际题注编辑及 Web 损失 |
-| `:examples:pageOverlays` | `examples/build/page-overlays/` | XML 背景／前景、可见遮挡关系及明确转换损失 |
-| `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | XML 页眉页脚主题，以及含目录的最终页码 |
-| `:examples:xmlSections` | `examples/build/xml-sections/` | 图片／表格页区、分节纸张／页码和原生 DOCX 严格往返 |
-| `:examples:webExports` | `examples/build/web-exports/` | HTML／Markdown、嵌入图片及按功能报错／警告／忽略 |
-| `:examples:documentConversion` | `examples/build/document-conversion/` | 导入、编辑、实际损失预检和四格式输出 |
-| `:examples:pdfObjectEditing` | `examples/build/pdf-object-editing/` | 被动字段／对象及关系重映射选页／合并 |
-| `:examples:pdfContentEditing` | `examples/build/pdf-content-editing/` | 真实文字替换及新建纯图片 PDF 的区域脱敏 |
-| `:examples:pdfSemanticImport` | `examples/build/pdf-semantic-import/` | 恢复 PDF 标题、显式表格和图片，再编辑与转换 |
-| `:examples:production` | `examples/build/production/` | 分页、分栏、绕排、表格与多格式输出 |
-| `:examples:staticForms` | `examples/build/static-forms/` | 密集静态表单与矢量控件 |
+| `:examples:authoring` | `examples/build/authoring/` | Java 编写与语义 DOCX |
+| `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告与数据绑定 |
+| `:examples:production` | `examples/build/production/` | 分页、分栏、表格与多格式输出 |
+| `:examples:documentConversion` | `examples/build/document-conversion/` | 导入、编辑、损失预检及导出 |
+| `:examples:staticForms` | `examples/build/static-forms/` | 密集静态表单 |
 | `:examples:streamingTable` | `examples/build/streaming-table/` | 单向长表输出 |
-| `:examples:variableTables` | `examples/build/variable-tables/` | 按实际栏宽布局的语义行、合并 owner 和原子嵌套格 |
-| `:examples:variableSplitTables` | `examples/build/variable-split-tables/` | 行内格在变宽栏间按完整行续排，保留最终字段、图片和链接 |
-| `:examples:verifyPdfSignatures` | `examples/build/pdf-signature-verification/` | 显式离线 CMS 校验、未签追加及签名字节篡改区分 |
 
-示例显式加载仓库内固定字体，运行时不下载字体。核心库不携带这些示例字体，来源与许可见[字体资源](assets/fonts/README.md)。
+更多任务见[示例索引](docs/examples.md)。示例加载仓库内固定字体；业务应用应提供具有相应授权的字体，来源与许可见[字体记录](assets/fonts/README.md)。可选[原生 OpenType 模块](docs/native-opentype-api.md)还需配置目标平台的原生制品。
 
-当前尚无可直接安装的稳定 Maven 制品。可从源码构建，或通过[隔离 Maven 制品](docs/releasing.md)及 BOM 试用当前快照。
+当前尚无可直接安装的稳定 Maven 版本。可从源码构建，或通过[本地 Maven 制品及 BOM](docs/releasing.md)试用当前快照。
 
 ## Java 使用示例
 
-下面是使用公共编写 API 的完整类。运行目录为仓库根目录，classpath 需包含组件模块、PDF 后端及其运行依赖。字体路径指向仓库样例资源；接入业务时应显式提供具有相应授权的字体。
+下面是使用公共编写 API 的完整类。运行目录为仓库根目录，classpath 需包含组件模块、PDF 后端及其运行依赖；字体路径指向仓库样例资源。
 
 ```java
 import java.io.IOException;
@@ -157,13 +121,11 @@ public class QuickStart {
 }
 ```
 
-结果写入 `build/readme-report.pdf`。`DocumentEngine` 负责布局，`PdfBackend` 绘制最终结果；字体选择始终显式，严格策略下缺字会明确失败。
-
-可直接通过 Gradle 运行的完整样例见 [AuthoringExample](examples/src/main/java/com/mirakyux/export4j/examples/AuthoringExample.java)，更多编写方式见[编写指南](docs/authoring-api.md)。
+结果写入 `build/readme-report.pdf`。如需直接运行而不手动配置 classpath，使用 `:examples:authoring`；源码见 [AuthoringExample](examples/src/main/java/com/mirakyux/export4j/examples/AuthoringExample.java)，更多编写方式见[编写指南](docs/authoring-api.md)。
 
 ## XML 模板
 
-将报告结构写入 XML，由 Java 提供数据、字体、图片和输出配置：
+将文档结构写入 XML，由 Java 提供数据、字体、图片和输出配置：
 
 ```xml
 <document version="1" title="${title}">
@@ -175,19 +137,13 @@ public class QuickStart {
 </document>
 ```
 
-模板编译到既有文档模型。资源须显式登记，所有分支都会在编译时检查，编译器不自行读取文件或网络资源；未知语法和不安全 XML 明确拒绝。
+模板支持变量、条件、循环、表格、分节、页区和 include。XML 源码与资源可保存为普通 ZIP；受支持的 Java 模型也可保存为可编辑 XML。参阅 [XML 指南](docs/xml-template-api.md)、[模板资源包](docs/xml-template-bundle-api.md)、[模型保存](docs/xml-model-saving-api.md)和[完整 Java 示例](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java)。
 
-XML 支持独立主题的图文／表格页眉页脚及最终页码字段。单节使用 `template.renderWithPageRegions(data)`，分节使用 `template.renderSections(data)`，可配置各节纸张、页码和页区继承／覆盖。静态默认／首页／偶数页区按显示页码选择，包含显式空首页，见[页区变体](docs/page-variants-api.md)。[XML 背景／前景框](docs/page-overlays-api.md)支持固定位置、独立主题和最终字段。两者均可交给 `engine.export(document)`，也能导出原生 DOCX 页眉页脚。见[页区](docs/xml-page-regions-api.md)、[分节](docs/xml-sections-api.md)和 [DOCX 映射](docs/docx-page-regions-api.md)。
-
-使用 [XML 模板资源包](docs/xml-template-bundle-api.md)编辑、保存和重开主源及显式资源，打包使用普通 ZIP；单份 XML 仍可直接编译。保存的是模板源码，不从已渲染的 PDF／DOCX 反推模板。
-
-[XmlTemplateWriter](docs/xml-model-saving-api.md) 还可将支持的 Java 语义文档保存为同一 XML／ZIP，重开后继续编辑和导出，`${literal}` 等正文按原文保留。页眉页脚、首页／偶数变体及背景／前景框保留共享来源和位置。脚注／尾注、显式标记、Caption 和标题／列表文字外链也可保存；使用 `renderComplete(data)` 同时取回文档和注释。未映射块须明确配置损失策略；字体和许可由调用方提供。完整绑定见[阶段八十验收](docs/verification/phase-80-xml-semantic-saving.md)；[阶段八十一](docs/verification/phase-81-xml-cross-reference-saving.md)进一步支持独立页码／编号引用保存、目标改写和最终跳转。其他输出格式仍按各自能力和损失策略处理。
-
-参阅 [XML 指南](docs/xml-template-api.md)、[纸张与边距](docs/xml-page-settings-api.md)、[完整报告模板](examples/src/main/resources/templates/report.xml)和[Java 调用](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java)。
+[文档模型恢复](docs/model-recovery-api.md)为可选能力，可使用 XML／资源伴随包，或内嵌到受支持的输出。恢复信息会增加体积，外部编辑可能使其失效或被移除；绑定检查、兼容性及转换损失见该指南。
 
 ## HTML 与 Markdown 导出
 
-通过项目 BOM 添加 `com.mirakyux.export4j:export4j-adapter-web`。适配器直接消费语义模型，生成文件无需浏览器：
+通过项目 BOM 使用 `export4j-adapter-web`。下面的 `document` 为 Java 示例中的语义文档；适配器类型从 `com.mirakyux.export4j.adapter.web` 导入，`Path` 为 `java.nio.file.Path`。
 
 ```java
 new HtmlAdapter().export(document).to(Path.of("build/report.html"));
@@ -199,106 +155,66 @@ var result = MarkdownAdapter.builder().policy(policy).build()
         .export(document).to(Path.of("build/report.md"));
 ```
 
-适配器类型从 `com.mirakyux.export4j.adapter.web` 导入，`Path` 为 `java.nio.file.Path`。默认动作是 `ERROR`；选择 `WARN` 时应用明确降级并返回结构化诊断，`IGNORE` 使用同样降级但不生成警告；可按功能覆盖。非法输入、超限、取消和 I/O 失败始终报错，详见[完整支持与降级矩阵](docs/web-export-api.md)。
+默认动作是 `ERROR`。`WARN` 应用文档声明的降级并返回诊断；`IGNORE` 使用同样降级但不生成警告。非法输入、超限、取消和 I/O 失败始终报错，详见[支持与降级矩阵](docs/web-export-api.md)。
 
-HTML 保留语义样式、嵌入图片及合并／嵌套表格。Markdown 输出 CommonMark/GFM 内容，对无法表达的几何或表结构执行策略。阅读器决定换行和分页，部分阅读器禁用 data 图片或生成的行内 HTML。导出与严格 Markdown 模板输入语法独立。运行 `:examples:webExports` 可生成两种格式。
+HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 输出 CommonMark/GFM 内容。换行和分页由目标阅读器决定。运行 `:examples:webExports` 可生成两种格式，导入后编辑与互转见[统一转换](docs/document-conversion-api.md)。
 
 ## 格式支持与限制
 
-| 格式 | 当前范围 |
-| --- | --- |
-| PDF | 报告输出；另有受限页／对象编辑、渲染、优化、脱敏与语义恢复入口，见 [PDF 指南](docs/pdf-adapter-api.md) |
-| SVG／PNG | 复用共享 Display List 的静态输出；非空交互数据明确拒绝 |
-| DOCX | 类型化语义子集，包含文字、递归内表、分节页区、浮动图片／文本框、批注、修订、控件及目录声明；转换为更简单的目标时报告实际损失 |
-| HTML | 语义 HTML5 导出和离线元素／CSS 子集导入；嵌入／显式图片、受支持合并／嵌套表格及显式损失策略 |
-| Markdown 输出 | CommonMark/GFM 内容；不支持的几何／结构按报错、警告或忽略策略处理 |
-| 输入与编辑 | 离线 XML／严格 Markdown 模板；通用 Markdown／HTML/CSS／DOCX 子集和受限 PDF 语义恢复；[统一转换](docs/document-conversion-api.md)含编辑、损失预检和结果报告 |
+| 格式 | 导入／读取 | 输出／编辑 |
+| --- | --- | --- |
+| PDF | 有界解析与语义恢复 | 生成、页面／对象编辑、组合、渲染、优化及脱敏 |
+| DOCX | 类型化 OOXML 子集 | 语义导出／编辑及原包文字编辑 |
+| HTML/CSS | 离线语义模式或显式 CSS 布局子集 | 自包含语义 HTML5 |
+| Markdown | CommonMark/GFM 子集；另有独立严格模板语法 | CommonMark/GFM 内容 |
+| SVG／PNG | 在各自支持子集内作为矢量／图像资源加载 | 静态页面及 PNG 页 ZIP |
 
-- 不保证一般 Word 文档无损往返，也不保证 DOCX 与 PDF 分页相同。
-- PDF 通常保存字形、线条和坐标，缺少可靠的表格关系。默认恢复保留文字行；显式自动分析推断栏、段落和受支持表格，并报告不确定性与实际损失；显式网格优先。两种路径均不保证恢复原可编辑版面。
-- PDF 恢复接受有效嵌入的静态 TrueType、CFF 和传统 Type1 [子集](docs/pdf-font-compatibility-api.md)，以避免依赖本机字体而改变内容或测量结果。复杂页面及受支持的 Type3 绘制可显式降为整页图片，并报告失去文字编辑及结构的损失。行内图片／轮廓输出的不可见锚点使用固定嵌入字体；具体条件见 [PDF 恢复边界](docs/pdf-semantic-import-api.md#为什么不能直接还原原文档)。
-- 脱敏会将全页光栅化并移除源对象，损失文字搜索及矢量编辑；调用方须列出全部敏感区域。
-- 复杂文字、提取、搜索与选择受已测脚本和阅读器范围约束。PDF/UA-1 需要显式语义绑定和已验收输出通道，普通输出不自动成为无障碍文档；不宣称完整 OpenType 或完整 Unicode 分段。
-- PDF/A 与 PDF/UA 均需验证最终文件。签名要求显式调用方密钥或签名回调、信任锚和验证证据；项目不捆绑私钥或隐式信任服务。见[标准指南](docs/pdf-standards-api.md)。
-- 固定字段与原子内容必须放入预留区域，不通过隐式缩小或裁切处理不支持的内容。
-- 单向布局有界，但 PDFBox 页树仍增长，不代表完整 PDF 恒内存或长期无泄漏。
-- 资源预算不等于恶意输入沙箱；调用方仍需控制资源访问及不可信输入隔离。
+- 不同格式可保留的信息不同，不支持的内容按明确损失策略处理；不保证一般 Word 无损往返或 DOCX／PDF 同分页。
+- PDF 恢复根据文字、坐标和绘图推断可编辑结构，报告不确定性，支持显式表格网格，不执行 OCR。字体要求及整页图片降级见[恢复指南](docs/pdf-semantic-import-api.md)。
+- [PDF 脱敏](docs/pdf-redaction-api.md)提供光栅化和选择性重建两种模式。前者损失文字搜索与矢量，后者保留选区外受支持的内容；调用方须定位全部敏感区域。
+- 复杂文字、搜索及选择受已声明的字体、脚本和阅读器范围约束。PDF/A 和 PDF/UA 需使用对应输出通道并验证最终文件；签名需由调用方提供密钥和信任资料。
+- 流式布局与可选磁盘索引 PDF 各有资源契约；普通 PDF 后端仍持有页树。有限容量验证不等于支持任意规模文档或无限期无泄漏，见[流式与重放](docs/streaming-replay-api.md)。
+- 固定尺寸内容须放入预留区域；资源预算不能替代不可信输入隔离。
 
 ## 待完成与路线图
 
-以下能力仍未完整实现，不属于当前已支持特性：
+当前剩余工作由[能力缺口表](docs/capability-gaps.md)跟踪：
 
-- 更广页面图层组合、DOCX 图层映射及跨阅读器验收。
-- 已验收语料以外的跨平台字体与跨阅读器搜索／选区兼容。
-- 更广 HTML/CSS 兼容与可视化模板设计器。
-- 稳定公共 API、Maven Central 分发及可重复的跨平台发布验证。
+- **GAP-13：** 可视化模板设计器及更完整的场景示例。
+- **GAP-14.2：** 更广兼容语料及跨平台应用／阅读器验证。
+- **GAP-14.3：** 稳定 API／版本、正式签名与 Maven Central 分发。
+- **GAP-22：** XLSX、PPTX、EPUB、XPS 等更多格式。
 
-优先级、已有子集与验收条件以[能力缺口表](docs/capability-gaps.md)、[剩余计划](docs/remaining-capabilities-plan.md)和[研发路线](docs/roadmap.md)为准。OCR 不在当前范围内。
-
-## 架构与模块
-
-```text
-Document Model → Layout Engine → Layout IR → Display List → PDF / SVG / Raster
-DOCX / OOXML  ↔ DOCX Adapter   ↔ Document Model
-HTML / Markdown ↔ Web Adapter ↔ Document Model
-Existing PDF → Bounded Semantic Recovery → Document Model
-```
-
-布局引擎负责换行与分页，后端消费最终绘制指令；DOCX 适配器直接处理文档语义。
-
-| 模块 | 职责 |
-| --- | --- |
-| `export4j-model` | 文档语义、样式与执行契约 |
-| `export4j-font-core`、`export4j-text-core` | 字体资源、度量、塑形和文字布局 |
-| `export4j-opentype` | 可选的原生塑形、可变／彩色字体与竖排流 |
-| `export4j-graphics-api`、`export4j-graphics-core` | 绘制接口、Display List 与通用绘制 |
-| `export4j-layout-model`、`export4j-layout-core` | Layout IR、测量、区域与分页 |
-| `export4j-components` | 链式编写、组合组件与 DocumentEngine |
-| `export4j-backend-pdf`、`export4j-backend-svg`、`export4j-backend-raster` | 输出后端 |
-| `export4j-adapter-docx`、`export4j-adapter-template`、`export4j-adapter-pdf`、`export4j-adapter-web` | 格式与模板适配器 |
-| `export4j-bom`、`examples` | 版本对齐与可执行示例 |
-
-Java 根包名与 Gradle group 为 `com.mirakyux.export4j`。依赖边界及设计决定见[架构设计](docs/architecture.md)和 [ADR](docs/adr/README.md)。
+验收条件见[执行计划](docs/remaining-capabilities-plan.md)。OCR 不在当前范围内。
 
 ## 文档导航
 
-详细指南目前主要使用中文。
+[文档索引](docs/README.md)按使用任务组织指南，详细文档目前主要使用中文。
 
-| 主题 | 指南 |
+| 任务 | 阅读入口 |
 | --- | --- |
-| 开始使用 | [常用编写](docs/authoring-api.md) · [链式 API](docs/fluent-api.md) · [主题](docs/themes-api.md) |
-| 支持范围 | [能力矩阵](docs/capabilities-api.md) · [就绪评估](docs/readiness-assessment.md) |
-| 文字与布局 | [字体／文字](docs/text-api.md) · [布局](docs/layout-api.md) · [连续分栏](docs/continuous-columns-api.md) |
-| 表格 | [语义表格](docs/table-api.md) · [块格与内表](docs/block-cells-api.md) · [单向长表](docs/streaming-table-api.md) |
-| 表单与导航 | [静态表单](docs/static-forms-api.md) · [可编辑表单](docs/form-styles-api.md) · [行内字段](docs/inline-fields-api.md) |
-| 模板 | [XML](docs/xml-template-api.md) · [Markdown](docs/markdown-template-api.md) · [XML 主题](docs/xml-themes-api.md) |
-| 适配器 | [HTML／Markdown 导出](docs/web-export-api.md) · [DOCX 页区](docs/docx-page-regions-api.md) · [DOCX 字段](docs/docx-fields-api.md) · [静态 PDF](docs/pdf-adapter-api.md) |
-| 编辑 | [语义编辑与损失报告](docs/semantic-editing-api.md) |
-| 转换 | [统一导入、编辑与导出](docs/document-conversion-api.md) · [完整样例](examples/src/main/java/com/mirakyux/export4j/examples/DocumentConversionExample.java) |
-| 导入 | [通用 Markdown](docs/markdown-import-api.md) · [离线 HTML/CSS](docs/html-import-api.md) · [DOCX 语义编辑](docs/docx-semantic-api.md) · [PDF 语义恢复](docs/pdf-semantic-import-api.md)，支持导入后编辑及损失报告 |
-| PDF 编辑 | [页面](docs/pdf-page-editing-api.md) · [对象](docs/pdf-object-editing-api.md) · [合并](docs/pdf-object-composition-api.md) · [渲染／图片](docs/pdf-raster-api.md) · [优化](docs/pdf-optimization-api.md) · [文字](docs/pdf-text-editing-api.md) · [脱敏](docs/pdf-redaction-api.md) |
-| 工程维护 | [开发规约](docs/development.md) · [验收记录](docs/verification) · [发布规范](docs/releasing.md) |
+| 编写文档 | [编写指南](docs/authoring-api.md) · [链式 API](docs/fluent-api.md) · [主题](docs/themes-api.md) |
+| 使用模板 | [XML](docs/xml-template-api.md) · [模板资源包](docs/xml-template-bundle-api.md) |
+| 导入、编辑与转换 | [统一转换](docs/document-conversion-api.md) · [DOCX 语义](docs/docx-semantic-api.md) · [HTML/CSS](docs/html-import-api.md) |
+| 处理 PDF | [PDF 适配器](docs/pdf-adapter-api.md) · [恢复](docs/pdf-semantic-import-api.md) · [标准](docs/pdf-standards-api.md) |
+| 查看示例与实现 | [示例](docs/examples.md) · [架构](docs/architecture.md) · [ADR](docs/adr/README.md) |
 
 ## 构建与验证
-
-`build` 聚合模块构建、JUnit 测试、Javadoc 与源码包。工具版本和解析依赖由版本目录、Wrapper 配置、锁文件及校验元数据固定。
 
 ```powershell
 .\gradlew.bat build sbom publishLocalBundle
 powershell -NoProfile -File scripts/verify_local_consumer.ps1
 ```
 
-`publishLocalBundle` 将库和 BOM 写入 `build/repository`，隔离调用方通过 Maven 坐标解析这些制品并实际生成文档；该过程不发布到 Maven Central，也不写用户 Maven 仓库。
+Linux/macOS 使用 `bash ./gradlew`。本地制品写入 `build/repository`；独立调用方通过 Maven 坐标解析并实际生成文档。
 
-独立格式及视觉验证使用 Python 3.11+、隔离环境中安装的[固定验证依赖](scripts/requirements-verification.txt)及 Poppler；部分检查另需 veraPDF、OpenSSL 或 Word。按[验证矩阵](.agents/skills/develop-export4j/references/verification.md)选择受影响功能的检查，不为获得通过结果自动刷新视觉基线。
-
-GitHub Actions 工作流采用手动触发，仅覆盖完整验收流程的一部分；此处不宣称已获得托管 CI 的验证结果。
+[GitHub Actions](https://github.com/mirakyux/export4j/actions/workflows/build.yml)在推送 `main`、拉取请求及手动触发时执行，覆盖 Java 21 的 Windows／Linux／macOS 构建、API 检查、本地制品消费及临时密钥签名验证。应用／阅读器验收另行记录，完整流程见[开发规约](docs/development.md)和[发布验证](docs/releasing.md)。
 
 ## 参与贡献
 
-欢迎缺陷报告、可复现样例、测试、文档和范围明确的功能贡献。开始前阅读[贡献指南](CONTRIBUTING.md)、[开发规约](docs/development.md)和 [AGENTS.md](AGENTS.md)，共享项目技能见 [.agents](.agents/README.md)。
+欢迎缺陷报告、可复现示例、文档及范围明确的功能贡献。提交拉取请求前请阅读[贡献指南](CONTRIBUTING.md)。
 
-缺陷与建议使用 [GitHub Issues](https://github.com/mirakyux/export4j/issues)。安全问题请通过 [GitHub 私密漏洞报告](https://github.com/mirakyux/export4j/security/advisories/new)提交，详见[安全政策](SECURITY.md)。
+缺陷与建议使用 [GitHub Issues](https://github.com/mirakyux/export4j/issues)。安全问题请通过[私密漏洞报告](https://github.com/mirakyux/export4j/security/advisories/new)提交，详见[安全政策](SECURITY.md)。
 
 ## 开源致谢
 

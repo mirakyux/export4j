@@ -2,6 +2,8 @@
 
 更新日期：2026-10-29。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
 
+当前未完成的独立项为 GAP-13、GAP-14.2、GAP-14.3、GAP-22。GAP-12.1／12.2 已闭合；提交 `cc132e7` 的三平台构建及临时密钥签名分发远端 CI 均已通过，见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阅读器兼容、正式发布身份及远端 Maven 分发仍在相应条目验收。
+
 阶段三十八至四十完成组件角色作用域／固定富文本、独立列表标记及 XML 分域默认外观。最终评估认为当前 PDF 报告／静态密集表单已可进入本地业务试用，证据和 API 选择见[首版就绪评估](readiness-assessment.md)。以下更广任务继续保留开放状态，后续按具体业务或复现缺陷选取独立单元，不据本次结论宣称全部 GAP 关闭。
 
 ## 后续扩展推进顺序
@@ -73,6 +75,8 @@ OCR 不在当前范围内。下表保留既有推进单元及状态；编辑、�
 
 ## 编辑、导入与转换推进顺序
 
+下表保留早期推进单元及其当批验收范围；后续原生 DOCX、PDF 编辑和标准扩展已另有闭合记录，当前待办以本文开头和缺口表为准。
+
 具体状态、分项验收和策略契约统一维护在[缺口表](capability-gaps.md)，下表只组织前置关系。先区分语义模型的编辑／重新导出与已有 PDF 页面／对象处理；不新增占位 API，不承诺任意格式无损往返。
 
 | 顺序 | 对应缺口 | 交付单元与前置条件 | 完成门槛 |
@@ -81,7 +85,7 @@ OCR 不在当前范围内。下表保留既有推进单元及状态；编辑、�
 | 9 | GAP-17 | 已完成[阶段四十五](verification/phase-45-markdown-import.md)：离线 CommonMark／GFM 子集导入，与严格模板独立 | 19 项新增行为；独立源解析、导入后编辑、2 页双渲染、2 个 DOCX、4 个 Web 输出及新调用方通过；代码／引用等按明确策略报损 |
 | 10 | GAP-18 | 已完成[阶段四十六](verification/phase-46-html-import.md)：离线元素／属性、有限 CSS 级联与显式资源 | 22 项新增行为；双跨度／两层块格、2 页双渲染、2 个 DOCX、4 个 Web 输出、损失对账及新调用方通过 |
 | 11 | GAP-19 | 已完成[阶段四十七](verification/phase-47-document-conversion.md)：统一真实导入→编辑→导出、确切编码与共享策略 | 21 项新增行为；4 页双渲染、2 个 DOCX、8 个 Web 输出、三阶段损失对账及新隔离调用方通过；未编辑内容也完整检查 |
-| 12 | GAP-12.1／12.2 | [阶段四十八](verification/phase-48-docx-editing.md)已验收原包普通文字编辑与样式级联；保留未编辑目录／评论／修订／控件／表单和三类页眉 | 24 项新增行为、2 个包／3 个修改条目独立检查，2 页双渲染、2 个 DOCX、2 个 HTML 和新调用方通过；完整交互语义、浮动结构仍开放，Word 保存／导出单列未验收 |
+| 12 | GAP-12.1／12.2 | [阶段四十八](verification/phase-48-docx-editing.md)当时验收原包普通文字编辑与样式级联；保留未编辑目录／评论／修订／控件／表单和三类页眉 | 当批 24 项新增行为、独立结构／渲染及调用方通过；后续[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)已完成两项原生语义、Word 编辑保存回读和页面视觉验收，本行不表示仍待完成 |
 | 13 | GAP-10.1～10.4 | [阶段四十九](verification/phase-49-pdf-page-editing.md)页级编辑、[五十](verification/phase-50-pdf-object-editing.md)被动对象、[五十一](verification/phase-51-pdf-object-composition.md)关系重映射、[五十二](verification/phase-52-pdf-raster.md)渲染提取及[五十三](verification/phase-53-pdf-optimization.md)优化的明确子集已验收 | 页面框／坐标、字段外观和关系、解码像素／实际指令预算、无损与有损结果、独立结构／双渲染及新调用方已核对 |
 | 14 | GAP-10.5 | [阶段五十四](verification/phase-54-pdf-text-editing.md)真实命中范围替换及[五十五](verification/phase-55-pdf-redaction.md)新建图片 PDF 的区域脱敏分别已验收 | 原编码范围及未命中位置保持；敏感文字／图片像素清除且不复制源对象／历史；脱敏的全文光栅化损失明确报告 |
 | 15 | GAP-20 | [阶段五十六](verification/phase-56-pdf-semantic-import.md)完成受限 PDF→可编辑模型→DOCX／HTML／Markdown／重新布局 PDF | 逐行段落／字号标题、显式表格、流图片、实际编辑、预检对账、独立结构／双渲染及新调用方通过；一般原版重建／OCR 排除 |
@@ -120,7 +124,7 @@ OCR 不在当前范围内。下表保留既有推进单元及状态；编辑、�
 | PAdES／长期验证（GAP-11） | [阶段九十六](verification/phase-96-pdf-standards.md)已完成显式离线信任、撤销、RFC3161、DSS／VRI 和 LTA 续期；不读取系统信任库或隐式联网 | B／T／LT／LTA、三档认证证据更新、篡改／失效证据拒绝和独立 pyHanko 验证已完成；调用方提供密钥及证据，通用阅读器权限执行不由库保证 |
 | 多场景样例（GAP-13） | 每个行为里程碑之后复测完整调用代码与所有输出页 | 覆盖报告、静态表单和长表，记录字体、页区、失败边界及完整调用成本 |
 | 可视化设计器（GAP-13） | 先固定声明式语法、诊断来源和预览契约；设计器是独立模块 | 编辑、预览、保存／重新载入和导出闭环；不把示例页面当作设计器 |
-| 发布检查（GAP-14） | [阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成固定 API 基线及兼容门禁、完整签名／校验／许可和实际坐标 JAR 摘要对账；三平台 CI 配置已补 | 本地签名分发已验收；候选远端 CI、正式 API 冻结／版本／身份／命名空间、Central 上传及远端消费仍未验收 |
+| 发布检查（GAP-14） | [阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成固定 API 基线及兼容门禁、完整签名／校验／许可和实际坐标 JAR 摘要对账；三平台构建及临时密钥签名远端 CI 均已通过 | 正式 API 冻结／版本／身份／命名空间、Central 上传及远端消费仍未验收；CI 成功不替代应用／阅读器验证 |
 
 每批完成后更新实际证据和下一入口。某个单元失败时先修正，不降低阈值或自动刷新视觉基线；新增组合导致回归时重新打开已验收项。
 

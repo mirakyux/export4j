@@ -169,4 +169,4 @@
 
 [阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)完成 DOCX 有类型浮动图／真实文本框、图片变换、评论／六类修订／控件／旧式表单／目录，GAP-12.1／12.2 明确子集均已验收。真实 Word 字段更新、编辑、保存重开与发布 JAR 回读通过，4 页原生页面、4 页 Word PDF 和 4 页语义投影 PDF 完成独立渲染及逐页复查；五包标准校验零错误。验收脚本改为强类型 Office 互操作后解决导出超时，生成／转换链路在无桌面且禁止加载打印类的 JVM 下通过，不依赖打印驱动、打印服务或 Word。既有目录缓存由调用方显式刷新，不以强制全局重算破坏表单当前值。
 
-[阶段一百零四](verification/phase-104-html-css-layout.md)验收 GAP-18.1 的静态选择器、媒体／分页、Flex／Grid、尺寸及定位：14 页 PDF、8 份 SVG、Chromium 源几何、四项负控制和真实损失通过。[阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成 API 固定基线和兼容门禁、本地完整签名分发及实际坐标 JAR 摘要对账；候选远端 CI、正式版本／身份／命名空间、Central 上传及远端消费继续保留未验。当前统一构建 1,783 项测试通过，不能由本地结果推断跨平台应用或正式发布成功。
+[阶段一百零四](verification/phase-104-html-css-layout.md)验收 GAP-18.1 的静态选择器、媒体／分页、Flex／Grid、尺寸及定位：14 页 PDF、8 份 SVG、Chromium 源几何、四项负控制和真实损失通过。[阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成 API 固定基线和兼容门禁、本地完整签名分发及实际坐标 JAR 摘要对账。提交 `cc132e7` 的 Java 21 三平台构建和临时密钥签名分发远端 CI 均已通过；正式版本／身份／命名空间、Central 上传及远端消费继续保留未验。本地统一构建 1,783 项测试通过，跨平台应用／阅读器行为与正式发布分别验收。

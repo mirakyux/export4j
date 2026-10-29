@@ -22,6 +22,17 @@
 
 Windows 使用 `.\gradlew.bat build`，Linux/macOS 使用 `bash ./gradlew build`。根 `build` 聚合全部模块；根 `test` 仅运行测试，`:examples:run` 运行精确绘制示例，`:examples:textPdf` 运行中英文行布局示例，`:examples:flowPdf` 运行语义段落自动分页报告，`:examples:tablePdf` 运行跨页表格报告，`:examples:componentPdf` 运行基础交互报告，`:examples:advancedPdf` 运行综合报告，`:examples:benchmark` 记录大文档布局基线。
 
+常用任务和输出目录集中在[示例索引](examples.md)。本地完整制品与调用方验证可执行：
+
+```powershell
+.\gradlew.bat build sbom publishLocalBundle
+powershell -NoProfile -File scripts/verify_local_consumer.ps1
+```
+
+独立格式和渲染检查使用 Python 3.11+、隔离环境中的[固定验证依赖](../scripts/requirements-verification.txt)及 Poppler；PDF/A、签名或应用兼容检查另按任务准备 veraPDF、OpenSSL、Word 等工具。这些工具不进入库运行依赖，验证入口按[验证矩阵](../.agents/skills/develop-export4j/references/verification.md)选择。
+
+[GitHub Actions](../.github/workflows/build.yml)由推送 `main`、拉取请求及手动触发，覆盖 Java 21 三平台构建、API 检查、坐标消费、无打印依赖运行和临时密钥签名验证。实际远端结果、平台架构及未覆盖范围见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。
+
 Java 编译启用 `-Xlint:all -Werror`。依赖版本目录位于 `gradle/libs.versions.toml`，模块锁文件固定实际解析版本；有意升级时通过 `--write-locks` 更新，并同步依赖与许可证记录。
 
 ## 源码组织
@@ -109,6 +120,8 @@ Java 编译启用 `-Xlint:all -Werror`。依赖版本目录位于 `gradle/libs.v
 输入文件、字体、图片及压缩内容按不可信数据处理。限制应包含单位、默认行为和超限诊断，并在大输入或恶意输入上验证。
 
 默认不自动下载字体或远程图片，不执行宏或脚本。导入模块防止压缩炸弹、路径穿越和非预期外部实体解析。
+
+生成、导入、编辑及转换不得依赖打印机驱动、打印服务或 Office／浏览器进程；普通路径支持无桌面 JVM，字体和资源由调用方提供。外部应用只用于独立兼容性验收。运行依赖变化时执行 `scripts/verify_driverless.py`，核对生产 JAR、实际运行库摘要及拒绝加载打印类后的生成／转换，详见[架构约束](architecture.md)。
 
 ## 测试策略
 
