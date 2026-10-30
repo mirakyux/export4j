@@ -3,7 +3,7 @@
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="designer-token"]').content;
 let state, selected, selectedPaths = [], entries = [], pages = [], currentPage = 0, busy = false, propertyDirty = false;
-let bundleDirty = true, savedData = '', filename = '未命名模板', prepared, lastReport = {};
+let bundleDirty = true, savedData = '', filename = '未命名模板', exportReport, lastReport = {};
 let assetKind, pendingFont, dragging, nodeXmlDirty=false;
 let previewId = '', previewGeneration = 0, previewTimer, previewQueue = Promise.resolve();
 const changedAttributes = new Set();
@@ -17,7 +17,7 @@ async function request(path, payload, blob = false) {
     });
     if (!response.ok) {
         const failure = await response.json().catch(() => ({error:'本地服务请求失败：' + response.status}));
-        throw new Error(failure.error);
+        throw Object.assign(new Error(failure.error), {report:failure.report});
     }
     return blob ? response.blob() : response.json();
 }
@@ -33,8 +33,17 @@ async function run(work) {
     document.querySelectorAll('button,select,textarea,input:not([type=file])').forEach(control => control.disabled = control.id !== 'cancel');
     try { await work(); }
     catch (error) {
-        status(error.message, true); diagnostics({error:error.message});
-        if ($('export-dialog').open) $('export-summary').textContent = error.message;
+        const report={...(error.report||($('export-dialog').open?exportReport:undefined)),error:error.message};
+        status(error.message, true);
+        if ($('export-dialog').open) {
+            showExportReport({...report,format:$('format').value});
+            $('export-summary').textContent='导出未完成，未触发文件下载。';
+            $('export-report').querySelector('.diagnostic-overview')?.focus();
+        } else if ($('template-export-dialog').open) {
+            $('template-export-summary').textContent='模板导出失败：'+error.message;
+            $('template-export-summary').classList.add('error');
+            $('template-export-summary').focus();
+        } else diagnostics(report);
     } finally {
         busy = false; document.body.classList.remove('busy');$('cancel').hidden=true;
         document.querySelectorAll('button,select,textarea,input').forEach(control => control.disabled = false);
@@ -43,7 +52,8 @@ async function run(work) {
 }
 function refreshButtons() {
     $('undo').disabled = busy || !state?.canUndo; $('redo').disabled = busy || !state?.canRedo;
-    $('download-export').disabled = busy || !prepared;
+    $('download-export').disabled = busy;
+    $('download-loss-report').disabled = busy || !exportReport;
     $('previous').disabled = busy || currentPage <= 0;
     $('next').disabled = busy || currentPage >= pages.length - 1;
     if ($('apply-rich')) $('apply-rich').disabled = busy || !selected || !['p','heading','bullet','numbered','cell','link'].includes(selected.tag);
@@ -69,7 +79,6 @@ function markDirty() {
     DesignerWorkspace.documentState(filename,dirty());
 }
 function invalidate() {
-    prepared = undefined;
     $('preview-status').textContent = '预览待刷新'; refreshButtons();
 }
 function flatten(entry, depth = 0) {
@@ -78,7 +87,7 @@ function flatten(entry, depth = 0) {
 function install(value, changed = true) {
     const oldId = selected?.id, oldPath = selected?.path, oldSelections = selectedPaths.map(path => entries.find(entry => entry.path === path)).filter(Boolean);
     state = value; $('source').value = value.source; $('data').value = value.data;
-    propertyDirty = false; nodeXmlDirty=false; changedAttributes.clear(); prepared = undefined; entries = []; flatten(value.outline);
+    propertyDirty = false; nodeXmlDirty=false; changedAttributes.clear(); entries = []; flatten(value.outline);
     if (changed) bundleDirty = true;
     selected = entries.find(entry => oldId && entry.id === oldId) ?? entries.find(entry => entry.path === oldPath) ?? entries[0];
     selectedPaths = oldSelections.map(old => entries.find(entry => old.id && entry.id === old.id) ?? entries.find(entry => entry.path === old.path)).filter(Boolean).map(entry => entry.path);
@@ -155,7 +164,7 @@ function attributeRow(name = '', value = '', mixed = false) {
     row.append(key,input,remove); $('attributes').append(row);
 }
 function nodeDirtyLabel() {
-    $('node-state').textContent = propertyDirty ? '修改已预览 · 保存模板以下载' : '实时预览 · 支持撤销与重做';
+    $('node-state').textContent = propertyDirty ? '修改已预览 · 导出模板以保存' : '实时预览 · 支持撤销与重做';
     $('node-state').classList.toggle('pending', propertyDirty); markDirty(); refreshButtons();
 }
 async function drafts() {
@@ -191,7 +200,6 @@ async function preview(generation=++previewGeneration) {
     DesignerCanvas.render(); $('preview-status').textContent = result.milliseconds + ' ms · ' + pages.length + ' 页'; status('预览完成 · ' + pages.length + ' 页');
 }
 function schedulePreview() {
-    prepared=undefined;
     const generation=++previewGeneration;
     clearTimeout(previewTimer);
     $('preview-status').textContent='正在等待输入…';
@@ -349,7 +357,28 @@ on('new-sample', async () => {
     $('sample-dialog').showModal();
 });
 for (const id of ['close-sample','cancel-sample']) $(id).addEventListener('click', () => $('sample-dialog').close());
-on('save', async () => { await drafts(); download(await request('save', {}, true), 'template.zip'); bundleDirty = false; markDirty(); status('模板 ZIP 已交给浏览器下载；测试数据请另存 JSON。'); });
+function templateExportOptions() {
+    const zip=$('template-format').value==='ZIP';
+    $('template-format-help').textContent=zip?'包含原始 XML、字体、图片、可复用片段及许可，可直接在设计器中重新打开。':'只包含 XML 源码，不包含字体、图片、片段及许可。复用时须另行提供引用资源；完整迁移请选择 ZIP。';
+    $('download-template').textContent=zip?'下载模板 ZIP':'下载模板 XML';
+    $('template-export-summary').textContent='';$('template-export-summary').classList.remove('error');
+}
+on('save', () => { templateExportOptions(); $('template-export-dialog').showModal(); });
+$('template-format').addEventListener('change',templateExportOptions);
+for(const id of ['close-template-export','cancel-template-export'])$(id).addEventListener('click',()=>$('template-export-dialog').close());
+on('download-template', async () => {
+    templateExportOptions();$('download-template').textContent='正在导出…';
+    try {
+        await drafts();
+        const zip=$('template-format').value==='ZIP';
+        const blob=zip?await request('save',{},true):new Blob([state.source],{type:'application/xml;charset=utf-8'});
+        download(blob,zip?'template.zip':'template.xml');
+        if(zip)bundleDirty=false;
+        markDirty();
+        const message=zip?'模板 ZIP 已交给浏览器下载，包含源码和全部资源。':'模板 XML 已交给浏览器下载；引用资源须另行提供，建议同时保留完整 ZIP。';
+        $('template-export-summary').textContent=message;status(message);
+    } finally { $('download-template').textContent=$('template-format').value==='ZIP'?'下载模板 ZIP':'下载模板 XML'; }
+});
 on('save-data', async () => { await drafts(); download(new Blob([state.data],{type:'application/json'}),'data.json'); savedData = state.data; markDirty(); status('测试数据 JSON 已交给浏览器下载。'); });
 on('save-report', async () => download(new Blob([JSON.stringify(lastReport,null,2)],{type:'application/json'}),'export4j-report.json'));
 on('open', async () => { if (await discard()) { $('open-file').value = ''; $('open-file').click(); } });
@@ -376,17 +405,35 @@ async function applyProperties() {
 on('apply-properties', applyProperties);
 on('apply-node', applyProperties);
 for (const id of ['node-text','node-xml']) $(id).addEventListener('input', () => { propertyDirty = true;if(id==='node-xml')nodeXmlDirty=true;nodeDirtyLabel();schedulePreview(); });
-for (const id of ['source','data']) $(id).addEventListener('input', () => { prepared=undefined;markDirty();schedulePreview(); });
-on('export', async () => { await drafts(); prepared = undefined; $('export-summary').textContent = ''; $('export-report').textContent = ''; $('export-dialog').showModal(); });
+for (const id of ['source','data']) $(id).addEventListener('input', () => { markDirty();schedulePreview(); });
+function clearExportReport() {
+    exportReport=undefined;
+    $('export-summary').textContent='点击“下载文件”自动检查并导出。';
+    $('export-report').replaceChildren();$('export-report').hidden=true;
+    refreshButtons();
+}
+function showExportReport(report) {
+    exportReport=report;diagnostics(report);
+    $('export-report').hidden=false;DesignerWorkspace.report(report,$('export-report'));
+}
+on('export', async () => { await drafts(); clearExportReport(); $('export-dialog').showModal(); });
 $('close-export').addEventListener('click', () => $('export-dialog').close());
-for (const id of ['policy-action','policy-treatment','format']) $(id).addEventListener('change', () => { prepared = undefined; $('download-export').disabled = true; $('export-summary').textContent = '配置已变化，请重新检查。'; });
-on('prepare-export', async () => {
-    prepared = undefined; $('export-summary').textContent = '正在检查并编码…';
-    const result = await request('export/prepare',{format:$('format').value,action:$('policy-action').value,treatment:$('policy-treatment').value});
-    prepared = result.id; diagnostics({...result.report,format:$('format').value}); $('export-summary').textContent = result.report.losses?`可以继续导出，${result.report.losses} 项内容会被简化或移除。请在“诊断”页查看影响和建议；接受后再确认下载。`:'检查通过，未发现需简化或移除的内容。可以确认下载。';
-    $('export-report').textContent = JSON.stringify(result.report,null,2);
+for (const id of ['policy-action','policy-treatment','format']) $(id).addEventListener('change', clearExportReport);
+on('download-loss-report', () => download(new Blob([JSON.stringify(exportReport,null,2)],{type:'application/json'}),'export4j-export-report.json'));
+on('download-export', async () => {
+    clearExportReport();await drafts();clearTimeout(previewTimer);
+    const format=$('format').value;
+    $('download-export').textContent='正在检查…';$('export-summary').textContent='正在检查所选格式并生成文件…';
+    try {
+        const result=await request('export/prepare',{format,action:$('policy-action').value,treatment:$('policy-treatment').value});
+        const report={...result.report,format};showExportReport(report);
+        $('download-export').textContent='正在下载…';
+        const blob=await request('export/download',{id:result.id},true);
+        download(blob,'document.'+extensions[format]);showExportReport({...report,downloaded:true});
+        const message=report.warnings?`文件已交给浏览器下载，有 ${report.warnings} 项警告，请查看下方报告。`:'文件已交给浏览器下载，检查报告已保留。';
+        $('export-summary').textContent=message;status(message);
+    } finally { $('download-export').textContent='下载文件'; }
 });
-on('download-export', async () => { const blob = await request('export/download',{id:prepared},true); download(blob,'document.'+extensions[$('format').value]); status('导出已交给浏览器下载；预检报告已保留。'); });
 $('cancel').addEventListener('click', () => request('cancel',{}).then(() => status('已请求取消，等待当前检查点…')).catch(error => status(error.message,true)));
 on('add-image', async () => { await drafts(); assetKind = 'image'; $('asset-file').accept = '.png,.jpg,.jpeg'; $('asset-file').value = ''; $('asset-file').click(); });
 on('add-fragment', async () => { await drafts(); assetKind = 'fragment'; $('asset-file').accept = '.xml'; $('asset-file').value = ''; $('asset-file').click(); });

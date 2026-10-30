@@ -5,7 +5,7 @@ const DesignerWorkspace = (() => {
     const names = {document:'文档',page:'页面',section:'分节',p:'段落',heading:'标题',bullet:'列表项',numbered:'编号项',list:'数据列表',each:'数据循环',table:'表格',rows:'动态表格',row:'行',cell:'单元格',columns:'列设置',column:'列',header:'页眉',footer:'页脚',image:'图片',span:'格式文字',link:'链接',caption:'题注','cross-reference':'交叉引用','page-break':'分页符',box:'定位框',if:'条件',then:'满足条件',else:'其他情况','page-number':'当前页码','page-count':'总页数'};
     const paths = {
         search:'m21 21-4.5-4.5M19 10.5a8.5 8.5 0 1 1-17 0 8.5 8.5 0 0 1 17 0',
-        save:'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-8h10v8',
+        play:'m8 4 12 8-12 8Z',
         export:'M12 3v12m-5-5 5 5 5-5M5 15v6h14v-6',undo:'M3 10h11a6 6 0 0 1 0 12M3 10l6-6M3 10l6 6',redo:'M21 10H10a6 6 0 0 0 0 12M21 10l-6-6M21 10l-6 6',
         plus:'M12 5v14M5 12h14',chevron:'m9 5 7 7-7 7',focus:'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5',help:'M9 9a3 3 0 1 1 5 2c-1 1-2 1-2 3m0 3h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
         collapse:'m8 8 4 4 4-4m-8 9 4-4 4 4M4 3h16M4 22h16',up:'m5 14 7-7 7 7',down:'m5 10 7 7 7-7',trash:'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',
@@ -133,11 +133,14 @@ const DesignerWorkspace = (() => {
         const list=document.createElement('ul');
         [...group.locations.values()].forEach(location=>{
             const entry=entries.find(entry=>entry.id===location.block);
-            const label=[location.page?'第 '+location.page+' 页':'',entry?nodeName(entry):'',location.block?'#'+location.block:'全文'].filter(Boolean).join(' · ');
+            const cells=(location.cells||[]).map(cell=>`表格 #${cell.table} 第 ${cell.row+1} 行、第 ${cell.column+1} 列`).join(' → ');
+            const region={HEADER:'页眉',FOOTER:'页脚',BODY:'正文'}[location.region]||'';
+            const label=[location.page?'第 '+location.page+' 页':'',region,entry?nodeName(entry):'',location.block?'#'+location.block:'',cells].filter(Boolean).join(' · ')||'全文';
             const item=document.createElement('li');
             if(entry){
                 const button=reportText('button',label);button.type='button';button.title='在设计画布中选中此元素';
                 button.addEventListener('click',async()=>{
+                    if($('export-dialog').open)$('export-dialog').close();
                     await run(()=>choose(entry));if(selected?.path!==entry.path)return;
                     await openView('canvas-view');
                     DesignerCanvas.reveal(entry,location.page?location.page-1:undefined);
@@ -147,47 +150,55 @@ const DesignerWorkspace = (() => {
             list.append(item);
         });details.append(list);row.append(details);
     }
-    function report(report){
-        const host=$('diagnostics-summary');host.replaceChildren();
+    function report(report,host=$('diagnostics-summary')){
+        host.replaceChildren();
         const exporting=Array.isArray(report.issues),groups=new Map();
         (exporting?report.issues:report.diagnostics||[]).forEach(item=>{
             const detail=reportItem(item,exporting),key=[detail.code,detail.action,detail.treatment,detail.reason,JSON.stringify(detail.effects)].join('|');
             if(!groups.has(key))groups.set(key,{...detail,count:0,locations:new Map()});
             const group=groups.get(key);group.count++;
-            if(detail.block||detail.page)group.locations.set(detail.block+'|'+detail.page,{block:detail.block,page:detail.page});
+            if(detail.block||detail.page||detail.region)group.locations.set(JSON.stringify([detail.block,detail.page,detail.region,detail.cells]),detail);
         });
-        const hasLoss=exporting&&report.losses>0,needsReview=[...groups.values()].some(group=>group.code!=='FONT_FALLBACK');
-        const summary=reportText('section','', 'diagnostic-overview'+(report.error?' is-error':hasLoss||needsReview?' needs-review':''));
-        summary.append(reportText('span',report.error?'需要修正':hasLoss||needsReview?'建议检查':'检查完成','diagnostic-status'));
-        summary.append(reportText('h2',report.error?'本次操作未完成':exporting?hasLoss?'可以继续导出，部分内容会改变':'导出检查通过':`预览已生成，共 ${report.pages??pages.length} 页`));
-        summary.append(reportText('p',report.error?'请先处理下面的问题。画布继续保留上一次成功的预览。':exporting?
-            hasLoss?`本次${report.format?' '+report.format+' ':''}导出有 ${report.losses} 项内容会被简化或移除。下面逐项说明；模板和测试数据不会因此被改写。`:'本次导出检查未发现需简化或移除的内容。检查通过后仍需点击“确认并下载”。':
+        const hasLoss=exporting&&report.losses>0,needsReview=exporting?report.warnings>0:[...groups.values()].some(group=>group.code!=='FONT_FALLBACK');
+        const summary=reportText('section','', 'diagnostic-overview'+(report.error?' is-error':needsReview?' needs-review':''));
+        summary.tabIndex=-1;if(report.error)summary.setAttribute('role','alert');
+        summary.append(reportText('span',report.error?'需要修正':needsReview?'有警告':hasLoss?'损失已记录':'检查完成','diagnostic-status'));
+        summary.append(reportText('h2',report.error?exporting?'导出已阻止':'本次操作未完成':exporting?report.downloaded?'文件已交给浏览器下载':hasLoss?'格式差异已检查':'导出检查通过':`预览已生成，共 ${report.pages??pages.length} 页`));
+        summary.append(reportText('p',report.error?exporting?'当前策略拒绝不兼容内容，文件未下载。以下为首先触发拒绝的项目；调整后重新下载以继续检查。':'请先处理下面的问题。画布继续保留上一次成功的预览。':exporting?
+            hasLoss?`本次${report.format?' '+report.format+' ':''}导出有 ${report.losses} 项内容会被简化或移除。下面逐项说明；模板和测试数据不会因此被改写。`:'本次导出检查未发现需简化或移除的内容。':
             groups.size?`有 ${groups.size} 类提示。先看“影响”和“建议”；下面的位置可点击定位。`:'本次排版未发现字体替换或缺字提示。导出时会另行检查所选格式的兼容情况。'));
+        if(exporting){
+            const metrics=reportText('dl','','report-metrics');
+            for(const [label,value] of [[report.error?'潜在损失':'损失项目',report.losses||0],['警告',report.warnings||0],['问题分类',groups.size]]){
+                const item=document.createElement('div');item.append(reportText('dt',label),reportText('dd',String(value)));metrics.append(item);
+            }summary.append(metrics);
+        }
         host.append(summary);
-        if(report.error){
+        if(report.error&&(!exporting||groups.size===0)){
             const row=reportText('section','', 'diagnostic-row');row.append(reportText('h3','请检查 XML、测试数据或本次操作的设置'));
             row.append(reportText('p',report.error,'diagnostic-error-message'));
-            row.append(reportText('p','修改 XML 或测试数据后会自动重新预览；导出设置修改后，请重新点击“检查导出内容”。'));
+            row.append(reportText('p',exporting?'当前显示首先触发拒绝的项目；修正内容或调整策略后，点击“下载文件”重新检查。':'修改 XML 或测试数据后会自动重新预览；导出设置修改后，点击“下载文件”重新检查。'));
             host.append(row);
         }
-        const features={ELEMENT_ROTATION:'元素旋转',PAGE_REGION_POSITION:'页眉页脚位置',INTERACTIVE_CONTENT:'链接、导航或交互内容',PAGE_LAYOUT:'页面布局',PAGE_REGIONS:'页眉页脚',BOOKMARKS:'书签',COMMENTS:'批注',TABLE:'表格',TABLE_LAYOUT:'表格布局',TEXT_STYLE:'文字样式',FONT:'字体',IMAGE:'图片',CROSS_REFERENCE:'交叉引用'};
+        const features={ELEMENT_ROTATION:'元素旋转',PAGE_REGION_POSITION:'页眉页脚位置',INTERACTIVE_CONTENT:'链接、导航或交互内容',PAGE_LAYOUT:'页面布局',PAGE_REGIONS:'页眉页脚',PAGE_NUMBERING:'页码编号',PAGE_OVERLAYS:'页面图层',NAVIGATION:'文档导航',NOTES:'脚注与尾注',METADATA:'文档信息',CUSTOM_BLOCK:'自定义内容',BOOKMARKS:'书签',COMMENTS:'批注',TABLE:'表格',TABLE_LAYOUT:'表格布局',TEXT_STYLE:'文字样式',FONT:'字体',IMAGE:'图片',CROSS_REFERENCE:'交叉引用'};
         const treatments={DEGRADE:'简化呈现',DISCARD:'移除不兼容部分',PRESERVE:'保留原内容',SKIP:'跳过本项'};
         groups.forEach(group=>{
             const fallback=group.code==='FONT_FALLBACK',missing=group.code==='MISSING_GLYPH_REPLACED';
             const row=reportText('section','','diagnostic-row');
             const heading=reportText('div','','diagnostic-row-heading');
-            heading.append(reportText('span',fallback?'外观提醒':missing?'文字有替换':exporting?'导出变化':'需要核对','diagnostic-status'));
+            const blocked=exporting&&group.action==='ERROR';if(blocked)row.classList.add('is-error');
+            heading.append(reportText('span',fallback?'外观提醒':missing?'文字有替换':exporting?blocked?'已拒绝':group.action==='WARN'?'警告':'已记录':'需要核对','diagnostic-status'));
             heading.append(reportText('h3',fallback?'部分文字使用了备用字体':missing?'部分字符无法显示，已改用替代字符':features[group.code]||'部分内容需要核对'));
             row.append(heading);
             row.append(reportText('p',fallback?'首选字体不包含这些字，排版时使用了项目资源中能显示它们的备用字体。':missing?'已配置的字体无法显示部分字符；当前预览中的这些字符已被替换。':exporting?
-                `当前导出格式对这部分内容的处理：${treatments[group.treatment]||'请核对技术详情'}。同类记录 ${group.count} 条。`:'引擎报告了暂未提供通俗解释的情况，请展开技术详情核对原因。'));
+                blocked?`当前策略拒绝此项，尚未下载文件。允许继续时的处理：${treatments[group.treatment]||'请核对技术详情'}。`:`当前导出格式对这部分内容的处理：${treatments[group.treatment]||'请核对技术详情'}。同类记录 ${group.count} 条。`:'引擎报告了暂未提供通俗解释的情况，请展开技术详情核对原因。'));
             const explanation=document.createElement('dl');explanation.className='diagnostic-explanation';
             const impact=fallback?'文字仍然保留，字体外观、文字宽度和换行可能与首选字体不同。':missing?'导出前应检查相关文字，避免把替代字符当成原文。':
                 group.code==='ELEMENT_ROTATION'?'旋转角度会丢失，元素内容以未旋转的方式呈现。':group.code==='PAGE_REGION_POSITION'?'页区内容保留，但位置或重叠关系可能变化。':group.code==='INTERACTIVE_CONTENT'?'导出文件将无法保留原有的导航、链接或交互对象。':
                 exporting?group.treatment==='DISCARD'?'本项不兼容内容不会出现在导出文件中；具体范围请核对技术详情。':group.treatment==='DEGRADE'?'本项内容会采用较简单的表示，部分格式或功能无法保留。':'请核对本项的具体处理及技术详情。':'本项的影响尚不能自动判断，请查看技术详情。';
             const advice=fallback?'如果预览中的字形符合要求，可以继续使用；如需统一字体，请在“资源 → 字体”导入覆盖这些字符的字体，并调整字体角色。':missing?'在“资源 → 字体”导入覆盖这些字符的字体，重新预览并确认文字。':exporting?
-                '需要保留原效果时，尝试其他导出格式并重新检查；接受本项变化后再确认下载。“忽略警告”仍会发生这些变化。':'展开下方技术详情，结合涉及位置检查模板与资源；无法确定时可下载报告用于排查。';
-            explanation.append(reportText('dt','影响'),reportText('dd',impact),reportText('dt','建议'),reportText('dd',advice));row.append(explanation);
+                blocked?'需要保留原效果时，修改内容或选择兼容格式；允许损失时，将动作改为“警告”或“忽略警告”，再点击“下载文件”。':'需要保留原效果时，尝试其他导出格式；“忽略警告”仍会发生这些变化。':'展开下方技术详情，结合涉及位置检查模板与资源；无法确定时可下载报告用于排查。';
+            explanation.append(reportText('dt','影响'),reportText('dd',(blocked?'允许继续后，':'')+impact),reportText('dt','建议'),reportText('dd',advice));row.append(explanation);
             if(!exporting)row.append(reportText('p',`${group.count} 条${fallback||missing?'字符级':''}记录，已按类型合并显示${fallback?'；不表示同等数量的错误':''}。`,'diagnostic-meta'));
             reportLocations(group,row);
             if(!fallback&&!missing){
@@ -196,12 +207,14 @@ const DesignerWorkspace = (() => {
             }
             host.append(row);
         });
-        $('issue-count').textContent=String(groups.size+(report.error?1:0));
-        $('issue-count').title='提示类型数；包含外观提醒，逐字记录会合并显示';
+        if(host.id==='diagnostics-summary'){
+            $('issue-count').textContent=String(groups.size+(report.error&&(!exporting||groups.size===0)?1:0));
+            $('issue-count').title='提示类型数；包含外观提醒，逐字记录会合并显示';
+        }
     }
     function commandList(){
         const simple=(name,id,key='')=>({name,key,perform:()=>$(id).click()});
-        return [simple('新建空白文档','new-blank'),simple('从样例新建','new-sample'),simple('保存模板 ZIP','save','Ctrl S'),simple('打开XML / ZIP','open'),simple('另存测试数据 JSON','save-data'),simple('加载测试数据 JSON','load-data'),simple('页面设置、页眉页脚与边距','page-settings'),simple('导出文件','export'),simple('恢复默认布局','reset-layout'),{name:'切换侧边面板',key:'Ctrl B',perform:()=>togglePanel('navigator')},{name:'切换属性检查器',key:'',perform:()=>togglePanel('inspector')},
+        return [simple('新建空白文档','new-blank'),simple('从样例新建','new-sample'),simple('导出模板（XML / ZIP）','save','Ctrl S'),simple('打开XML / ZIP','open'),simple('另存测试数据 JSON','save-data'),simple('加载测试数据 JSON','load-data'),simple('页面设置、页眉页脚与边距','page-settings'),simple('测试导出（PDF / DOCX 等）','export'),simple('恢复默认布局','reset-layout'),{name:'切换侧边面板',key:'Ctrl B',perform:()=>togglePanel('navigator')},{name:'切换属性检查器',key:'',perform:()=>togglePanel('inspector')},
             ...[...document.querySelectorAll('[data-insert]')].map(button=>({name:'插入'+button.textContent,key:'',perform:()=>run(()=>insert(button.dataset.insert))})),
             ...[['文档结构','navigator-view'],['项目资源','resources-view'],['设计画布','canvas-view'],['XML 源码','source-view'],['测试数据 JSON','data-view'],['查看诊断','diagnostics-view']].map(([name,view])=>({name,key:'',perform:()=>openView(view)})),simple('快捷键帮助','help-open'),simple('切换专注模式','focus-mode')];
     }

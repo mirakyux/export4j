@@ -223,7 +223,7 @@ const Editor = (() => {
     }
     function markRich(work,fromBody=false) {
         if (nodeXmlDirty) { status('请先应用节点 XML 修改。',true);return; }
-        work(); richDirty=true; propertyDirty=true; prepared=undefined;if(!fromBody)BodyEditor.render(richNode);nodeDirtyLabel();schedulePreview();
+        work(); richDirty=true; propertyDirty=true;if(!fromBody)BodyEditor.render(richNode);nodeDirtyLabel();schedulePreview();
     }
     function appendInline(parent, tag) {
         if (tag === 'text') parent.appendChild(parent.ownerDocument.createTextNode('新文字'));

@@ -8,11 +8,72 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 class DesignerServerTest {
+    @Test void exportsReturnStructuredRejectionsAndKeepWarningAndIgnoreLosses() throws Exception {
+        try (var server = new DesignerApp.Server(0); var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            server.start();
+            var home = client.send(HttpRequest.newBuilder(URI.create(server.origin() + "/")).timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString());
+            var match = Pattern.compile("name=\"designer-token\" content=\"([^\"]+)\"").matcher(home.body());
+            assertTrue(match.find()); String token = match.group(1);
+            var initial = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
+            String source = "<document version='1'><p id='turned' rotation='30'>ROTATION-EXPORT</p></document>";
+            var applied = send(client, server.origin(), "apply", token,
+                    BindingJson.write(BindingJson.object("revision", initial.get("revision"), "source", source, "data", "{}")), null);
+            assertEquals(200, applied.statusCode());
+            var state = BindingJson.parse(applied.body()); Object revision = state.get("revision");
+            String lastId = "";
+            for (String action : List.of("WARN", "IGNORE")) {
+                var response = send(client, server.origin(), "export/prepare", token,
+                        BindingJson.write(BindingJson.object("revision", revision, "format", "DOCX", "action", action, "treatment", "RECOMMENDED")), null);
+                assertEquals(200, response.statusCode());
+                var prepared = BindingJson.parse(response.body());
+                var report = (Map<?, ?>) prepared.get("report");
+                assertEquals("PREVIEW", report.get("phase"));
+                assertEquals("1", report.get("losses").toString());
+                assertEquals(action.equals("WARN") ? "1" : "0", report.get("warnings").toString());
+                var issue = (Map<?, ?>) ((List<?>) report.get("issues")).getFirst();
+                assertEquals("ELEMENT_ROTATION", issue.get("feature"));
+                assertEquals("turned", issue.get("block"));
+                assertEquals("BODY", issue.get("region"));
+                assertEquals(action, issue.get("action"));
+                assertEquals(List.of(), issue.get("cells"));
+                lastId = (String) prepared.get("id");
+                var download = send(client, server.origin(), "export/download", token,
+                        BindingJson.write(BindingJson.object("revision", revision, "id", lastId)), null);
+                assertEquals(200, download.statusCode()); assertTrue(download.body().startsWith("PK"));
+                assertTrue(download.headers().firstValue("Content-Disposition").orElseThrow().contains("document.docx"));
+            }
+            var rejected = send(client, server.origin(), "export/prepare", token,
+                    BindingJson.write(BindingJson.object("revision", revision, "format", "DOCX", "action", "ERROR", "treatment", "RECOMMENDED")), null);
+            assertEquals(422, rejected.statusCode());
+            var failure = BindingJson.parse(rejected.body());
+            var rejectedReport = (Map<?, ?>) failure.get("report");
+            var rejectedIssue = (Map<?, ?>) ((List<?>) rejectedReport.get("issues")).getFirst();
+            assertEquals("ELEMENT_ROTATION", rejectedIssue.get("feature"));
+            assertEquals("turned", rejectedIssue.get("block"));
+            assertEquals("ERROR", rejectedIssue.get("action"));
+            assertEquals(409, send(client, server.origin(), "export/download", token,
+                    BindingJson.write(BindingJson.object("revision", revision, "id", lastId)), null).statusCode());
+            var lossless = send(client, server.origin(), "export/prepare", token,
+                    BindingJson.write(BindingJson.object("revision", revision, "format", "PDF", "action", "ERROR", "treatment", "RECOMMENDED")), null);
+            assertEquals(200, lossless.statusCode());
+            var pdf = BindingJson.parse(lossless.body());
+            assertEquals("0", ((Map<?, ?>) pdf.get("report")).get("losses").toString());
+            var downloaded = send(client, server.origin(), "export/download", token,
+                    BindingJson.write(BindingJson.object("revision", revision, "id", pdf.get("id"))), null);
+            assertEquals(200, downloaded.statusCode()); assertTrue(downloaded.body().startsWith("%PDF-"));
+            assertEquals(422, send(client, server.origin(), "export/prepare", token,
+                    BindingJson.write(BindingJson.object("revision", revision, "format", "PDF", "action", "ERROR", "treatment", "INVALID")), null).statusCode());
+            assertEquals(409, send(client, server.origin(), "export/download", token,
+                    BindingJson.write(BindingJson.object("revision", revision, "id", pdf.get("id"))), null).statusCode());
+            assertEquals(state, BindingJson.parse(send(client, server.origin(), "state", token, null, null).body()));
+        }
+    }
     @Test void newDocumentDistinguishesBlankFromCatalogSamplesAndRejectsInvalidChoicesAtomically() throws Exception {
         try (var server = new DesignerApp.Server(0); var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             server.start();

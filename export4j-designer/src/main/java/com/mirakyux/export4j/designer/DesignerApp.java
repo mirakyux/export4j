@@ -4,6 +4,7 @@ package com.mirakyux.export4j.designer;
 import com.mirakyux.export4j.adapter.template.XmlTemplateBundle;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.processing.DocumentConversion;
+import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
 import com.sun.net.httpserver.HttpExchange;
@@ -77,6 +78,10 @@ public final class DesignerApp {
                     if (path.equals("/api/cancel")) { method(exchange, "POST"); cancelled.set(true); json(exchange, Map.of("cancelled", true)); return; }
                     synchronized (this) { api(exchange, path); }
                 } catch (Rejected ex) { error(exchange, ex.status, ex.getMessage()); }
+                catch (ProcessingException ex) {
+                    error(exchange, 422, BindingJson.object("error", "当前策略拒绝不兼容内容，未生成下载文件。",
+                            "report", report(new ProcessingReport(ProcessingReport.Phase.PREVIEW, List.of(ex.issue())))));
+                }
                 catch (Exception ex) { error(exchange, 422, ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()); }
             }
         }
@@ -182,9 +187,9 @@ public final class DesignerApp {
                             "diagnostics", candidate.layout().contextualDiagnostics().stream().map(Object::toString).toList())); return;
                 }
                 case "/api/export/prepare" -> {
+                    prepared = null; preparedId = "";
                     var format = DesignerService.Format.valueOf(text(request, "format"));
                     var policy = DesignerService.policy(format, ProcessingPolicy.Action.valueOf(text(request, "action")), text(request, "treatment"));
-                    prepared = null; preparedId = "";
                     var candidate = DesignerService.prepare(history.current(), format, policy, DesignerService.execution(cancelled::get));
                     prepared = candidate; preparedId = UUID.randomUUID().toString(); preparedFormat = format;
                     json(exchange, BindingJson.object("id", preparedId, "report", report(candidate.preview()))); return;
@@ -279,7 +284,11 @@ public final class DesignerApp {
         private static Map<String, Object> entry(DesignerXml.Entry entry) { return BindingJson.object("path", entry.path(), "tag", entry.tag(), "id", entry.id(), "label", entry.label(), "children", entry.children().stream().map(Server::entry).toList()); }
         private static Object report(ProcessingReport report) {
             return BindingJson.object("phase", report.phase().name(), "losses", report.losses().size(), "warnings", report.warnings().size(), "issues", report.issues().stream()
-                    .map(issue -> BindingJson.object("feature", issue.feature(), "reason", issue.reason(), "action", issue.action().name(), "treatment", issue.treatment().name(), "block", issue.location().blockId(), "region", issue.location().region(), "effects", issue.effects())).toList());
+                    .map(issue -> BindingJson.object("feature", issue.feature(), "reason", issue.reason(), "action", issue.action().name(), "treatment", issue.treatment().name(),
+                            "block", issue.location().blockId(), "section", issue.location().sectionId(), "region", issue.location().region(),
+                            "startUtf16", issue.location().startUtf16(), "endUtf16", issue.location().endUtf16(),
+                            "cells", issue.location().cellPath().stream().map(cell -> BindingJson.object("table", cell.tableId(), "row", cell.rowIndex(), "column", cell.columnIndex())).toList(),
+                            "effects", issue.effects())).toList());
         }
         private static String text(Map<String, Object> request, String key) { if (!(request.get(key) instanceof String value)) { throw new IllegalArgumentException("string required: " + key); } return value; }
         private static int integer(Map<String, Object> request, String key) { if (!(request.get(key) instanceof java.math.BigDecimal value)) { throw new IllegalArgumentException("integer required: " + key); } return value.intValueExact(); }
@@ -291,7 +300,10 @@ public final class DesignerApp {
         private static void download(HttpExchange exchange, String name, String type, byte[] bytes) throws IOException { exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + name + "\""); send(exchange, type, bytes); }
         private static void send(HttpExchange exchange, String type, byte[] bytes) throws IOException { exchange.getResponseHeaders().set("Content-Type", type); exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); }
         private static void error(HttpExchange exchange, int status, String reason) throws IOException {
-            byte[] bytes = BindingJson.write(Map.of("error", reason)).getBytes(StandardCharsets.UTF_8);
+            error(exchange, status, Map.of("error", reason));
+        }
+        private static void error(HttpExchange exchange, int status, Map<String, Object> failure) throws IOException {
+            byte[] bytes = BindingJson.write(failure).getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8"); exchange.sendResponseHeaders(status, bytes.length); exchange.getResponseBody().write(bytes);
         }
         private static final class Rejected extends RuntimeException {
