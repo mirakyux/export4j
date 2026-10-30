@@ -17,7 +17,9 @@ python scripts/verify_capabilities.py
 
 独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，证明本地制品可消费；这不是 Maven Central、签名或远程 CI 验证。
 
-根 `check` 包含 `apiCheck`。固定开发期基线、差异规则和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发已在远端通过，准确提交和运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。这些检查使用本地构建的 Maven 仓库，不替代正式身份、Central 上传或真实远端仓库消费。
+根 `check` 包含 `apiCheck`，使用从固定提交独立构建的 `0.1.0-rc.1` 候选基线，差异规则和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发在提交 `cc132e7` 已远端通过，准确运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阶段一百零六新增的安全／兼容门禁只有本地结果，不能沿用该提交的 CI 结论。上述检查使用本地构建的 Maven 仓库，不替代正式身份、Central 上传或真实远端仓库消费。
+
+最新 Windows Word／PDF 实际编辑、保存、重开及最终 JAR 回读见[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)。该轮兼容修复后的字节已完成构建和隔离消费，但未重新签名；阶段一百零六的签名摘要只对应其历史批次。应用验收不引入 Office、浏览器或打印服务运行依赖，也不替代其他平台、新远端 CI 或正式发布。
 
 脚本每次使用独立消费者构建目录，避免之前打开的输出文件阻塞清理。模板、受控导出、CFF 与 PDF 安全／归档／签名的附加验收见[能力记录](verification/phase-5-capabilities.md)；省略外部验证器参数时不包含归档合规或验签结论。
 
@@ -48,7 +50,7 @@ python scripts/verify_capabilities.py
 python scripts/prepare_maven_bundle.py --repository <本地暂存目录> --version <相同版本> --public-key <公钥文件> --output build/verification/distribution
 ```
 
-命令中占位符须替换后执行；Linux／macOS 使用 `./gradlew`。`publishSignedBundle` 只把 16 个库和 BOM 暂存到本地，不连接 Central。完整 POM 包含项目、SCM、维护者和许可；二进制、源码、Javadoc、POM 及 Gradle 元数据均须有有效签名。准备脚本使用独立 GnuPG 验签并验证篡改拒绝，核对实际 JAR 与 SBOM、许可及坐标，生成标准目录结构 ZIP 和 MD5／SHA-1／SHA-256／SHA-512 校验文件。调用前须安装 GnuPG，并准备可验证的公开密钥。
+命令中占位符须替换后执行；Linux／macOS 使用 `./gradlew`。启用签名的 `publishSignedBundle` 先执行 `check`（含测试和候选 API 门禁）、`publishLocalBundle` 及 `sbom`，只把 16 个库和 BOM 暂存到本地，不连接 Central。完整 POM 包含项目、SCM、维护者和许可；二进制、源码、Javadoc、POM 及 Gradle 元数据均须有有效签名。准备脚本使用独立 GnuPG 验签并验证篡改拒绝，核对实际 JAR 与 SBOM、许可及坐标，生成标准目录结构 ZIP 和 MD5／SHA-1／SHA-256／SHA-512 校验文件。调用前须安装 GnuPG，并准备可验证的公开密钥。
 
 `scripts/verify_signed_distribution.py` 可用临时密钥和 `0.0.0-verification...` 标记版本演练整个流程，随后以独立复制的消费者编译并生成输出。消费者实际解析的每个自研 JAR 必须与该批签名仓库具有相同 SHA-256；同坐标、同版本不能替代准确字节核对。构建输入清单同时绑定生产源码、构建／验证脚本、消费者源码及资源，签名与消费期间变化即失败。此测试身份不作为正式签名身份；脚本要求全新忽略目录，私钥仅存在临时 keyring 和签名进程环境，结束后清理。演练包可审查，不自动上传。
 
@@ -60,7 +62,7 @@ python scripts/prepare_maven_bundle.py --repository <本地暂存目录> --versi
 2. 在干净环境中使用 Gradle Wrapper 完成已配置的构建和测试。
 3. 运行对应阶段的结构、独立工具及视觉验证，记录环境与结果。
 4. 核对公共 API 差异、不兼容行为和迁移说明。
-5. 验证依赖清单、许可证、资源许可、必要 NOTICE 与 SBOM。
+5. 验证依赖清单、许可证、资源许可、必要 NOTICE 与 SBOM；对这批实际 SBOM 运行 `python scripts/audit_dependencies.py --sbom <该批SBOM路径> --output <审计报告路径>`，记录命中项及适用性，查询失败不能视为干净结果。
 6. 检查二进制、源码、Javadoc、POM 和 BOM 内容及依赖范围。
 7. 在干净的调用方项目中解析制品并运行示例。
 8. 检查 README、发布说明、安全支持范围与私密报告渠道。

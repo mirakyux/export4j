@@ -15,6 +15,7 @@ Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert betw
 
 - [Features](#features)
 - [Getting started](#getting-started)
+- [HTML template designer](#html-template-designer)
 - [Java example](#java-example)
 - [XML templates](#xml-templates)
 - [HTML and Markdown export](#html-and-markdown-export)
@@ -33,7 +34,7 @@ Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert betw
 | Reports and forms | Headings, rich text, lists, images, themes, headers/footers, page numbers, contents, bookmarks, links and static/editable forms |
 | Pagination and tables | Sections, columns, floating content, repeated table headers, merged cells, nested tables and cross-page continuation |
 | Import, editing and conversion | PDF recovery, DOCX semantic and package-preserving edits, HTML/CSS and Markdown import; loss previews and error/warn/ignore policies |
-| Templates and reuse | XML variables, conditions, loops and includes; editable XML/resource ZIPs and optional document-model recovery |
+| Templates and reuse | XML variables, conditions, loops and includes; editable XML/resource ZIPs, an optional HTML template designer and document-model recovery |
 | Text and graphics | Explicit fonts, complex text, vector graphics, CMYK/ICC/spot colors, transparency and gradients; optional native OpenType for variable/color fonts and vertical text |
 | PDF processing | Page/object edits, composition, rendering, image extraction, optimization, text/image replacement, two redaction modes, form data and a separate XFA subset |
 | PDF security and standards | AES-256, selected PDF/A profiles, PDF/UA-1 and PAdES B/T/LT/LTA, with explicit keys, trust and validation evidence |
@@ -76,6 +77,10 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 More runnable tasks are listed in the [example index](docs/examples.md). Examples load bundled fonts; applications supply their own licensed fonts. See [font sources and licenses](assets/fonts/README.md). The optional [native OpenType module](docs/native-opentype-api.md) also requires the target platform's native artifacts.
 
 There is no stable Maven release to install yet. Build from source, or use the [local Maven bundle and BOM](docs/releasing.md) to evaluate the current snapshot.
+
+## HTML template designer
+
+Run `./gradlew :export4j-designer:run` (`.\gradlew.bat` on Windows), then open the local address shown in the terminal. This optional app has an IDE-style structure/resource explorer, editor tabs, and property inspector. It supports page settings, rich text, typed properties, and highlighted XML/JSON editing. Changes trigger a live Java-engine preview; the continuous canvas supports whole-list selection, multiple selection and drag, shared-property edits, contextual actions, and image resizing. Undo/redo, template ZIP save/reopen, and six export formats with loss previews remain available. See the [designer guide](docs/designer.md), [business scenarios](docs/verification/phase-108-designer-and-business-scenarios.md), [editing verification](docs/verification/phase-109-designer-editing-controls.md) and [canvas verification](docs/verification/phase-110-designer-canvas-and-interactions.md).
 
 ## Java example
 
@@ -180,7 +185,6 @@ HTML preserves supported styles, embedded images and merged/nested tables. Markd
 
 The remaining work is tracked in the [capability gaps](docs/capability-gaps.md):
 
-- **GAP-13:** visual template designer and broader scenario examples.
 - **GAP-14.2:** broader compatibility corpus and application/reader checks across platforms.
 - **GAP-14.3:** stable API/release, official signing and Maven Central distribution.
 - **GAP-22:** additional formats, including XLSX, PPTX, EPUB and XPS.

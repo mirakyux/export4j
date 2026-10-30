@@ -149,7 +149,7 @@ final class SemanticBlocks {
     private static ParagraphFormat indent(ParagraphFormat f, int level) {
         double indent = (level - 1) * f.fontSize() * 1.5;
         return new ParagraphFormat(f.fontSize(), f.lineHeight(), f.firstLineIndent() + indent,
-                f.subsequentLineIndent() + indent, f.alignment(), f.spaceBefore(), f.spaceAfter(), f.keepTogether(), f.pagination(), f.lineBreakPolicy());
+                f.subsequentLineIndent() + indent, f.alignment(), f.spaceBefore(), f.spaceAfter(), f.keepTogether(), f.pagination(), f.lineBreakPolicy(), f.rotation());
     }
 
     private static Paragraph prefix(Paragraph source, String prefix, ParagraphFormat format, InlineStyle markerStyle) {

@@ -23,6 +23,7 @@ import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.CellStyleRule;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.DocumentNavigation;
@@ -94,7 +95,7 @@ public final class XmlTemplate {
     private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break", "table", "rows");
     private static final Set<String> PARAGRAPH_ATTRIBUTES = Set.of("id", "size", "line-height", "align",
             "keep-together", "space-before", "space-after", "first-indent", "subsequent-indent", "line-break",
-            "keep-with-next", "page-break-before", "min-lines-before", "min-lines-after");
+            "keep-with-next", "page-break-before", "min-lines-before", "min-lines-after", "rotation");
     private static final Set<String> INLINE_STYLE_ATTRIBUTES = Set.of("role", "color", "size", "underline", "strike", "baseline-shift");
     private static final Set<String> SPAN_ATTRIBUTES = Set.of("style", "role", "color", "size", "underline", "strike", "baseline-shift");
     private final PageSettings pageSettings;
@@ -359,7 +360,7 @@ public final class XmlTemplate {
                         if (!blockList) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         content.addAll(include(child, depth + 1, namespace));
                     } else {
-                        boolean childList = blockList && Set.of("each", "section", "header", "footer").contains(child.name())
+                        boolean childList = blockList && Set.of("each", "list", "section", "header", "footer").contains(child.name())
                                 || conditional && (child.name().equals("then") || child.name().equals("else"));
                         boolean childConditional = blockList && child.name().equals("if");
                         content.add(element(child, depth + 1, childList, childConditional, namespace, localIds, include));
@@ -454,7 +455,7 @@ public final class XmlTemplate {
                 for (int i = current.content().size() - 1; i >= 0; i--) {
                     if (current.content().get(i) instanceof Element child) {
                         if (child.name().equals("include") && !scan.blockList()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
-                        boolean childList = scan.blockList() && Set.of("each", "section", "header", "footer").contains(child.name())
+                        boolean childList = scan.blockList() && Set.of("each", "list", "section", "header", "footer").contains(child.name())
                                 || scan.conditional() && (child.name().equals("then") || child.name().equals("else"));
                         pending.push(new IdScan(child, childList, scan.blockList() && child.name().equals("if")));
                     }
@@ -509,6 +510,7 @@ public final class XmlTemplate {
     }
 
     private final class Compiler {
+        private final List<DocumentTemplate.CellRule> cellRules = new ArrayList<>();
         private boolean literalText;
         private final Map<String, String> hyperlinkTemplates = new HashMap<>();
         private final Set<String> ids = new HashSet<>();
@@ -571,9 +573,10 @@ public final class XmlTemplate {
                     sections.add(new DocumentTemplate.SectionNode(sectionId, sectionSettings,
                             nodes(children.subList(selected.end(), children.size())), first, selected.regions()));
                 }
-                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText, notes, navigation);
+                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText, notes, navigation, cellRules);
             }
-            return new DocumentTemplate(metadata, settings, nodes(body), bindingLimits, regions, List.of(), hyperlinkTemplates, literalText, notes, navigation);
+            var bodyNodes = nodes(body);
+            return new DocumentTemplate(metadata, settings, bodyNodes, bindingLimits, regions, List.of(), hyperlinkTemplates, literalText, notes, navigation, cellRules);
         }
 
         private DocumentNavigation navigation(Element element) {
@@ -675,7 +678,7 @@ public final class XmlTemplate {
 
         private PageRegion region(Element element, PageRegionStyle defaults) {
             if (!element.fragmentName().isEmpty()) { throw error(element, Code.UNSUPPORTED_ELEMENT); }
-            attributes(element, Set.of("height", "gap", "variant", "source-id", "source-ref"));
+            attributes(element, Set.of("height", "gap", "edge", "left", "right", "variant", "source-id", "source-ref"));
             return regionSource(element, element.name(), defaults, false);
         }
 
@@ -688,7 +691,8 @@ public final class XmlTemplate {
             var sources = regionSources.computeIfAbsent(kind, ignored -> new HashMap<>());
             if (element.attributes().containsKey("source-ref")) {
                 if (element.attributes().containsKey("source-id") || element.attributes().containsKey("height")
-                        || element.attributes().containsKey("gap")) { throw error(element, Code.INVALID_STRUCTURE); }
+                        || element.attributes().containsKey("gap") || element.attributes().containsKey("edge")
+                        || element.attributes().containsKey("left") || element.attributes().containsKey("right")) { throw error(element, Code.INVALID_STRUCTURE); }
                 empty(element);
                 var source = sources.get(literalId(element, "source-ref"));
                 if (source == null) { throw error(element, Code.INVALID_VALUE); }
@@ -696,7 +700,9 @@ public final class XmlTemplate {
             }
             required(element, "height");
             var source = validated(element, () -> new PageRegion(length(element, "height", 0),
-                    overlay ? 0 : length(element, "gap", 0), regionBlocks(element, defaults)));
+                    overlay ? 0 : length(element, "gap", 0), overlay ? -1 : length(element, "edge", -1),
+                    overlay ? -1 : length(element, "left", -1), overlay ? -1 : length(element, "right", -1),
+                    regionBlocks(element, defaults)));
             if (element.attributes().containsKey("source-id")
                     && sources.putIfAbsent(literalId(element, "source-id"), source) != null) {
                 throw error(element, Code.INVALID_VALUE);
@@ -809,6 +815,14 @@ public final class XmlTemplate {
                         attributes(element, Set.of("items", "as"));
                         yield new DocumentTemplate.Each(path(element, "items"), identifier(element, "as"), nodes(element));
                     }
+                    case "list" -> {
+                        attributes(element, Set.of("items", "as"));
+                        var items = children(element);
+                        if (items.size() != 1 || !Set.of("bullet", "numbered").contains(items.getFirst().name())) {
+                            throw error(element, Code.INVALID_STRUCTURE);
+                        }
+                        yield new DocumentTemplate.Each(path(element, "items"), identifier(element, "as"), nodes(items));
+                    }
                     case "table", "rows" -> table(element);
                     default -> throw error(element, Code.UNSUPPORTED_ELEMENT);
                 };
@@ -903,7 +917,7 @@ public final class XmlTemplate {
         private ParsedTable tableParts(Element element, int tableDepth) {
             if (tableDepth > com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH) { throw error(element, Code.INVALID_STRUCTURE); }
             boolean dynamic = element.name().equals("rows");
-            var allowed = new HashSet<>(Set.of("id", "row-split", "draw-borders", "padding-top", "padding-right", "padding-bottom", "padding-left", "space-before", "space-after"));
+            var allowed = new HashSet<>(Set.of("id", "row-split", "draw-borders", "padding-top", "padding-right", "padding-bottom", "padding-left", "space-before", "space-after", "rotation"));
             if (dynamic) { allowed.addAll(Set.of("items", "as")); }
             attributes(element, allowed);
             String id = id(element);
@@ -935,7 +949,8 @@ public final class XmlTemplate {
                     .drawBorders(flag(element, "draw-borders", defaults.drawBorders()))
                     .padding(new PageMargins(number(element, "padding-top", padding.top()), number(element, "padding-right", padding.right()),
                             number(element, "padding-bottom", padding.bottom()), number(element, "padding-left", padding.left())))
-                    .spaceBefore(number(element, "space-before", defaults.spaceBefore())).spaceAfter(number(element, "space-after", defaults.spaceAfter())).build());
+                    .spaceBefore(number(element, "space-before", defaults.spaceBefore())).spaceAfter(number(element, "space-after", defaults.spaceAfter()))
+                    .rotation(number(element, "rotation", defaults.rotation())).build());
             if (dynamic && rows.getFirst().cells().stream().anyMatch(cell -> cell.rowSpan() > 1)) {
                 throw error(element, Code.INVALID_VALUE);
             }
@@ -948,6 +963,11 @@ public final class XmlTemplate {
             int covered = 0;
             for (var cell : children(element)) {
                 requireName(cell, "cell"); attributes(cell, Set.of("size", "line-height", "align", "column-span", "row-span", "role", "color", "line-break"));
+                var rules = childrenWithName(cell, "style-if");
+                if (rules.size() > 64) { throw error(cell, Code.INVALID_STRUCTURE); }
+                var contentCell = new Element(cell.name(), cell.attributes(), cell.content().stream()
+                        .filter(part -> !(part instanceof Element child) || !child.name().equals("style-if")).toList(),
+                        cell.line(), cell.column(), cell.fragmentName(), cell.namespace());
                 var value = validated(cell, () -> {
                     int span = cell.attributes().containsKey("column-span") ? positiveInteger(cell, "column-span") : 1;
                     int rowSpan = cell.attributes().containsKey("row-span") ? positiveInteger(cell, "row-span") : 1;
@@ -956,18 +976,40 @@ public final class XmlTemplate {
                     var format = new CellFormat(size, height, alignment(cell, cellFormat.alignment()), lineBreak(cell, cellFormat.lineBreakPolicy()));
                     var builder = TableCell.builder().format(format).columnSpan(span).rowSpan(rowSpan);
                     var appearance = appearance(cell, size, cellText);
-                    boolean blockContent = cell.content().stream().anyMatch(part -> part instanceof Element child
+                    boolean blockContent = contentCell.content().stream().anyMatch(part -> part instanceof Element child
                             && (child.name().equals("p") || child.name().equals("table")));
-                    if (!blockContent) { return builder.content(inline(cell, appearance, true)).build(); }
+                    if (!blockContent) { return builder.content(inline(contentCell, appearance, true)).build(); }
+                    if (!rules.isEmpty()) { throw error(cell, Code.INVALID_STRUCTURE); }
                     if (header) { throw error(cell, Code.INVALID_STRUCTURE); }
                     return builder.blocks(cellBlocks(cell, tableDepth, format,
                             new TextDefaults(appearance.fontRole(), appearance.rgb()))).build();
                 });
+                for (var rule : rules) { cellRules.add(new DocumentTemplate.CellRule(value, cellRule(rule))); }
                 if (value.columnSpan() > count - covered) { throw error(element, Code.INVALID_STRUCTURE); }
                 covered += value.columnSpan();
                 cells.add(value);
             }
             return new TableRow(cells);
+        }
+
+        private List<Element> childrenWithName(Element parent, String name) {
+            return parent.content().stream().filter(part -> part instanceof Element child && child.name().equals(name))
+                    .map(part -> (Element) part).toList();
+        }
+
+        private CellStyleRule cellRule(Element element) {
+            attributes(element, Set.of("test", "operator", "value", "size", "line-height", "align", "line-break", "role", "color", "underline", "strike"));
+            empty(element);
+            return validated(element, () -> new CellStyleRule(path(element, "test"),
+                    CellStyleRule.Operator.valueOf(value(element, "operator", "TRUE")), value(element, "value", ""),
+                    new CellStyleRule.Overrides(element.attributes().containsKey("size") ? number(element, "size", 0) : null,
+                            element.attributes().containsKey("line-height") ? number(element, "line-height", 0) : null,
+                            element.attributes().containsKey("align") ? alignment(element, ParagraphAlignment.LEFT) : null,
+                            element.attributes().containsKey("line-break") ? lineBreak(element, LineBreakPolicy.STANDARD) : null,
+                            element.attributes().containsKey("role") ? value(element, "role", "") : null,
+                            element.attributes().containsKey("color") ? color(element, 0) : null,
+                            element.attributes().containsKey("underline") ? flag(element, "underline", false) : null,
+                            element.attributes().containsKey("strike") ? flag(element, "strike", false) : null)));
         }
 
         private List<Block> cellBlocks(Element cell, int tableDepth, CellFormat format, TextDefaults appearance) {
@@ -991,6 +1033,7 @@ public final class XmlTemplate {
             return defaults.toBuilder().fontSize(size)
                     .lineHeight(number(element, "line-height", element.attributes().containsKey("size") ? size * 1.5 : defaults.lineHeight()))
                     .alignment(alignment(element, defaults.alignment())).keepTogether(flag(element, "keep-together", defaults.keepTogether()))
+                    .rotation(number(element, "rotation", defaults.rotation()))
                     .spaceBefore(number(element, "space-before", defaults.spaceBefore()))
                     .spaceAfter(number(element, "space-after", defaults.spaceAfter()))
                     .firstLineIndent(number(element, "first-indent", defaults.firstLineIndent()))
@@ -1030,12 +1073,12 @@ public final class XmlTemplate {
                     }
                     case "image" -> {
                         if (!allowObjects) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
-                        attributes(child, Set.of("ref", "width", "height", "alt", "baseline-shift")); empty(child);
+                        attributes(child, Set.of("ref", "width", "height", "alt", "baseline-shift", "rotation")); empty(child);
                         String key = identifier(child, "ref");
                         var resource = images.get(key);
                         if (resource == null) { throw error(child, Code.UNKNOWN_RESOURCE); }
                         result.add(validated(child, () -> new InlineImage(resource, number(child, "width", 0), number(child, "height", 0), number(child, "baseline-shift", 0),
-                                expression(child, value(child, "alt", "")), hyperlink)));
+                                expression(child, value(child, "alt", "")), hyperlink, number(child, "rotation", 0))));
                     }
                     case "link" -> {
                         if (!hyperlink.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }

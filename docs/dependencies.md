@@ -16,7 +16,21 @@ PDF 普通输出的不可见逻辑锚点复用既有 PDFBox 3.0.8 JAR 内 `org/a
 
 PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans。PDF 适配器显式声明 FontBox，用于读取嵌入权限及禁止子集标志；没有新增运行坐标、字体或第三方样本。样例图像由 Java 自行生成，源码和检查脚本采用 Apache-2.0。见[阶段四十九](verification/phase-49-pdf-page-editing.md)。
 
-离线 HTML 导入在 Web 适配器内部采用 jsoup 1.21.2。仅调用 String 解析与有限选择器，不调用连接／加载接口；公共 API 不暴露其类型。无传递运行依赖，实际 class major 52，与 Java 21 兼容。MIT 原文来自实际 JAR，JAR／POM 与上游 SHA-1 及 Gradle SHA-256 对照；原始许可、归属和运行 SBOM 同步保留。
+离线 HTML 导入在 Web 适配器内部采用 jsoup 1.23.2。仅调用 String HTML 解析与有限选择器，不调用连接／加载接口；公共 API 不暴露其类型。无传递运行依赖，实际 class major 52，与 Java 21 兼容。MIT 原文来自实际 JAR，JAR／POM 与上游 SHA-1 及 Gradle SHA-256 对照；原始许可、归属和运行 SBOM 同步保留。
+
+阶段一百零六将 jsoup 从 1.21.2 升级到 1.23.2：旧版本被 OSV 标为受 [GHSA-65r4-943x-97jj](https://osv.dev/vulnerability/GHSA-65r4-943x-97jj)（CVE-2026-75140，XML 命名空间解析的资源开销）和 [GHSA-pmhh-3w7g-xqp8](https://osv.dev/vulnerability/GHSA-pmhh-3w7g-xqp8)（自定义 Safelist 的 raw-text 清洗）影响。当前代码没有调用这两类入口；升级用于移除受公告影响的版本，不据此认定既有 HTML 入口可被同样利用。新版 POM 解析涉及 `org.sonatype.oss:oss-parent:7` 与 `io.netty:netty-bom:4.2.17.Final`，两份 POM 已独立对照上游摘要并加入严格校验；它们没有增加 Netty 运行库。
+
+## 已知漏洞检查
+
+```powershell
+.\gradlew.bat sbom
+python scripts/test_dependency_audit.py
+python scripts/audit_dependencies.py
+```
+
+审计脚本对实际 `build/reports/sbom.cdx.json` 的确切第三方 Maven 版本查询 OSV，输出绑定该 SBOM 的 SHA-256。命中公告、服务／TLS／超时错误、响应不完整及坐标不一致均以非零退出；错误报告覆盖旧成功结果，不把不可用的查询记为通过。CI 的 Linux 构建执行在线审计，三平台执行门禁自身的离线回归。
+
+检查只覆盖查询时数据库已收录的 Java 运行依赖公告，不覆盖自研缺陷、原生载荷、字体、JDK、构建和验证工具，也不能替代输入边界、输出内容和应用兼容验收。升级后的 13 项运行依赖在 2026-10-29 查询中没有公告命中；新公告及后续制品必须重新检查。实际修复与复现入口见[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)。
 
 通用 Markdown 导入使用 commonmark-java 0.24.0 及同版本 GFM tables／strikethrough 扩展，作为 Web 适配器内部实现依赖，公共签名不暴露解析器类型。三者采用 BSD-2-Clause，原始许可从实际 JAR 提取并随分发保留；源码目标 Java 11、实际 class major 55，与 Java 21 基线兼容。Maven Central 的 7 个 POM／JAR 与上游 SHA-1 对照，并将实际 SHA-256 写入依赖验证元数据和制品清单。没有新增字体或第三方样本。
 
@@ -30,7 +44,7 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 
 2026-10-16 XML 静态页面配置由项目自主实现，继续使用既有模型、JDK XML 和输出后端，没有新增直接／传递依赖、字体或第三方资源。`page-settings.xml`、合成报告数据、样例、测试与独立检查脚本采用 Apache-2.0，沿用已登记的 Liberation Sans。见[阶段三十六](verification/phase-36-xml-page-settings.md)。
 
-本文件管理候选技术、实际依赖和非代码资源。当前已采用 Gradle 9.2.1、PDFBox / FontBox 3.0.8 和 JUnit 6.1.3；实际解析坐标由各模块 `gradle.lockfile` 固定。
+本文件管理候选技术、实际依赖和非代码资源。当前已采用 Gradle 9.4.1、PDFBox / FontBox 3.0.8 和 JUnit 6.1.3；实际解析坐标由各模块 `gradle.lockfile` 固定。
 
 ## 候选技术
 
@@ -42,7 +56,7 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 | 字体解析 | [Apache FontBox](https://pdfbox.apache.org/) | 字体层内部 | 已采用 3.0.8，与 pdfbox-io 一起封装，验证静态 TrueType／CFF 及集合成员 |
 | 复杂塑形 | JDK TextMeasurer／GlyphVector；可选 LWJGL／HarfBuzz | 核心静态字体与可选原生 OpenType 模块 | JDK 路径保持；原生方向、可变／彩色字体及特性见[原生指南](native-opentype-api.md) |
 | 行内图片 | JDK ImageIO／GraphicAttribute | 模型内有界资源验证、文本测量、绘制解码 | 仅显式静态 PNG／JPEG；AWT 不进入公共签名，无新增 Maven 依赖 |
-| 构建工具 | [Gradle](https://gradle.org/) | 构建与内置插件 | 已采用 9.2.1，Java 21 构建通过 |
+| 构建工具 | [Gradle](https://gradle.org/) | 构建与内置插件 | 已采用 9.4.1，Java 21 构建通过 |
 
 项目名称或宽松许可证名称不能代替具体制品及传递依赖审查。
 
@@ -78,7 +92,7 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 | `org.bouncycastle:bcpkix-jdk18on` | 1.86 | PDF 后端内部运行 | MIT；保留实际 JAR 原始许可 |
 | `org.bouncycastle:bcprov-jdk18on` | 1.86 | PDF 后端传递运行 | MIT；保留实际 JAR 原始许可 |
 | `org.bouncycastle:bcutil-jdk18on` | 1.86 | PDF 后端传递运行 | MIT；保留实际 JAR 原始许可 |
-| `org.jsoup:jsoup` | 1.21.2 | Web 适配器内部运行 | MIT；保留实际 JAR 原始许可 |
+| `org.jsoup:jsoup` | 1.23.2 | Web 适配器内部运行 | MIT；保留实际 JAR 原始许可 |
 | `org.commonmark:commonmark` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
 | `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
 | `org.commonmark:commonmark-ext-gfm-strikethrough` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
@@ -125,12 +139,14 @@ PDF 页级编辑复用既有 PDFBox／FontBox 3.0.8 和已登记 Liberation Sans
 
 ## 构建与 CI 工具
 
-Gradle Wrapper 由 Gradle 9.2.1 官方工具生成，自带 Apache-2.0 声明。分发 ZIP 的 SHA-256 已写入 Wrapper 配置，Wrapper JAR 也已与官方校验值核对：
+Gradle Wrapper 由 Gradle 9.4.1 官方工具生成，自带 Apache-2.0 声明。分发 ZIP 的 SHA-256 已写入 Wrapper 配置，Wrapper JAR 也已与官方校验值核对：
 
 ~~~text
-distribution: 72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f
-wrapper jar: 423cb469ccc0ecc31f0e4e1c309976198ccb734cdcbb7029d4bda0f18f57e8d9
+distribution: 2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb
+wrapper jar: 55243ef57851f12b070ad14f7f5bb8302daceeebc5bce5ece5fa6edb23e1145c
 ~~~
+
+Gradle 9.4 系列更新了内置 Kotlin 编译器，修复旧版 Kotlin DSL 在目录联接等路径条件下的脚本编译问题；上游记录见 [Gradle #36483](https://github.com/gradle/gradle/issues/36483) 和 [#35572](https://github.com/gradle/gradle/issues/35572)。此更新仅涉及构建工具，不新增库运行依赖。
 
 [CI 工作流](../.github/workflows/build.yml)使用 `actions/checkout`、`actions/setup-java` 和 `actions/upload-artifact`，按完整提交 SHA 固定，源项目许可证为 MIT；这些工具不进入自研库或发行包。工作流由推送 `main`、拉取请求及手动操作触发，执行 Java 21 的 Windows／Linux／macOS 构建和独立签名验证任务。已完成的远端运行及未覆盖范围见[平台与签名验收](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。
 

@@ -15,7 +15,8 @@ from prepare_maven_bundle import gpg_path, prepare, temporary_keyring
 def build_inputs(root: Path):
     paths = {root / name for name in (
         "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "LICENSE", "NOTICE",
-        "scripts/verify_signed_distribution.py", "scripts/prepare_maven_bundle.py",
+        "scripts/verify_signed_distribution.py", "scripts/prepare_maven_bundle.py", "scripts/verify_api_compatibility.py",
+        "verification/api/baseline-0.1.0-rc.1.json",
         "verification/consumer/build.gradle.kts", "verification/consumer/settings.gradle.kts",
         "verification/consumer/gradle.lockfile"
     )}

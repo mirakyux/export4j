@@ -1,6 +1,6 @@
 # 研发路线与验收
 
-本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。跨平台／阅读器矩阵、正式分发、设计器及更多格式继续按原有独立缺口验收。
+本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。可选 [HTML 设计器](designer.md)及四套业务样例已完成。跨平台／阅读器矩阵、正式分发及更多格式继续按原有独立缺口验收。
 
 ## 阶段总览
 
@@ -170,3 +170,9 @@
 [阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)完成 DOCX 有类型浮动图／真实文本框、图片变换、评论／六类修订／控件／旧式表单／目录，GAP-12.1／12.2 明确子集均已验收。真实 Word 字段更新、编辑、保存重开与发布 JAR 回读通过，4 页原生页面、4 页 Word PDF 和 4 页语义投影 PDF 完成独立渲染及逐页复查；五包标准校验零错误。验收脚本改为强类型 Office 互操作后解决导出超时，生成／转换链路在无桌面且禁止加载打印类的 JVM 下通过，不依赖打印驱动、打印服务或 Word。既有目录缓存由调用方显式刷新，不以强制全局重算破坏表单当前值。
 
 [阶段一百零四](verification/phase-104-html-css-layout.md)验收 GAP-18.1 的静态选择器、媒体／分页、Flex／Grid、尺寸及定位：14 页 PDF、8 份 SVG、Chromium 源几何、四项负控制和真实损失通过。[阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成 API 固定基线和兼容门禁、本地完整签名分发及实际坐标 JAR 摘要对账。提交 `cc132e7` 的 Java 21 三平台构建和临时密钥签名分发远端 CI 均已通过；正式版本／身份／命名空间、Central 上传及远端消费继续保留未验。本地统一构建 1,783 项测试通过，跨平台应用／阅读器行为与正式发布分别验收。
+
+[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)固定 `0.1.0-rc.1` 候选 API，新增依赖公告门禁与四格式 16 条路径／32 份输出的互转语料；DOCX 包完整性和完整输入预算缺陷已修复，jsoup 升至 1.23.2。1,787 项 Java 测试、73 次控制检查、互转 8 页及 CSS 14 页独立渲染、本地临时签名与实际坐标消费通过。本批新增 CI 尚无远端证据，正式发布未执行；已知公告查询无命中不等于无漏洞。
+
+[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成 Windows Word 四页复查、控件实际编辑保存重开，以及 PDF 搜索、视觉选择、表单填写保存重开和最终 JAR 回读；修复 DOCX 现代布局模式声明及 PDF 应用元数据兼容。1,792 项测试、固定语料与无打印依赖验证通过；本轮字节未重新签名，浏览器前台交互、其他平台、新远端 CI 和正式发布分别保留未验。
+
+[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成 GAP-13：独立 HTML 应用直接编辑既有 XML／ZIP，保留变量／条件／循环与显式资源，提供真实分页预览、8 步撤销、保存重开和六格式损失预检。四套业务样例共 24 份输出、11 页独立渲染及 11 项失败控制通过；构建 1,804 项 Java 测试、库 API 对比和隔离调用方通过。当前未完成独立项为 GAP-14.2、GAP-14.3、GAP-22；没有正式发布。

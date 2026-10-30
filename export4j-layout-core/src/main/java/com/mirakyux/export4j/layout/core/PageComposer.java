@@ -107,13 +107,12 @@ public final class PageComposer {
             commands = place(builder, template.background(), pageRegion, fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.BACKGROUND);
             builder.appendCommands(source.commands());
             if (template.header().height() > 0) {
-                commands = place(builder, template.header().placements(), new Rect(margins.left(), margins.top(),
-                        settings.contentWidth(), template.header().height()), fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.HEADER);
+                commands = place(builder, template.header().placements(), bandViewport(template.header(), settings, true),
+                        fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.HEADER);
             }
             if (template.footer().height() > 0) {
-                commands = place(builder, template.footer().placements(), new Rect(margins.left(),
-                        settings.size().height() - margins.bottom() - template.footer().height(),
-                        settings.contentWidth(), template.footer().height()), fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.FOOTER);
+                commands = place(builder, template.footer().placements(), bandViewport(template.footer(), settings, false),
+                        fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.FOOTER);
             }
             commands = place(builder, template.foreground(), pageRegion, fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.FOREGROUND);
             if (commands > limits.maxCommands()) {
@@ -122,6 +121,19 @@ public final class PageComposer {
             pages.add(builder.build());
         }
         return new PageComposition(new DisplayDocument(body.metadata(), pages, body.extras(), body.accessibility()), traces);
+    }
+
+    private static Rect bandViewport(PageBand band, com.mirakyux.export4j.model.PageSettings settings, boolean header) {
+        var margins = settings.margins();
+        double left = band.leftInset() < 0 ? margins.left() : band.leftInset();
+        double right = band.rightInset() < 0 ? margins.right() : band.rightInset();
+        double edge = band.edgeOffset() < 0 ? (header ? margins.top() : margins.bottom()) : band.edgeOffset();
+        double width = settings.size().width() - left - right;
+        double y = header ? edge : settings.size().height() - edge - band.height();
+        if (width <= 0) { throw new IllegalArgumentException("page band insets exhaust page width"); }
+        var viewport = new Rect(left, y, width, band.height());
+        requireContained(viewport, new Rect(0, 0, settings.size().width(), settings.size().height()));
+        return viewport;
     }
 
     private long place(DisplayListBuilder builder, List<Placement> placements, Rect parent, FontGroup fonts, Map<String, FontGroup> roles,

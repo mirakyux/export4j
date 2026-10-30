@@ -15,6 +15,7 @@ Export4j 是面向报告、表单和结构化文档的开源 **Java PDF 生成�
 
 - [功能概览](#功能概览)
 - [快速开始](#快速开始)
+- [HTML 模板设计器](#html-模板设计器)
 - [Java 使用示例](#java-使用示例)
 - [XML 模板](#xml-模板)
 - [HTML 与 Markdown 导出](#html-与-markdown-导出)
@@ -33,7 +34,7 @@ Export4j 是面向报告、表单和结构化文档的开源 **Java PDF 生成�
 | 报告与表单 | 标题、富文本、列表、图片、主题、页眉页脚、页码、目录、书签、链接及静态／可编辑表单 |
 | 分页与表格 | 分节、分栏、浮动内容、重复表头、合并单元格、嵌套表格及跨页续排 |
 | 导入、编辑与转换 | PDF 语义恢复、DOCX 语义编辑与原包文字编辑、HTML/CSS 和 Markdown 导入；损失预检及报错／警告／忽略策略 |
-| 模板与复用 | XML 变量、条件、循环和 include；可编辑 XML／资源 ZIP 及可选文档模型恢复 |
+| 模板与复用 | XML 变量、条件、循环和 include；可编辑 XML／资源 ZIP、可选 HTML 模板设计器及文档模型恢复 |
 | 文字与图形 | 显式字体、复杂文字、矢量图形、CMYK／ICC／专色、透明度和渐变；可选原生 OpenType 提供可变／彩色字体及竖排 |
 | PDF 处理 | 页面／对象编辑、组合、渲染、图片提取、优化、文字／图片替换、两种脱敏模式、表单数据及独立 XFA 子集 |
 | PDF 安全与标准 | AES-256、选定 PDF/A 等级、PDF/UA-1 及 PAdES B／T／LT／LTA；密钥、信任和验证资料显式提供 |
@@ -76,6 +77,10 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 更多任务见[示例索引](docs/examples.md)。示例加载仓库内固定字体；业务应用应提供具有相应授权的字体，来源与许可见[字体记录](assets/fonts/README.md)。可选[原生 OpenType 模块](docs/native-opentype-api.md)还需配置目标平台的原生制品。
 
 当前尚无可直接安装的稳定 Maven 版本。可从源码构建，或通过[本地 Maven 制品及 BOM](docs/releasing.md)试用当前快照。
+
+## HTML 模板设计器
+
+运行 `.\gradlew.bat :export4j-designer:run`，在浏览器打开终端显示的本地地址。这个可选独立应用采用 IDE 式结构／资源管理器、编辑标签和属性检查器，支持纸张／边距、页眉页脚、表格预设、富文本、类型化属性及 XML／JSON 高亮。编辑后由 Java 引擎实时分页预览；连续画布支持列表整体选框、多选拖动、批量属性、右键操作和图片缩放。另支持撤销／重做、模板 ZIP 保存重开及带损失预检的六格式导出。见[设计器指南](docs/designer.md)、[业务样例](docs/verification/phase-108-designer-and-business-scenarios.md)、[专用编辑验收](docs/verification/phase-109-designer-editing-controls.md)和[画布与交互验收](docs/verification/phase-110-designer-canvas-and-interactions.md)。
 
 ## Java 使用示例
 
@@ -180,7 +185,6 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 
 当前剩余工作由[能力缺口表](docs/capability-gaps.md)跟踪：
 
-- **GAP-13：** 可视化模板设计器及更完整的场景示例。
 - **GAP-14.2：** 更广兼容语料及跨平台应用／阅读器验证。
 - **GAP-14.3：** 稳定 API／版本、正式签名与 Maven Central 分发。
 - **GAP-22：** XLSX、PPTX、EPUB、XPS 等更多格式。

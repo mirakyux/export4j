@@ -153,10 +153,13 @@ def content(reader, expected):
 
 
 def main():
+    global OUTPUT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--consumer-build-directory", type=Path)
     parser.add_argument("--chromium", type=Path, required=True)
+    parser.add_argument("--output", type=Path, default=OUTPUT)
     args = parser.parse_args()
+    OUTPUT = args.output.resolve()
     directory = args.consumer_build_directory or Path((ROOT / "build/verification/consumer-build-directory.txt").read_text().strip())
     caller = directory / "output/html-css-layout"
     OUTPUT.mkdir(parents=True, exist_ok=True)

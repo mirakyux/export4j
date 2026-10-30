@@ -12,7 +12,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 [列表标记](list-markers-api.md)独立保存完整 InlineStyle，标准 DOCX 使用所选 level 的运行属性；[XML 文字默认值](xml-text-defaults-api.md)按正文／标题／单元格独立配置角色和颜色，显式局部覆盖、命名完整样式及嵌套格范围保持。验收分别见[阶段三十八](verification/phase-38-component-text.md)、[三十九](verification/phase-39-list-markers.md)及[四十](verification/phase-40-xml-text-defaults.md)。整体试用边界见[就绪评估](readiness-assessment.md)。
 
-当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 18 个模块。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
+当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 19 个模块（16 个库、BOM、示例和可选设计器应用）。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
 
 ## 已有 PDF 处理与语义恢复
 
@@ -201,3 +201,7 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 ## 语义流、显式重放与磁盘索引 PDF
 
 [语义长表及重放](streaming-replay-api.md)提供单次源递归块格、嵌套和纵向 owner 续排。显式可重开的快照计划增加有限前缀自动列宽、最终总页数、未来引用、目录／书签及组脚注；各遍完整语义摘要不一致则失败。`PdfSpoolBackend` 持有单页 PDF 对象，xref／页树索引写临时盘；普通 `PdfBackend` 继续按其配置处理完整文档，不能将新后端的对象释放契约归给它。容量证据分别记录堆、进程内存、临时磁盘及退出清理，有限压力样本不证明长期无泄漏。
+
+## 可选 HTML 设计器
+
+[export4j-designer](designer.md) 为独立本地应用，提供 XML／普通 ZIP 模板编辑、JSON 绑定、真实分页预览、结构／属性／节点源码编辑、同级排序、资源及字体管理、8 步撤销、保存重开和 PDF／DOCX／HTML／Markdown／SVG ZIP／PNG ZIP 导出。预检实际编码，ERROR／WARN／IGNORE 与具体降级／丢弃分别报告。核心库不依赖它，应用不加入 Maven 库发布或 BOM；有限浏览器实测范围及四套场景证据见[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)。

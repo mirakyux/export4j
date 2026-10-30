@@ -43,7 +43,7 @@
 | DOCX 编辑与应用验收 | GAP-12.1／12.2 已由[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)闭合；一般外部 Word 文件的无损往返及同分页不由固定样例推断 |
 | PDF 工具与标准 | GAP-10／11／20 的明确子项均已验收，包含 PDF/UA-1 和离线 PAdES B／T／LT／LTA；其他标准版本、任意结构或未知活动内容仍按各指南的边界处理 |
 | HTML/CSS | GAP-18.1 的明确文档布局子集已由[阶段一百零四](verification/phase-104-html-css-layout.md)验收；完整浏览器兼容不在该子集内 |
-| 场景示例与设计器 | GAP-13 保持部分支持；完整多场景调用成本、失败边界及独立可视化设计器仍需推进 |
+| 场景示例与设计器 | GAP-13 已由[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)验收：独立 [HTML 设计器](designer.md)、四套可编辑重开样例、24 份实际导出、成本／失败控制及浏览器闭环；应用不参与 Maven 库发布，不承诺任意外部文件图形编辑 |
 | 兼容性与正式分发 | GAP-14.2／14.3 保持部分支持。提交 cc132e7 的三平台构建和临时密钥签名远端 CI 已通过；更广语料／阅读器、正式 API 冻结、发布身份及远端分发仍待验收，见[阶段一百零五](verification/phase-105-publication-and-compatibility.md) |
 | 新增文档格式 | GAP-22 尚未实现；候选方向为 XLSX／PPTX 输出、EPUB／XPS 双向及 PS／PCL 输入，各方向须独立定义目标和验收 |
 

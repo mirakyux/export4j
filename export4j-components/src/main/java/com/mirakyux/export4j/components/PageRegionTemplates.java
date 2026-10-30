@@ -69,7 +69,8 @@ public final class PageRegionTemplates {
     }
 
     private static PageBand band(PageRegion region) {
-        var value = PageBand.builder().height(region.height()).gap(region.gap());
+        var value = PageBand.builder().height(region.height()).gap(region.gap())
+                .edgeOffset(region.edgeOffset()).leftInset(region.leftInset()).rightInset(region.rightInset());
         if (!region.blocks().isEmpty()) { value.content(new RegionContent(region)); }
         return value.build();
     }
@@ -120,7 +121,7 @@ public final class PageRegionTemplates {
                 diagnostics.add(new TextDiagnostic(diagnostic.code(), marker, marker + 1, diagnostic.fontId(), -1, diagnostic.replacementCodePoint()));
             }
             return new ComponentLayout(context.width(), context.height(), lines[0],
-                    DocumentPainter.paintPage(resolved.body().pages().getFirst()).commands(), diagnostics);
+                    DocumentPainter.paintPage(resolved.body().pages().getFirst(), ModelRotations.of(region.blocks())).commands(), diagnostics);
         }
     }
 }

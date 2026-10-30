@@ -295,7 +295,12 @@ public final class XmlTemplateWriter {
             if (existing != null) { attr("source-ref", existing); add("/>"); return; }
             String name = "region-" + (sources.size() + 1); sources.put(region, name);
             attr("source-id", name); attr("height", region.height());
-            if (!tag.equals("box")) { attr("gap", region.gap()); }
+            if (!tag.equals("box")) {
+                attr("gap", region.gap());
+                if (region.edgeOffset() >= 0) { attr("edge", region.edgeOffset()); }
+                if (region.leftInset() >= 0) { attr("left", region.leftInset()); }
+                if (region.rightInset() >= 0) { attr("right", region.rightInset()); }
+            }
             add(">"); for (var block : region.blocks()) { block(block, List.of()); } add("</" + tag + ">");
         }
         private void page(PageSettings settings) {
@@ -340,6 +345,7 @@ public final class XmlTemplateWriter {
             attr("first-indent", format.firstLineIndent()); attr("subsequent-indent", format.subsequentLineIndent()); attr("line-break", format.lineBreakPolicy());
             var pagination = format.pagination(); attr("keep-with-next", pagination.keepWithNext()); attr("page-break-before", pagination.pageBreakBefore());
             attr("min-lines-before", pagination.minLinesBeforeBreak()); attr("min-lines-after", pagination.minLinesAfterBreak());
+            if (format.rotation() != 0) { attr("rotation", format.rotation()); }
         }
         private void marker(InlineStyle style) {
             attr("marker-role", role(style.fontRole())); attr("marker-size", style.fontSize()); attr("marker-color", rgb(style.rgb()));
@@ -366,7 +372,9 @@ public final class XmlTemplateWriter {
                 else if (value instanceof InlineImage image) {
                     String name = "image_" + image.resource().id(); images.putIfAbsent(name, image.resource());
                     add("<image"); attr("ref", name); attr("width", image.width()); attr("height", image.height());
-                    attr("baseline-shift", image.baselineShift()); attr("alt", image.altText()); add("/>");
+                    attr("baseline-shift", image.baselineShift()); attr("alt", image.altText());
+                    if (image.rotation() != 0) { attr("rotation", image.rotation()); }
+                    add("/>");
                 } else if (value instanceof InlineField field) {
                     String tag = switch (field.kind()) { case PAGE -> "page-number"; case PAGES -> "page-count";
                         case REFERENCE_PAGE -> "page-reference"; case REFERENCE_NUMBER -> "number-reference"; case NOTE_MARKER -> "note-marker"; };
@@ -381,6 +389,7 @@ public final class XmlTemplateWriter {
             var owner = location; add("<table"); attr("id", identifier(table.id())); var format = table.format();
             attr("row-split", format.allowRowSplit()); attr("space-before", format.spaceBefore()); attr("space-after", format.spaceAfter());
             if (!format.drawBorders()) { attr("draw-borders", false); }
+            if (format.rotation() != 0) { attr("rotation", format.rotation()); }
             var padding = format.padding(); attr("padding-top", padding.top()); attr("padding-right", padding.right());
             attr("padding-bottom", padding.bottom()); attr("padding-left", padding.left()); add("><columns>");
             for (var column : table.columns()) {

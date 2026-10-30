@@ -24,18 +24,21 @@ public record SectionTemplate(PageTemplate first, PageTemplate odd, PageTemplate
 
     /** Reserves the largest header/footer extent before flow so variants cannot overlap body content. */
     public PageSettings bodySettings(PageSettings settings) {
-        double top = Math.max(extent(firstEven.header()), Math.max(extent(first.header()), Math.max(extent(odd.header()), extent(even.header()))));
-        double bottom = Math.max(extent(firstEven.footer()), Math.max(extent(first.footer()), Math.max(extent(odd.footer()), extent(even.footer()))));
         var margins = settings.margins();
-        return new PageSettings(settings.size(), new PageMargins(margins.top() + top, margins.right(), margins.bottom() + bottom, margins.left()));
+        double top = Math.max(extent(firstEven.header(), margins.top()), Math.max(extent(first.header(), margins.top()),
+                Math.max(extent(odd.header(), margins.top()), extent(even.header(), margins.top()))));
+        double bottom = Math.max(extent(firstEven.footer(), margins.bottom()), Math.max(extent(first.footer(), margins.bottom()),
+                Math.max(extent(odd.footer(), margins.bottom()), extent(even.footer(), margins.bottom()))));
+        return new PageSettings(settings.size(), new PageMargins(top, margins.right(), bottom, margins.left()));
     }
 
     public PageTemplate page(int localPageIndex, int displayNumber) {
         return localPageIndex == 0 ? displayNumber % 2 == 0 ? firstEven : first : displayNumber % 2 == 0 ? even : odd;
     }
 
-    private static double extent(PageBand band) {
-        return band.height() + band.gap();
+    private static double extent(PageBand band, double margin) {
+        return band.height() == 0 ? margin : Math.max(margin,
+                (band.edgeOffset() < 0 ? margin : band.edgeOffset()) + band.height() + band.gap());
     }
 
     /** Task-confined builder. Dimensions use points unless the type specifies another unit.

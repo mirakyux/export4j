@@ -240,7 +240,8 @@ final class PdfPreflight {
             throw failure(PdfOperationException.Code.UNSUPPORTED_FEATURE);
         }
         for (var key : dictionary.keySet()) {
-            boolean supported = interactive && Set.of("Annots", "AcroForm", "Outlines", "Names", "EmbeddedFiles").contains(key.getName());
+            // Reader application metadata remains subject to the full graph and stream budgets.
+            boolean supported = interactive && Set.of("Annots", "AcroForm", "Outlines", "Names", "EmbeddedFiles", "PieceInfo").contains(key.getName());
             supported |= allowXfa && dictionary == xfaOwner && key.getName().equals("XFA");
             boolean passive = passiveStructures && Set.of("StructTreeRoot", "StructParent", "StructParents", "OCProperties", "OC", "MarkInfo").contains(key.getName());
             if (REJECTED_KEYS.contains(key.getName()) && !supported && !passive

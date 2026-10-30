@@ -290,7 +290,8 @@ tasks.register<JavaExec>("gap21Complete") {
 
 for ((taskName, className) in listOf(
     "docxSemanticComplete" to "consumer.DocxSemanticCompleteConsumer",
-    "htmlCssLayout" to "consumer.HtmlCssLayoutConsumer"
+    "htmlCssLayout" to "consumer.HtmlCssLayoutConsumer",
+    "compatibilityCorpus" to "consumer.CompatibilityCorpusConsumer"
 )) {
     tasks.register<JavaExec>(taskName) {
         classpath = sourceSets.main.get().runtimeClasspath

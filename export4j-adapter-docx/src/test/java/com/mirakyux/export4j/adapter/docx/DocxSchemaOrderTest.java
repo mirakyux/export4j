@@ -55,10 +55,52 @@ class DocxSchemaOrderTest {
                 children((Element) main.getElementsByTagNameNS(W, "pPr").item(0)));
         assertEquals(List.of("rStyle", "strike", "color", "position", "sz", "u"),
                 children((Element) main.getElementsByTagNameNS(W, "rPr").item(1)));
-        assertEquals(List.of("tblBorders", "tblCellMar"), children((Element) main.getElementsByTagNameNS(W, "tblPr").item(0)));
+        assertEquals(List.of("tblW", "tblBorders", "tblLayout", "tblCellMar"), children((Element) main.getElementsByTagNameNS(W, "tblPr").item(0)));
         assertEquals(List.of("top", "left", "bottom", "right"), children((Element) main.getElementsByTagNameNS(W, "tblCellMar").item(0)));
         assertEquals(List.of("cantSplit", "tblHeader"), children((Element) main.getElementsByTagNameNS(W, "trPr").item(0)));
-        assertEquals(List.of("evenAndOddHeaders", "updateFields"), children(part(output.toByteArray(), "word/settings.xml")));
+        assertEquals(List.of("evenAndOddHeaders", "updateFields", "compat"), children(part(output.toByteArray(), "word/settings.xml")));
+    }
+
+    @Test void freshPlainAndNativeDocumentsDeclareModernWordLayoutWithoutFieldsOrHeaders() throws Exception {
+        var source = new SectionedDocument(DocumentMetadata.EMPTY,
+                List.of(new Section("section", PageSettings.A4,
+                        List.of(new Paragraph("body", "Modern Word layout", ParagraphFormat.of(12))), 1)));
+        var adapter = new DocxAdapter();
+        for (boolean nativeSemantics : List.of(false, true)) {
+            var output = new ByteArrayOutputStream();
+            if (nativeSemantics) {
+                adapter.writeSemantic(new DocxSemanticDocument(source), output);
+            } else {
+                adapter.write(source, output);
+            }
+            byte[] bytes = output.toByteArray();
+            var settings = part(bytes, "word/settings.xml");
+            assertEquals(List.of("compat"), children(settings));
+            var declarations = settings.getElementsByTagNameNS(W, "compatSetting");
+            assertEquals(1, declarations.getLength());
+            var mode = (Element) declarations.item(0);
+            assertEquals("compatibilityMode", mode.getAttributeNS(W, "name"));
+            assertEquals("http://schemas.microsoft.com/office/word", mode.getAttributeNS(W, "uri"));
+            assertEquals("15", mode.getAttributeNS(W, "val"));
+            var relationships = part(bytes, "word/_rels/document.xml.rels");
+            var settingsRelationships = childrenElements(relationships).stream()
+                    .filter(e -> e.getAttribute("Type").endsWith("/settings")).toList();
+            assertEquals(1, settingsRelationships.size());
+            assertEquals("settings.xml", settingsRelationships.getFirst().getAttribute("Target"));
+            var types = childrenElements(part(bytes, "[Content_Types].xml")).stream()
+                    .filter(e -> e.getAttribute("PartName").equals("/word/settings.xml")).toList();
+            assertEquals(1, types.size());
+            assertEquals("application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
+                    types.getFirst().getAttribute("ContentType"));
+        }
+    }
+
+    private static List<Element> childrenElements(Element element) {
+        var result = new ArrayList<Element>();
+        for (var node = element.getFirstChild(); node != null; node = node.getNextSibling()) {
+            if (node instanceof Element child) { result.add(child); }
+        }
+        return result;
     }
 
     private static Element part(byte[] bytes, String name) throws Exception {

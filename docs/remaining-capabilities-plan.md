@@ -2,7 +2,11 @@
 
 更新日期：2026-10-29。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
 
-当前未完成的独立项为 GAP-13、GAP-14.2、GAP-14.3、GAP-22。GAP-12.1／12.2 已闭合；提交 `cc132e7` 的三平台构建及临时密钥签名分发远端 CI 均已通过，见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阅读器兼容、正式发布身份及远端 Maven 分发仍在相应条目验收。
+当前未完成的独立项为 GAP-14.2、GAP-14.3、GAP-22。GAP-13 已由[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成独立 HTML 设计器和四套完整业务样例。GAP-12.1／12.2 已闭合；提交 `cc132e7` 的三平台构建及临时密钥签名分发远端 CI 均已通过，见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阅读器兼容、正式发布身份及远端 Maven 分发仍在相应条目验收。
+
+[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)已固化 16 条互转路径／32 份输出／73 次控制检查，修复 DOCX 完整包校验与输入预算，升级受公告影响的 jsoup，并固定 `0.1.0-rc.1` 候选 API 基线。新增 CI 配置只有本地证据；正式分发仍未执行，不以候选准备关闭 GAP-14.3。
+
+[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成本轮 Windows 可执行的 Word／PDF 应用交互及最终 JAR 保存回读，修复现代 DOCX 模式声明与 PDF 应用元数据兼容。1,792 项测试、最终隔离消费者、固定语料及无打印依赖验证通过。浏览器前台交互、其他平台和本批新 CI 尚未执行，GAP-14.2 继续保留；本轮修改后的字节未重新签名，正式发布保持未执行。
 
 阶段三十八至四十完成组件角色作用域／固定富文本、独立列表标记及 XML 分域默认外观。最终评估认为当前 PDF 报告／静态密集表单已可进入本地业务试用，证据和 API 选择见[首版就绪评估](readiness-assessment.md)。以下更广任务继续保留开放状态，后续按具体业务或复现缺陷选取独立单元，不据本次结论宣称全部 GAP 关闭。
 
@@ -21,7 +25,7 @@
 | 5（已完成） | GAP-10.10、GAP-10.11、GAP-12.2 | [阶段九十四](verification/phase-94-pdf-extended-forms.md)完成扩展字段／批注／FDF／XFDF；[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)补齐 DOCX 目录／评论／修订／现代控件／旧式表单的有类型编辑 | PDF 既有证据保持；DOCX 修订真实删除／恢复、缓存显式更新、11 个物理现代控件和三个旧式表单、Word 实际编辑保存重开与当前／默认值回读已验收；未建模结构明确拒绝或报损 |
 | 6（CSS 已完成） | GAP-18.1；GAP-14.2 持续 | [阶段一百零四](verification/phase-104-html-css-layout.md)完成静态选择器、媒体／分页、Flex／Grid、尺寸与定位的明确文档子集；跨平台／阅读器矩阵仍归 GAP-14.2 | 14 页 PDF、8 份 SVG、Chromium 源几何、4 项负控制、真实损失及原子输出已验收；完整浏览器功能不属于该明确子集 |
 | 7（已完成） | GAP-11.2、GAP-11.3、GAP-11.1 | [阶段九十六](verification/phase-96-pdf-standards.md)完成 PDF/UA-1、PDF/A-1b／2b／3b／4f 和离线 PAdES B／T／LT／LTA；生成样例及已有标签文件两页实际辅助阅读器通过，模型第一页实际读回覆盖角色和占位修复，完整结构／合规／渲染与原目标分别闭合 | 12 份最终文件独立合规、9 份签名独立验证及 43 页双渲染通过；辅助阅读器按实际执行单列，证据缺失或过期明确失败 |
-| 8（XFA 子集已完成） | GAP-22、GAP-13、GAP-10.12 | [阶段九十四](verification/phase-94-pdf-extended-forms.md)完成静态定位／动态重复数据分页 XFA 子集；新增格式和可视化设计器继续独立 | XFA 字段值、分页、交互损失与独立结构／渲染已验收，不承诺通用 XFA；其他格式和设计器不创建占位适配器 |
+| 8（XFA 子集已完成） | GAP-22、GAP-13、GAP-10.12 | [阶段九十四](verification/phase-94-pdf-extended-forms.md)完成静态定位／动态重复数据分页 XFA 子集；新增格式继续独立；设计器已由[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)验收 | XFA 字段值、分页、交互损失与独立结构／渲染已验收，不承诺通用 XFA；其他格式和设计器不创建占位适配器 |
 
 GAP-09 的既定语义、PDF 对象与有限持续容量由阶段九十九完整验收。GAP-14.2 的兼容矩阵及 GAP-14.3 的 API／发布检查继续贯穿各批；本地制品不等于正式分发。每项开始前固定剩余清单及关闭条件，新增范围单独评估，不反复扩大原项。GAP-23 的 OCR 仍在范围外。
 
@@ -49,7 +53,7 @@ OCR 不在当前范围内。下表保留既有推进单元及状态；编辑、�
 | 1 | XML 主题与静态名称 | 同一结构切换完整主题；p／span 静态名称、全部分支编译校验、旧默认兼容；独立 PDF／SVG／DOCX 及调用方 | 已完成[阶段三十一](verification/phase-31-xml-themes.md)：780项测试、4新页、12组独立检查与新调用方 |
 | 2 | 可编辑字段与页区样式 | 字段默认外观与自动保存回读一致；页区／目录复用样式；显式覆盖与旧调用兼容 | 字段显式 FormStyle 已完成[阶段三十二](verification/phase-32-editable-form-styles.md)：807 项测试、8 页及新调用方；[目录独立样式](verification/phase-34-contents-styles.md)及[固定页区字体角色](verification/phase-37-page-region-fonts.md)已验收；[标准角色作用域与固定富文本](verification/phase-38-component-text.md)已验收；[XML 固定页眉页脚主题](verification/phase-41-xml-page-regions.md)已验收；更广主题及人工阅读器继续独立 |
 | 3 | 复杂表格与长表内容 | 递归续排、纵向拆组、变宽网格及单次／重放长表，保持唯一来源和有界推进 | 已完成既定目标，见阶段九十九及 GAP-03／09 |
-| 4 | 模板与编写体验 | 显式离线 include、多级编号、明确定义的 HTML/CSS 子集及设计器编辑／预览／重载闭环 | 平面离线 include 已完成[阶段三十三](verification/phase-33-offline-xml-includes.md)；[多级编号](verification/phase-35-xml-numbering.md)已验收；[XML 默认字体／颜色](verification/phase-40-xml-text-defaults.md)和[独立列表标记](verification/phase-39-list-markers.md)已验收；[离线 HTML/CSS 输入](html-import-api.md)已验收；[普通 ZIP 源码编辑与资源保存](verification/phase-77-xml-template-bundle.md)已验收；[文档 CSS 布局](verification/phase-104-html-css-layout.md)已验收，设计器仍开放；不承诺完整浏览器功能 |
+| 4 | 模板与编写体验 | 显式离线 include、多级编号、明确定义的 HTML/CSS 子集及设计器编辑／预览／重载闭环 | 平面离线 include 已完成[阶段三十三](verification/phase-33-offline-xml-includes.md)；[多级编号](verification/phase-35-xml-numbering.md)已验收；[XML 默认字体／颜色](verification/phase-40-xml-text-defaults.md)和[独立列表标记](verification/phase-39-list-markers.md)已验收；[离线 HTML/CSS 输入](html-import-api.md)已验收；[普通 ZIP 源码编辑与资源保存](verification/phase-77-xml-template-bundle.md)已验收；[文档 CSS 布局](verification/phase-104-html-css-layout.md)已验收，[HTML 设计器](designer.md)已完成编辑／预览／保存重开和导出；不承诺完整浏览器功能 |
 | 5 | 文字与 DOCX 兼容 | 实际搜索／选择语料、Word 保存回读、复杂页区及交互语义映射；逐应用记录结果 | 部分支持；不能用本机结果代替跨平台证据 |
 | 6 | PDF 编辑与标准 | 交互编辑、优化、无障碍结构与各档签名分别确定契约并独立验收 | [页／对象编辑、组合、渲染、优化、替换、脱敏及语义恢复](pdf-adapter-api.md)的明确子集已验收；GAP-10／11／20 的全部既定子项已由阶段九十三至九十七验收，选定标准版本和输入子集之外仍不承诺支持；OCR 排除 |
 | 7 | 长期容量与发布前检查 | 重复／并发／失败恢复、资源释放、PDF 对象增长和更多系统／阅读器；持续本地许可／制品验证 | 有界样本已有；硬内存边界、长期稳定性及更多平台仍开放 |
@@ -124,7 +128,7 @@ OCR 不在当前范围内。下表保留既有推进单元及状态；编辑、�
 | PAdES／长期验证（GAP-11） | [阶段九十六](verification/phase-96-pdf-standards.md)已完成显式离线信任、撤销、RFC3161、DSS／VRI 和 LTA 续期；不读取系统信任库或隐式联网 | B／T／LT／LTA、三档认证证据更新、篡改／失效证据拒绝和独立 pyHanko 验证已完成；调用方提供密钥及证据，通用阅读器权限执行不由库保证 |
 | 多场景样例（GAP-13） | 每个行为里程碑之后复测完整调用代码与所有输出页 | 覆盖报告、静态表单和长表，记录字体、页区、失败边界及完整调用成本 |
 | 可视化设计器（GAP-13） | 先固定声明式语法、诊断来源和预览契约；设计器是独立模块 | 编辑、预览、保存／重新载入和导出闭环；不把示例页面当作设计器 |
-| 发布检查（GAP-14） | [阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成固定 API 基线及兼容门禁、完整签名／校验／许可和实际坐标 JAR 摘要对账；三平台构建及临时密钥签名远端 CI 均已通过 | 正式 API 冻结／版本／身份／命名空间、Central 上传及远端消费仍未验收；CI 成功不替代应用／阅读器验证 |
+| 发布检查（GAP-14） | 阶段一百零六完成候选 API、固定语料／安全门禁及该历史批次本地签名；[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成 Windows Word／PDF 实际交互、保存回读及兼容修复，最终隔离 JAR 摘要与无打印依赖检查通过；旧三平台 CI 结果保留 | 本轮字节未重新签名；其他平台／浏览器交互、本批新 CI、正式身份／命名空间、Central 上传及远端消费仍未验收，不以 Windows 子集关闭完整兼容或正式发布 |
 
 每批完成后更新实际证据和下一入口。某个单元失败时先修正，不降低阈值或自动刷新视觉基线；新增组合导致回归时重新打开已验收项。
 
@@ -228,4 +232,4 @@ HTML／Markdown 输出已完成[阶段四十三](verification/phase-43-web-expor
 
 本轮按原剩余清单统一推进，未增加编号或删减关闭条件：变宽递归格／组件网格与轮廓锚点；可变／CFF2／彩色字体、方向塑形与静态 CFF 原生 PDF；单次语义长表、显式重放与磁盘索引 PDF；CMYK／ICC／专色、混合／透明组、渐变／图案和 SVG 本地资源。当前接口见[变宽续排](variable-table-continuation-api.md)、[轮廓浮动](contour-floats-api.md)、[原生文字](native-opentype-api.md)、[语义重放](streaming-replay-api.md)及[高级图形](advanced-graphics-api.md)。最终构建、独立输出及容量结果统一登记在[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)。
 
-历史阶段中的“下一项”及“仍开放”描述保留当时范围，当前状态以缺口表和最新验收为准。跨平台／阅读器矩阵、设计器及正式发布继续归原有独立缺口；DOCX 与 CSS 的当前状态见阶段一百零三／一百零四和缺口表，不把已验收内容重复加入后续队列，也不推断任意外部文件或完整浏览器兼容。
+历史阶段中的“下一项”及“仍开放”描述保留当时范围，当前状态以缺口表和最新验收为准。GAP-13 设计器已由阶段一百零八验收；跨平台／阅读器矩阵及正式发布继续归原有独立缺口；DOCX 与 CSS 的当前状态见阶段一百零三／一百零四和缺口表，不把已验收内容重复加入后续队列，也不推断任意外部文件或完整浏览器兼容。

@@ -53,11 +53,12 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 | `page-break` | 空元素；显式换页 |
 | `if` | 必填 `test="flag"`；先且仅一个 then，随后可选一个 else；分支内为块 |
 | `each` | 必填 `items="items"`、`as="item"`；内部为块，可嵌套 |
+| `list` | 动态列表容器；必填 `items`、`as`，内部恰好一个 `bullet` 或 `numbered` 列表项模板，逐条展开；空数组不生成列表项 |
 | `include` | 必填静态 ref／prefix；主模板及片段合法块列表选择已登记片段，拒绝循环、行内和格内位置 |
 | `table` | columns、零至多个 header、一个以上 row，顺序固定 |
 | `rows` | 同 table，但恰好一个模板 row；必填 items、as；展开为空集合时失败 |
 
-`if` 的值须为布尔值；each／rows 的值须为 List。Map／List 仅作结构，不可直接插入文字。数据值仅接受非 null 字符串、布尔值、标准有限数值、Map 和 List。调用方自定义容器及 Reader 是可信代码，不受脚本沙箱保护。大数只接受精确 BigInteger／BigDecimal 类，拒绝子类。
+`if` 的值须为布尔值；each／list／rows 的值须为 List。`list` 与 `each` 使用相同的词法变量、ID 后缀和预算；`rows` 的空数组仍明确失败。Map／List 仅作结构，不可直接插入文字。数据值仅接受非 null 字符串、布尔值、标准有限数值、Map 和 List。调用方自定义容器及 Reader 是可信代码，不受脚本沙箱保护。大数只接受精确 BigInteger／BigDecimal 类，拒绝子类。
 
 `${customer.name}` 是唯一插值语法。路径使用 ASCII 标识符及点，最多 256 个 UTF-16 单元。条件／循环属性直接写路径，不加 `${}`。所有分支的语法都会编译检查，只有选中分支执行数据查找。数据中的 `<p>`、`${x}` 等内容作为普通文本插入，不再次解析为 XML 或表达式。
 
@@ -71,6 +72,8 @@ p、heading、bullet、numbered 支持 `size`、`line-height`、`align`、`keep-
 
 段落／标题／列表还支持 `first-indent`、`subsequent-indent`（非负 pt）、`line-break`（STANDARD／CJK_STRICT）、`keep-with-next`、`page-break-before`、`min-lines-before`／`min-lines-after`（正整数）。未声明项沿用当前完整格式；这些属性映射到既有 ParagraphFormat／PaginationPolicy，布局能力边界不变。
 
+`p`、`heading`、`bullet`、`numbered`、`caption`、`table`、`rows` 与行内 `image` 可声明 `rotation`（顺时针角度，`-180` 至 `180`）。绘制会将旋转后的内容等比适配到原有排版框，不改变换行或分页；跨页表格的每个片段分别旋转。PDF／SVG／PNG 使用变换后的显示列表；其他格式需按目标适配器的损失策略处理，不保证角度可保留。
+
 bullet／numbered 的 `marker-role`、`marker-size`、`marker-color`、`marker-shift`、`marker-underline`、`marker-strike` 可分别覆盖标记的完整样式，未声明项沿用所在块默认文字外观，正文 span 不影响标记。marker-shift 单位为 pt，正值下移；自定义 bullet 须非空白、无控制字符、最多 8 个 Unicode 码点。
 
 `<span role="bold" color="#224488" size="12" underline="true" strike="false">文字</span>` 只容纳文字。属性均可省略；默认继承当前块字号，颜色为黑色、角色为空、不加装饰。role 只选择调用方字体组里的真实角色，不加载或合成字体。
@@ -78,6 +81,10 @@ bullet／numbered 的 `marker-role`、`marker-size`、`marker-color`、`marker-s
 span 和四类字段另支持 `baseline-shift`，单位为 pt，正值下移；image 也支持该属性，默认 0。固定行框必须容纳字号／图片及位移，不自动缩小。
 
 ~~~xml
+<list items="items" as="item">
+  <bullet>${item.name}：${item.result}</bullet>
+</list>
+
 <rows items="records" as="record" row-split="true">
   <columns><column width="72"/><column weight="1"/></columns>
   <header><cell>编号</cell><cell>说明</cell></header>
@@ -88,6 +95,25 @@ span 和四类字段另支持 `baseline-shift`，单位为 pt，正值下移；i
 column 恰好指定 width（正且有限的固定 pt）、weight（正且有限的比例），或成对 min-width／max-width（有界 Auto 的 pt 下／上限）；三种形式互斥，边界调用既有 ColumnWidth.Auto 校验。Auto 不放宽含块格表格的布局限制。每个 header／row 经 column-span／row-span 解析后必须完整覆盖网格，真实 cell 只在锚点行声明。cell 支持 size、line-height、align、line-break、column-span、row-span，以及文字、span、image、link 和四类行内字段。table／rows 可显式指定 padding-top／right／bottom／left、space-before／after（非负 pt），未声明项沿用主题值。普通行内 table／rows 可选 `row-split="true"`，默认 false；它调用既有语义表格分页，表头逐页重复，显式拆行按完整文字行续页，纵向／递归边界见对应指南。
 
 图片先由调用方有界解码为 ImageResource，再通过 `.image("logo", resource)` 注册。模板只写 `<image ref="logo" width="12" height="12" alt="标记"/>`。ref 不可插值，名字使用 ASCII 标识符。width、height 为正 point；alt 可插值。图片仅用于 p／cell，固定行框须容纳图像，否则由布局明确失败。编译器不解码图片、不扫描字体、不访问文件和网络。
+
+## 单元格条件样式
+
+行内 `cell` 可声明空节点 `style-if`，条件编译为 `DocumentTemplate.CellRule` 和 `CellStyleRule`，在每次绑定该格时按当前词法作用域执行，最后成为普通 `CellFormat`／行内外观。规则不会传给布局或输出后端，静态模型导出也不会携带可执行条件。
+
+```xml
+<rows items="records" as="record">
+  <columns><column weight="1"/><column weight="1"/></columns>
+  <header><cell>名称</cell><cell>分数</cell></header>
+  <row>
+    <cell>${record.name}</cell>
+    <cell>${record.score}<style-if test="record.score" operator="GE" value="90" color="#C0392B" role="bold"/></cell>
+  </row>
+</rows>
+```
+
+`test` 为必填点路径，不加 `${}`。`operator` 默认为 `TRUE`，支持 `TRUE`／`FALSE`（数据须为布尔值，不接受 value）、`EQ`／`NE`（按实际字符串、布尔或数值类型比较）、`GT`／`GE`／`LT`／`LE`（数值）及 `CONTAINS`（字符串）。数值使用十进制精确比较，不转成浮点数；比较值最多 256 个 UTF-16 单元，数字指数最多四位。缺值及不匹配的类型分别返回绑定诊断，不当成条件未命中。
+
+至少指定一个外观覆盖：`size`、`line-height`、`align`、`line-break`、`role`、`color`、`underline`、`strike`。未声明项保留原格式；指定 size 但不指定 line-height 时行高为字号的 1.5 倍。命中规则按 XML 顺序覆盖，保留原链接、行内图片、字段及跨度；字体角色仍须由调用方提供真实字体。规则每格至多 64 条，每次执行计入模板工作预算，未选中的条件分支也检查规则语法。块格不允许条件样式，不支持格背景、边框或任意表达式。Java 调用可通过 `DocumentTemplate.Builder.cellRules` 关联确切原型格，`toBuilder` 保留关联；数值相同的不同原型格互不影响。
 
 ## 多段单元格与原子内表
 

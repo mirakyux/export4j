@@ -94,9 +94,9 @@ https://github.com/saucecontrol/Compact-ICC-Profiles
 Released to the public domain under the Creative Commons CC0 license by Clinton Ingram, saucecontrol
    
 
-Includes jsoup 1.21.2, licensed under the MIT License.
-Copyright (c) 2009-2025 Jonathan Hedley <https://jsoup.org/>
-Original license: third-party/licenses/jsoup-1.21.2-LICENSE.txt
+Includes jsoup 1.23.2, licensed under the MIT License.
+Copyright (c) 2009-2026 Jonathan Hedley <https://jsoup.org/>
+Original license: third-party/licenses/jsoup-1.23.2-LICENSE.txt
 
 Includes Bouncy Castle bcprov, bcutil and bcpkix 1.86, licensed under the MIT License.
 Copyright (c) 2000-2026 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org).

@@ -3,7 +3,6 @@ package com.mirakyux.export4j.adapter.docx;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.FilterInputStream;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,7 +19,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -102,7 +100,7 @@ public final class DocxAdapter {
             + "\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"od\"";
     private static final Set<String> MARKUP = Set.of("document", "body", "p", "pPr", "pStyle", "r", "rPr", "rStyle", "t", "br", "tab", "b", "i", "u", "strike", "sz", "color", "position",
             "jc", "kinsoku", "spacing", "ind", "keepLines", "keepNext", "pageBreakBefore", "numPr", "ilvl", "numId", "sectPr", "type", "pgSz", "pgMar", "pgNumType",
-            "tbl", "tblPr", "tblCellMar", "tblGrid", "gridCol", "tr", "trPr", "tblHeader", "cantSplit", "tc", "tcPr", "gridSpan", "vMerge", "top", "right", "bottom", "left", "proofErr", "hyperlink", "drawing",
+            "tbl", "tblPr", "tblW", "tblLayout", "tblCellMar", "tblGrid", "gridCol", "tr", "trPr", "tblHeader", "cantSplit", "tc", "tcPr", "tcW", "gridSpan", "vMerge", "top", "right", "bottom", "left", "proofErr", "hyperlink", "drawing",
             "fldSimple", "fldChar", "instrText", "bookmarkStart", "bookmarkEnd", "hdr", "ftr", "headerReference", "footerReference", "titlePg", "tblBorders", "insideH", "insideV");
     private static final Set<String> EMPTY_CONTINUATION_MARKUP = Set.of("p", "pPr", "pStyle", "r", "rPr", "rStyle", "t",
             "b", "i", "u", "strike", "sz", "color", "position", "jc", "kinsoku", "spacing", "ind",
@@ -246,7 +244,10 @@ public final class DocxAdapter {
                             var bandLinks = new LinkedHashMap<String, String>();
                             var xml = new StringBuilder(XML + "<w:" + (header ? "hdr" : "ftr") + NS
                                     + " od:height=\"" + band.height() + "\" od:gap=\"" + band.gap() + "\">");
+                            boolean previousTable = false;
                             for (var block : band.blocks()) {
+                                if (previousTable && block instanceof Table) { DocxTables.separate(xml); }
+                                previousTable = block instanceof Table;
                                 if (block instanceof Table table) {
                                     table(xml, table, section.pageSettings().contentWidth(), bandLinks, images, fields, roles, List.of());
                                 } else {
@@ -273,8 +274,11 @@ public final class DocxAdapter {
         int numberId = 1;
         for (int sectionIndex = 0; sectionIndex < document.sections().size(); sectionIndex++) {
             var section = document.sections().get(sectionIndex);
+            boolean previousTable = false;
             for (var block : section.blocks()) {
                 com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                if (previousTable && block instanceof Table) { DocxTables.separate(main); }
+                previousTable = block instanceof Table;
                 if (block instanceof Table table) { table(main, table, section.pageSettings().contentWidth(), hyperlinks, images, fields, roles, List.of());
                 } else {
                     var p = paragraph(block);
@@ -357,13 +361,14 @@ public final class DocxAdapter {
         parts.put("[Content_Types].xml", contentTypes); parts.put("_rels/.rels", rootRels); parts.put("docProps/core.xml", core);
         parts.put("word/document.xml", main.toString()); parts.put("word/styles.xml", styles.toString());
         parts.put("word/numbering.xml", numbering.toString()); parts.put("word/_rels/document.xml.rels", wordRels);
-        if (fields.present() || hasEvenVariants) {
-            parts.put("word/settings.xml", XML + "<w:settings" + NS + ">"
-                    + (hasEvenVariants ? "<w:evenAndOddHeaders/>" : "")
-                    + (fields.present() ? "<w:updateFields w:val=\"true\"/>" : "") + "</w:settings>");
-            parts.put("[Content_Types].xml", contentTypes.replace("</Types>", "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/></Types>"));
-            parts.put("word/_rels/document.xml.rels", wordRels.replace("</Relationships>", "<Relationship Id=\"rSettings\" Type=\"" + reltype + "settings\" Target=\"settings.xml\"/></Relationships>"));
-        }
+        // Without an explicit mode Word opens even a fresh DOCX using legacy layout rules.
+        parts.put("word/settings.xml", XML + "<w:settings" + NS + ">"
+                + (hasEvenVariants ? "<w:evenAndOddHeaders/>" : "")
+                + (fields.present() ? "<w:updateFields w:val=\"true\"/>" : "")
+                + "<w:compat><w:compatSetting w:name=\"compatibilityMode\""
+                + " w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>");
+        parts.put("[Content_Types].xml", contentTypes.replace("</Types>", "<Override PartName=\"/word/settings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml\"/></Types>"));
+        parts.put("word/_rels/document.xml.rels", wordRels.replace("</Relationships>", "<Relationship Id=\"rSettings\" Type=\"" + reltype + "settings\" Target=\"settings.xml\"/></Relationships>"));
         parts.putAll(regionParts);
         Map<String, byte[]> bytes = new LinkedHashMap<>();
         for (var entry : parts.entrySet()) {
@@ -541,28 +546,35 @@ public final class DocxAdapter {
 
     private static void table(StringBuilder xml, Table table, double availableWidth, Map<String, String> hyperlinks,
             DocxImages.Writer images, DocxFields.Writer fields, Set<String> roles, List<String> ancestorAnchors) throws IOException {
-        var padding = table.format().padding();
-        xml.append("<w:tbl od:id=\"").append(escape(table.id())).append("\" od:split=\"").append(table.format().allowRowSplit()).append("\" od:before=\"")
-                .append(table.format().spaceBefore()).append("\" od:after=\"").append(table.format().spaceAfter()).append("\"><w:tblPr>");
-        xml.append("<w:tblBorders>");
-        for (String edge : List.of("top", "left", "bottom", "right", "insideH", "insideV")) {
-            xml.append("<w:").append(edge).append(" w:val=\"").append(table.format().drawBorders() ? "single" : "nil").append("\"/>");
-        }
-        xml.append("</w:tblBorders><w:tblCellMar><w:top w:w=\"").append(twips(padding.top()))
-                .append("\" w:type=\"dxa\"/><w:left w:w=\"").append(twips(padding.left()))
-                .append("\" w:type=\"dxa\"/><w:bottom w:w=\"").append(twips(padding.bottom()))
-                .append("\" w:type=\"dxa\"/><w:right w:w=\"").append(twips(padding.right()))
-                .append("\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
         double fixed = table.columns().stream().filter(ColumnWidth.Fixed.class::isInstance).map(ColumnWidth.Fixed.class::cast).mapToDouble(ColumnWidth.Fixed::points).sum();
         double weights = table.columns().stream().mapToDouble(c -> c instanceof ColumnWidth.Fraction f ? f.weight() : c instanceof ColumnWidth.Auto ? 1 : 0).sum();
         if (!Double.isFinite(fixed) || !Double.isFinite(weights)) { throw new IOException("DOCX column width sum is not finite"); }
         if (fixed > availableWidth || weights > 0 && fixed >= availableWidth) { throw new IOException("DOCX table widths exceed the containing content width"); }
         double[] widths = new double[table.columns().size()];
+        long[] gridWidths = new long[widths.length];
+        long tableWidth = 0;
+        for (int column = 0; column < widths.length; column++) {
+            var definition = table.columns().get(column);
+            widths[column] = definition instanceof ColumnWidth.Fixed f ? f.points()
+                    : (availableWidth - fixed) * (definition instanceof ColumnWidth.Fraction f ? f.weight() : 1) / weights;
+            gridWidths[column] = twips(widths[column]);
+            tableWidth += gridWidths[column];
+        }
+        var padding = table.format().padding();
+        xml.append("<w:tbl od:id=\"").append(escape(table.id())).append("\" od:split=\"").append(table.format().allowRowSplit()).append("\" od:before=\"")
+                .append(table.format().spaceBefore()).append("\" od:after=\"").append(table.format().spaceAfter()).append("\"><w:tblPr>");
+        xml.append("<w:tblW w:w=\"").append(tableWidth).append("\" w:type=\"dxa\"/><w:tblBorders>");
+        for (String edge : List.of("top", "left", "bottom", "right", "insideH", "insideV")) {
+            xml.append("<w:").append(edge).append(" w:val=\"").append(table.format().drawBorders() ? "single" : "nil").append("\"/>");
+        }
+        xml.append("</w:tblBorders><w:tblLayout w:type=\"fixed\"/><w:tblCellMar><w:top w:w=\"").append(twips(padding.top()))
+                .append("\" w:type=\"dxa\"/><w:left w:w=\"").append(twips(padding.left()))
+                .append("\" w:type=\"dxa\"/><w:bottom w:w=\"").append(twips(padding.bottom()))
+                .append("\" w:type=\"dxa\"/><w:right w:w=\"").append(twips(padding.right()))
+                .append("\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
         int columnIndex = 0;
         for (var column : table.columns()) {
-            double width = column instanceof ColumnWidth.Fixed f ? f.points() : (availableWidth - fixed) * (column instanceof ColumnWidth.Fraction f ? f.weight() : 1) / weights;
-            widths[columnIndex++] = width;
-            xml.append("<w:gridCol w:w=\"").append(twips(width)).append("\" od:weight=\"").append(column instanceof ColumnWidth.Fraction f ? f.weight() : 0).append('"');
+            xml.append("<w:gridCol w:w=\"").append(gridWidths[columnIndex++]).append("\" od:weight=\"").append(column instanceof ColumnWidth.Fraction f ? f.weight() : 0).append('"');
             if (column instanceof ColumnWidth.Auto auto) { xml.append(" od:autoMin=\"").append(auto.minPoints()).append("\" od:autoMax=\"").append(auto.maxPoints()).append('"'); }
             xml.append("/>");
         }
@@ -598,12 +610,12 @@ public final class DocxAdapter {
                             .append(format.alignment()).append("\" od:lineBreak=\"").append(format.lineBreakPolicy()).append('"');
                 }
                 xml.append('>');
-                if (cell.columnSpan() > 1 || cell.rowSpan() > 1) {
-                    xml.append("<w:tcPr>");
-                    if (cell.columnSpan() > 1) { xml.append("<w:gridSpan w:val=\"").append(cell.columnSpan()).append("\"/>"); }
-                    if (cell.rowSpan() > 1) { xml.append("<w:vMerge w:val=\"").append(continuation ? "continue" : "restart").append("\"/>"); }
-                    xml.append("</w:tcPr>");
-                }
+                long cellWidthTwips = 0;
+                for (int col = anchor.columnIndex(); col < anchor.columnIndex() + cell.columnSpan(); col++) { cellWidthTwips += gridWidths[col]; }
+                xml.append("<w:tcPr><w:tcW w:w=\"").append(cellWidthTwips).append("\" w:type=\"dxa\"/>");
+                if (cell.columnSpan() > 1) { xml.append("<w:gridSpan w:val=\"").append(cell.columnSpan()).append("\"/>"); }
+                if (cell.rowSpan() > 1) { xml.append("<w:vMerge w:val=\"").append(continuation ? "continue" : "restart").append("\"/>"); }
+                xml.append("</w:tcPr>");
                 if (continuation) { xml.append("<w:p/></w:tc>"); continue; }
                 var anchors = firstCell ? tableAnchors : List.<String>of();
                 if (cell.hasBlocks()) {
@@ -613,6 +625,7 @@ public final class DocxAdapter {
                     if (!Double.isFinite(cellWidth) || cellWidth <= 0) { throw new IOException("DOCX block cell has no positive content width"); }
                     for (int childIndex = 0; childIndex < cell.blocks().size(); childIndex++) {
                         var block = cell.blocks().get(childIndex);
+                        if (childIndex > 0 && cell.blocks().get(childIndex - 1) instanceof Table && block instanceof Table) { DocxTables.separate(xml); }
                         var pending = childIndex == 0 ? anchors : List.<String>of();
                         if (block instanceof Table nested) { table(xml, nested, cellWidth, hyperlinks, images, fields, roles, pending); }
                         else {
@@ -733,7 +746,7 @@ public final class DocxAdapter {
                 sections.add(regionReader.attach(readSection(element, sections.size(), blocks), element)); blocks = new ArrayList<>();
             } else if (element.getLocalName().equals("p")) {
                 String id = ids.get(element);
-                if (!element.getAttributeNS(OD, "boundary").equals("true")) {
+                if (!element.getAttributeNS(OD, "boundary").equals("true") && !DocxTables.isSeparator(element)) {
                     blocks.add(readParagraph(element, id, numbers, hyperlinks, images, fields, policy, diagnostics, semanticBudget));
                 }
                 var sect = child(child(element, "pPr"), "sectPr");
@@ -887,6 +900,7 @@ public final class DocxAdapter {
         if (children(table).stream().filter(element -> W.equals(element.getNamespaceURI()) && element.getLocalName().equals("tblGrid")).count() > 1) {
             throw new IOException("DOCX table has multiple column grids");
         }
+        DocxTables.validateWidths(table, policy, diagnostics);
         List<ColumnWidth> columns = new ArrayList<>();
         for (var col : children(child(table, "tblGrid"))) {
             double weight = attributeNumber(col, OD, "weight", 0);
@@ -1182,26 +1196,7 @@ public final class DocxAdapter {
     }
 
     Map<String, byte[]> unzip(InputStream input) throws IOException {
-        Map<String, byte[]> result = new LinkedHashMap<>();
-        long expanded = 0;
-        try (var zip = new ZipInputStream(new BoundedInput(input, limits.maxInputBytes()))) {
-            for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
-                com.mirakyux.export4j.model.ExecutionContext.checkpoint();
-                String name = entry.getName();
-                if (name.startsWith("/") || name.contains("\\") || name.contains(":") || List.of(name.split("/", -1)).contains("..")) { throw new IOException("unsafe DOCX package path"); }
-                if (result.size() >= limits.maxEntries() || result.containsKey(name)) { throw new IOException("DOCX entry budget or duplicate name"); }
-                var bytes = new ByteArrayOutputStream();
-                byte[] buffer = new byte[8192];
-                for (int count; (count = zip.read(buffer)) != -1;) {
-                    com.mirakyux.export4j.model.ExecutionContext.checkpoint();
-                    expanded += count;
-                    if (count > limits.maxEntryBytes() - bytes.size() || expanded > limits.maxExpandedBytes()) { throw new IOException("DOCX expanded byte budget exceeded"); }
-                    bytes.write(buffer, 0, count);
-                }
-                result.put(name, bytes.toByteArray());
-            }
-        }
-        return result;
+        return DocxPackageReader.read(input, limits);
     }
 
     static Element parse(byte[] bytes) throws IOException {
@@ -1236,6 +1231,8 @@ public final class DocxAdapter {
             case "pgNumType" -> Set.of("start");
             case "br", "proofErr" -> Set.of("type");
             case "gridCol" -> Set.of("w");
+            case "tblW", "tcW" -> Set.of("w", "type");
+            case "tblLayout" -> Set.of("type");
             case "top", "right", "bottom", "left", "insideH", "insideV" -> Set.of("w", "type", "val", "sz", "color", "space");
             case "fldSimple" -> Set.of("instr", "dirty", "fldLock");
             case "fldChar" -> Set.of("fldCharType", "dirty", "fldLock");
@@ -1265,6 +1262,7 @@ public final class DocxAdapter {
     /** Checks the semantic containers consumed by the importer, rather than accepting a known name anywhere. */
     private static void validateStructure(Element element, Policy policy, List<Diagnostic> diagnostics) throws IOException {
         DocxCells.validateTailLocation(element);
+        DocxTables.isSeparator(element);
         String parent = wordParent(element);
         if (Set.of("gridSpan", "vMerge").contains(element.getLocalName()) && (!parent.equals("tcPr")
                 || !(element.getParentNode() instanceof Element properties) || !wordParent(properties).equals("tc")
@@ -1282,6 +1280,8 @@ public final class DocxAdapter {
             case "tr", "tblPr", "tblGrid" -> parent.equals("tbl");
             case "tc", "trPr" -> parent.equals("tr");
             case "tcPr" -> parent.equals("tc");
+            case "tcW" -> parent.equals("tcPr");
+            case "tblW", "tblLayout" -> parent.equals("tblPr");
             case "gridSpan", "vMerge" -> parent.equals("tcPr");
             case "gridCol" -> parent.equals("tblGrid");
             case "tblCellMar" -> parent.equals("tblPr");
@@ -1358,14 +1358,6 @@ public final class DocxAdapter {
     private static final class BorrowedOutput extends FilterOutputStream {
         BorrowedOutput(OutputStream output) { super(output); }
         @Override public void write(byte[] b, int start, int count) throws IOException { out.write(b, start, count); }
-        @Override public void close() { }
-    }
-    private static final class BoundedInput extends FilterInputStream {
-        private final long limit; private long count;
-        BoundedInput(InputStream input, long limit) { super(input); this.limit = limit; }
-        @Override public int read() throws IOException { int b = in.read(); if (b != -1) { add(1); } return b; }
-        @Override public int read(byte[] b, int start, int length) throws IOException { int n = in.read(b, start, length); if (n > 0) { add(n); } return n; }
-        private void add(int n) throws IOException { count += n; if (count > limit) { throw new IOException("DOCX compressed input budget exceeded"); } }
         @Override public void close() { }
     }
 }

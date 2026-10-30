@@ -31,10 +31,16 @@ jobs:
         shell: bash
         run: |
           python scripts/test_api_compatibility.py
+          python scripts/test_dependency_audit.py
           bash ./gradlew --no-daemon --console=plain -Pexport4jNativeClassifier=${{ matrix.classifier }} build apiCheck sbom publishLocalBundle :examples:run :examples:textPdf :examples:flowPdf :examples:tablePdf :examples:componentPdf :examples:advancedPdf
+      - name: Audit exact runtime dependencies against known advisories
+        if: runner.os == 'Linux'
+        run: python scripts/audit_dependencies.py
+      - name: Create independent OOXML and rejected-input corpus
+        run: python scripts/create_compatibility_corpus.py
       - name: Consume only published coordinates and run native OpenType
         shell: bash
-        run: bash ./gradlew --no-daemon --console=plain -p verification/consumer -Pexport4jNativeClassifier=${{ matrix.classifier }} build run openType resolvedLibraries --refresh-dependencies
+        run: bash ./gradlew --no-daemon --console=plain -p verification/consumer -Pexport4jNativeClassifier=${{ matrix.classifier }} build run openType compatibilityCorpus resolvedLibraries --refresh-dependencies
       - name: Verify generation and conversion without printing services
         shell: bash
         run: python scripts/verify_driverless.py --consumer-build-directory verification/consumer/build --output-directory build/verification/driverless
@@ -48,6 +54,9 @@ jobs:
       - name: Verify PDF structures, editable forms and visual baseline
         if: runner.os == 'Linux'
         run: build/pdf-verification-venv/bin/python scripts/verify_advanced_pdf.py
+      - name: Independently inspect conversion corpus and both PDF renderers
+        if: runner.os == 'Linux'
+        run: build/pdf-verification-venv/bin/python scripts/verify_compatibility_corpus.py --consumer-build-directory verification/consumer/build --output build/verification/compatibility-corpus
       - name: Retain platform verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -58,10 +67,14 @@ jobs:
             */build/test-results/test/*.xml
             build/reports/api/*.json
             build/reports/sbom.cdx.json
+            build/reports/dependency-audit.json
             verification/consumer/build/resolved-libraries.txt
             verification/consumer/build/resolved-components.txt
             verification/consumer/build/resolved-library-sha256.txt
             verification/consumer/build/output/**/*.pdf
+            verification/consumer/build/output/compatibility-corpus/**
+            build/verification/compatibility-corpus/report.json
+            build/verification/compatibility-fixtures/manifest.json
             build/verification/driverless/report.json
             build/verification/driverless/*.log
             build/verification/driverless/*.denied

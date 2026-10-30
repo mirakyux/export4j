@@ -65,6 +65,15 @@ class DocxPackageEditorTest {
         var root = DocxAdapter.parse(parts(output.toByteArray()).get("word/document.xml"));
         assertEquals("A-READY-Z", root.getTextContent()); assertEquals(2, root.getElementsByTagNameNS(W, "r").getLength()); assertEquals(1, result.changes().size());
     }
+    @Test void sourcePackageEditingRetainsLegacyWordCompatibilitySettings() throws Exception {
+        var settings = "<w:settings xmlns:w='" + W + "'><w:compat><w:compatSetting w:name='compatibilityMode'"
+                + " w:uri='http://schemas.microsoft.com/office/word' w:val='12'/></w:compat></w:settings>";
+        byte[] original = fixture("<w:p><w:r><w:t>OLD</w:t></w:r></w:p>", Map.of("word/settings.xml", settings));
+        var output = new ByteArrayOutputStream();
+        var result = new DocxAdapter().editPackage(original).replaceText("OLD", "READY").prepare().to(output);
+        assertEquals(List.of("word/document.xml"), result.changedParts());
+        assertArrayEquals(parts(original).get("word/settings.xml"), parts(output.toByteArray()).get("word/settings.xml"));
+    }
     @Test void repeatedMatchesAndSequentialOperationsUseTheirOwnSourceOffsets() throws Exception {
         var source = fixture("<w:p><w:r><w:t>OLD OLD</w:t></w:r></w:p>", Map.of());
         var output = new ByteArrayOutputStream();

@@ -181,7 +181,8 @@ public final class ComponentDocumentRenderer {
                 fonts, roles, componentLimits.maxInteractions() - interactions - externalLinks.size(), layoutLimits.maxCodePoints());
         body = inline.body();
         List<DisplayPage> pages = new ArrayList<>(contents.pages());
-        var painted = DocumentPainter.paint(body).pages();
+        var rotations = ModelRotations.of(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
+        var painted = DocumentPainter.paint(body, rotations).pages();
         List<DocumentExtras.Link> links = new ArrayList<>(contents.links());
         links.addAll(inline.links());
         List<com.mirakyux.export4j.layout.ComponentLayout> resolvedReferences = new ArrayList<>();
@@ -205,7 +206,13 @@ public final class ComponentDocumentRenderer {
                     var resolved = new TextComponent(reference.prefix() + label, SemanticBlocks.style(reference.format()),
                             com.mirakyux.export4j.graphics.RgbColor.BLACK).layout(new com.mirakyux.export4j.layout.core.ComponentContext(
                                     component.layout().width(), component.layout().height(), fonts, page, body.pages().size(), page + 1));
-                    builder.save().transform(AffineTransform.translation(fragment.origin().x(), fragment.origin().y())).appendCommands(resolved.commands()).restore();
+                    builder.save();
+                    if (reference.format().rotation() != 0) {
+                        builder.transform(AffineTransform.fittedRotation(new Rect(fragment.origin().x(), fragment.origin().y(),
+                                resolved.width(), resolved.height()), reference.format().rotation()));
+                    }
+                    builder.transform(AffineTransform.translation(fragment.origin().x(), fragment.origin().y()))
+                            .appendCommands(resolved.commands()).restore();
                     resolvedReferences.add(resolved);
                     int physicalPage = page + offset;
                     resolved.diagnostics().forEach(d -> referenceDiagnostics.add(new ContextualDiagnostic(reference.id(), physicalPage, "REFERENCE", -1, -1, d)));

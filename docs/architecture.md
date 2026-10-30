@@ -1,6 +1,6 @@
 # 架构设计
 
-本文将[立项文档](project-proposal.md)整理为实现约束。当前共 18 个模块，包含 16 个库、BOM 和示例。可选 `export4j-opentype` 封装原生塑形，不让核心强制依赖 JNI；生产入口仍位于组件模块。实际能力见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)，行内图片及 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)。
+本文将[立项文档](project-proposal.md)整理为实现约束。当前共 19 个模块，包含 16 个库、BOM、示例和可选设计器应用。可选 `export4j-opentype` 封装原生塑形，不让核心强制依赖 JNI；生产入口仍位于组件模块。实际能力见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)，行内图片及 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)。
 
 ## 分层与数据流
 
@@ -83,6 +83,9 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-adapter-pdf` | 有界 PDF 读取、页／被动对象编辑和组合、渲染提取、优化、脱敏及语义恢复 | 模型及执行控制；PDFBox 隔离在内部 |
 | `export4j-bom` | 对外发布模块的版本约束 | 发布模块的制品坐标 |
 | `examples` | 可执行用例和集成方式 | 公共 API 与所用后端 |
+| `export4j-designer` | 可选本地 HTML 模板编辑／预览应用，不参与 Maven 库发布 | 组件、模板／DOCX／Web 适配器及 PDF／SVG／Raster 后端；核心不反向依赖 |
+
+设计器保留 XML 源码和显式资源，以 Java 引擎生成预览及导出；数据独立保存，源码不会被已绑定模型替换。应用边界见 [ADR-0106](adr/0106-optional-html-template-designer.md)和[设计器指南](designer.md)。
 
 PDFBox 文档及绘制 API 限定在 PDF 实现模块。FontBox 和 pdfbox-io 可封装在字体层内部，公共签名不暴露其类型。DOCX 专用实现依赖限定在 DOCX 实现模块。专用测试可以使用它们，但不能以此替代独立工具验证。
 

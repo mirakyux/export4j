@@ -11,6 +11,7 @@ import com.mirakyux.export4j.text.GlyphRun;
 import com.mirakyux.export4j.text.ParagraphLayout;
 import com.mirakyux.export4j.text.TextLine;
 import com.mirakyux.export4j.graphics.Rect;
+import com.mirakyux.export4j.graphics.AffineTransform;
 import java.util.ArrayList;
 
 /** Converts immutable text layout to drawing commands without measuring or changing line breaks. */
@@ -35,7 +36,10 @@ public final class TextLayoutPainter {
                             com.mirakyux.export4j.model.ImageResource.MAX_PIXELS); }
                     catch (java.io.IOException failure) { throw new IllegalArgumentException("inline image decode failed", failure); }
                 });
-                surface.drawImage(image, new Rect(x + box.x(), origin.y() + line.baselineY() + item.baselineShift() - item.height(), item.width(), item.height()));
+                var bounds = new Rect(x + box.x(), origin.y() + line.baselineY() + item.baselineShift() - item.height(), item.width(), item.height());
+                if (item.rotation() != 0) { surface.save().transform(AffineTransform.fittedRotation(bounds, item.rotation())); }
+                surface.drawImage(image, bounds);
+                if (item.rotation() != 0) { surface.restore(); }
             }
             if (!line.outlines().isEmpty()) {
                 double baseline = origin.y() + line.baselineY();

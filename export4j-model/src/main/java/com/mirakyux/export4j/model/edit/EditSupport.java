@@ -93,7 +93,8 @@ final class EditSupport {
             BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells) {
         return cache.computeIfAbsent(source, value -> {
             var mapped = mapBlocks(value.blocks(), section, region, List.of(), state, blocks, cells);
-            return mapped.equals(value.blocks()) ? value : new PageRegion(value.height(), value.gap(), mapped);
+            return mapped.equals(value.blocks()) ? value : new PageRegion(value.height(), value.gap(),
+                    value.edgeOffset(), value.leftInset(), value.rightInset(), mapped);
         });
     }
     private static List<Block> mapBlocks(List<Block> source, String section, String region, List<CellLocation> path,

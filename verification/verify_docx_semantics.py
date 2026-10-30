@@ -82,6 +82,9 @@ def inspect(path: Path, decided: bool) -> dict:
         assert refs[0] == refs[1], "shared band inheritance/deduplication changed"
         settings = roots["word/settings.xml"]
         assert settings.find("w:evenAndOddHeaders", NS) is not None
+        mode = settings.find("w:compat/w:compatSetting[@w:name='compatibilityMode']", NS)
+        assert mode is not None and mode.get(f"{{{W}}}val") == "15", "fresh DOCX opens in legacy Word compatibility mode"
+        assert mode.get(f"{{{W}}}uri") == "http://schemas.microsoft.com/office/word"
         assert settings.find("w:updateFields", NS) is None, "native output must not request a global update that resets user form inputs"
         assert all(field.get(f"{{{W}}}dirty") not in {"true", "1", "on"} for root in roots.values() for field in root.findall(".//w:fldSimple", NS)), "ordinary fields must not force global recalculation"
         assert all(field.get(f"{{{W}}}dirty") not in {"true", "1", "on"} for field in main.findall(".//w:fldChar", NS)), "explicitly refreshed TOC cache is still marked dirty"

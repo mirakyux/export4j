@@ -66,6 +66,8 @@ PDF、SVG、PNG 消费最终显示列表；SVG／PNG 继续拒绝非空交互数
 
 [XML 分节](xml-sections-api.md)支持根默认值、各节纸张／边距／页码、页区替换及清空。页区图片使用行内 image，表格使用标准 table／columns／row／cell 语法；表格格样式沿用 cell 默认值，p 使用独立页区默认值。静态 `variant="default|first|even"` 支持[首页／奇偶选择](page-variants-api.md)，同类同变体最多声明一次。[XML 背景／前景](page-overlays-api.md)另用固定 box 声明，沿用最终组合路径；页区链接／目标引用和更广品牌组合仍开放。
 
+`header`／`footer` 可选 `edge`、`left`、`right` 长度（pt／mm／cm／in）。`edge` 表示页眉距纸张顶边或页脚距纸张底边；`left`／`right` 分别是距纸张左右边。未声明时沿用页面对应边距，显式 `0` 可贴边。正文顶部／底部预留至少覆盖页区高度与 `gap`，页区超出纸张会拒绝；共享 `source-ref` 复用完整位置设置，引用处不能覆盖这些属性。
+
 ## 共享来源
 
 header／footer 和图层 box 支持静态 `source-id` 定义与 `source-ref` 引用，用于跨节、同类变体或同层多个位置复用完整内容：

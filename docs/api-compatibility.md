@@ -1,6 +1,8 @@
 # Java API 与版本兼容
 
-当前没有正式发布版。`verification/api/baseline-0.1.0-preview.json` 是提交 `1665cd7597609e9c7db561cea12b8ca1083e99bb` 的开发期 API 快照，不代表 `0.1.0` 已发布或 API 已冻结。基线必须由该提交的独立源码构建，不能从候选源码反推。
+当前没有正式发布版。`0.1.0-rc.1` 的候选 API 以 `verification/api/baseline-0.1.0-rc.1.json` 固定，来源是提交 `b9c8f77b0872566614984a76bdcd1edaf2f39db9` 的独立源码构建，共 16 个库、670 个公开类型。`apiCheck` 使用该基线；候选 API 冻结不表示该版本已发布。
+
+`verification/api/baseline-0.1.0-preview.json` 保留提交 `1665cd7597609e9c7db561cea12b8ca1083e99bb` 的开发期历史快照。基线必须由记录提交的独立源码构建，不能从候选源码反推，也不能自动覆盖历史基线。
 
 ## 自动检查
 
@@ -20,9 +22,10 @@ Linux／macOS 使用 `./gradlew`。`apiCheck` 同时接入根 `check` 和三平�
 ## 兼容承诺
 
 - 当前 `0.x` 保留明确的不兼容演进空间，每次正式发布须列出差异、迁移和实际验收；不能静默刷新基线隐藏破坏项。
+- `0.1.0-rc.1` 候选固定已有公开声明；修复应保持该基线兼容。新增普通入口仍须评审行为及源码歧义；确需破坏声明时重新确定候选版本、迁移和经过审查的基线。
 - 进入 `1.x` 后，同一主版本保留已公开构造器、方法、访问器与 SPI；破坏性变更进入下一主版本。
 - 弃用使用 `@Deprecated`、Javadoc 替代入口和迁移说明；同一主版本保留弃用入口，不用仅在源码中改名的方式破坏二进制调用。
 - 单位、原文 UTF-16、资源关闭、预算、取消、异常／诊断、默认策略和声明的格式损失也属于契约，须用对应跨模块和输出验收验证。
 - 确认破坏项后，先确定版本与迁移，再审查新的基线；不提供跳过错误或自动接受全部差异的构建开关。
 
-模块统一版本，由 BOM 对齐。发布与真实远端消费流程见[发布规范](releasing.md)，平台与阅读器的具体结果见[阶段一百零五](verification/phase-105-publication-and-compatibility.md)。
+模块统一版本，由 BOM 对齐。发布与真实远端消费流程见[发布规范](releasing.md)，平台与阅读器的具体结果见[阶段一百零五](verification/phase-105-publication-and-compatibility.md)，候选基线与安全回归见[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)。

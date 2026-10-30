@@ -11,6 +11,7 @@ Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导�
 | 调整布局与页区 | [布局](layout-api.md) · [连续分栏](continuous-columns-api.md) · [轮廓浮动](contour-floats-api.md) · [页区变体](page-variants-api.md) · [背景／前景](page-overlays-api.md) |
 | 编写表格和长表 | [语义表格](table-api.md) · [合并列](column-spans-api.md) · [合并行](row-spans-api.md) · [块格与内表](block-cells-api.md) · [单向长表](streaming-table-api.md) · [重放与磁盘索引 PDF](streaming-replay-api.md) |
 | 添加导航和字段 | [行内字段](inline-fields-api.md) · [可编辑表单](form-styles-api.md) · [可保存导航](portable-navigation-api.md) |
+| 使用可视化模板设计器 | [HTML 设计器](designer.md) · [业务样例及验收](verification/phase-108-designer-and-business-scenarios.md) · [连续画布与交互验收](verification/phase-110-designer-canvas-and-interactions.md) · [表格样式与合并验收](verification/phase-111-designer-table-styles.md) |
 | 使用 XML／Markdown 模板 | [XML](xml-template-api.md) · [模板主题](xml-themes-api.md) · [页区](xml-page-regions-api.md) · [分节](xml-sections-api.md) · [严格 Markdown 模板](markdown-template-api.md) |
 | 保存模板和恢复文档 | [模板资源 ZIP](xml-template-bundle-api.md) · [语义模型保存为 XML](xml-model-saving-api.md) · [可选文档模型恢复](model-recovery-api.md) |
 | 导入、编辑与互转 | [统一转换](document-conversion-api.md) · [语义编辑及损失报告](semantic-editing-api.md) · [通用 Markdown 导入](markdown-import-api.md) · [HTML/CSS 导入](html-import-api.md) · [HTML／Markdown 导出](web-export-api.md) |
@@ -32,7 +33,7 @@ Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导�
 | 接下来如何推进 | [执行计划](remaining-capabilities-plan.md) · [路线图](roadmap.md) |
 | 一项能力实际做过哪些验证 | [阶段验收记录](verification)及其中的独立证据入口 |
 
-当前未完成项为 GAP-13、GAP-14.2、GAP-14.3、GAP-22，父项和子项不重复计数；OCR 仍属范围外。最新状态以缺口表为准。阶段记录保留当时的样例、限制及结果，不直接作为当前待办清单。
+当前未完成项为 GAP-14.2、GAP-14.3、GAP-22，父项和子项不重复计数；OCR 仍属范围外。最新状态以缺口表为准。阶段记录保留当时的样例、限制及结果，不直接作为当前待办清单。
 
 ## 开发与维护
 
@@ -41,7 +42,7 @@ Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导�
 | 参与贡献 | [贡献指南](../CONTRIBUTING.md) · [开发规约](development.md) |
 | 架构及模块边界 | [架构设计](architecture.md) · [架构决策记录](adr/README.md) |
 | 构建与输出验证 | [开发中的验证流程](development.md#测试策略) · [验证矩阵](../.agents/skills/develop-export4j/references/verification.md) |
-| API 兼容和发布 | [兼容规则](api-compatibility.md) · [发布规范](releasing.md) · [平台及签名验收](verification/phase-105-publication-and-compatibility.md) |
+| API 兼容和发布 | [兼容规则](api-compatibility.md) · [发布规范](releasing.md) · [平台及签名验收](verification/phase-105-publication-and-compatibility.md) · [安全及固定语料](verification/phase-106-security-and-compatibility-corpus.md) · [Windows 应用及保存回读](verification/phase-107-windows-reader-compatibility.md) |
 | 依赖和授权 | [依赖记录](dependencies.md) · [字体记录](../assets/fonts/README.md) · [NOTICE](../NOTICE) · [第三方许可证](../third-party/licenses) |
 | 历史设计背景 | [立项文档](project-proposal.md)及各 ADR |
 

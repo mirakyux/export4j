@@ -20,8 +20,12 @@ public record PageTemplate(PageBand header, PageBand footer, List<Placement> bac
     /** Creates the body region before pagination; no clipping or implicit resizing when bands exhaust the page. */
     public PageSettings bodySettings(PageSettings settings) {
         var margins = settings.margins();
-        return new PageSettings(settings.size(), new PageMargins(margins.top() + header.height() + header.gap(),
-                margins.right(), margins.bottom() + footer.height() + footer.gap(), margins.left()));
+        double top = header.height() == 0 ? margins.top() : Math.max(margins.top(),
+                (header.edgeOffset() < 0 ? margins.top() : header.edgeOffset()) + header.height() + header.gap());
+        double bottom = footer.height() == 0 ? margins.bottom() : Math.max(margins.bottom(),
+                (footer.edgeOffset() < 0 ? margins.bottom() : footer.edgeOffset()) + footer.height() + footer.gap());
+        return new PageSettings(settings.size(), new PageMargins(top,
+                margins.right(), bottom, margins.left()));
     }
 
     /** Task-confined builder. Dimensions use points unless the type specifies another unit.

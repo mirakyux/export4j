@@ -64,7 +64,7 @@ def snapshot_jar(archive: Path) -> dict:
 def snapshot(root: Path, reference: str, version: str = "0.1.0-SNAPSHOT") -> dict:
     modules = {}
     for module in sorted(root.glob("export4j-*")):
-        if not module.is_dir() or module.name == "export4j-bom":
+        if not module.is_dir() or module.name in {"export4j-bom", "export4j-designer"}:
             continue
         archives = list((module / "build/libs").glob(module.name + "-" + version + ".jar"))
         if len(archives) != 1:

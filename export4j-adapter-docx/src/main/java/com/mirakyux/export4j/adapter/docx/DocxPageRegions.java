@@ -95,6 +95,7 @@ final class DocxPageRegions {
                 var blocks = new ArrayList<Block>();
                 for (var element : children(root)) {
                     if (!W.equals(element.getNamespaceURI())) { continue; }
+                    if (DocxTables.isSeparator(element)) { continue; }
                     if (element.getLocalName().equals("p")) {
                         if (element.getAttributeNS(OD, "emptyBand").equals("true")) {
                             if (!children(element).isEmpty() || !element.getTextContent().isBlank()) { throw new IOException("nonempty DOCX empty-band marker"); }

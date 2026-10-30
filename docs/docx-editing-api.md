@@ -42,6 +42,8 @@ WARN 与 IGNORE 的处理一致，IGNORE 只隐藏警告，仍返回实际 issue
 
 输入立即复制，整个包安全解析并验证关系目标、重复及缺失引用。宏、ActiveX、OLE／嵌入包、外部资源、危险字段指令、签名、保护文档无条件拒绝。仅允许不会主动加载资源的合法 HTTP／mailto 超链接；不联网。
 
+包读取先计量完整输入（包括中央目录和 ZIP 注释），再核对中央目录、局部条目、大小、CRC、压缩方法、名称、偏移及数据描述符。截断、目录冲突、重叠、未引用内容和尾随数据直接失败，ERROR／WARN／IGNORE 均不能放宽。支持经典单磁盘 STORED／DEFLATED ZIP、标准注释与数据描述符；ZIP64、加密和多磁盘包明确拒绝。读取不向文件系统解压，不关闭调用方输入流；普通导入、原生语义导入、转换与原包编辑共用该校验。证据见[安全回归](verification/phase-106-security-and-compatibility-corpus.md)。
+
 `DocxLimits` 控制 ZIP 输入／条目／展开量，`EditLimits` 控制节点、累计文字、命中、工作和诊断；默认输出上限 64 MiB。准备保存确切输出，发布不重做替换。路径要求已有父目录和原子移动支持；最终取消检查先于替换，失败保护旧文件并清理临时文件。借用流不关闭、不刷新，物理写失败可能留下部分字节。
 
 完整示例见 [DocxPackageEditExample](../examples/src/main/java/com/mirakyux/export4j/examples/DocxPackageEditExample.java)，证据见[阶段四十八](verification/phase-48-docx-editing.md)。

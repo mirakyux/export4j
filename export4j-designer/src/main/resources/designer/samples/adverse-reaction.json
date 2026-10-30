@@ -1,0 +1,95 @@
+{
+  "report": {
+    "serious": "□",
+    "overseas": "□",
+    "initial": "√",
+    "followup": "□",
+    "caseId": "DEMO-ADR-001",
+    "source": "医疗机构（虚构）",
+    "concomitantSummary": "未报告合并用药。",
+    "devices": "暂无",
+    "country": "中国",
+    "firstReceived": "2025-06-08",
+    "lastReceived": "2025-06-10",
+    "holder": "示例制药有限公司（虚构）",
+    "contact": "示例药物警戒部门",
+    "contactDetails": "未提供",
+    "remarks": "所有病例、药品、机构和时间均为虚构，仅展示可编辑表单版式。",
+    "medicalSource": "√",
+    "address": "示例地址（虚构）"
+  },
+  "patient": {
+    "name": "示例患者甲",
+    "sex": "男",
+    "birthDate": "1960-01-01",
+    "age": "65 岁",
+    "country": "中国",
+    "ethnicity": "汉族",
+    "height": "170",
+    "weight": "68",
+    "telephone": "未提供",
+    "institution": "示例医院",
+    "recordId": "DEMO-001",
+    "smoking": "无",
+    "drinking": "无",
+    "allergy": "不详",
+    "otherHistory": "未报告",
+    "noSmoking": "√",
+    "noDrinking": "√",
+    "allergyUnknown": "√"
+  },
+  "diseases": [
+    {
+      "number": "1",
+      "name": "示例疾病甲（DEMO01）",
+      "start": "2025-05-01",
+      "end": "未结束",
+      "ongoing": "是"
+    }
+  ],
+  "suspectDrugs": [
+    {
+      "number": "1",
+      "approval": "虚构批准文号DEMO000001",
+      "brand": "",
+      "name": "示例胶囊甲",
+      "form": "胶囊",
+      "strength": "每粒装0.25g",
+      "holder": "示例制药有限公司",
+      "batch": "250601",
+      "expiry": "",
+      "route": "口服",
+      "dose": "0.5g",
+      "frequency": "每日两次",
+      "start": "2025-06-01",
+      "end": "2025-06-03",
+      "duration": "3 天",
+      "indication": "【示例疾病甲（DEMO01）】",
+      "special": "",
+      "action": ""
+    }
+  ],
+  "reaction": {
+    "term": "示例皮疹",
+    "start": "2025 年 06 月 03 日",
+    "end": "2025 年 06 月 06 日",
+    "duration": "3（分 / 小时 / 天）",
+    "seriousness": "非严重",
+    "unexpected": "√",
+    "dechallenge": "是",
+    "rechallenge": "未再次使用",
+    "outcome": "痊愈",
+    "reporterAssessment": "可能有关",
+    "holderAssessment": "可能有关",
+    "description": "患者因示例疾病甲使用示例胶囊甲后出现散在皮疹，停药后经对症处理好转。此处为虚构经过，仅供模板演示。",
+    "nonSerious": "√"
+  },
+  "tests": [],
+  "reporter": {
+    "name": "示例报告人",
+    "occupation": "医生",
+    "institution": "示例医院（虚构）",
+    "contact": "未提供",
+    "doctor": "√"
+  }
+}

@@ -6,14 +6,20 @@ import java.util.Objects;
 /** Cell padding and block spacing in points. Spacing is suppressed at page edges, as for paragraphs.
  * drawBorders controls the cell outlines only; it does not change geometry or header backgrounds. */
 public record TableFormat(PageMargins padding, double spaceBefore, double spaceAfter, boolean allowRowSplit,
-        boolean drawBorders) {
+        boolean drawBorders, double rotation) {
     public static final TableFormat DEFAULT = new TableFormat(PageMargins.uniform(6), 0, 6);
 
     public TableFormat {
         Objects.requireNonNull(padding, "padding");
-        if (!Double.isFinite(spaceBefore) || spaceBefore < 0 || !Double.isFinite(spaceAfter) || spaceAfter < 0) {
+        if (!Double.isFinite(spaceBefore) || spaceBefore < 0 || !Double.isFinite(spaceAfter) || spaceAfter < 0
+                || !Double.isFinite(rotation) || Math.abs(rotation) > 180) {
             throw new IllegalArgumentException("table spacing must be finite and nonnegative");
         }
+    }
+
+    public TableFormat(PageMargins padding, double spaceBefore, double spaceAfter, boolean allowRowSplit,
+            boolean drawBorders) {
+        this(padding, spaceBefore, spaceAfter, allowRowSplit, drawBorders, 0);
     }
 
     public TableFormat(PageMargins padding, double spaceBefore, double spaceAfter) {
@@ -29,7 +35,7 @@ public record TableFormat(PageMargins padding, double spaceBefore, double spaceA
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }
     /** Starts an independent builder from this value; referenced resources remain borrowed. */
-    public Builder toBuilder() { return new Builder().padding(padding()).spaceBefore(spaceBefore()).spaceAfter(spaceAfter()).allowRowSplit(allowRowSplit()).drawBorders(drawBorders()); }
+    public Builder toBuilder() { return new Builder().padding(padding()).spaceBefore(spaceBefore()).spaceAfter(spaceAfter()).allowRowSplit(allowRowSplit()).drawBorders(drawBorders()).rotation(rotation()); }
 
     /** Mutable, task-confined construction state; built values do not retain this builder. */
     public static final class Builder {
@@ -38,6 +44,7 @@ public record TableFormat(PageMargins padding, double spaceBefore, double spaceA
         private double spaceAfter = 6;
         private boolean allowRowSplit = false;
         private boolean drawBorders = true;
+        private double rotation;
 
         private Builder() { }
         public Builder padding(PageMargins value) { padding = java.util.Objects.requireNonNull(value, "padding"); return this; }
@@ -46,7 +53,9 @@ public record TableFormat(PageMargins padding, double spaceBefore, double spaceA
         public Builder allowRowSplit(boolean value) { allowRowSplit = value; return this; }
         /** Enables or disables outlines without changing cell geometry or content. */
         public Builder drawBorders(boolean value) { drawBorders = value; return this; }
+        /** Clockwise degrees, fitted inside each laid-out table fragment. */
+        public Builder rotation(double value) { rotation = value; return this; }
         public Builder padding(double points) { return padding(PageMargins.uniform(points)); }
-        public TableFormat build() { return new TableFormat(padding, spaceBefore, spaceAfter, allowRowSplit, drawBorders); }
+        public TableFormat build() { return new TableFormat(padding, spaceBefore, spaceAfter, allowRowSplit, drawBorders, rotation); }
     }
 }

@@ -15,7 +15,7 @@ import java.util.Objects;
  */
 public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
         PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText,
-        List<Note> notes, DocumentNavigation navigation) {
+        List<Note> notes, DocumentNavigation navigation, List<CellRule> cellRules) {
     private static final double LOG10_2 = 0.3010299956639812;
 
     public DocumentTemplate {
@@ -28,6 +28,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         sections = List.copyOf(sections);
         notes = List.copyOf(notes);
         Objects.requireNonNull(navigation, "navigation");
+        cellRules = List.copyOf(cellRules);
+        if (cellRules.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("cell rule template budget exceeded"); }
         if (notes.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("note template budget exceeded"); }
         hyperlinkTemplates = Map.copyOf(hyperlinkTemplates);
         if (hyperlinkTemplates.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("hyperlink template budget exceeded"); }
@@ -38,6 +40,21 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             }
         }
         if (!sections.isEmpty() && !nodes.isEmpty()) { throw new IllegalArgumentException("sections cannot mix with root body nodes"); }
+    }
+
+    /** A rule attached to this exact prototype cell; equal cells may have independent rules. */
+    public record CellRule(TableCell prototype, CellStyleRule rule) {
+        public CellRule {
+            Objects.requireNonNull(prototype, "prototype"); Objects.requireNonNull(rule, "rule");
+            if (prototype.hasBlocks()) { throw new IllegalArgumentException("conditional styles require inline cells"); }
+        }
+    }
+
+    /** Compatibility constructor for templates without conditional cell styles. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
+            PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates,
+            boolean literalText, List<Note> notes, DocumentNavigation navigation) {
+        this(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, navigation, List.of());
     }
 
     /** Compatibility constructor for templates without portable navigation. */
@@ -234,7 +251,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         var root = new Scope(map, null);
         var values = new ArrayList<Section>();
         var declarations = sections.isEmpty() ? List.of(new SectionNode("document", pageSettings, nodes, 0, pageRegions)) : sections;
-        var bands = new HashMap<PageRegion, PageRegion>();
+        Map<PageRegion, PageRegion> bands = cellRules.isEmpty() ? new HashMap<>() : new java.util.IdentityHashMap<>();
         for (var declaration : declarations) {
             state.visit("sections");
             state.blocks.clear();
@@ -269,6 +286,12 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
     }
 
     private final class Binding {
+        private final Map<TableCell, List<CellStyleRule>> rules = new java.util.IdentityHashMap<>();
+        private Binding() {
+            for (var entry : cellRules) {
+                rules.computeIfAbsent(entry.prototype(), ignored -> new ArrayList<>()).add(entry.rule());
+            }
+        }
         private int visited;
         private int rows;
         private int codePoints;
@@ -281,7 +304,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             for (var block : prototype.blocks()) {
                 values.add(bind(block, scope, "", blockIds(block, "", Map.of()), 0));
             }
-            return new PageRegion(prototype.height(), prototype.gap(), values);
+            return new PageRegion(prototype.height(), prototype.gap(), prototype.edgeOffset(),
+                    prototype.leftInset(), prototype.rightInset(), values);
         }
 
         private Object freeze(Object value, int depth) {
@@ -414,13 +438,38 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             return new TableRow(row.cells().stream().map(cell -> {
                 visit("cells");
                 var format = cell.format();
+                var active = new ArrayList<CellStyleRule.Overrides>();
+                for (var rule : rules.getOrDefault(cell, List.of())) {
+                    visit("cellRules");
+                    boolean match;
+                    Object actual = get(rule.path(), scope);
+                    try { match = rule.matches(actual); }
+                    catch (IllegalArgumentException ex) { throw error(BindingException.Code.TYPE_MISMATCH, rule.path()); }
+                    if (match) { format = rule.style().apply(format); active.add(rule.style()); }
+                }
                 if (cell.hasBlocks()) {
+                    if (!active.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "cellRules"); }
                     var children = cell.blocks().stream().map(block -> bind(block, scope, suffix, relocations, depth + 1)).toList();
                     return new TableCell("", format, List.of(), List.of(), List.of(), cell.columnSpan(), cell.rowSpan(), children);
                 }
                 var prototype = new Paragraph("cell", cell.text(), new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false), cell.inlines(), cell.images(), cell.fields());
                 var bound = bindParagraph(prototype, "cell", scope, relocations);
-                return new TableCell(bound.text(), format, bound.inlines(), bound.images(), bound.fields(), cell.columnSpan(), cell.rowSpan());
+                if (active.isEmpty()) {
+                    return new TableCell(bound.text(), format, bound.inlines(), bound.images(), bound.fields(), cell.columnSpan(), cell.rowSpan());
+                }
+                var content = new ArrayList<InlineContent>();
+                for (var part : bound.content()) {
+                    if (part instanceof InlineText text) {
+                        var appearance = text.style();
+                        for (var override : active) { appearance = override.apply(appearance); }
+                        content.add(new InlineText(text.text(), appearance, text.hyperlink()));
+                    } else if (part instanceof InlineField field) {
+                        var appearance = field.style();
+                        for (var override : active) { appearance = override.apply(appearance); }
+                        content.add(new InlineField(field.kind(), field.targetId(), field.width(), appearance));
+                    } else { content.add(part); }
+                }
+                return TableCell.builder().format(format).content(content).columnSpan(cell.columnSpan()).rowSpan(cell.rowSpan()).build();
             }).toList());
         }
         private Block bind(Block block, Scope scope, String suffix, Map<String, String> relocations, int depth) {
@@ -461,7 +510,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 visit("inlines");
                 return switch (item) {
                 case InlineText run -> (InlineContent) new InlineText(text(run.text(), scope), run.style(), hyperlink(run.hyperlink(), scope));
-                case InlineImage image -> new InlineImage(image.resource(), image.width(), image.height(), image.baselineShift(), text(image.altText(), scope), hyperlink(image.hyperlink(), scope));
+                case InlineImage image -> new InlineImage(image.resource(), image.width(), image.height(), image.baselineShift(),
+                        text(image.altText(), scope), hyperlink(image.hyperlink(), scope), image.rotation());
                 case InlineField field -> new InlineField(field.kind(), fieldTarget(field.targetId(), scope, relocations), field.width(), field.style());
                 };
             }).toList();
@@ -635,7 +685,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }
     /** Starts an independent builder from this value; referenced resources remain borrowed. */
-    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates).literalText(literalText).notes(notes).navigation(navigation); }
+    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates).literalText(literalText).notes(notes).navigation(navigation).cellRules(cellRules); }
 
     /** Mutable, task-confined construction state; built values do not retain this builder. */
     public static final class Builder {
@@ -649,6 +699,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private boolean literalText;
         private List<Note> notes = List.of();
         private DocumentNavigation navigation = DocumentNavigation.NONE;
+        private List<CellRule> cellRules = List.of();
 
         private Builder() { }
         public Builder metadata(DocumentMetadata value) { metadata = java.util.Objects.requireNonNull(value, "metadata"); return this; }
@@ -661,6 +712,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         /** Static global IDs/anchors; text is bound in root scope and shares the render budget. */
         public Builder notes(List<Note> values) { notes = List.copyOf(values); return this; }
         public Builder navigation(DocumentNavigation value) { navigation = Objects.requireNonNull(value, "navigation"); return this; }
+        /** Conditions attach by prototype identity, are evaluated in lexical scope, and share work budgets. */
+        public Builder cellRules(List<CellRule> values) { cellRules = List.copyOf(values); return this; }
         /** Maps passive prototype URI keys to expressions bound in the link's lexical scope.
          * Keys are valid ExternalDestination URIs; final values undergo the same validation after binding.
          * Does not fetch resources. Copies the map immediately; each render uses independent state.
@@ -675,6 +728,6 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder each(String path, String variable, java.util.function.Consumer<Nodes> configure) {
             var value = new Nodes(); configure.accept(value); return node(new Each(path, variable, value.snapshot()));
         }
-        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, navigation); }
+        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, navigation, cellRules); }
     }
 }

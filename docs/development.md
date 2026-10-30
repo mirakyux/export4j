@@ -33,6 +33,8 @@ powershell -NoProfile -File scripts/verify_local_consumer.ps1
 
 [GitHub Actions](../.github/workflows/build.yml)由推送 `main`、拉取请求及手动触发，覆盖 Java 21 三平台构建、API 检查、坐标消费、无打印依赖运行和临时密钥签名验证。实际远端结果、平台架构及未覆盖范围见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。
 
+固定语料使用 `python scripts/create_compatibility_corpus.py` 生成独立 OOXML 正／负控制，再运行消费者 `compatibilityCorpus`，最后用 `scripts/verify_compatibility_corpus.py` 独立检查内容、损失和双渲染。生成器要求新输出目录，避免复用残留文件。运行依赖公告门禁使用 `scripts/test_dependency_audit.py` 与 `scripts/audit_dependencies.py`，后者需要 OSV 网络访问。完整命令、依赖升级和本批新 CI 尚未远端执行的边界见[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)。
+
 Java 编译启用 `-Xlint:all -Werror`。依赖版本目录位于 `gradle/libs.versions.toml`，模块锁文件固定实际解析版本；有意升级时通过 `--write-locks` 更新，并同步依赖与许可证记录。
 
 ## 源码组织

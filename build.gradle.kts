@@ -71,7 +71,7 @@ subprojects {
         isReproducibleFileOrder = true
     }
     }
-    if (name != "examples") {
+    if (name != "examples" && name != "export4j-designer") {
         extensions.configure<PublishingExtension> {
             publications {
                 create<MavenPublication>("library") {
@@ -121,13 +121,13 @@ tasks.register("test") {
 tasks.register("publishLocalBundle") {
     group = "publishing"
     description = "Publishes all libraries and the BOM to build/repository, without remote access or user Maven writes."
-    dependsOn(subprojects.filter { it.name != "examples" }.map { "${it.path}:publishLibraryPublicationToIsolatedRepository" })
+    dependsOn(subprojects.filter { it.name != "examples" && it.name != "export4j-designer" }.map { "${it.path}:publishLibraryPublicationToIsolatedRepository" })
 }
 
 tasks.register("publishSignedBundle") {
     group = "publishing"
     description = "Stages explicitly signed Maven artifacts locally; never uploads or chooses a release version."
-    if (signPublications) { dependsOn("publishLocalBundle", "sbom") }
+    if (signPublications) { dependsOn("check", "publishLocalBundle", "sbom") }
     doFirst {
         check(signPublications) { "Use -Pexport4jSign=true and externally supplied signing material" }
         check(!publicationVersion.endsWith("-SNAPSHOT")) { "Signed distribution verification requires an explicit non-SNAPSHOT version" }
@@ -148,14 +148,14 @@ tasks.register<Exec>("apiCheck") {
     description = "Rejects removed/changed API declarations and newly required abstract members against the reviewed baseline."
     dependsOn("apiSnapshot")
     commandLine(verificationPython.get(), "scripts/verify_api_compatibility.py", "compare",
-        "--baseline", "verification/api/baseline-0.1.0-preview.json",
+        "--baseline", "verification/api/baseline-0.1.0-rc.1.json",
         "--candidate", layout.buildDirectory.file("reports/api/current.json").get().asFile.absolutePath,
         "--report", layout.buildDirectory.file("reports/api/compatibility.json").get().asFile.absolutePath)
 }
 
-val inventoryLibraries = subprojects.filter { it.name != "examples" && it.name != "export4j-bom" }
+val inventoryLibraries = subprojects.filter { it.name != "examples" && it.name != "export4j-bom" && it.name != "export4j-designer" }
 val reviewedRuntimeLicenses = mapOf(
-    "org.jsoup:jsoup:1.21.2" to "MIT",
+    "org.jsoup:jsoup:1.23.2" to "MIT",
     "org.apache.pdfbox:pdfbox:3.0.8" to "Apache-2.0",
     "org.apache.pdfbox:fontbox:3.0.8" to "Apache-2.0",
     "org.apache.pdfbox:pdfbox-io:3.0.8" to "Apache-2.0",

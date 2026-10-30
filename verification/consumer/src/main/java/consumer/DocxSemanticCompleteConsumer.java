@@ -76,7 +76,13 @@ public final class DocxSemanticCompleteConsumer {
             .feature("CUSTOM_BLOCK", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD).build();
     public static void main(String[] arguments) throws Exception {
         var output = Path.of(System.getProperty("consumer.outputDirectory", "build/output")).resolve("docx-semantic-complete"); Files.createDirectories(output);
-        if (arguments.length > 0 && arguments[0].equals("read-back")) { verifyWordSaved(output); return; }
+        if (arguments.length > 0 && arguments[0].equals("read-back")) {
+            verifyWordSaved(output.resolve("word-saved.docx"), output.resolve("word-read-back.json"), false); return;
+        }
+        if (arguments.length == 2 && arguments[0].equals("windows-ui-read-back")) {
+            var file = Path.of(arguments[1]);
+            verifyWordSaved(file, file.resolveSibling("word-ui-read-back.json"), true); return;
+        }
         var nativeSource = sample(); var sourceBytes = new ByteArrayOutputStream(); ADAPTER.writeSemantic(nativeSource, sourceBytes); Files.write(output.resolve("semantic-source.docx"), sourceBytes.toByteArray());
         var imported = ADAPTER.readSemantic(new ByteArrayInputStream(sourceBytes.toByteArray()), DocxAdapter.Policy.STRICT); if (!imported.diagnostics().isEmpty()) { throw new IllegalStateException("native source lost semantics"); }
         var prepared = ADAPTER.semanticConversion(sourceBytes.toByteArray()).edit(edit -> edit.setControlText("plain", "READY-NAME")
@@ -101,8 +107,10 @@ public final class DocxSemanticCompleteConsumer {
         }
         Files.writeString(output.resolve("summary.json"), "{\"sections\":2,\"tableDepth\":4,\"drawings\":2,\"comments\":1,\"revisionKinds\":6,\"controls\":" + nativeSource.controls().size() + ",\"nativeIssues\":" + prepared.report().issues().size() + ",\"crossFormatLosses\":" + losses + "}");
     }
-    private static void verifyWordSaved(Path output) throws Exception {
-        var file = output.resolve("word-saved.docx"); try (var input = Files.newInputStream(file)) {
+    private static void verifyWordSaved(Path file, Path reportFile, boolean uiOnly) throws Exception {
+        String expectedPlain = uiOnly ? "WINDOWS-UI-READY-NAME" : "WORD-EDITED-NAME";
+        String expectedTextbox = uiOnly ? "TEXTBOX-READY" : "WORD-TEXTBOX-READY";
+        try (var input = Files.newInputStream(file)) {
             var wordAdapter = DocxAdapter.builder().regionGeometry(new DocxAdapter.RegionGeometry(18, 3, 18, 3)).build();
             var result = wordAdapter.readSemantic(input, DocxAdapter.Policy.ALLOW_LOSS); var doc = result.document();
             if (doc.body().sections().size() != 2 || doc.drawings().size() != 2 || doc.controls().size() < 10 || doc.contents().size() != 1 || doc.comments().size() != 1) { throw new IllegalStateException("Word save lost native objects"); }
@@ -112,22 +120,23 @@ public final class DocxSemanticCompleteConsumer {
             for (var drawing : doc.drawings()) { if (drawing.content() instanceof TextBox box) { appendText(box.blocks(), boxes, paragraphs); } }
             var comments = new StringBuilder();
             for (var comment : doc.comments()) { appendText(comment.blocks(), comments, new LinkedHashMap<>()); }
-            if (!body.toString().contains("WORD-EDITED-NAME") || body.toString().contains("READY-NAME") || body.toString().contains("NAME-OLD")
-                    || !boxes.toString().contains("WORD-TEXTBOX-READY") || boxes.toString().replace("WORD-TEXTBOX-READY", "").contains("TEXTBOX-READY")
+            if (!body.toString().contains(expectedPlain) || body.toString().replace(expectedPlain, "").contains("READY-NAME") || body.toString().contains("NAME-OLD")
+                    || !boxes.toString().contains(expectedTextbox) || boxes.toString().replace(expectedTextbox, "").contains("TEXTBOX-READY")
                     || boxes.toString().contains("TEXTBOX-OLD") || !boxes.toString().contains("Box table")
                     || !body.toString().contains("DEEP-READY") || body.toString().contains("DEEP-OLD")
                     || !body.toString().contains("SECTION-TWO-READY") || !comments.toString().contains("COMMENT-READY: a real editable comment range.")) {
                 throw new IllegalStateException("Word edits, deep table, second section or comment text did not survive semantic import");
             }
             var plain = doc.controls().stream().filter(c -> c.tag().equals("plain")).findFirst().orElseThrow();
-            if (!rangeText(plain.range(), paragraphs).equals("WORD-EDITED-NAME")) { throw new IllegalStateException("Word plain control value was not imported"); }
+            if (!rangeText(plain.range(), paragraphs).equals(expectedPlain)) { throw new IllegalStateException("Word plain control value was not imported"); }
             var legacyText = doc.controls().stream().filter(c -> c.kind() == ControlKind.LEGACY_TEXT).findFirst().orElseThrow();
             var legacyList = doc.controls().stream().filter(c -> c.kind() == ControlKind.LEGACY_DROP_DOWN).findFirst().orElseThrow();
             var legacyCheck = doc.controls().stream().filter(c -> c.kind() == ControlKind.LEGACY_CHECKBOX).findFirst().orElseThrow();
             if (!rangeText(legacyText.range(), paragraphs).equals("FORM-READY") || !rangeText(legacyList.range(), paragraphs).equals("Second") || !legacyCheck.checked()) {
                 throw new IllegalStateException("Word save changed the actual legacy form values");
             }
-            var report = new StringBuilder("{\"sections\":2,\"actualControlEdit\":true,\"actualTextboxEdit\":true,\"deepTableTextPreserved\":true,\"commentTextPreserved\":true,\"legacyCurrentValuesPreserved\":true,\"drawings\":")
+            var report = new StringBuilder("{\"sections\":2,\"actualControlEdit\":true,\"actualTextboxEdit\":")
+                    .append(!uiOnly).append(",\"deepTableTextPreserved\":true,\"commentTextPreserved\":true,\"legacyCurrentValuesPreserved\":true,\"drawings\":")
                     .append(doc.drawings().size()).append(",\"controls\":").append(doc.controls().size()).append(",\"contents\":").append(doc.contents().size())
                     .append(",\"comments\":").append(doc.comments().size()).append(",\"diagnosticCount\":").append(result.diagnostics().size()).append(",\"diagnostics\":[");
             var features = new LinkedHashMap<String, Integer>(); boolean first = true;
@@ -139,7 +148,7 @@ public final class DocxSemanticCompleteConsumer {
             }
             report.append("],\"diagnosticsByFeature\":{"); first = true;
             for (var entry : features.entrySet()) { if (!first) { report.append(','); } first = false; report.append(json(entry.getKey())).append(':').append(entry.getValue()); }
-            Files.writeString(output.resolve("word-read-back.json"), report.append("}}").toString());
+            Files.writeString(reportFile, report.append("}}").toString());
         }
     }
     private static String rangeText(Range range, Map<String, String> paragraphs) {

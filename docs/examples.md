@@ -35,6 +35,19 @@
 | `:examples:variableSplitTables` | `examples/build/variable-split-tables/` | 行内格在变宽栏间按完整行续排，保留最终字段、图片和链接 |
 | `:examples:verifyPdfSignatures` | `examples/build/pdf-signature-verification/` | 显式离线 CMS 校验、未签追加及签名字节篡改区分 |
 
+## 可视化设计器与完整业务样例
+
+运行 `:export4j-designer:run` 启动可选 HTML 界面；运行 `:export4j-designer:scenarios` 无界面生成四套可重开的 XML／ZIP／JSON 样例。默认目录 `export4j-designer/build/scenarios` 应未存在，重复执行可指定新的 `-PdesignerOutputDirectory=build/<new-directory>`。
+
+| 样例 | 主要行为 | 本批页数 |
+| --- | --- | --- |
+| 巡检报告 | 变量、条件、循环、图片和源数据编辑 | 1 |
+| 密集静态检查表 | 14 行表格、静态正文勾选和审核留白 | 1 |
+| 分页库存台账 | 120 行、跨页重复表头及正文唯一有序 | 6 |
+| 目录与交叉引用 | 自动目录、标题导航、题注编号和最终页码引用 | 3 |
+
+每套输出六种格式；`report.json` 记录真实编码大小、耗时、观察堆用量和损失数，并完成 11 项失败控制。独立检查运行 `python scripts/verify_designer.py`；非默认源目录使用 `--source`。使用方法、显式字体与预算见[设计器指南](designer.md)，成本及全部页面证据见[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)。
+
 ## 原生 DOCX 与 HTML/CSS 布局
 
 这两组组合样例位于独立 Maven 调用方，消费本地发布坐标。先执行 `build sbom publishLocalBundle`，再为每次验证选择新的 `<validation-directory>`：

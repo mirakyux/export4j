@@ -59,8 +59,8 @@ class DocxColumnSpanTest {
         assertEquals(3, count(xml, "<w:gridCol "));
         assertEquals(6, count(xml, "<w:tc>"));
         assertEquals(2, count(xml, "<w:gridSpan "));
-        assertTrue(xml.contains("<w:tcPr><w:gridSpan w:val=\"3\"/></w:tcPr><w:p>"));
-        assertTrue(xml.contains("<w:tcPr><w:gridSpan w:val=\"2\"/></w:tcPr><w:p>"));
+        assertTrue(xml.contains("<w:gridSpan w:val=\"3\"/></w:tcPr><w:p>"));
+        assertTrue(xml.contains("<w:gridSpan w:val=\"2\"/></w:tcPr><w:p>"));
         assertFalse(xml.contains("<w:hMerge"));
         assertFalse(xml.contains("<w:vMerge"));
         assertEquals(1, packageParts.keySet().stream().filter(name -> name.startsWith("word/media/")).count());

@@ -52,7 +52,7 @@ final class DocxCells {
         List<Element> elements = new ArrayList<>();
         for (var element : children(body)) {
             if (!W.equals(element.getNamespaceURI())) { continue; }
-            if (element.getLocalName().equals("p") && !element.getAttributeNS(OD, "boundary").equals("true")) {
+            if (element.getLocalName().equals("p") && !element.getAttributeNS(OD, "boundary").equals("true") && !DocxTables.isSeparator(element)) {
                 budget.node(); elements.add(element);
             } else if (element.getLocalName().equals("tbl")) { indexTable(element, 1, elements, budget); }
         }
@@ -132,6 +132,7 @@ final class DocxCells {
         var direct = children(cell);
         for (int i = 0; i < direct.size(); i++) {
             var element = direct.get(i);
+            if (DocxTables.isSeparator(element)) { continue; }
             if (element.hasAttributeNS(OD, "cellTail")) {
                 if (!W.equals(element.getNamespaceURI()) || !element.getLocalName().equals("p")
                         || !element.getAttributeNS(OD, "cellTail").equals("true") || i != direct.size() - 1

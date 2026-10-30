@@ -4,6 +4,7 @@ package com.mirakyux.export4j.layout.core;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Map;
 import com.mirakyux.export4j.graphics.DisplayDocument;
 import com.mirakyux.export4j.graphics.DisplayPage;
 import com.mirakyux.export4j.graphics.DrawCommand;
@@ -28,10 +29,16 @@ public final class DocumentPainter {
 
     /** Paints black text and a thin table grid with gray headers; never changes layout geometry. */
     public static DisplayDocument paint(DocumentLayout layout) {
+        return paint(layout, Map.of());
+    }
+
+    /** Applies visual rotations supplied by the semantic source without changing measured flow boxes. */
+    public static DisplayDocument paint(DocumentLayout layout, Map<String, Double> rotations) {
         Objects.requireNonNull(layout, "layout");
+        rotations = Map.copyOf(rotations);
         List<DisplayPage> pages = new ArrayList<>();
         for (LayoutPage page : layout.pages()) {
-            pages.add(paintPage(page));
+            pages.add(paintPage(page, rotations));
         }
         return new DisplayDocument(layout.metadata(), pages);
     }
@@ -53,20 +60,34 @@ public final class DocumentPainter {
      * Performs no measurement, pagination, I/O or ownership transfer. Thread-safe for immutable input.
      */
     public static DisplayPage paintPage(LayoutPage page) {
+        return paintPage(page, Map.of());
+    }
+
+    /** Draws a page with rotations fitted inside each fragment's measured box. */
+    public static DisplayPage paintPage(LayoutPage page, Map<String, Double> rotations) {
         Objects.requireNonNull(page, "page");
+        Objects.requireNonNull(rotations, "rotations");
         DisplayListBuilder builder = new DisplayListBuilder(page.size());
         for (var fragment : page.elements()) {
             com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+            double rotation = rotations.getOrDefault(fragment.blockId(), 0.0);
+            Rect bounds = switch (fragment) {
+                case ParagraphFragment p -> new Rect(p.origin().x(), p.origin().y(), p.layout().width(), p.layout().height());
+                case TableFragment t -> new Rect(t.origin().x(), t.origin().y(), t.width(), t.height());
+                case ComponentFragment c -> new Rect(c.origin().x(), c.origin().y(), c.layout().width(), c.layout().height());
+            };
+            if (rotation != 0) { builder.save().transform(AffineTransform.fittedRotation(bounds, rotation)); }
             switch (fragment) {
                 case ParagraphFragment paragraph ->
                     TextLayoutPainter.draw(builder, paragraph.layout(), paragraph.origin(), RgbColor.BLACK);
-                case TableFragment table -> paintTable(builder, table);
+                case TableFragment table -> paintTable(builder, table, rotations);
                 case ComponentFragment component -> {
                     builder.save().transform(AffineTransform.translation(component.origin().x(), component.origin().y()));
                     paintComponent(builder, component.layout());
                     builder.restore();
                 }
             }
+            if (rotation != 0) { builder.restore(); }
         }
         return builder.build();
     }
@@ -92,7 +113,7 @@ public final class DocumentPainter {
                     && component.semanticPlacements().get(slot).commandIndex() == index) {
                 var placement = component.semanticPlacements().get(slot++);
                 var table = new DisplayListBuilder(new com.mirakyux.export4j.model.PageSize(component.width(), component.height()));
-                paintTable(table, placement.fragment());
+                paintTable(table, placement.fragment(), Map.of());
                 commands.addAll(table.build().commands());
             }
             if (index < staticCommands.size()) { commands.add(staticCommands.get(index)); }
@@ -100,7 +121,7 @@ public final class DocumentPainter {
         builder.appendCommands(commands);
     }
 
-    private static void paintTable(DisplayListBuilder builder, TableFragment table) {
+    private static void paintTable(DisplayListBuilder builder, TableFragment table, Map<String, Double> rotations) {
         for (var row : table.rows()) {
             for (var cell : row.cells()) {
                 Rect bounds = cell.bounds();
@@ -126,12 +147,20 @@ public final class DocumentPainter {
                     builder.save().transform(AffineTransform.translation(contentOrigin.x(), contentOrigin.y()));
                     for (var fragment : cell.blocks()) {
                         com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                        double angle = rotations.getOrDefault(fragment.blockId(), 0.0);
+                        Rect fragmentBounds = switch (fragment) {
+                            case ParagraphFragment p -> new Rect(p.origin().x(), p.origin().y(), p.layout().width(), p.layout().height());
+                            case TableFragment t -> new Rect(t.origin().x(), t.origin().y(), t.width(), t.height());
+                            case ComponentFragment c -> new Rect(c.origin().x(), c.origin().y(), c.layout().width(), c.layout().height());
+                        };
+                        if (angle != 0) { builder.save().transform(AffineTransform.fittedRotation(fragmentBounds, angle)); }
                         switch (fragment) {
                             case ParagraphFragment paragraph -> TextLayoutPainter.draw(builder,
                                     paragraph.layout(), paragraph.origin(), RgbColor.BLACK);
-                            case TableFragment nested -> paintTable(builder, nested);
+                            case TableFragment nested -> paintTable(builder, nested, rotations);
                             case ComponentFragment ignored -> throw new IllegalArgumentException("unsupported cell IR component");
                         }
+                        if (angle != 0) { builder.restore(); }
                     }
                     builder.restore();
                 } else {

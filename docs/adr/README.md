@@ -122,3 +122,4 @@
 | 0103 | [类型化 DOCX 专有语义](0103-typed-native-docx-semantics.md) | 已采纳；标准结构重建、锚点编辑、批注／修订／控件／目录及明确投影损失 |
 | 0104 | [有界离线 HTML/CSS 布局](0104-bounded-html-css-layout.md) | 已采纳；显式模式、组件树、媒体／分页与 Flex／Grid，源和布局预算保持 |
 | 0105 | [显式 API 基线与签名分发](0105-explicit-api-baseline-and-signed-distribution.md) | 已采纳；固定旧提交、保守兼容检查、显式平台与本地签名包，远端发布独立授权 |
+| 0106 | [可选 HTML 模板设计器](0106-optional-html-template-designer.md) | 已采纳；独立应用、保留源码、同引擎预览／导出及显式损失 |
