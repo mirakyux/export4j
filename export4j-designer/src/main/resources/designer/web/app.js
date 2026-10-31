@@ -4,8 +4,8 @@ const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="designer-token"]').content;
 let state, selected, selectedPaths = [], entries = [], pages = [], currentPage = 0, busy = false, propertyDirty = false;
 let bundleDirty = true, savedData = '', filename = '未命名模板', exportReport, lastReport = {};
-let assetKind, pendingFont, dragging, nodeXmlDirty=false;
-let previewId = '', previewGeneration = 0, previewTimer, previewQueue = Promise.resolve();
+let assetKind, pendingFont, dragging, nodeXmlDirty=false, nodeTextDirty=false;
+let previewId = '', previewGeneration = 0, previewTimer, previewQueue = Promise.resolve(), previewFormats = {};
 const changedAttributes = new Set();
 const extensions = {PDF:'pdf', DOCX:'docx', HTML:'html', MARKDOWN:'md', SVG:'svg.zip', PNG:'png.zip'};
 
@@ -31,7 +31,7 @@ async function run(work) {
     if (busy) return;
     busy = true; document.body.classList.add('busy');$('cancel').hidden=false;BodyEditor.lock(true);
     document.querySelectorAll('button,select,textarea,input:not([type=file])').forEach(control => control.disabled = control.id !== 'cancel');
-    try { await work(); }
+    try { DesignerStudio.sync(); await DesignerStudioBridge.settled(); await work(); }
     catch (error) {
         const report={...(error.report||($('export-dialog').open?exportReport:undefined)),error:error.message};
         status(error.message, true);
@@ -48,10 +48,12 @@ async function run(work) {
         busy = false; document.body.classList.remove('busy');$('cancel').hidden=true;
         document.querySelectorAll('button,select,textarea,input').forEach(control => control.disabled = false);
         $('cancel').disabled = true; refreshButtons();
+        document.dispatchEvent(new Event('designer-idle'));DesignerStudio.sync();
     }
 }
 function refreshButtons() {
-    $('undo').disabled = busy || !state?.canUndo; $('redo').disabled = busy || !state?.canRedo;
+    const history=DesignerStudioBridge.snapshot();
+    $('undo').disabled = busy || !history.canUndo; $('redo').disabled = busy || !history.canRedo;
     $('download-export').disabled = busy;
     $('download-loss-report').disabled = busy || !exportReport;
     $('previous').disabled = busy || currentPage <= 0;
@@ -84,10 +86,11 @@ function invalidate() {
 function flatten(entry, depth = 0) {
     entries.push({...entry, depth}); entry.children.forEach(child => flatten(child, depth + 1));
 }
-function install(value, changed = true) {
+function install(value, changed = true, options = {}) {
+    DesignerStudioBridge.accepted(value,options);
     const oldId = selected?.id, oldPath = selected?.path, oldSelections = selectedPaths.map(path => entries.find(entry => entry.path === path)).filter(Boolean);
     state = value; $('source').value = value.source; $('data').value = value.data;
-    propertyDirty = false; nodeXmlDirty=false; changedAttributes.clear(); entries = []; flatten(value.outline);
+    propertyDirty = false; nodeXmlDirty=false; nodeTextDirty=false; changedAttributes.clear(); entries = []; flatten(value.outline);
     if (changed) bundleDirty = true;
     selected = entries.find(entry => oldId && entry.id === oldId) ?? entries.find(entry => entry.path === oldPath) ?? entries[0];
     selectedPaths = oldSelections.map(old => entries.find(entry => old.id && entry.id === old.id) ?? entries.find(entry => entry.path === old.path)).filter(Boolean).map(entry => entry.path);
@@ -121,7 +124,11 @@ function nodeAt(path) {
     return node;
 }
 async function choose(entry, event, group) {
-    try { if (propertyDirty || sourceChanged() || dataChanged()) await drafts(); }
+    try {
+        if(propertyDirty)await applyProperties();
+        if(sourceChanged()||dataChanged())await DesignerStudioBridge.apply($('source').value);
+        entry=entries.find(item=>entry.id&&item.id===entry.id)??entries.find(item=>item.path===entry.path)??entry;
+    }
     catch(error){status('无法切换元素：'+error.message,true);diagnostics({error:error.message});return;}
     let paths = group?.map(item => item.path) ?? [entry.path];
     if (event?.shiftKey && selected?.path && !group) {
@@ -133,7 +140,7 @@ async function choose(entry, event, group) {
     selectedPaths = [...new Set(paths)];
     selected = selectedPaths.includes(entry.path) ? entry : entries.find(item => item.path === selectedPaths.at(-1));
     if (!selected) { selected = entry; selectedPaths = [entry.path]; }
-    propertyDirty = false; nodeXmlDirty=false; inspect();
+    propertyDirty = false; nodeXmlDirty=false; nodeTextDirty=false; inspect();
     $('properties').scrollTop=0;
 }
 function inspect() {
@@ -147,6 +154,7 @@ function inspect() {
     $('node-text').value = node.children.length ? '' : node.textContent; $('node-text').readOnly = !!node.children.length;
     if(multi){$('node-text').value='';$('node-text').readOnly=true;}
     $('text-help').textContent = multi ? '多选时只修改共同属性；ID 和正文需单独编辑。' : node.children.length ? '当前节点含子元素，请选择子节点或编辑节点 XML。' : '支持模板变量，例如 ${title}。';
+    nodeTextDirty=false;
     $('node-xml').value = new XMLSerializer().serializeToString(node);
     Editor.inspect(node);
     $('node-source').hidden=multi;
@@ -170,12 +178,12 @@ function nodeDirtyLabel() {
 async function drafts() {
     if (propertyDirty) await applyProperties();
     if (sourceChanged() || dataChanged()) {
-        const changed = sourceChanged();
-        install(await request('apply', {source:$('source').value, data:$('data').value}), changed);
-        schedulePreview();
+        await DesignerStudioBridge.apply($('source').value);
     }
+    await DesignerStudioBridge.flush();
 }
 async function edit(operation, render = true) {
+    await DesignerStudioBridge.flush(false);
     if (propertyDirty && !['properties','replace','batch-properties'].includes(operation.operation)) throw new Error('请先完成当前节点修改。');
     if (sourceChanged() || dataChanged()) throw new Error('请先应用模板源码或测试数据修改。');
     const path = operation.path ?? selected.path;
@@ -193,9 +201,11 @@ async function preview(generation=++previewGeneration) {
     clearTimeout(previewTimer);
     const payload={source:Editor.pageDraftSource(draftSource()),data:$('data').value};
     status('正在排版文档…');
-    const result = await request('preview', payload);
+    let result;
+    try{result=await request('preview',payload);}catch(error){if(generation===previewGeneration)DesignerStudioBridge.previewFailed();throw error;}
     if(generation!==previewGeneration)return;
-    pages = result.pages; previewId=result.previewId;
+    DesignerStudioBridge.previewed(draftSource());
+    pages = result.pages; previewId=result.previewId; previewFormats=result.formats||{};
     diagnostics({milliseconds:result.milliseconds, pages:pages.length, diagnostics:result.diagnostics});
     DesignerCanvas.render(); $('preview-status').textContent = result.milliseconds + ' ms · ' + pages.length + ' 页'; status('预览完成 · ' + pages.length + ' 页');
 }
@@ -215,22 +225,49 @@ function attributeValues(){
     document.querySelectorAll('.attribute-row').forEach(row=>{const fields=row.querySelectorAll('input'),name=fields[0].value.trim();if(name){if(Object.hasOwn(values,name))throw new Error('属性名不能重复。');values[name]=fields[1].value;}});
     return values;
 }
+function draftNode(document,path) {
+    const entry=entries.find(entry=>entry.path===path);
+    const matches=id=>[...document.querySelectorAll('[id]')].filter(node=>node.getAttribute('id')===id);
+    if(entry?.id){const nodes=matches(entry.id);if(nodes.length===1)return nodes[0];if(nodes.length>1)throw new Error('元素 ID 重复，请先修正 XML。');}
+    // An edited paragraph can have inserted siblings. Resolve an ID-bearing ancestor before using its relative path.
+    let original=nodeAt(path),suffix=[];
+    while(original?.parentElement){
+        suffix.unshift([...original.parentElement.children].indexOf(original));original=original.parentElement;
+        const id=original.getAttribute('id');if(!id)continue;
+        const nodes=matches(id);if(nodes.length!==1)continue;
+        let node=nodes[0];for(const index of suffix)node=node?.children[index];
+        if(node&&(!entry||node.tagName===entry.tag))return node;
+        throw new Error('元素位置已变化，请重新选择后修改属性。');
+    }
+    const node=nodeForPath(document,path);
+    if(!node||entry&&node.tagName!==entry.tag)throw new Error('元素位置已变化，请重新选择后修改属性。');
+    return node;
+}
 function draftSource(){
     if(!propertyDirty)return $('source').value;
-    if(sourceChanged())throw new Error('请先完成XML 编辑。');
-    const document=new DOMParser().parseFromString(state.source,'application/xml');
-    if(document.querySelector('parsererror'))throw new Error('XML 无法解析。');
-    if(nodeXmlDirty){const replacement=new DOMParser().parseFromString($('node-xml').value,'application/xml');if(replacement.querySelector('parsererror'))throw new Error('节点 XML 无法解析。');nodeForPath(document,selected.path).replaceWith(document.importNode(replacement.documentElement,true));}
-    else if(selectedPaths.length>1){const values=attributeValues();selectedPaths.forEach(path=>{const node=nodeForPath(document,path);changedAttributes.forEach(name=>{if(name==='id')throw new Error('ID 只能逐个修改。');if(values[name])node.setAttribute(name,values[name]);else node.removeAttribute(name);});});}
-    else if(Editor.richDirty){const replacement=new DOMParser().parseFromString(Editor.bodyXml(attributeValues()),'application/xml');nodeForPath(document,selected.path).replaceWith(document.importNode(replacement.documentElement,true));}
-    else{const node=nodeForPath(document,selected.path),values=attributeValues();[...node.attributes].forEach(attribute=>node.removeAttribute(attribute.name));Object.entries(values).forEach(([name,value])=>node.setAttribute(name,value));if(!$('node-text').readOnly)node.textContent=$('node-text').value;}
+    const document=new DOMParser().parseFromString($('source').value,'application/xml');
+    if(document.querySelector('parsererror'))throw new Error('XML 无法解析，修改已保留，请先修正 XML。');
+    if(nodeXmlDirty){const replacement=new DOMParser().parseFromString($('node-xml').value,'application/xml');if(replacement.querySelector('parsererror'))throw new Error('节点 XML 无法解析。');draftNode(document,selected.path).replaceWith(document.importNode(replacement.documentElement,true));}
+    else if(Editor.richDirty){const replacement=new DOMParser().parseFromString(Editor.bodyXml(attributeValues()),'application/xml');if(replacement.querySelector('parsererror'))throw new Error('正文 XML 无法解析。');draftNode(document,selected.path).replaceWith(document.importNode(replacement.documentElement,true));}
+    else {
+        const values=attributeValues();
+        selectedPaths.forEach(path=>{
+            const node=draftNode(document,path);
+            changedAttributes.forEach(name=>{
+                if(selectedPaths.length>1&&name==='id')throw new Error('ID 只能逐个修改。');
+                if(values[name])node.setAttribute(name,values[name]);else node.removeAttribute(name);
+            });
+            // The inspector may still display text from before a canvas edit. Only an explicit text edit replaces it.
+            if(selectedPaths.length===1&&nodeTextDirty&&!$('node-text').readOnly)node.textContent=$('node-text').value;
+        });
+    }
     return new XMLSerializer().serializeToString(document);
 }
 function nodeForPath(document,path){let node=document.documentElement;if(path)path.slice(1).split('/').forEach(index=>node=node.children[Number(index)]);return node;}
 async function page(index) {
     DesignerCanvas.scrollTo(index);
 }
-function highlight() { DesignerCanvas.highlight(); }
+function highlight() { DesignerCanvas.highlight(); DesignerStudio.sync(); }
 function zoom() { DesignerCanvas.zoom(); }
 function download(blob, name) {
     const url = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click();
@@ -330,13 +367,12 @@ async function moveSelection(direction){
     if(indexes.includes(edge+direction)||!entries.some(entry=>entry.path===target))throw new Error('所选元素已到容器边界。');
     await edit({operation:'batch-relocate',paths,target,after:direction>0});
 }
-on('undo', async () => { if (propertyDirty || sourceChanged() || dataChanged()) { if (!(await ask('放弃未应用修改并撤销？'))) return; } install(await request('undo', {})); await preview(); });
-on('redo', async () => { if (propertyDirty || sourceChanged() || dataChanged()) { if (!(await ask('放弃未应用修改并重做？'))) return; } install(await request('redo', {})); await preview(); });
+for(const direction of ['undo','redo'])$(direction).addEventListener('click',()=>DesignerStudioBridge.history(direction).catch(error=>{status(error.message,true);diagnostics({error:error.message});}));
 async function newDocument(kind, sample) {
     if (!(await discard())) return;
     clearTimeout(previewTimer);
     const next = await request('new', {kind, ...(sample === undefined ? {} : {sample})});
-    selected = undefined; selectedPaths = []; install(next);
+    selected = undefined; selectedPaths = []; install(next,true,{session:true});
     filename = kind === 'blank' ? '未命名模板' : state.samples.find(item => item.index === sample).name;
     savedData = '';
     markDirty(); $('sample-dialog').close();
@@ -385,7 +421,7 @@ on('open', async () => { if (await discard()) { $('open-file').value = ''; $('op
 $('open-file').addEventListener('change', () => run(async () => {
     const file = $('open-file').files[0]; if (!file) return;
     const type = file.name.toLowerCase().endsWith('.xml') ? 'xml' : 'zip';
-    install(await request('open', {type,bytes:await bytes(file)}), false); bundleDirty = false; filename = file.name; savedData = '{}'; markDirty();
+    install(await request('open', {type,bytes:await bytes(file)}), false,{session:true}); bundleDirty = false; filename = file.name; savedData = '{}'; markDirty();
     status('模板已打开；动态模板请加载对应 JSON 数据。');
 }));
 on('load-data', async () => { $('data-file').value = ''; $('data-file').click(); });
@@ -393,18 +429,13 @@ $('data-file').addEventListener('change', () => run(async () => { const file = $
 on('add-attribute', async () => { attributeRow(); propertyDirty = true; nodeDirtyLabel(); });
 async function applyProperties() {
     if(!propertyDirty)return;
-    const attributes=attributeValues();
-    if(nodeXmlDirty)await edit({operation:'replace',xml:$('node-xml').value},false);
-    else if(selectedPaths.length>1){
-        const changes={};changedAttributes.forEach(name=>{if(name==='id')throw new Error('ID 只能逐个修改。');changes[name]=attributes[name]??'';});
-        await edit({operation:'batch-properties',paths:selectedPaths,attributes:changes},false);
-    }
-    else if(Editor.richDirty)await edit({operation:'replace',xml:Editor.bodyXml(attributes)},false);
-    else await edit({operation:'properties',attributes,plain:!$('node-text').readOnly,text:$('node-text').value},false);
+    const source=draftSource(),ids=selectedPaths.map(path=>entries.find(entry=>entry.path===path)?.id).filter(Boolean);
+    await DesignerStudioBridge.apply(source,ids,selectedPaths);
+    await DesignerStudioBridge.flush();
 }
 on('apply-properties', applyProperties);
 on('apply-node', applyProperties);
-for (const id of ['node-text','node-xml']) $(id).addEventListener('input', () => { propertyDirty = true;if(id==='node-xml')nodeXmlDirty=true;nodeDirtyLabel();schedulePreview(); });
+for (const id of ['node-text','node-xml']) $(id).addEventListener('input', () => { propertyDirty = true;if(id==='node-xml')nodeXmlDirty=true;else nodeTextDirty=true;nodeDirtyLabel();schedulePreview(); });
 for (const id of ['source','data']) $(id).addEventListener('input', () => { markDirty();schedulePreview(); });
 function clearExportReport() {
     exportReport=undefined;
@@ -453,4 +484,5 @@ Editor.start();
 DesignerCanvas.start();
 DesignerActions.start();
 DesignerWorkspace.start();
+DesignerStudio.start(DesignerStudioBridge);
 run(async () => { install(await request('state'),false); await preview(); });

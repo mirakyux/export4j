@@ -1,5 +1,11 @@
 Export4j
 
+The optional template designer bundles React, React DOM, scheduler and the
+ProseMirror editing packages under the MIT License. Exact versions, integrity
+records and original license locations are listed in
+third-party/designer-browser-components.json. Full original notices also ship
+with the browser bundle as THIRD-PARTY-NOTICES.txt.
+
 This project uses the following third-party components. Their original license
 terms are preserved under third-party/licenses and inside dependency artifacts.
 

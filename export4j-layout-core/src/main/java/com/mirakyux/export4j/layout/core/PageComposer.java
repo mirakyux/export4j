@@ -78,11 +78,19 @@ public final class PageComposer {
             throw new IllegalArgumentException("one composition specification is required per page");
         }
         long placements = 0;
+        var selected = new java.util.HashSet<Placement>();
+        var rendered = new java.util.HashSet<Placement>();
+        int physicalPage = 0;
         for (var spec : specs) {
+            physicalPage++;
+            for (var placement : java.util.stream.Stream.concat(spec.template().background().stream(), spec.template().foreground().stream()).toList()) {
+                if (placement.page() > 0) { selected.add(placement); if (placement.page() == physicalPage) { rendered.add(placement); } }
+            }
             spec.template().bodySettings(spec.settings());
             placements += spec.template().background().size() + (long) spec.template().foreground().size()
                     + spec.template().header().placements().size() + spec.template().footer().placements().size();
         }
+        if (!rendered.containsAll(selected)) { throw new IllegalArgumentException("positioned page is outside its declaring section or selected page variant"); }
         if (placements > limits.maxPlacements()) {
             throw new IllegalArgumentException("component placement budget exceeded");
         }
@@ -140,6 +148,8 @@ public final class PageComposer {
             int page, int pageCount, int pageNumber, long commands, List<PageComposition.Placed> traces, PageComposition.Region region) {
         for (int index = 0; index < placements.size(); index++) {
             Placement placement = placements.get(index);
+            if (placement.page() > pageCount) { throw new IllegalArgumentException("placement page exceeds final page count"); }
+            if (placement.page() != 0 && placement.page() != page + 1) { continue; }
             Rect viewport = placement.position().resolve(parent);
             requireContained(viewport, parent);
             var layout = placement.component().layout(new ComponentContext(viewport.width(), viewport.height(), fonts, page, pageCount, pageNumber, roles));

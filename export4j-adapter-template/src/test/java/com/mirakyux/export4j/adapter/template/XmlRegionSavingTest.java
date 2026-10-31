@@ -74,6 +74,22 @@ class XmlRegionSavingTest {
                 .paragraphs().getFirst().text().contains("edited"));
     }
 
+    @Test void pageSelectorAndAdaptiveGeometrySurviveBindingEditingAndBundleReopening() throws IOException {
+        var overlay = new PageOverlay(20, 30, 150, new PageRegion(50, 0, List.of(paragraph("floating", "${value}"))),
+                2, PageOverlay.SizeMode.FILL, PageOverlay.SizeMode.AUTO, PageOverlay.BodyFlow.AVOID);
+        var source = new PageDocument(Document.builder().build(), PageRegions.builder().foreground(overlay).build());
+        var bound = new DocumentTemplate(source.document().metadata(), source.document().pageSettings(), List.of(), DocumentTemplate.Limits.DEFAULT, source.pageRegions())
+                .renderWithPageRegions(Map.of("value", "Retained"));
+        assertEquals(2, bound.pageRegions().foreground().getFirst().page());
+        var saved = XmlTemplateWriter.from(bound).prepare().bundle();
+        var restored = XmlTemplateBundle.read(saved.encode()).compile().renderWithPageRegions(Map.of());
+        assertEquals(bound, restored);
+        var edited = DocumentEditor.edit(restored).replaceText("floating", "Retained", "Changed").execute().document();
+        assertEquals(overlay.widthMode(), edited.pageRegions().foreground().getFirst().widthMode());
+        assertEquals(overlay.heightMode(), edited.pageRegions().foreground().getFirst().heightMode());
+        assertEquals(PageOverlay.BodyFlow.AVOID, edited.pageRegions().foreground().getFirst().bodyFlow());
+    }
+
     @Test void pageDocumentUsesTheExistingNonSectionedEntryPoint() throws IOException {
         var source = new PageDocument(new Document(DocumentMetadata.EMPTY, PageSettings.A4, List.of(paragraph("body", "Body"))),
                 PageRegions.builder().header(band("h")).build());

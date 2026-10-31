@@ -69,6 +69,97 @@ class DesignerTest {
         assertTrue(result.report().losses().isEmpty());
         assertTrue(output.size() > 1000);
     }
+    @Test void selectedPageObjectsKeepTheirPageAfterFlowRemovalAndResolveAdaptiveDimensions() throws Exception {
+        var blank = DesignerSamples.blank();
+        String source = "<document version='1'><page width='300' height='240' margin='20'/><foreground>"
+                + "<box x='30' y='40' width='100' height='10' page='2' width-mode='FILL' height-mode='AUTO'>"
+                + "<p id='fixed' size='10' line-height='15'>First\nSecond\nThird</p></box></foreground></document>";
+        var preview = DesignerService.preview(blank.source(source, "{}"), DesignerService.execution(() -> false));
+        assertEquals(2, preview.layout().display().pages().size());
+        var hit = preview.hits().stream().filter(value -> value.id().equals("fixed")).findFirst().orElseThrow();
+        assertEquals(1, hit.page()); assertEquals(30, hit.x()); assertEquals(40, hit.y());
+        assertEquals(270, hit.width()); assertEquals(45, hit.height(), 0.001);
+        assertEquals(1, preview.hits().stream().filter(value -> value.id().equals("fixed")).count());
+        var overflow = source.replace("y='40'", "y='220'");
+        assertThrows(IllegalArgumentException.class, () -> DesignerService.preview(blank.source(overflow, "{}"), DesignerService.execution(() -> false)));
+    }
+    @Test void movingParagraphToPageLayerRetainsResolvedBodyStyleAndTemplateContent() throws Exception {
+        String source = "<document version='1'><page size='A4'/><header height='24'><p id='header'>Header</p></header>"
+                + "<p id='moving' color='#224488' role='bold'>A ${name}<span size='14'>B</span></p></document>";
+        var project = DesignerSamples.blank().source(source, "{\"name\":\"Ada\"}");
+        var before = project.bundle().compile().renderWithPageRegions(Map.of("name", "Ada")).document().paragraphs().getFirst();
+        var preview = DesignerService.preview(project, DesignerService.execution(() -> false));
+        assertEquals("12.0", preview.formats().get("/2").get("size"));
+        assertEquals("10.0", preview.formats().get("/1/0").get("size"));
+        var document = DesignerXml.parse(source); var paragraph = DesignerXml.at(document, "/2");
+        preview.formats().get("/2").forEach((key, value) -> { if (!paragraph.hasAttribute(key)) { paragraph.setAttribute(key, value); } });
+        var layer = document.createElement("foreground"); document.getDocumentElement().insertBefore(layer, paragraph);
+        var box = document.createElement("box");
+        Map.of("x", "30", "y", "50", "width", "400", "height", "80").forEach(box::setAttribute);
+        layer.appendChild(box); box.appendChild(paragraph);
+        String changed = DesignerXml.serialize(document);
+        assertTrue(changed.contains("${name}"));
+        var after = project.source(changed, project.data()).bundle().compile().renderWithPageRegions(Map.of("name", "Ada"));
+        var placed = (com.mirakyux.export4j.model.Paragraph) after.pageRegions().foregrounds().getFirst().blocks().getFirst();
+        assertEquals(before.format(), placed.format()); assertEquals(before.inlines(), placed.inlines());
+        assertEquals(before.text(), placed.text());
+    }
+    @Test void mergedAndDynamicTableCellsMapToTheirRetainedTemplateRatherThanRenderedValues() throws Exception {
+        String source = "<document version='1'><page size='A4'/><table id='grid'><columns><column weight='1'/><column weight='1'/></columns>"
+                + "<row><cell row-span='2'>Merged</cell><cell>A</cell></row><row><cell>B</cell></row></table>"
+                + "<rows id='dynamic' items='items' as='item'><columns><column weight='1'/></columns><row><cell>${item}</cell></row></rows></document>";
+        var preview = DesignerService.preview(DesignerSamples.blank().source(source, "{\"items\":[\"One\",\"Two\"]}"), DesignerService.execution(() -> false));
+        var cell = preview.hits().stream().filter(hit -> hit.id().equals("grid#1:1")).findFirst().orElseThrow();
+        assertEquals("/1/2/0", cell.path());
+        var dynamic = preview.hits().stream().filter(hit -> hit.id().startsWith("dynamic#")).toList();
+        assertEquals(2, dynamic.size()); assertEquals(dynamic.getFirst().path(), dynamic.getLast().path());
+        assertEquals("${item}", DesignerXml.at(DesignerXml.parse(source), dynamic.getFirst().path()).getTextContent());
+    }
+    @Test void fixedMergedTableCellsRetainSourcePathsAndActualLocalGeometry() throws Exception {
+        String table = "<table id='%s' padding-top='0' padding-right='0' padding-bottom='0' padding-left='0' space-after='0'>"
+                + "<columns><column weight='1'/><column weight='1'/></columns>"
+                + "<row><cell row-span='2' size='10' line-height='12'>${value}</cell><cell size='10' line-height='12'>A</cell></row>"
+                + "<row><cell size='10' line-height='12'>B</cell></row></table>";
+        String source = "<document version='1'><page width='240' height='240' margin='20'/><foreground>"
+                + "<box x='30' y='80' width='200' height='80' page='1'>" + table.formatted("fixed")
+                + "</box></foreground>" + table.formatted("body") + "</document>";
+        var preview = DesignerService.preview(DesignerSamples.blank().source(source, "{\"value\":\"Merged\"}"),
+                DesignerService.execution(() -> false));
+        var fixedCells = preview.hits().stream().filter(hit -> hit.id().startsWith("fixed#")).toList();
+        assertEquals(3, fixedCells.size());
+        for (var cell : fixedCells) {
+            var original = preview.hits().stream().filter(hit -> hit.id().equals(cell.id().replace("fixed#", "body#"))).findFirst().orElseThrow();
+            assertEquals(original.x() + 10, cell.x(), 0.001);
+            assertEquals(original.y() + 60, cell.y(), 0.001);
+            assertEquals(original.width(), cell.width(), 0.001); assertEquals(original.height(), cell.height(), 0.001);
+        }
+        var merged = fixedCells.stream().filter(hit -> hit.id().equals("fixed#0:0")).findFirst().orElseThrow();
+        var secondRow = fixedCells.stream().filter(hit -> hit.id().equals("fixed#1:1")).findFirst().orElseThrow();
+        assertEquals("/1/0/0/1/0", merged.path()); assertEquals("/1/0/0/2/0", secondRow.path());
+        assertEquals("${value}", DesignerXml.at(DesignerXml.parse(source), merged.path()).getTextContent());
+        assertEquals(12, secondRow.y() - merged.y(), 0.001);
+        var rotated = DesignerService.preview(DesignerSamples.blank().source(source.replace("id='fixed'", "id='fixed' rotation='90'"),
+                "{\"value\":\"Merged\"}"), DesignerService.execution(() -> false));
+        assertTrue(rotated.hits().stream().anyMatch(hit -> hit.id().equals("fixed")));
+        assertFalse(rotated.hits().stream().anyMatch(hit -> hit.id().startsWith("fixed#")),
+                "unrotated cell editor boxes must not be drawn over rotated table content");
+    }
+    @Test void multipleFixedRegionChildrenKeepIndividualParagraphTableAndCellTargets() throws Exception {
+        String source = "<document version='1'><page width='300' height='240' margin='20'/><foreground>"
+                + "<box x='40' y='50' width='200' height='100'><p id='intro' size='10' line-height='12' space-after='0'>Intro</p>"
+                + "<table id='fixed' padding-top='0' padding-right='0' padding-bottom='0' padding-left='0' space-after='0'>"
+                + "<columns><column weight='1'/></columns><row><cell size='10' line-height='12'>Cell</cell></row>"
+                + "</table></box></foreground><notes><note id='note' paragraph='body' kind='FOOTNOTE'>Footnote</note></notes>"
+                + "<p id='body'>Body note anchor</p></document>";
+        var preview = DesignerService.preview(DesignerSamples.blank().source(source, "{}"), DesignerService.execution(() -> false));
+        var paragraph = preview.hits().stream().filter(hit -> hit.id().equals("intro")).findFirst().orElseThrow();
+        var table = preview.hits().stream().filter(hit -> hit.id().equals("fixed")).findFirst().orElseThrow();
+        var cell = preview.hits().stream().filter(hit -> hit.id().equals("fixed#0:0")).findFirst().orElseThrow();
+        assertEquals("/1/0/0", paragraph.path()); assertEquals("/1/0/1", table.path()); assertEquals("/1/0/1/1/0", cell.path());
+        assertEquals(40, paragraph.x(), 0.001); assertEquals(50, paragraph.y(), 0.001);
+        assertEquals(40, table.x(), 0.001); assertEquals(62, table.y(), 0.001);
+        assertEquals(table.x(), cell.x(), 0.001); assertEquals(table.y(), cell.y(), 0.001);
+    }
     @Test void jsonRetainsNestedBindingTypesAndRoundTripsEscapes() {
         var source = BindingJson.parse("{\"title\":\"x\\n\\\"\\u4e2d\",\"rows\":[{\"count\":1.25}],\"ok\":true}");
         assertEquals(source, BindingJson.parse(BindingJson.write(source)));

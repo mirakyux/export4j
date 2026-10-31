@@ -7,10 +7,10 @@ const DesignerCanvas = (() => {
     function sortable(entry){let value=entry,parent;while((parent=entries.find(item=>item.path===value.path.slice(0,value.path.lastIndexOf('/'))))&&['each','list','then','else','if'].includes(parent.tag))value=parent;return value;}
     function clear() {
         generation++;observer?.disconnect();pending=[];sheets=[];pointer=undefined;gesture=undefined;resetDrop();
-        urls.forEach(url=>URL.revokeObjectURL(url));urls.clear();loadedPreview.clear();host().replaceChildren();
+        urls.forEach(url=>URL.revokeObjectURL(url));urls.clear();loadedPreview.clear();host().querySelectorAll('.page').forEach(paper=>DesignerStudio.dispose(paper));host().replaceChildren();
     }
     function activate(index) {
-        currentPage=index;$('page-number').textContent=`${index+1} / ${pages.length}`;$('page-jump').value=String(index);refreshButtons();
+        currentPage=index;$('page-number').textContent=`${index+1} / ${pages.length}`;$('page-jump').value=String(index);refreshButtons();DesignerStudio.sync();
     }
     function zoom() {
         const value=$('zoom').value;
@@ -30,6 +30,12 @@ const DesignerCanvas = (() => {
         const same=item=>item.tag===entry.tag&&(entry.tag!=='numbered'||nodeAt(item.path).getAttribute('list-id')===listId);
         let start=index,end=index;while(start>0&&same(siblings[start-1]))start--;while(end+1<siblings.length&&same(siblings[end+1]))end++;
         return siblings.slice(start,end+1);
+    }
+    async function selectEntry(entry,event,groupLists=true) {
+        const modified=event?.ctrlKey||event?.metaKey||event?.shiftKey;
+        const parent=entries.find(item=>item.path===entry.path.slice(0,entry.path.lastIndexOf('/')));
+        const target=groupLists&&parent?.tag==='list'&&!modified?parent:entry;
+        await choose(target,event,groupLists&&target===entry&&!modified?listEntries(entry):undefined);
     }
     function highlight() {
         host().querySelectorAll('.list-selection').forEach(node=>node.remove());
@@ -61,7 +67,7 @@ const DesignerCanvas = (() => {
                     const url=URL.createObjectURL(blob),decoded=new Image();decoded.src=url;
                     try{await decoded.decode();}catch(error){URL.revokeObjectURL(url);throw error;}
                     if(stamp!==generation||revision!==state.revision||desired!==previewId){URL.revokeObjectURL(url);continue;}
-                    const old=urls.get(job.index);job.image.src=url;urls.set(job.index,url);loadedPreview.set(job.index,desired);
+                    const old=urls.get(job.index);job.image.src=url;job.image.dataset.preview=desired;urls.set(job.index,url);loadedPreview.set(job.index,desired);
                     job.sheet.classList.add('loaded');job.sheet.classList.remove('load-error');job.label.hidden=true;
                     if(old)URL.revokeObjectURL(old);
                 }catch(error){if(stamp===generation){if(!urls.has(job.index)){job.label.textContent='预览加载失败：'+error.message;job.sheet.classList.add('load-error');}else status('预览图片更新失败：'+error.message,true);}}
@@ -123,9 +129,10 @@ const DesignerCanvas = (() => {
                 layer.append(node);
             });
             if(!sheet.isConnected){sheet.append(boundary,label,paper);host().append(sheet);sheets[index]=sheet;}
+            DesignerStudio.render(paper,index);
             observer.observe(sheet);
         });
-        for(let index=pages.length;index<sheets.length;index++){sheets[index].remove();if(urls.has(index))URL.revokeObjectURL(urls.get(index));urls.delete(index);loadedPreview.delete(index);}
+        for(let index=pages.length;index<sheets.length;index++){DesignerStudio.dispose(sheets[index].querySelector('.page'));sheets[index].remove();if(urls.has(index))URL.revokeObjectURL(urls.get(index));urls.delete(index);loadedPreview.delete(index);}
         sheets.length=pages.length;
         zoom();highlight();scroller().scrollTop=previousScroll;if(pages.length)activate(Math.min(currentPage,pages.length-1));
     }
@@ -207,7 +214,7 @@ const DesignerCanvas = (() => {
         document.addEventListener('pointercancel',()=>{if(pointer){pointer.node.style.width=pointer.originalWidth;pointer.node.style.height=pointer.originalHeight;pointer.node.classList.remove('resizing');}pointer=undefined;if(gesture?.moved)gesture.suppress();gesture=undefined;dragging=undefined;resetDrop();highlight();});
         new ResizeObserver(()=>zoom()).observe(scroller());
     }
-    return {start,render,clear,zoom,scrollTo,highlight,reveal,bindDrag};
+    return {start,render,clear,zoom,scrollTo,highlight,reveal,bindDrag,selectEntry};
 })();
 
 const DesignerAssets=(()=>{

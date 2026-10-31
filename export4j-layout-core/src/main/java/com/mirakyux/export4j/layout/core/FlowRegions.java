@@ -4,13 +4,13 @@ package com.mirakyux.export4j.layout.core;
 import java.util.List;
 
 /** Immutable heights in points for sequential regions of one common width.
- * Up to 16 initial regions may be shorter (including zero); subsequent regions use continuationHeight.
+ * Up to 100,016 initial regions may be shorter (including zero); subsequent regions use continuationHeight.
  * The caller supplies the width and maximum height through ComponentContext. Owns no resources.
  */
 public record FlowRegions(List<Double> initialHeights, double continuationHeight) {
     public FlowRegions {
         initialHeights = List.copyOf(initialHeights);
-        if (!Double.isFinite(continuationHeight) || continuationHeight <= 0 || initialHeights.size() > 16) {
+        if (!Double.isFinite(continuationHeight) || continuationHeight <= 0 || initialHeights.size() > 100_016) {
             throw new IllegalArgumentException("invalid continuation height or initial region count");
         }
         for (double height : initialHeights) {

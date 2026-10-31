@@ -144,7 +144,7 @@ var layouter = new DocumentLayouter(new com.mirakyux.export4j.text.ParagraphLayo
 
 页眉页脚、定位绘制和正文组件通过核心 SPI 接入。普通 `ComponentBlock` 保持整块，`PageableComponent` 返回可跨页的有序片段，并可适应首片段剩余高度，不依赖最终页码；`ComponentFragment` 保留块来源、局部绘制与诊断。组件绘制中的码点和命令计入对应预算，自定义 SPI 的执行本身不受沙箱控制。可调用的标准实现与导航编排见[组件 API](components-api.md)。
 
-`RegionFlow` 在相同宽度下接受最多 16 个短区前缀及完整续区，返回带区域归属的局部片段；`ContinuousColumns` 由此从当前页剩余区域分栏，续页使用完整栏高。文字按完整行、`FlowColumn` 混合流按子组件片段、`GridTable` 按合并行组分配，完整契约见[连续分栏 API](continuous-columns-api.md)和[混合分栏 API](mixed-columns-api.md)。
+`RegionFlow` 在相同宽度下通过 `FlowRegions` 接受最多 100,016 个有限短区前缀及完整续区，返回带区域归属的局部片段；`ContinuousColumns` 由此从当前页剩余区域分栏，续页使用完整栏高。正文固定框避让从 16 个实际空闲区开始规划，必要时有界扩大前缀，仍检查物理页数、片段及文字工作预算，不预先分配最大区域数。文字按完整行、`FlowColumn` 混合流按子组件片段、`GridTable` 按合并行组分配，完整契约见[连续分栏 API](continuous-columns-api.md)和[混合分栏 API](mixed-columns-api.md)。
 
 正文 `Paragraph` 和语义 `TableCell` 的行内字段保存为 `FieldSpan`，测量后为 `TextLine.fields()` 中的原子 `FieldBox`。原文 UTF-16 范围包含一个字段标记；移动完整行时必须保留盒子。只有上层编排器能在目录和脚注页数确定后解析字段，直接绘制未解析字段会失败，见[行内字段 API](inline-fields-api.md)。
 

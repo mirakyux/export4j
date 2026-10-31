@@ -5,6 +5,7 @@ import com.mirakyux.export4j.layout.ComponentLayout;
 import com.mirakyux.export4j.layout.core.Component;
 import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
+import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.layout.core.DocumentLayouter;
 import com.mirakyux.export4j.layout.core.DocumentPainter;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
@@ -25,7 +26,7 @@ import java.util.HashMap;
 import java.util.Objects;
 
 /** Bridges immutable model page regions to the component SPI without a template-adapter dependency.
- * Lengths use points; bands reserve body space before pagination, overlays do not. Fields resolve afterwards.
+ * Lengths use points; bands and explicit avoiding boxes reserve body space before pagination. Fields resolve afterwards.
  * Returned templates are immutable and reusable with immutable font resources. No I/O or resources owned.
  */
 public final class PageRegionTemplates {
@@ -58,14 +59,20 @@ public final class PageRegionTemplates {
     private static PageTemplate template(PageRegions regions, PageRegions.Bands pair) {
         var result = PageTemplate.builder().header(band(pair.header())).footer(band(pair.footer()));
         for (var box : regions.background()) {
-            result.background(new Placement(new RegionContent(box.content()),
-                    new Position.Absolute(new Rect(box.x(), box.y(), box.width(), box.content().height()))));
+            result.background(overlay(box));
         }
         for (var box : regions.foreground()) {
-            result.foreground(new Placement(new RegionContent(box.content()),
-                    new Position.Absolute(new Rect(box.x(), box.y(), box.width(), box.content().height()))));
+            result.foreground(overlay(box));
         }
         return result.build();
+    }
+
+    private static Placement overlay(com.mirakyux.export4j.model.PageOverlay box) {
+        return new Placement(new RegionContent(box.content(), box.heightMode() == com.mirakyux.export4j.model.PageOverlay.SizeMode.AUTO),
+                new Position.PageBox(box.x(), box.y(), box.width(), box.content().height(),
+                        box.widthMode() == com.mirakyux.export4j.model.PageOverlay.SizeMode.FILL,
+                        box.heightMode() != com.mirakyux.export4j.model.PageOverlay.SizeMode.FIXED), box.page(),
+                box.bodyFlow() == com.mirakyux.export4j.model.PageOverlay.BodyFlow.AVOID);
     }
 
     private static PageBand band(PageRegion region) {
@@ -77,13 +84,28 @@ public final class PageRegionTemplates {
 
     private static String key(String id, int row, int column) { return id + ":" + row + ":" + column; }
 
-    private record RegionContent(PageRegion region) implements Component {
+    private record RegionContent(PageRegion region, boolean autoHeight) implements Component {
+        private RegionContent(PageRegion region) { this(region, false); }
         @Override public ComponentLayout layout(ComponentContext context) {
-            if (context.pageCount() < 1) { throw new IllegalArgumentException("page regions require final pagination"); }
             var settings = PageSettings.builder().size(context.width(), context.height()).margins(0).build();
-            var measured = new DocumentLayouter(new ParagraphLayouter(),
-                    new DocumentLayoutLimits(256, 100_000, 10_000, 1), ComponentLimits.DEFAULT)
-                    .layout(new Document(DocumentMetadata.EMPTY, settings, region.blocks()), context.fontGroup(), context.fontRoles());
+            com.mirakyux.export4j.layout.DocumentLayout measured;
+            try {
+                measured = new DocumentLayouter(new ParagraphLayouter(),
+                        new DocumentLayoutLimits(256, 100_000, 10_000, 1), ComponentLimits.DEFAULT)
+                        .layout(new Document(DocumentMetadata.EMPTY, settings, region.blocks()), context.fontGroup(), context.fontRoles());
+            } catch (DocumentLayoutException cause) {
+                // Regions cannot continue on another page. Only this local one-page capacity limit
+                // is geometry overflow; independent source/line/structure budgets remain budgets.
+                if (cause.code() != DocumentLayoutException.Code.BUDGET_EXCEEDED || cause.pageIndex() != 1
+                        || !cause.getMessage().equals("document page budget exceeded")) { throw cause; }
+                throw new DocumentLayoutException(DocumentLayoutException.Code.CONTENT_TOO_TALL,
+                        cause.blockId(), cause.blockIndex(), context.pageIndex(), cause.rowIndex(), cause.columnIndex(),
+                        cause.sourceIndex(), cause.sourcePath(), "page region content '" + cause.blockId()
+                        + "' exceeds " + context.height() + "pt height; increase the region height or use height-mode=AUTO for a fixed box", cause);
+            }
+            if (context.pageCount() == 0) {
+                return new ComponentLayout(context.width(), measuredHeight(measured, context), 0, java.util.List.of(), java.util.List.of());
+            }
             var resolved = InlineFields.resolveRegion(measured, context);
             var diagnostics = new ArrayList<TextDiagnostic>();
             var offsets = new HashMap<String, Integer>();
@@ -120,8 +142,17 @@ public final class PageRegionTemplates {
                 int marker = base + Integer.parseInt(generated.region().substring("INLINE_FIELD:".length()));
                 diagnostics.add(new TextDiagnostic(diagnostic.code(), marker, marker + 1, diagnostic.fontId(), -1, diagnostic.replacementCodePoint()));
             }
-            return new ComponentLayout(context.width(), context.height(), lines[0],
+            double height = measuredHeight(resolved.body(), context);
+            return new ComponentLayout(context.width(), height, lines[0],
                     DocumentPainter.paintPage(resolved.body().pages().getFirst(), ModelRotations.of(region.blocks())).commands(), diagnostics);
+        }
+
+        private double measuredHeight(com.mirakyux.export4j.layout.DocumentLayout body, ComponentContext context) {
+            return autoHeight ? Math.max(0.01, body.pages().getFirst().elements().stream().mapToDouble(fragment -> {
+                if (fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment p) { return p.origin().y() + p.layout().height(); }
+                if (fragment instanceof com.mirakyux.export4j.layout.TableFragment t) { return t.origin().y() + t.height(); }
+                return context.height();
+            }).max().orElse(0.01)) : context.height();
         }
     }
 }

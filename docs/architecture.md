@@ -85,7 +85,7 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `examples` | 可执行用例和集成方式 | 公共 API 与所用后端 |
 | `export4j-designer` | 可选本地 HTML 模板编辑／预览应用，不参与 Maven 库发布 | 组件、模板／DOCX／Web 适配器及 PDF／SVG／Raster 后端；核心不反向依赖 |
 
-设计器保留 XML 源码和显式资源，以 Java 引擎生成预览及导出；数据独立保存，源码不会被已绑定模型替换。应用边界见 [ADR-0106](adr/0106-optional-html-template-designer.md)和[设计器指南](designer.md)。
+设计器保留 XML 源码和显式资源，以 Java 引擎生成预览及导出；数据独立保存，源码不会被已绑定模型替换。画布采用 React／TypeScript，富文本编辑与两种显示模式见 [ADR-0107](adr/0107-interactive-template-canvas.md)。应用边界见 [ADR-0106](adr/0106-optional-html-template-designer.md)和[设计器指南](designer.md)。
 
 PDFBox 文档及绘制 API 限定在 PDF 实现模块。FontBox 和 pdfbox-io 可封装在字体层内部，公共签名不暴露其类型。DOCX 专用实现依赖限定在 DOCX 实现模块。专用测试可以使用它们，但不能以此替代独立工具验证。
 

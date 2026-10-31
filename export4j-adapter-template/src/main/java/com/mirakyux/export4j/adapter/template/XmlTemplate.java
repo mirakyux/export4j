@@ -662,13 +662,17 @@ public final class XmlTemplate {
             for (var box : children(element)) {
                 requireName(box, "box");
                 if (!box.fragmentName().isEmpty()) { throw error(box, Code.UNSUPPORTED_ELEMENT); }
-                attributes(box, Set.of("x", "y", "width", "height", "source-id", "source-ref"));
+                attributes(box, Set.of("x", "y", "width", "height", "source-id", "source-ref", "page", "width-mode", "height-mode", "body-flow"));
                 for (var key : List.of("x", "y", "width")) {
                     if (required(box, key).contains("${")) { throw error(box, Code.INVALID_EXPRESSION); }
                 }
                 result.add(validated(box, () -> {
                     var value = new PageOverlay(length(box, "x", 0), length(box, "y", 0), length(box, "width", 0),
-                            regionSource(box, element.name(), defaults, true));
+                            regionSource(box, element.name(), defaults, true),
+                            box.attributes().containsKey("page") ? Integer.parseInt(required(box, "page")) : 0,
+                            PageOverlay.SizeMode.valueOf(box.attributes().getOrDefault("width-mode", "FIXED")),
+                            PageOverlay.SizeMode.valueOf(box.attributes().getOrDefault("height-mode", "FIXED")),
+                            PageOverlay.BodyFlow.valueOf(box.attributes().getOrDefault("body-flow", "OVERLAP")));
                     value.requireContained(settings.size()); return value;
                 }));
                 if (result.size() > 64) { throw error(box, Code.BUDGET_EXCEEDED); }

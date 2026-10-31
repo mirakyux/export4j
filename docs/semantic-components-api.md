@@ -59,6 +59,6 @@ FlowColumn、RowComponent、BoxComponent、GridTable、MultiColumn、ContinuousC
 
 结构、源文字及图片预算与顶层正文合并检查，每个源计一次；实际片段、输出行、重复表头、字段生成和交互逐次计入。`maxParagraphs` 包括顶层块和嵌套语义源。最终绘制文字仍受组合输出预算限制。组件先在内层默认限额内准备，再统一检查调用方配置的更小全局限额；这不等于测量前已继承全部全局限额。
 
-单表准备默认最多 1,000 个占用区域，当前组件文档还检查全局物理页数和片段数；连续分栏可能先达到单表区域上限。核心 `DocumentLayouter.layoutTableRegions` 可使用显式 `DocumentLayoutLimits`，并另有 100,000 个占用片段硬限。最多允许 16 个短初始区域。所有测量仍驻留内存，不等于端到端流式。自定义组件仍为可信、确定的同步代码，预算验证不代表可执行任意不可信回调。
+单表准备默认最多 1,000 个占用区域，当前组件文档还检查全局物理页数和片段数；连续分栏可能先达到单表区域上限。核心 `DocumentLayouter.layoutTableRegions` 可使用显式 `DocumentLayoutLimits`，并另有 100,000 个占用片段硬限。`FlowRegions` 最多允许 100,016 个有限短初始区域，与变宽区域循环最多 16 种宽度的限制独立。所有测量仍驻留内存，不等于端到端流式。自定义组件仍为可信、确定的同步代码，预算验证不代表可执行任意不可信回调。
 
 实现依据见 [ADR-0021](adr/0021-component-semantic-insertions.md)和[区域续排决策](adr/0022-semantic-table-region-flow.md)。固定组合证据见[阶段十七](verification/phase-17-semantic-components.md)，区域续排证据见[阶段十八](verification/phase-18-semantic-table-flow.md)。

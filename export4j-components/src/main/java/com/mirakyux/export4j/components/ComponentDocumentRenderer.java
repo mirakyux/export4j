@@ -120,8 +120,18 @@ public final class ComponentDocumentRenderer {
         for (int sectionIndex = 0; sectionIndex < document.sections().size(); sectionIndex++) {
             com.mirakyux.export4j.model.ExecutionContext.progress("SECTION", document.sections().get(sectionIndex).id(), -1, sectionIndex, document.sections().size());
             var section = document.sections().get(sectionIndex);
-            var measured = Footnotes.layout(new Document(document.metadata(), templates.get(sectionIndex).bodySettings(section.pageSettings()),
-                    section.blocks()), notes, fonts, roles, layoutLimits, componentLimits);
+            var sectionTemplate = templates.get(sectionIndex);
+            int physicalStart = bodyPages.size();
+            int displayedStart = section.firstPageNumber() > 0 ? section.firstPageNumber() : physicalStart == 0 ? 1
+                    : number(document, sectionPages, localPages, physicalStart - 1, 0) + 1;
+            var fontRoles = roles;
+            boolean avoidsBody = java.util.stream.Stream.of(sectionTemplate.first(), sectionTemplate.firstEven(), sectionTemplate.odd(), sectionTemplate.even())
+                    .flatMap(template -> java.util.stream.Stream.concat(template.background().stream(), template.foreground().stream()))
+                    .anyMatch(com.mirakyux.export4j.layout.core.Placement::avoidBody);
+            var measured = Footnotes.layout(new Document(document.metadata(), sectionTemplate.bodySettings(section.pageSettings()),
+                    section.blocks()), notes, fonts, roles, layoutLimits, componentLimits,
+                    avoidsBody ? local -> sectionTemplate.page(local, displayedStart + local).bodyExclusions(section.pageSettings(), fonts,
+                            fontRoles, physicalStart + local, displayedStart + local) : null);
             footnotePages.addAll(measured.pages());
             for (var page : measured.body().pages()) {
                 if (bodyPages.size() >= layoutLimits.maxPages()) {
@@ -135,6 +145,24 @@ public final class ComponentDocumentRenderer {
                 sectionPages.add(sectionIndex);
                 localPages.add(page.pageIndex());
             }
+            // A canvas object still owns its target page after removing its former flow block.
+            // Grow only the declaring section, with the ordinary page budget checked before allocation.
+            int required = java.util.stream.Stream.of(templates.get(sectionIndex).first(), templates.get(sectionIndex).firstEven(),
+                            templates.get(sectionIndex).odd(), templates.get(sectionIndex).even())
+                    .flatMap(template -> java.util.stream.Stream.concat(template.background().stream(), template.foreground().stream()))
+                    .mapToInt(com.mirakyux.export4j.layout.core.Placement::page).max().orElse(0);
+            if (required > layoutLimits.maxPages()) { throw new IllegalArgumentException("positioned page exceeds document page budget"); }
+            while (bodyPages.size() < required) {
+                com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                int local = localPages.isEmpty() || sectionPages.getLast() != sectionIndex ? 0 : localPages.getLast() + 1;
+                var settings = templates.get(sectionIndex).bodySettings(section.pageSettings());
+                bodyPages.add(new LayoutPage(bodyPages.size(), settings.size(), new Rect(settings.margins().left(), settings.margins().top(),
+                        settings.size().width() - settings.margins().left() - settings.margins().right(),
+                        settings.size().height() - settings.margins().top() - settings.margins().bottom()), List.of()));
+                sectionPages.add(sectionIndex); localPages.add(local);
+                footnotePages.add(new com.mirakyux.export4j.layout.ComponentLayout(1, 1, 0, List.of(), List.of()));
+            }
+            validatePhysicalPlacements(sectionTemplate, physicalStart, bodyPages.size() - physicalStart, displayedStart);
             blockBase += section.blocks().size();
         }
         var body = new DocumentLayout(document.metadata(), bodyPages);
@@ -174,6 +202,11 @@ public final class ComponentDocumentRenderer {
                 layoutLimits.maxPages() - body.pages().size(), layoutLimits, componentLimits,
                 (page, offset) -> number(document, sectionPages, localPages, page, offset));
         int offset = contents.pages().size();
+        if (offset > 0 && templates.stream().flatMap(template -> java.util.stream.Stream.of(template.first(), template.firstEven(), template.odd(), template.even()))
+                .flatMap(template -> java.util.stream.Stream.concat(template.background().stream(), template.foreground().stream()))
+                .anyMatch(placement -> placement.page() > 0 || placement.avoidBody())) {
+            throw new IllegalArgumentException("physical-page placements and body avoidance cannot be combined with generated contents pages; use a separate document without generated contents");
+        }
         // Collect source-linked external rectangles before replacing one-position field slots with generated text.
         var externalLinks = InlineHyperlinks.collect(document, body, offset, componentLimits.maxInteractions() - interactions);
         var inline = InlineFields.resolve(body, offset,
@@ -279,6 +312,24 @@ public final class ComponentDocumentRenderer {
             throw new IllegalArgumentException("sectioned document combined line budget exceeded");
         }
         return new ComponentDocumentLayout(body, offset, composed.display(), contents.traces(), composed.placements(), footnotePages, resolvedReferences, referenceDiagnostics);
+    }
+
+    private static void validatePhysicalPlacements(SectionTemplate template, int physicalStart, int pageCount, int displayedStart) {
+        // Equal placements unify a section's first/odd/even variants, but never declarations in another section.
+        var selected = new java.util.HashSet<com.mirakyux.export4j.layout.core.Placement>();
+        var rendered = new java.util.HashSet<com.mirakyux.export4j.layout.core.Placement>();
+        for (int local = 0; local < pageCount; local++) {
+            var page = template.page(local, displayedStart + local);
+            for (var placement : java.util.stream.Stream.concat(page.background().stream(), page.foreground().stream()).toList()) {
+                if (placement.page() > 0) {
+                    selected.add(placement);
+                    if (placement.page() == physicalStart + local + 1) { rendered.add(placement); }
+                }
+            }
+        }
+        if (!rendered.containsAll(selected)) {
+            throw new IllegalArgumentException("positioned page is outside its declaring section or selected page variant");
+        }
     }
 
     private record Area(int page, Rect bounds) {

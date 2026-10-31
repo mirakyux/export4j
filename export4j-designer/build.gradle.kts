@@ -13,7 +13,26 @@ dependencies {
     implementation(project(":export4j-backend-raster"))
 }
 application { mainClass.set("com.mirakyux.export4j.designer.DesignerApp") }
+
+val frontendDirectory = layout.projectDirectory.dir("frontend")
+val npmCommand = if (System.getProperty("os.name").startsWith("Windows")) listOf("cmd", "/c", "npm") else listOf("npm")
+val frontendInstall by tasks.registering(Exec::class) {
+    workingDir(frontendDirectory)
+    commandLine(npmCommand + listOf("ci", "--ignore-scripts", "--no-audit", "--no-fund"))
+    inputs.files(frontendDirectory.file("package.json"), frontendDirectory.file("package-lock.json"))
+    outputs.dir(frontendDirectory.dir("node_modules"))
+}
+val frontendBuild by tasks.registering(Exec::class) {
+    dependsOn(frontendInstall)
+    workingDir(frontendDirectory)
+    commandLine(npmCommand + listOf("run", "build"))
+    inputs.dir(frontendDirectory.dir("src"))
+    inputs.files(frontendDirectory.file("build.mjs"), frontendDirectory.file("tsconfig.json"), frontendDirectory.file("package-lock.json"))
+    outputs.dir(layout.buildDirectory.dir("frontend"))
+}
 tasks.named<ProcessResources>("processResources") {
+    dependsOn(frontendBuild)
+    from(layout.buildDirectory.dir("frontend")) { into("designer/web") }
     from(rootProject.file("assets/fonts")) {
         include("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf", "ZCOOLXiaoWei-Regular.ttf",
             "LiberationSans-OFL.txt", "ZCOOLXiaoWei-OFL.txt")

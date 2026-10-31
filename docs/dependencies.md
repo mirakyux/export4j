@@ -1,5 +1,15 @@
 # 依赖与资源管理
 
+## 设计器浏览器依赖
+
+可选设计器的 React 19.3.1／React DOM 19.3.1 和 ProseMirror 编辑模块均采用 MIT；传递运行组件、确切版本、npm 来源、完整性和原始许可位置见[浏览器组件清单](../third-party/designer-browser-components.json)。Gradle 使用 `frontend/package-lock.json` 执行 npm ci，esbuild 生成独立浏览器包和完整 `THIRD-PARTY-NOTICES.txt`，一起进入设计器 JAR。上述组件不进入 Java 库 POM、BOM 或库 SBOM。
+
+TypeScript 7.0.2、esbuild 0.28.2、类型声明及 Playwright 1.64.1 仅用于构建／验证，版本与传递完整性由前端锁文件固定，不随浏览器包交付。前端构建需要 Node.js 22+，已经构建的应用运行不需要 Node.js。设计器运行时不通过 CDN 获取脚本或字体。
+
+浏览器运行依赖可用 `npm --prefix export4j-designer/frontend audit --omit=dev --registry=https://registry.npmjs.org` 查询 npm 公告；这与下方 Maven／OSV 检查是不同范围，查询错误不能记为通过。
+
+## Java 与验证依赖
+
 可选 `export4j-opentype` 内部依赖 LWJGL 3.4.3 的 `lwjgl`／`lwjgl-harfbuzz` 两个 Java 制品（BSD-3-Clause）。应用显式选择平台 native classifier，生产 POM 不自动传递平台二进制。Windows 实际内含 HarfBuzz 14.3.0，与绑定头版本分别核对；HarfBuzz、libffi、liburing 等内含许可原文随清单保存，见[原生制品记录](../third-party/native-artifacts.csv)。核心原有 JDK 路径不强制加载 JNI。
 
 Linux／macOS x64 与 arm64 的 native JAR 校验值已按实际下载及 Central 发布摘要审查，进入严格依赖验证；此状态只证明固定制品被识别，不代表跨平台加载／渲染或阅读器测试通过。库测试与隔离调用方共享显式 classifier 选择逻辑，未知平台／架构拒绝。平台实际运行结果另见[阶段一百零五](verification/phase-105-publication-and-compatibility.md)。

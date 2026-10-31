@@ -334,7 +334,7 @@ class ContinuousColumnsTest {
         assertThrows(IllegalArgumentException.class, () -> new FlowRegions(List.of(Double.NaN), 100));
         assertThrows(IllegalArgumentException.class, () -> new FlowRegions(List.of(-1.0), 100));
         assertThrows(IllegalArgumentException.class, () -> new FlowRegions(List.of(101.0), 100));
-        assertThrows(IllegalArgumentException.class, () -> new FlowRegions(java.util.Collections.nCopies(17, 10.0), 100));
+        assertThrows(IllegalArgumentException.class, () -> new FlowRegions(java.util.Collections.nCopies(100_017, 10.0), 100));
         assertThrows(IllegalArgumentException.class, () -> new ContinuousColumns(flow("A"), 1, 0));
         assertThrows(IllegalArgumentException.class, () -> new ContinuousColumns(flow("A"), 2, 240).layoutParts(context(100)));
         assertThrows(IllegalArgumentException.class, () -> new ContinuousColumns(flow("A"), 2, 12).layoutParts(context(10)));

@@ -112,7 +112,9 @@ const DesignerWorkspace = (() => {
             section.addEventListener('toggle',()=>groupOpen.set(name,section.open));host.append(section);
         });
         const ratio=host.querySelector('.ratio-lock');if(ratio)host.querySelector('[data-group="基本属性"]>.settings-grid')?.append(ratio);
-        const body=$('body-section');if(body){const id=host.querySelector('[data-group="标识"]');if(id)id.after(body);else host.prepend(body);}
+        const identity=$('component-identity'),id=host.querySelector('[data-group="标识"]');
+        if(identity){identity.replaceChildren();if(id)identity.append(id);}
+        const body=$('body-section');if(body)host.prepend(body);
         const resources=$('used-resources');if(resources)$('properties').append(resources);
     }
     function reportItem(item, exporting) {

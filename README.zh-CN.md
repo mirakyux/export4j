@@ -80,7 +80,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 
 ## HTML 模板设计器
 
-运行 `.\gradlew.bat :export4j-designer:run`，在浏览器打开终端显示的本地地址。这个可选独立应用采用 IDE 式结构／资源管理器、编辑标签和属性检查器，支持纸张／边距、页眉页脚、表格预设、富文本、类型化属性及 XML／JSON 高亮。编辑后由 Java 引擎实时分页预览；连续画布支持列表整体选框、多选拖动、批量属性、右键操作和图片缩放。另支持撤销／重做、模板 ZIP 保存重开及带损失预检的六格式导出。见[设计器指南](docs/designer.md)、[业务样例](docs/verification/phase-108-designer-and-business-scenarios.md)、[专用编辑验收](docs/verification/phase-109-designer-editing-controls.md)和[画布与交互验收](docs/verification/phase-110-designer-canvas-and-interactions.md)。
+运行 `.\gradlew.bat :export4j-designer:run`，在浏览器打开终端显示的本地地址。这个可选独立应用采用 IDE 式结构／资源管理器、编辑标签和属性检查器，支持纸张／边距、页眉页脚、表格预设、画布原位富文本、类型化属性及 XML／JSON 高亮。便捷编辑即时显示模板内容，精确排版显示 Java 引擎绑定数据后的真实分页。组件默认自动占位，拖动按插入线排序并保留动态绑定；段落、图片段落和表格可显式切为固定位置、缩放、旋转及自适应框尺寸，正文可选择遮盖或上下避让。粘贴图片随模板保存。编辑后由 Java 引擎实时分页预览；连续画布支持列表整体选框、多选拖动、批量属性、右键操作和图片缩放。另支持撤销／重做、模板 ZIP 保存重开及带损失预检的六格式导出。见[设计器指南](docs/designer.md)、[业务样例](docs/verification/phase-108-designer-and-business-scenarios.md)、[专用编辑验收](docs/verification/phase-109-designer-editing-controls.md)和[画布与交互验收](docs/verification/phase-110-designer-canvas-and-interactions.md)。
 
 ## Java 使用示例
 

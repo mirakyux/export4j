@@ -377,7 +377,9 @@ const Editor = (() => {
         const attributes=$('attributes');attributes.before(advanced);advanced.append(attributes,$('add-attribute'));
         const properties=el('div');properties.innerHTML='<div class="inspector-quick-actions"><button id="node-page-settings" type="button" hidden>页面、页眉页脚与边距</button><span class="field-help" id="structured-help" role="note" tabindex="0" aria-label="属性说明" title="悬浮查看属性说明">ⓘ</span></div><div class="settings-grid" id="structured-properties"></div><div id="table-tools" hidden></div>';
         advanced.before(properties);
-        $('properties').prepend(properties);
+        const identity=el('div');identity.id='component-identity';
+        // Keep the component identity first and layout controls immediately below it.
+        $('properties').prepend(identity,$('studio-properties'),properties);
         on('node-page-settings',openPage);
         const dialog=el('dialog');dialog.id='page-dialog';
         dialog.innerHTML=`<div class="dialog-heading"><h2>页面与页眉页脚</h2><button id="close-page" aria-label="关闭页面设置">×</button></div>

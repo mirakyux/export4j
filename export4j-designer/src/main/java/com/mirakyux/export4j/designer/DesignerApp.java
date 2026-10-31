@@ -87,16 +87,24 @@ public final class DesignerApp {
         }
         private void asset(HttpExchange exchange, String path) throws IOException {
             method(exchange, "GET");
-            String name = switch (path) { case "/" -> "index.html"; case "/app.js" -> "app.js"; case "/editing.js" -> "editing.js"; case "/tables.js" -> "tables.js"; case "/canvas.js" -> "canvas.js"; case "/interactions.js" -> "interactions.js"; case "/workspace.js" -> "workspace.js"; case "/style.css" -> "style.css"; default -> throw new Rejected(404, "not found"); };
+            String name = switch (path) { case "/" -> "index.html"; case "/studio.js" -> "studio.js"; case "/studio-bridge.js" -> "studio-bridge.js"; case "/THIRD-PARTY-NOTICES.txt" -> "THIRD-PARTY-NOTICES.txt"; case "/app.js" -> "app.js"; case "/editing.js" -> "editing.js"; case "/tables.js" -> "tables.js"; case "/canvas.js" -> "canvas.js"; case "/interactions.js" -> "interactions.js"; case "/workspace.js" -> "workspace.js"; case "/style.css" -> "style.css"; default -> throw new Rejected(404, "not found"); };
             try (var input = DesignerApp.class.getResourceAsStream("/designer/web/" + name)) {
                 if (input == null) { throw new IOException("designer web resource missing"); }
                 byte[] bytes = input.readAllBytes();
                 if (name.equals("index.html")) { bytes = new String(bytes, StandardCharsets.UTF_8).replace("__DESIGNER_TOKEN__", token).getBytes(StandardCharsets.UTF_8); }
-                send(exchange, name.endsWith(".js") ? "text/javascript; charset=utf-8" : name.endsWith(".css") ? "text/css; charset=utf-8" : "text/html; charset=utf-8", bytes);
+                send(exchange, name.endsWith(".js") ? "text/javascript; charset=utf-8" : name.endsWith(".css") ? "text/css; charset=utf-8" : name.endsWith(".txt") ? "text/plain; charset=utf-8" : "text/html; charset=utf-8", bytes);
             }
         }
         private void api(HttpExchange exchange, String path) throws Exception {
             if (path.equals("/api/state")) { method(exchange, "GET"); json(exchange, state()); return; }
+            if (path.equals("/api/font")) {
+                method(exchange, "GET");
+                String query = exchange.getRequestURI().getRawQuery();
+                if (query == null || !query.matches("name=(Regular|Bold|Chinese)\\.ttf")) { throw new Rejected(400, "font role required"); }
+                byte[] bytes = history.current().bundle().fonts().get(query.substring(5));
+                if (bytes == null) { throw new Rejected(404, "font role not found"); }
+                send(exchange, "font/ttf", bytes); return;
+            }
             if (path.equals("/api/image")) {
                 method(exchange, "GET");
                 String query = exchange.getRequestURI().getRawQuery();
@@ -183,7 +191,7 @@ public final class DesignerApp {
                                         "images", hit.images().stream().map(image -> BindingJson.object("x", image.x(), "y", image.y(), "width", image.width(), "height", image.height())).toList())).toList(),
                                 "breaks", candidate.breaks().stream().filter(item -> item.page() == number).map(item -> BindingJson.object("id", item.id(), "path", item.path(), "y", item.y())).toList()));
                     }
-                    json(exchange, BindingJson.object("revision", revision, "previewId", previewId, "pages", pages, "milliseconds", (System.nanoTime() - start) / 1_000_000,
+                    json(exchange, BindingJson.object("revision", revision, "previewId", previewId, "pages", pages, "formats", candidate.formats(), "milliseconds", (System.nanoTime() - start) / 1_000_000,
                             "diagnostics", candidate.layout().contextualDiagnostics().stream().map(Object::toString).toList())); return;
                 }
                 case "/api/export/prepare" -> {

@@ -75,7 +75,7 @@ final class DesignerXml {
         return new PreviewSource(serialize(document), Map.copyOf(paths));
     }
     private static void previewIds(Element node, String path, String prefix, Map<String, String> paths) {
-        if (List.of("p", "heading", "bullet", "numbered", "table", "caption", "cross-reference", "page-break").contains(node.getTagName())) {
+        if (List.of("p", "heading", "bullet", "numbered", "table", "rows", "caption", "cross-reference", "page-break").contains(node.getTagName())) {
             if (!node.hasAttribute("id")) { node.setAttribute("id", prefix + path.substring(1).replace('/', '-')); }
             paths.put(node.getAttribute("id"), path);
         }

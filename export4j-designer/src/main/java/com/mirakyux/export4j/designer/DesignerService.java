@@ -49,7 +49,7 @@ final class DesignerService {
     record ImageBounds(double x, double y, double width, double height) { }
     record Hit(int page, String id, String path, double x, double y, double width, double height, List<ImageBounds> images) { }
     record Break(int page, String id, String path, double y) { }
-    record Preview(ComponentDocumentLayout layout, List<Hit> hits, List<Break> breaks) {
+    record Preview(ComponentDocumentLayout layout, List<Hit> hits, List<Break> breaks, Map<String, Map<String, String>> formats) {
         BufferedImage image(int page) throws IOException {
             var bytes = new ByteArrayOutputStream();
             new RasterBackend(96).writePage(layout.display().pages().get(page), bytes);
@@ -143,9 +143,16 @@ final class DesignerService {
             try { source = DesignerXml.previewSource(project.bundle().source()); }
             catch (Exception ex) { throw new IOException("cannot prepare designer preview source", ex); }
             var bound = project.bundle().toBuilder().source(source.source()).build().compile().renderComplete(BindingJson.parse(project.data()));
-            var layout = engine(project.bundle(), bound.notes()).layout(bound.document());
+            var renderer = engine(project.bundle(), bound.notes());
+            var layout = renderer.layout(bound.document());
+            // Local region probes exclude main-body notes, while sharing one engine per preview.
+            var regionRenderer = bound.notes().isEmpty() ? renderer : engine(project.bundle());
+            var measuredRegions = new HashMap<RegionMeasure, com.mirakyux.export4j.layout.DocumentLayout>();
             if (layout.display().pages().size() > 80) { throw new IOException("designer preview exceeds 80 pages; use the library streaming API for large workloads"); }
             var hits = new ArrayList<Hit>();
+            Element sourceTree;
+            try { sourceTree = DesignerXml.parse(source.source()).getDocumentElement(); }
+            catch (Exception ex) { throw new IOException("cannot map designer page regions", ex); }
             for (var page : layout.body().pages()) {
                 for (var fragment : page.elements()) {
                     double width = page.contentBounds().width(); double height = 12;
@@ -162,12 +169,20 @@ final class DesignerService {
                     }
                     if (fragment instanceof com.mirakyux.export4j.layout.TableFragment table) { width = table.width(); height = table.height(); }
                     String path = source.paths().getOrDefault(fragment.blockId().split("@", 2)[0], "");
-                    hits.add(new Hit(page.pageIndex() + layout.bodyPageOffset(), fragment.blockId(), path, fragment.origin().x(), fragment.origin().y(), width, height, List.copyOf(images)));
+                    double x = fragment.origin().x(), y = fragment.origin().y();
+                    if (!path.isEmpty() && images.size() == 1) {
+                        var node = DesignerXml.at(sourceTree.getOwnerDocument(), path);
+                        if (node.getTagName().equals("p") && node.getTextContent().isBlank() && DesignerXml.children(node).size() == 1
+                                && DesignerXml.children(node).getFirst().getTagName().equals("image")) {
+                            var image = images.getFirst(); x = image.x(); y = image.y(); width = image.width(); height = image.height();
+                        }
+                    }
+                    hits.add(new Hit(page.pageIndex() + layout.bodyPageOffset(), fragment.blockId(), path, x, y, width, height, List.copyOf(images)));
+                    if (fragment instanceof com.mirakyux.export4j.layout.TableFragment table && !path.isEmpty()) {
+                        tableHits(hits, page.pageIndex() + layout.bodyPageOffset(), table, sourceTree, path, 0, 0);
+                    }
                 }
             }
-            Element sourceTree;
-            try { sourceTree = DesignerXml.parse(source.source()).getDocumentElement(); }
-            catch (Exception ex) { throw new IOException("cannot map designer page regions", ex); }
             var sections = new ArrayList<String>();
             for (int index = 0; index < DesignerXml.children(sourceTree).size(); index++) {
                 if (DesignerXml.children(sourceTree).get(index).getTagName().equals("section")) { sections.add("/" + index); }
@@ -180,7 +195,7 @@ final class DesignerService {
             }
             for (var placed : layout.decorations()) {
                 String kind = placed.region().name().toLowerCase(java.util.Locale.ROOT);
-                if (!kind.equals("header") && !kind.equals("footer")) { continue; }
+                if (!List.of("header", "footer", "background", "foreground").contains(kind)) { continue; }
                 int sectionIndex = 0;
                 for (int index = 1; index < sections.size(); index++) {
                     if (starts.getOrDefault(sections.get(index), Integer.MAX_VALUE) <= placed.pageIndex()) { sectionIndex = index; }
@@ -198,16 +213,32 @@ final class DesignerService {
                     if (override > 0) { displayed = override; }
                 }
                 displayed += placed.pageIndex() - firstPage;
+                boolean overlay = kind.equals("background") || kind.equals("foreground");
                 String variant = placed.pageIndex() == firstPage && regions.variants().containsKey(com.mirakyux.export4j.model.PageRegions.Variant.FIRST)
                         ? "first" : displayed % 2 == 0 && regions.variants().containsKey(com.mirakyux.export4j.model.PageRegions.Variant.EVEN) ? "even" : "default";
-                String path = regionPath(sourceTree, section, kind, variant);
+                String path = regionPath(sourceTree, section, kind, overlay ? "default" : variant);
                 if (path.isEmpty()) { continue; }
                 var band = DesignerXml.at(sourceTree.getOwnerDocument(), path);
+                if (overlay) {
+                    var boxes = DesignerXml.children(band);
+                    if (placed.placementIndex() >= boxes.size()) { continue; }
+                    path += "/" + placed.placementIndex(); band = boxes.get(placed.placementIndex());
+                }
                 if (band.hasAttribute("source-ref")) {
                     String target = band.getAttribute("source-ref");
-                    path = sourceIdPath(sourceTree, kind, target, "");
+                    path = sourceIdPath(sourceTree, overlay ? "box" : kind, target, "");
                     if (path.isEmpty()) { continue; }
                     band = DesignerXml.at(sourceTree.getOwnerDocument(), path);
+                }
+                String regionRoot = path;
+                com.mirakyux.export4j.model.PageRegion content;
+                if (overlay) {
+                    content = (kind.equals("background") ? regions.background() : regions.foreground()).get(placed.placementIndex()).content();
+                } else {
+                    var pair = variant.equals("default") ? new com.mirakyux.export4j.model.PageRegions.Bands(regions.header(), regions.footer())
+                            : regions.variants().get(variant.equals("first") ? com.mirakyux.export4j.model.PageRegions.Variant.FIRST
+                                    : com.mirakyux.export4j.model.PageRegions.Variant.EVEN);
+                    content = kind.equals("header") ? pair.header() : pair.footer();
                 }
                 var children = DesignerXml.children(band);
                 if (children.size() == 1 && (children.getFirst().getTagName().equals("p") || children.getFirst().getTagName().equals("table"))) {
@@ -215,7 +246,19 @@ final class DesignerService {
                 }
                 var node = DesignerXml.at(sourceTree.getOwnerDocument(), path);
                 var box = placed.viewport();
-                hits.add(new Hit(placed.pageIndex(), node.getAttribute("id"), path, box.x(), box.y(), box.width(), box.height(), List.of()));
+                if (node.getTagName().equals("p") && node.getTextContent().isBlank() && DesignerXml.children(node).size() == 1
+                        && DesignerXml.children(node).getFirst().getTagName().equals("image") && !node.hasAttribute("rotation")) {
+                    var image = placed.layout().commands().stream().filter(com.mirakyux.export4j.graphics.DrawCommand.Image.class::isInstance)
+                            .map(com.mirakyux.export4j.graphics.DrawCommand.Image.class::cast).findFirst();
+                    if (image.isPresent()) { var bounds = image.orElseThrow().bounds();
+                        hits.add(new Hit(placed.pageIndex(), node.getAttribute("id"), path, box.x() + bounds.x(), box.y() + bounds.y(), bounds.width(), bounds.height(),
+                                List.of(new ImageBounds(box.x() + bounds.x(), box.y() + bounds.y(), bounds.width(), bounds.height())))); continue;
+                    }
+                }
+                hits.add(new Hit(placed.pageIndex(), node.getAttribute("id"), path, box.x(), box.y(), box.width(),
+                        overlay ? placed.layout().height() : box.height(), List.of()));
+                regionHits(hits, placed.pageIndex(), content, box, sourceTree, source.paths(), regionRoot, path,
+                        regionRenderer, measuredRegions);
             }
             var breaks = new ArrayList<Break>();
             for (var section : bound.document().sections()) {
@@ -232,8 +275,146 @@ final class DesignerService {
                     }
                 }
             }
-            return new Preview(layout, List.copyOf(hits), List.copyOf(breaks));
+            return new Preview(layout, List.copyOf(hits), List.copyOf(breaks), paragraphDefaults(project, source, sourceTree));
         });
+    }
+    /** Compile a reduced, unbound source to read paragraph defaults without guessing theme inheritance.
+     * Only inline content is replaced in the private probe; the actual source and resources stay untouched.
+     * Reducing each paragraph to one literal also avoids expanding data or increasing XML work budgets.
+     */
+    private static Map<String, Map<String, String>> paragraphDefaults(DesignerProject project, DesignerXml.PreviewSource source, Element tree) throws IOException {
+        try {
+            var probe = DesignerXml.parse(DesignerXml.serialize(tree));
+            var paragraphs = probe.getElementsByTagName("p");
+            for (int index = 0; index < paragraphs.getLength(); index++) { paragraphs.item(index).setTextContent("P"); }
+            var template = project.bundle().toBuilder().source(DesignerXml.serialize(probe)).build().compile();
+            var result = new HashMap<String, Map<String, String>>();
+            collectDefaults(template.nodes(), source.paths(), result);
+            for (var section : template.sections()) { collectDefaults(section.nodes(), source.paths(), result); regionDefaults(section.pageRegions(), source.paths(), result); }
+            regionDefaults(template.pageRegions(), source.paths(), result);
+            return Map.copyOf(result);
+        } catch (Exception ex) { throw new IOException("cannot preserve resolved paragraph formatting", ex); }
+    }
+    private static void collectDefaults(List<com.mirakyux.export4j.model.DocumentTemplate.Node> nodes, Map<String, String> paths,
+            Map<String, Map<String, String>> result) {
+        for (var node : nodes) {
+            if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.ValueBlock value) { blockDefaults(List.of(value.prototype()), paths, result); }
+            else if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.Each each) { collectDefaults(each.children(), paths, result); }
+            else if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.When when) { collectDefaults(when.yes(), paths, result); collectDefaults(when.no(), paths, result); }
+        }
+    }
+    private static void regionDefaults(com.mirakyux.export4j.model.PageRegions regions, Map<String, String> paths,
+            Map<String, Map<String, String>> result) {
+        java.util.stream.Stream.of(regions.headers(), regions.footers(), regions.backgrounds(), regions.foregrounds())
+                .flatMap(List::stream).forEach(region -> blockDefaults(region.blocks(), paths, result));
+    }
+    private static void blockDefaults(List<com.mirakyux.export4j.model.Block> blocks, Map<String, String> paths,
+            Map<String, Map<String, String>> result) {
+        com.mirakyux.export4j.model.SemanticTree.walk(blocks, visit -> {
+            if (!(visit.block() instanceof com.mirakyux.export4j.model.Paragraph p) || !paths.containsKey(p.id())) { return; }
+            var f = p.format(); var style = p.inlines().getFirst().style();
+            result.put(paths.get(p.id()), Map.ofEntries(Map.entry("size", Double.toString(f.fontSize())), Map.entry("line-height", Double.toString(f.lineHeight())),
+                    Map.entry("role", style.fontRole()), Map.entry("color", String.format(java.util.Locale.ROOT, "#%06X", style.rgb())),
+                    Map.entry("align", f.alignment().name()), Map.entry("first-indent", Double.toString(f.firstLineIndent())),
+                    Map.entry("subsequent-indent", Double.toString(f.subsequentLineIndent())), Map.entry("space-before", Double.toString(f.spaceBefore())),
+                    Map.entry("space-after", Double.toString(f.spaceAfter())), Map.entry("keep-together", Boolean.toString(f.keepTogether())),
+                    Map.entry("line-break", f.lineBreakPolicy().name()), Map.entry("keep-with-next", Boolean.toString(f.pagination().keepWithNext())),
+                    Map.entry("page-break-before", Boolean.toString(f.pagination().pageBreakBefore())),
+                    Map.entry("min-lines-before", Integer.toString(f.pagination().minLinesBeforeBreak())),
+                    Map.entry("min-lines-after", Integer.toString(f.pagination().minLinesAfterBreak()))));
+        });
+    }
+    private record RegionMeasure(com.mirakyux.export4j.model.PageRegion region, double width, double height) { }
+
+    /** The composition trace contains final drawing commands. Reuse the same engine and concrete bound
+     * model to recover local cell geometry for editing; this never changes final pagination or drawing. */
+    private static void regionHits(List<Hit> hits, int page, com.mirakyux.export4j.model.PageRegion region,
+            com.mirakyux.export4j.graphics.Rect viewport, Element sourceTree, Map<String, String> sourcePaths,
+            String regionRoot, String primaryPath, DocumentEngine renderer,
+            Map<RegionMeasure, com.mirakyux.export4j.layout.DocumentLayout> measuredRegions) throws IOException {
+        // A single paragraph already has its exact hit above. Multiple paragraphs and tables need descendants.
+        if (region.blocks().size() <= 1 && region.blocks().stream().noneMatch(com.mirakyux.export4j.model.Table.class::isInstance)) { return; }
+        var key = new RegionMeasure(region, viewport.width(), viewport.height());
+        var measured = measuredRegions.get(key);
+        if (measured == null) {
+            var settings = com.mirakyux.export4j.model.PageSettings.builder().size(viewport.width(), viewport.height()).margins(0).build();
+            measured = renderer.layout(new com.mirakyux.export4j.model.Document(
+                    com.mirakyux.export4j.model.DocumentMetadata.EMPTY, settings, region.blocks())).body();
+            if (measured.pages().size() != 1) { throw new IOException("designer page-region geometry requires one local page"); }
+            measuredRegions.put(key, measured);
+        }
+        for (var fragment : measured.pages().getFirst().elements()) {
+            String path = sourcePaths.getOrDefault(fragment.blockId().split("@", 2)[0], "");
+            if (!path.startsWith(regionRoot + "/")) { continue; }
+            if (fragment instanceof com.mirakyux.export4j.layout.TableFragment table) {
+                if (!path.equals(primaryPath)) {
+                    hits.add(new Hit(page, table.blockId(), path, viewport.x() + table.origin().x(), viewport.y() + table.origin().y(),
+                            table.width(), table.height(), List.of()));
+                }
+                var model = region.blocks().stream().filter(block -> block.id().equals(table.blockId())).findFirst().orElseThrow();
+                if (((com.mirakyux.export4j.model.Table) model).format().rotation() == 0) {
+                    tableHits(hits, page, table, sourceTree, path, viewport.x(), viewport.y());
+                }
+            } else if (fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph && !path.equals(primaryPath)) {
+                var images = new ArrayList<ImageBounds>();
+                for (var line : paragraph.layout().lines()) {
+                    for (var box : line.images()) {
+                        var image = box.image();
+                        images.add(new ImageBounds(viewport.x() + paragraph.origin().x() + line.offsetX() + box.x(),
+                                viewport.y() + paragraph.origin().y() + line.baselineY() + image.baselineShift() - image.height(),
+                                image.width(), image.height()));
+                    }
+                }
+                hits.add(new Hit(page, paragraph.blockId(), path, viewport.x() + paragraph.origin().x(), viewport.y() + paragraph.origin().y(),
+                        paragraph.layout().width(), paragraph.layout().height(), List.copyOf(images)));
+            }
+        }
+    }
+    private static void tableHits(List<Hit> hits, int page, com.mirakyux.export4j.layout.TableFragment table,
+            Element sourceTree, String path, double parentX, double parentY) {
+        var source = DesignerXml.at(sourceTree.getOwnerDocument(), path);
+        // Rotated text is shown by the engine image; a local unrotated cell box cannot be an editor target.
+        if (source.hasAttribute("rotation") && Double.parseDouble(source.getAttribute("rotation")) != 0) { return; }
+        var rows = DesignerXml.children(source).stream().filter(row -> List.of("row", "header").contains(row.getTagName())).toList();
+        int headers = (int) rows.stream().filter(row -> row.getTagName().equals("header")).count();
+        int columns = DesignerXml.children(DesignerXml.children(source).getFirst()).size();
+        int[] occupied = new int[columns];
+        var paths = new HashMap<String, String>();
+        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+            var row = rows.get(rowIndex); int column = 0;
+            for (var cell : DesignerXml.children(row)) {
+                while (column < columns && occupied[column] > rowIndex) { column++; }
+                int span = cell.hasAttribute("column-span") ? Integer.parseInt(cell.getAttribute("column-span")) : 1;
+                int rowSpan = cell.hasAttribute("row-span") ? Integer.parseInt(cell.getAttribute("row-span")) : 1;
+                paths.put(rowIndex + ":" + column, path + "/" + DesignerXml.children(source).indexOf(row) + "/" + DesignerXml.children(row).indexOf(cell));
+                for (int slot = column; slot < Math.min(columns, column + span); slot++) { occupied[slot] = rowIndex + rowSpan; }
+                column += span;
+            }
+        }
+        for (var row : table.rows()) {
+            int sourceRow = source.getTagName().equals("rows") && row.rowIndex() >= headers ? headers : row.rowIndex();
+            for (var cell : row.cells()) {
+                String cellPath = paths.get(sourceRow + ":" + cell.columnIndex()); if (cellPath == null) { continue; }
+                double x = parentX + table.origin().x(), y = parentY + table.origin().y();
+                if (!cell.hasBlocks()) {
+                    hits.add(new Hit(page, table.blockId() + "#" + row.rowIndex() + ":" + cell.columnIndex(), cellPath,
+                            x + cell.textOrigin().x(), y + cell.textOrigin().y(), cell.layout().width(),
+                            Math.max(cell.layout().height(), 12), List.of()));
+                } else {
+                    var children = DesignerXml.children(DesignerXml.at(sourceTree.getOwnerDocument(), cellPath));
+                    for (int index = 0; index < cell.blocks().size(); index++) {
+                        var fragment = cell.blocks().get(index); int ordinal = cell.sourceBlockIndices().get(index);
+                        var blocks = children.stream().filter(child -> List.of("p", "table").contains(child.getTagName())).toList();
+                        if (ordinal >= blocks.size()) { continue; }
+                        String childPath = cellPath + "/" + children.indexOf(blocks.get(ordinal));
+                        double cx = x + cell.textOrigin().x(), cy = y + cell.textOrigin().y();
+                        if (fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment p) {
+                            hits.add(new Hit(page, p.blockId(), childPath, cx + p.origin().x(), cy + p.origin().y(), p.layout().width(), p.layout().height(), List.of()));
+                        } else if (fragment instanceof com.mirakyux.export4j.layout.TableFragment nested) { tableHits(hits, page, nested, sourceTree, childPath, cx, cy); }
+                    }
+                }
+            }
+        }
     }
     private static String sectionPath(Element root, String path) {
         if (path.isEmpty()) { return ""; }

@@ -205,3 +205,5 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 ## 可选 HTML 设计器
 
 [export4j-designer](designer.md) 为独立本地应用，提供 XML／普通 ZIP 模板编辑、JSON 绑定、真实分页预览、结构／属性／节点源码编辑、同级排序、资源及字体管理、8 步撤销、保存重开和 PDF／DOCX／HTML／Markdown／SVG ZIP／PNG ZIP 导出。预检实际编码，ERROR／WARN／IGNORE 与具体降级／丢弃分别报告。核心库不依赖它，应用不加入 Maven 库发布或 BOM；有限浏览器实测范围及四套场景证据见[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)。
+
+[阶段一百一十三](verification/phase-113-interactive-canvas.md)增加画布富文本直接编辑、便捷／精确双模式、多选及固定对象几何操作。组件默认按语义流占位，拖动排序不改变排版属性；动态表格、列表及控制容器保留绑定并整体排序。顶层段落、图片段落和表格可显式选择固定位置、物理页及自适应框，并配置遮盖正文或全宽上下避让；输出及浏览器输入法边界按该阶段记录判断。

@@ -102,6 +102,21 @@ public final class DocumentLayouter {
     }
 
     /**
+     * Paginates around explicit page-coordinate rectangles using full-width vertical avoidance.
+     * The callback receives a zero-based physical page index and is invoked once per measured page,
+     * including bounded lookahead for region-aware components within the configured page budget.
+     * Each returned list is snapshotted, must contain at most 64 rectangles within that page, and owns
+     * no resources. Areas outside the body width are ignored; overlapping vertical areas are merged.
+     * Content above an area stays in place; continuation resumes below it without consuming source.
+     * Ordinary page/source/line budgets and cancellation apply. No callbacks are retained after layout.
+     */
+    public DocumentLayout layout(Document document, FontGroup group, Map<String, FontGroup> roles,
+            java.util.function.IntFunction<List<Rect>> exclusions) {
+        Objects.requireNonNull(document, "document");
+        return new Flow(document, group, roles, preflight(document), Objects.requireNonNull(exclusions, "exclusions")).layout();
+    }
+
+    /**
      * One occupied logical region and its measured semantic table fragment. The fragment uses local
      * coordinates with origin (0, 0); row/column indices and cell-local UTF-16 source ranges are retained.
      * Region indices are zero-based and independent of physical pages or columns. Immutable; owns no resources.
@@ -164,7 +179,7 @@ public final class DocumentLayouter {
      * <p>All arguments are non-null. The positive continuation height, in points, must fit the context height.
      * Source code points and cells are counted once; output lines include repeated headers and empty continuation cells.
      * This layouter's {@code maxPages} limits occupied fragments, additionally capped at 100,000; skipped
-     * initial regions do not count. At most 16 initial regions and 100,016 logical indices are permitted.
+     * initial regions do not count. At most 100,016 initial regions and logical indices are permitted.
      * Returns a nonempty immutable list or throws {@link DocumentLayoutException} with source context;
      * exception page indices refer to occupied-fragment order, not the logical region index.
      * Uses caller-owned immutable fonts/resources, performs no I/O, and observes the current execution scope.
@@ -334,6 +349,8 @@ public final class DocumentLayouter {
         private final Map<Integer, MeasuredTable> tables = new HashMap<>();
         private final Map<String, MeasuredTable> cellTables = new HashMap<>();
         private final Map<Integer, List<ComponentLayout>> components = new HashMap<>();
+        private record PlannedRegion(int page, double start, double height) { }
+        private final Map<Integer, List<PlannedRegion>> componentRegions = new HashMap<>();
         private boolean pendingBreak;
         private double used;
         private double previousAfter;
@@ -350,7 +367,18 @@ public final class DocumentLayouter {
         private final Map<Object, Double> maximumSourceWidths = new java.util.IdentityHashMap<>();
         private VariableMeasurements activeVariableWork;
         private int keptThrough = -1;
+        private final java.util.function.IntFunction<List<Rect>> exclusionSource;
+        private final Map<Integer, List<double[]>> exclusionPages = new HashMap<>();
+        private boolean adaptiveExclusions = true;
+        private List<double[]> exclusions = List.of();
+        private int exclusionIndex;
+        private double regionStart;
         private Flow(Document document, FontGroup group, Map<String, FontGroup> roles, long codePoints) {
+            this(document, group, roles, codePoints, ignored -> List.of());
+            adaptiveExclusions = false;
+        }
+        private Flow(Document document, FontGroup group, Map<String, FontGroup> roles, long codePoints,
+                java.util.function.IntFunction<List<Rect>> exclusions) {
             this.document = document;
             blocks = document.blocks().stream().map(block -> block instanceof Heading heading ? heading.paragraph() : block).toList();
             settings = document.pageSettings();
@@ -358,6 +386,8 @@ public final class DocumentLayouter {
             this.roles = Map.copyOf(roles);
             this.codePoints = codePoints;
             semanticSources = new SemanticSourceRegistry(sourceIds(document.blocks()));
+            exclusionSource = exclusions;
+            loadExclusions();
         }
 
         private DocumentLayout layout() {
@@ -395,12 +425,24 @@ public final class DocumentLayouter {
 
         private void component(ComponentBlock block, int index) {
             var parts = measuredComponents(block, index);
+            var assigned = componentRegions.remove(index);
             for (int part = 0; part < parts.size(); part++) {
                 var shaped = parts.get(part);
-                if (part == 0) {
+                if (assigned != null) {
+                    var target = assigned.get(part);
+                    while (pages.size() < target.page()) { nextPage(block, index, -1, 0); }
+                    used = target.start(); regionStart = used;
+                    exclusionIndex = 0;
+                    while (exclusionIndex < exclusions.size() && exclusions.get(exclusionIndex)[1] <= used) { exclusionIndex++; }
+                    if (!fits(shaped.height(), currentCapacity() - used)) {
+                        throw failure(DocumentLayoutException.Code.COMPONENT_LAYOUT_FAILED, block, index, pages.size(), -1,
+                                -1, -1, "region component no longer fits its measured assignment", null);
+                    }
+                } else if (part == 0) {
                     beginBlock(shaped.height(), block.spaceBefore(), block, index, -1);
                 } else {
-                    nextPage(block, index, -1, 0);
+                    nextRegion(block, index, -1, 0);
+                    beginBlock(shaped.height(), 0, block, index, -1);
                 }
                 elements.add(new ComponentFragment(block.id(), index, origin(), shaped));
                 used += shaped.height();
@@ -410,8 +452,9 @@ public final class DocumentLayouter {
         }
 
         private List<ComponentLayout> measuredComponents(ComponentBlock block, int index) {
-            double spacing = elements.isEmpty() ? 0 : previousAfter + block.spaceBefore();
-            return measuredComponents(block, index, Math.max(0, settings.contentHeight() - used - spacing));
+            double available = currentCapacity() - used;
+            double spacing = used == regionStart ? 0 : previousAfter + block.spaceBefore();
+            return measuredComponents(block, index, Math.max(0, available - spacing));
         }
 
         private List<ComponentLayout> measuredComponents(ComponentBlock block, int index, double firstHeight) {
@@ -421,9 +464,11 @@ public final class DocumentLayouter {
             List<ComponentLayout> parts;
             try {
                 var context = new ComponentContext(settings.contentWidth(), settings.contentHeight(), fontGroup, pages.size(), 0, pages.size() + 1, roles);
-                parts = block.component() instanceof PageableComponent pageable ? List.copyOf(pageable.layoutParts(context, firstHeight))
+                parts = adaptiveExclusions && block.component() instanceof RegionFlow regionFlow
+                        ? regionComponents(block, index, regionFlow, context)
+                        : block.component() instanceof PageableComponent pageable ? List.copyOf(pageable.layoutParts(context, firstHeight))
                         : List.of(block.component().layout(context));
-                if (parts.isEmpty() || parts.size() > limits.maxPages()) {
+                if (parts.isEmpty() || parts.size() > (componentRegions.containsKey(index) ? 100_000 : limits.maxPages())) {
                     throw new IllegalArgumentException("invalid component part count");
                 }
             } catch (DocumentLayoutException cause) {
@@ -510,6 +555,82 @@ public final class DocumentLayouter {
             return parts;
         }
 
+        private List<ComponentLayout> regionComponents(ComponentBlock block, int index, RegionFlow flow, ComponentContext context) {
+            int requested = 16;
+            long work = 0;
+            for (int probe = 0; probe < 32; probe++) {
+                ExecutionContext.checkpoint();
+                var plan = planRegions(block, requested);
+                var regions = new FlowRegions(plan.stream().map(PlannedRegion::height).toList(), settings.contentHeight());
+                var fragments = List.copyOf(flow.layoutRegions(context, regions));
+                if (fragments.isEmpty() || fragments.size() > 100_000) { throw new IllegalArgumentException("invalid region component fragment count"); }
+                int previous = -1;
+                var measuredSources = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Block, Boolean>());
+                long[] sourceWork = {0};
+                for (var fragment : fragments) {
+                    if (fragment.regionIndex() <= previous) { throw new IllegalArgumentException("region component fragments must be ordered and unique"); }
+                    previous = fragment.regionIndex();
+                    for (var command : fragment.layout().staticCommands()) {
+                        work += switch (command) {
+                            case DrawCommand.GlyphText text -> text.run().text().length();
+                            case DrawCommand.Text text -> text.text().length();
+                            case DrawCommand.OutlineText text -> text.logicalText().length();
+                            default -> 0;
+                        };
+                    }
+                    for (var placed : fragment.layout().semanticPlacements()) {
+                        if (!measuredSources.add(placed.source())) { continue; }
+                        SemanticTree.walk(placed.source(), visit -> {
+                            if (visit.block() instanceof Paragraph paragraph) { sourceWork[0] += paragraph.text().length(); }
+                            else if (visit.block() instanceof Table table) {
+                                for (var row : table.grid().anchorRows()) {
+                                    for (var anchor : row) { if (!anchor.cell().hasBlocks()) { sourceWork[0] += anchor.cell().text().length(); } }
+                                }
+                            }
+                        });
+                    }
+                }
+                work += sourceWork[0];
+                if (work > 4_000_000) { throw new IllegalArgumentException("region component planning text-work budget exceeded"); }
+                if (previous < plan.size()) {
+                    var assigned = new ArrayList<PlannedRegion>();
+                    for (var fragment : fragments) {
+                        var target = plan.get(fragment.regionIndex());
+                        if (!fits(fragment.layout().height(), target.height())) { throw new IllegalArgumentException("region component exceeds assigned free area"); }
+                        assigned.add(target);
+                    }
+                    componentRegions.put(index, List.copyOf(assigned));
+                    return fragments.stream().map(RegionFlow.Fragment::layout).toList();
+                }
+                if (plan.size() < requested || requested == 100_016) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, limits.maxPages(), -1,
+                            -1, -1, "region component exceeds available document pages", null);
+                }
+                requested = Math.min(100_016, requested * 2);
+            }
+            throw new IllegalArgumentException("region component planning did not converge within 32 probes");
+        }
+
+        private List<PlannedRegion> planRegions(ComponentBlock block, int count) {
+            currentCapacity();
+            var result = new ArrayList<PlannedRegion>();
+            double firstStart = Math.min(currentCapacity(), used + (used == regionStart ? 0 : previousAfter + block.spaceBefore()));
+            for (int page = pages.size(); page < limits.maxPages() && result.size() < count; page++) {
+                ExecutionContext.checkpoint();
+                double start = page == pages.size() ? Math.min(settings.contentHeight(), firstStart) : 0;
+                for (var interval : readExclusions(page)) {
+                    if (interval[1] <= start) { continue; }
+                    if (interval[0] >= start) {
+                        result.add(new PlannedRegion(page, start, interval[0] - start));
+                        if (result.size() == count) { return List.copyOf(result); }
+                    }
+                    start = interval[1];
+                }
+                result.add(new PlannedRegion(page, start, settings.contentHeight() - start));
+            }
+            return List.copyOf(result);
+        }
+
         private void paragraph(Paragraph paragraph, int index) {
             ParagraphFormat format = paragraph.format();
             ParagraphLayout shaped = measuredParagraph(paragraph, index);
@@ -522,7 +643,7 @@ public final class DocumentLayouter {
             while (firstLine < shaped.lines().size()) {
                 com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                 int remaining = shaped.lines().size() - firstLine;
-                double available = Math.max(0, settings.contentHeight() - used);
+                double available = Math.max(0, currentCapacity() - used);
                 int take = whole ? remaining
                         : (int) Math.min(remaining, Math.floor(Math.nextUp(available / format.lineHeight())));
                 if (take < remaining) {
@@ -532,12 +653,12 @@ public final class DocumentLayouter {
                     }
                 }
                 if (take == 0) {
-                    if (elements.isEmpty()) {
+                    if (emptyUnobstructedPage()) {
                         throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, paragraph, index,
                                 pages.size(), -1, -1, shaped.lines().get(firstLine).sourceStart(),
                                 "paragraph fragment constraints cannot fit a fresh page", null);
                     }
-                    nextPage(paragraph, index, -1, shaped.lines().get(firstLine).sourceStart());
+                    nextRegion(paragraph, index, -1, shaped.lines().get(firstLine).sourceStart());
                     continue;
                 }
                 ParagraphLayout part = fragment(shaped, firstLine, take, format.lineHeight());
@@ -605,9 +726,15 @@ public final class DocumentLayouter {
                 }
             }
             requireHeight(height, first, index, -1);
-            double spacing = elements.isEmpty() ? 0 : previousAfter + first.format().spaceBefore();
-            if (!fits(spacing + height, settings.contentHeight() - used) && !elements.isEmpty()) {
-                nextPage(first, index, -1, 0);
+            currentCapacity();
+            double spacing = used == regionStart ? 0 : previousAfter + first.format().spaceBefore();
+            while (!fits(spacing + height, currentCapacity() - used)) {
+                if (emptyUnobstructedPage()) {
+                    throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, first, index, pages.size(), -1,
+                            -1, 0, "kept content cannot fit a fresh unobstructed page", null);
+                }
+                nextRegion(first, index, -1, 0);
+                spacing = 0;
             }
         }
 
@@ -631,7 +758,10 @@ public final class DocumentLayouter {
                             : groupHeight(measured, t.headerRows());
                     yield height;
                 }
-                case ComponentBlock c -> measuredComponents(c, index, firstHeight).getFirst().height();
+                case ComponentBlock c -> adaptiveExclusions && c.component() instanceof RegionFlow flow
+                        ? flow.layoutParts(new ComponentContext(settings.contentWidth(), settings.contentHeight(), fontGroup,
+                                pages.size(), 0, pages.size() + 1, roles), firstHeight).getFirst().height()
+                        : measuredComponents(c, index, firstHeight).getFirst().height();
                 default -> throw new IllegalStateException("unknown flow block");
             };
         }
@@ -706,7 +836,8 @@ public final class DocumentLayouter {
                 elements.add(new TableFragment(table.id(), index, start, tableWidth, height, placed, table.format().drawBorders()));
                 used += height;
                 if (body < rows.size()) {
-                    nextPage(table, index, body, 0);
+                    nextRegion(table, index, body, 0);
+                    beginBlock(headerHeight + groupHeight(measured, body), 0, table, index, body);
                     continuation = true;
                 }
             }
@@ -1042,7 +1173,11 @@ public final class DocumentLayouter {
                 }
                 elements.add(new TableFragment(table.id(), index, start, tableWidth, height, placed, table.format().drawBorders()));
                 used += height;
-                if (row < table.rows().size()) { nextPage(table, index, row, 0); repeated = true; }
+                if (row < table.rows().size()) {
+                    nextRegion(table, index, row, 0);
+                    beginBlock(headerHeight + minimumRowHeight(table, row), 0, table, index, row);
+                    repeated = true;
+                }
             }
             previousAfter = table.format().spaceAfter();
             tables.remove(index);
@@ -1715,15 +1850,16 @@ public final class DocumentLayouter {
 
         private void recursiveTable(Table table, int index) {
             var cursor = new RecursiveCursor(table, index);
-            double spacing = elements.isEmpty() ? 0 : previousAfter + table.format().spaceBefore();
+            currentCapacity();
+            double spacing = used == regionStart ? 0 : previousAfter + table.format().spaceBefore();
             while (!cursor.done()) {
                 var part = cursor.take(Math.max(0, currentCapacity() - used - spacing));
                 if (part.isEmpty()) {
-                    if (elements.isEmpty()) {
+                    if (emptyUnobstructedPage()) {
                         throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, table, index, pages.size(),
                                 cursor.rowIndex(), -1, -1, "table headers and next complete cell content cannot fit", null);
                     }
-                    nextPage(table, index, cursor.rowIndex(), 0);
+                    nextRegion(table, index, cursor.rowIndex(), 0);
                     spacing = 0;
                     continue;
                 }
@@ -1732,7 +1868,7 @@ public final class DocumentLayouter {
                 elements.add(new TableFragment(table.id(), index, origin(), placed.width(), placed.height(), placed.rows(), placed.drawBorders()));
                 used += placed.height();
                 spacing = 0;
-                if (!cursor.done()) { nextPage(table, index, cursor.rowIndex(), 0); }
+                if (!cursor.done()) { nextRegion(table, index, cursor.rowIndex(), 0); }
             }
             previousAfter = table.format().spaceAfter();
             tables.remove(index);
@@ -2246,16 +2382,77 @@ public final class DocumentLayouter {
         }
 
         private void beginBlock(double required, double before, Block block, int index, int row) {
-            double spacing = elements.isEmpty() ? 0 : previousAfter + before;
-            if (!fits(spacing + required, currentCapacity() - used)) {
-                nextPage(block, index, row, 0);
+            currentCapacity();
+            double spacing = used == regionStart ? 0 : previousAfter + before;
+            while (!fits(spacing + required, currentCapacity() - used)) {
+                if (emptyUnobstructedPage()) {
+                    throw failure(DocumentLayoutException.Code.CONTENT_TOO_TALL, block, index, pages.size(), row,
+                            -1, 0, "content cannot fit a fresh unobstructed page", null);
+                }
+                nextRegion(block, index, row, 0);
                 spacing = 0;
             }
             used += spacing;
         }
 
         private double currentCapacity() {
-            return settings.contentHeight();
+            while (exclusionIndex < exclusions.size() && exclusions.get(exclusionIndex)[0] <= used) {
+                used = Math.max(used, exclusions.get(exclusionIndex++)[1]);
+                regionStart = used;
+                previousAfter = 0;
+            }
+            return exclusionIndex < exclusions.size() ? exclusions.get(exclusionIndex)[0] : settings.contentHeight();
+        }
+
+        private boolean emptyUnobstructedPage() {
+            return elements.isEmpty() && used == 0 && exclusions.isEmpty();
+        }
+
+        private void nextRegion(Block block, int index, int row, int source) {
+            ExecutionContext.checkpoint();
+            if (exclusionIndex < exclusions.size()) {
+                used = exclusions.get(exclusionIndex++)[1];
+                regionStart = used;
+                previousAfter = 0;
+                currentCapacity();
+            } else {
+                nextPage(block, index, row, source);
+            }
+        }
+
+        private void loadExclusions() {
+            exclusions = readExclusions(pages.size()); exclusionIndex = 0; regionStart = 0;
+            currentCapacity();
+        }
+
+        private List<double[]> readExclusions(int page) {
+            var cached = exclusionPages.get(page);
+            if (cached != null) { return cached; }
+            var supplied = List.copyOf(exclusionSource.apply(page));
+            if (supplied.size() > 64) { throw new IllegalArgumentException("body exclusion budget exceeded"); }
+            var intervals = new ArrayList<double[]>();
+            double top = settings.margins().top(), bottom = settings.size().height() - settings.margins().bottom();
+            for (var area : supplied) {
+                if (area.x() < 0 || area.y() < 0 || area.x() + area.width() > Math.nextUp(settings.size().width())
+                        || area.y() + area.height() > Math.nextUp(settings.size().height())) {
+                    throw new IllegalArgumentException("body exclusion exceeds physical page bounds");
+                }
+                if (area.x() >= settings.size().width() - settings.margins().right()
+                        || area.x() + area.width() <= settings.margins().left()) { continue; }
+                double start = Math.max(top, area.y()) - top;
+                double end = Math.min(bottom, area.y() + area.height()) - top;
+                if (start < end) { intervals.add(new double[] {start, end}); }
+            }
+            intervals.sort(java.util.Comparator.comparingDouble(interval -> interval[0]));
+            var merged = new ArrayList<double[]>();
+            for (var interval : intervals) {
+                if (!merged.isEmpty() && interval[0] <= merged.getLast()[1]) {
+                    merged.getLast()[1] = Math.max(merged.getLast()[1], interval[1]);
+                } else { merged.add(interval); }
+            }
+            var result = List.copyOf(merged);
+            exclusionPages.put(page, result);
+            return result;
         }
 
         private void nextPage(Block block, int index, int row, int source) {
@@ -2266,6 +2463,8 @@ public final class DocumentLayouter {
             pages.add(page());
             elements.clear();
             used = 0;
+            previousAfter = 0;
+            loadExclusions();
         }
 
         private LayoutPage page() {

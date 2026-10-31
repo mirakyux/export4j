@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Objects;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
+import com.mirakyux.export4j.graphics.Rect;
+import com.mirakyux.export4j.font.FontGroup;
 
 /** Repeating page composition: background, body, header/footer, foreground, in that order. */
 public record PageTemplate(PageBand header, PageBand footer, List<Placement> background, List<Placement> foreground) {
@@ -26,6 +28,34 @@ public record PageTemplate(PageBand header, PageBand footer, List<Placement> bac
                 (footer.edgeOffset() < 0 ? margins.bottom() : footer.edgeOffset()) + footer.height() + footer.gap());
         return new PageSettings(settings.size(), new PageMargins(top,
                 margins.right(), bottom, margins.left()));
+    }
+
+    /**
+     * Measures explicit body-avoiding boxes for one zero-based physical page. The component receives
+     * pageCount=0 (measurement); its measured geometry must remain stable when final fields resolve.
+     * No side wrapping is requested: the layouter excludes each rectangle's vertical body extent.
+     * Fonts and roles are borrowed. Returned areas are immutable and no resources are acquired.
+     */
+    public List<Rect> bodyExclusions(PageSettings settings, FontGroup fonts,
+            java.util.Map<String, FontGroup> roles, int page, int displayNumber) {
+        var result = new java.util.ArrayList<Rect>();
+        var physical = new Rect(0, 0, settings.size().width(), settings.size().height());
+        for (var placement : java.util.stream.Stream.concat(background.stream(), foreground.stream()).toList()) {
+            if (!placement.avoidBody() || placement.page() != 0 && placement.page() != page + 1) { continue; }
+            if (result.size() >= 64) { throw new IllegalArgumentException("body exclusion budget exceeded"); }
+            var viewport = placement.position().resolve(physical);
+            if (viewport.x() < 0 || viewport.y() < 0 || viewport.x() + viewport.width() > Math.nextUp(physical.width())
+                    || viewport.y() + viewport.height() > Math.nextUp(physical.height())) {
+                throw new IllegalArgumentException("avoiding component exceeds physical page bounds");
+            }
+            var measured = placement.component().layout(new ComponentContext(viewport.width(), viewport.height(),
+                    fonts, page, 0, displayNumber, roles));
+            if (measured.width() > Math.nextUp(viewport.width()) || measured.height() > Math.nextUp(viewport.height())) {
+                throw new IllegalArgumentException("avoiding component exceeds its viewport");
+            }
+            result.add(new Rect(viewport.x(), viewport.y(), viewport.width(), measured.height()));
+        }
+        return List.copyOf(result);
     }
 
     /** Task-confined builder. Dimensions use points unless the type specifies another unit.

@@ -36,6 +36,12 @@ final class Footnotes {
 
     static Result layout(Document document, List<Note> allNotes, FontGroup fonts, Map<String, FontGroup> roles,
             DocumentLayoutLimits limits, ComponentLimits componentLimits) {
+        return layout(document, allNotes, fonts, roles, limits, componentLimits, null);
+    }
+
+    static Result layout(Document document, List<Note> allNotes, FontGroup fonts, Map<String, FontGroup> roles,
+            DocumentLayoutLimits limits, ComponentLimits componentLimits,
+            java.util.function.IntFunction<List<com.mirakyux.export4j.graphics.Rect>> exclusions) {
         var ids = document.blocks().stream().map(com.mirakyux.export4j.model.Block::id).collect(java.util.stream.Collectors.toSet());
         var text = new ParagraphLayouter();
         boolean complexNotes = allNotes.stream().anyMatch(note -> ParagraphLayouter.requiresOpenType(note.text(), fonts));
@@ -51,13 +57,15 @@ final class Footnotes {
             }
         }
         double reserve = 0;
+        double avoidanceOffset = 0;
         for (int iteration = 0; iteration < 32; iteration++) {
             com.mirakyux.export4j.model.ExecutionContext.checkpoint();
             var settings = document.pageSettings();
             var margins = settings.margins();
-            var bodySettings = new PageSettings(settings.size(), new PageMargins(margins.top(), margins.right(), margins.bottom() + reserve, margins.left()));
-            var body = new DocumentLayouter(new ParagraphLayouter(), limits, componentLimits).layout(
-                    new Document(document.metadata(), bodySettings, document.blocks()), fonts, roles);
+            var bodySettings = new PageSettings(settings.size(), new PageMargins(margins.top(), margins.right(), margins.bottom() + reserve + avoidanceOffset, margins.left()));
+            var layouter = new DocumentLayouter(new ParagraphLayouter(), limits, componentLimits);
+            var bodySource = new Document(document.metadata(), bodySettings, document.blocks());
+            var body = exclusions == null ? layouter.layout(bodySource, fonts, roles) : layouter.layout(bodySource, fonts, roles, exclusions);
             Map<String, Integer> lastPages = new HashMap<>();
             Map<String, Integer> markerPages = new HashMap<>();
             for (var page : body.pages()) {
@@ -89,6 +97,32 @@ final class Footnotes {
                 continue;
             }
             assigned = continueNotes(assigned, reserve, step, limits.maxPages());
+            var noteBottoms = new ArrayList<Double>();
+            double requiredOffset = avoidanceOffset;
+            for (int page = 0; page < assigned.size(); page++) {
+                double end = settings.size().height() - margins.bottom();
+                double noteHeight = height(assigned.get(page));
+                if (noteHeight > 0) {
+                    var areas = exclusions == null ? List.<com.mirakyux.export4j.graphics.Rect>of() : List.copyOf(exclusions.apply(page));
+                    if (areas.size() > 64) { throw new IllegalArgumentException("footnote exclusion budget exceeded"); }
+                    // Every collision strictly lowers the candidate band; 64 rectangles bound the work.
+                    boolean moved;
+                    do {
+                        com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                        moved = false;
+                        for (var area : areas) {
+                            if (area.x() < settings.size().width() - margins.right() && area.x() + area.width() > margins.left()
+                                    && end > area.y() && end - noteHeight < area.y() + area.height()) {
+                                end = area.y(); moved = true;
+                            }
+                        }
+                    } while (moved);
+                    if (end - noteHeight < margins.top()) { throw new IllegalArgumentException("fixed body avoidance leaves no room for footnotes"); }
+                    requiredOffset = Math.max(requiredOffset, settings.size().height() - margins.bottom() - end);
+                }
+                noteBottoms.add(end);
+            }
+            if (requiredOffset > Math.nextUp(avoidanceOffset)) { avoidanceOffset = requiredOffset; continue; }
             if (assigned.size() > body.pages().size()) {
                 var extended = new ArrayList<>(body.pages());
                 var bounds = body.pages().getFirst().contentBounds();
@@ -98,9 +132,10 @@ final class Footnotes {
                 body = new DocumentLayout(body.metadata(), extended);
             }
             List<ComponentLayout> pages = new ArrayList<>();
-            for (var group : assigned) {
+            for (int page = 0; page < assigned.size(); page++) {
+                var group = assigned.get(page);
                 var builder = new DisplayListBuilder(settings.size());
-                double y = settings.size().height() - margins.bottom() - height(group);
+                double y = noteBottoms.get(page) - height(group);
                 int lines = 0;
                 List<TextDiagnostic> diagnostics = new ArrayList<>();
                 if (!group.isEmpty()) {

@@ -43,7 +43,7 @@ python scripts/verify_continuous_columns.py
 
 ## 核心扩展契约
 
-`RegionFlow.layoutRegions(context, regions)` 接收相同栏宽和 `FlowRegions(initialHeights, continuationHeight)`。高度单位均为 point；有限前缀最多 16 个，可包含零高度，不能超过正有限的续区高度。区域索引与物理页面／栏编号无关。
+`RegionFlow.layoutRegions(context, regions)` 接收相同栏宽和 `FlowRegions(initialHeights, continuationHeight)`。高度单位均为 point；有限前缀最多 100,016 个，可包含零高度，不能超过正有限的续区高度。该前缀上限与变宽区域循环最多 16 种宽度、实际占用片段最多 100,000 个的限制独立。区域索引与物理页面／栏编号无关。
 
 返回 `RegionFlow.Fragment(regionIndex, layout)`，使用区域内局部坐标。返回值不可变、非空、最多 100,000 个正高度片段；索引严格递增，每区至多一个片段。首组区域仅在下一原子片段放不下时可以跳过，续区不得跳过。结果必须适应指定宽高，无法推进时失败。自定义实现是可信、协作式代码，负责确定性与线程安全。
 

@@ -11,7 +11,7 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /** Immutable repeating bands and page overlays; no font handles, components or backend state.
- * All lengths use points. Overlays use page coordinates and do not reserve body space. At most 64
+ * All lengths use points. Overlays use page coordinates; explicit AVOID boxes reserve vertical body space. At most 64
  * overlay placements per value. No regions is the compatibility default. Owns no resources and is thread-safe.
  */
 public record PageRegions(PageRegion header, PageRegion footer, Map<Variant, Bands> variants,
@@ -83,7 +83,8 @@ public record PageRegions(PageRegion header, PageRegion footer, Map<Variant, Ban
         var result = new ArrayList<PageOverlay>();
         for (int index = 0; index < source.size(); index++) {
             var box = source.get(index);
-            result.add(new PageOverlay(box.x(), box.y(), box.width(), mapper.apply(name + ":" + index, box.content())));
+            result.add(new PageOverlay(box.x(), box.y(), box.width(), mapper.apply(name + ":" + index, box.content()),
+                    box.page(), box.widthMode(), box.heightMode(), box.bodyFlow()));
         }
         return List.copyOf(result);
     }

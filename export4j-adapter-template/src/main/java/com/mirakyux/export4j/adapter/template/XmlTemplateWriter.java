@@ -282,6 +282,10 @@ public final class XmlTemplateWriter {
             for (int index = 0; index < values.size(); index++) {
                 var box = values.get(index); regionLocation(tag.toUpperCase(Locale.ROOT) + ":" + index);
                 add("<box"); attr("x", box.x()); attr("y", box.y()); attr("width", box.width());
+                if (box.page() != 0) { attr("page", box.page()); }
+                if (box.widthMode() != PageOverlay.SizeMode.FIXED) { attr("width-mode", box.widthMode().name()); }
+                if (box.heightMode() != PageOverlay.SizeMode.FIXED) { attr("height-mode", box.heightMode().name()); }
+                if (box.bodyFlow() != PageOverlay.BodyFlow.OVERLAP) { attr("body-flow", box.bodyFlow().name()); }
                 regionContent(tag, "box", box.content());
             }
             add("</" + tag + ">");

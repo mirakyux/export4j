@@ -5,8 +5,20 @@ import java.util.Objects;
 import com.mirakyux.export4j.graphics.Rect;
 
 /** Resolves a viewport on a page. Absolute uses page coordinates; other modes use the supplied parent region. */
-public sealed interface Position permits Position.Absolute, Position.Relative, Position.Fractional {
+public sealed interface Position permits Position.Absolute, Position.Relative, Position.Fractional, Position.PageBox {
     Rect resolve(Rect parent);
+
+    /** Point offsets with optional remaining-width/height fill. Resolved before child measurement. */
+    record PageBox(double x, double y, double width, double height, boolean fillWidth, boolean fillHeight) implements Position {
+        public PageBox {
+            new Rect(x, y, width, height);
+            if (x < 0 || y < 0 || width <= 0 || height <= 0) { throw new IllegalArgumentException("invalid page box"); }
+        }
+        @Override public Rect resolve(Rect parent) {
+            return new Rect(parent.x() + x, parent.y() + y,
+                    fillWidth ? parent.width() - x : width, fillHeight ? parent.height() - y : height);
+        }
+    }
 
     record Absolute(Rect bounds) implements Position {
         public Absolute {
