@@ -49,7 +49,9 @@ engine.write(document, new PdfBackend(), Path.of("report.pdf"));
 
 ## 限制与验证
 
-只为标准 SemanticTable、FlowColumn 及字体／样式作用域增加格内语义续排。自定义组件、嵌套 GridTable 和固定文字仍按原子组件处理；固定 `layout()` 仍要求一个片段。内语义表已有[列合并](column-spans-api.md)与[跨行合并](row-spans-api.md)，纵向连通组整体消费，内／外拆行开关保持独立；DOCX 嵌套仍未映射。页区语义、旋转、缩放和部分裁切沿用拒绝边界。
+只为标准 SemanticTable、FlowColumn 及字体／样式作用域增加格内语义续排。自定义组件、嵌套 GridTable 和固定文字仍按原子组件处理；固定 `layout()` 仍要求一个片段。内语义表已有[列合并](column-spans-api.md)与[跨行合并](row-spans-api.md)，纵向连通组整体消费，内／外拆行开关保持独立；DOCX 嵌套仍未映射。
+
+源 `Table`／`Paragraph` 的 `rotation` 在绘制时按每个最终片段的原流框拟合旋转，必要时等比缩小，链接框应用相同变换；测量尺寸、来源与分页保持不变。自定义组件对整个 `semanticPlacement` 施加的外层变换仍只允许平移，外层旋转、缩放及部分裁切会被拒绝；语义表也不能进入固定页区。
 
 源码结构、原文和图片按来源计一次，输出行、重复表头、字段和链接按实际呈现计入。单表默认最多 1,000 个游标片段；网格另限 100,000 个语义准备片段和实际呈现，保留原工作预算。全局限额随后复核；所有模型与 IR 仍驻留内存，不构成流式输出。
 

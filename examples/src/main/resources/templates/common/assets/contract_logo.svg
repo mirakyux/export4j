@@ -1,0 +1,6 @@
+<!-- SPDX-License-Identifier: Apache-2.0; original fictional Qingmu sample mark. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#18334D"/>
+  <path d="M128 36 52 126H88L44 178H112V220H144V178H212L168 126H204Z" fill="#A6D6C3"/>
+  <path d="m128 64-46 54 46-15 46 15Z" fill="#FFFFFF"/>
+</svg>

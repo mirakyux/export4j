@@ -44,6 +44,9 @@ abstract class PreparedCellFlow {
         if (content instanceof FontScope scope) {
             return prepare(scope.content(), context.withFonts(scope.fonts()), streams, header, depth + 1);
         }
+        if (content instanceof FontRoleScope scope) {
+            return prepare(scope.selected(context), context, streams, header, depth + 1);
+        }
         if (content instanceof StyleScope scope) {
             return prepare(scope.content(), scope.scoped(context), streams, header, depth + 1);
         }
@@ -75,6 +78,16 @@ abstract class PreparedCellFlow {
                     var builder = new DisplayListBuilder(new PageSize(context.width(), paragraph.height()));
                     TextLayoutPainter.draw(builder, paragraph, new Point(0, 0), text.color());
                     return new ComponentLayout(context.width(), paragraph.height(), count, builder.build().commands(), diagnostics);
+                }
+            };
+        }
+        if (content instanceof RichTextComponent.Flowing rich) {
+            var text = rich.source();
+            var measured = text.shape(context);
+            var style = text.inheritance().resolveStyle(text.style(), context);
+            return new Lines(measured.lines().size(), style.lineHeight(), rich.pagination()) {
+                @Override ComponentLayout paint(int first, int count) {
+                    return paintText(measured, first, count, context.width(), step, com.mirakyux.export4j.graphics.RgbColor.BLACK);
                 }
             };
         }
@@ -128,6 +141,17 @@ abstract class PreparedCellFlow {
 
     static List<TextDiagnostic> diagnostics(List<TextDiagnostic> values, int start, int end) {
         return values.stream().filter(d -> d.sourceStart() >= start && d.sourceStart() < end).toList();
+    }
+
+    static ComponentLayout paintText(ParagraphLayout measured, int first, int count, double width, double step,
+            com.mirakyux.export4j.graphics.RgbColor color) {
+        var lines = measured.lines().subList(first, first + count).stream()
+                .map(line -> line.atBaseline(line.baselineY() - first * step)).toList();
+        var diagnostics = diagnostics(measured.diagnostics(), lines.getFirst().sourceStart(), lines.getLast().sourceEnd());
+        var paragraph = new ParagraphLayout(width, count * step, lines, diagnostics);
+        var builder = new DisplayListBuilder(new PageSize(width, paragraph.height()));
+        TextLayoutPainter.draw(builder, paragraph, new Point(0, 0), color);
+        return new ComponentLayout(width, paragraph.height(), count, builder.build().commands(), diagnostics);
     }
 
     private abstract static class Lines extends PreparedCellFlow {

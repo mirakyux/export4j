@@ -455,6 +455,33 @@ tasks.register<JavaExec>("adrForm") {
     systemProperty("java.awt.headless", "true")
 }
 
+tasks.register<JavaExec>("adrReport") {
+    group = "application"
+    description = "Generates a fictional three-page adverse reaction report using the Java semantic model."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.AdrReportExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("adrReportXml") {
+    group = "application"
+    description = "Generates the same adverse reaction report by binding fictional data to an XML template."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.AdrReportXmlExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("commonDocuments") {
+    group = "application"
+    description = "Generates editable contract, resume, manual, quotation, meeting minutes and weekly report examples."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.CommonDocumentsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 tasks.register<JavaExec>("gridContinuation") {
     group = "application"
     description = "Generates complete-line merged cells, mixed images, columns and ordinary nested text fixtures."

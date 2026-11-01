@@ -9,10 +9,10 @@ import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineField;
+import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.NumberedItem;
-import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.PageRegions;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
@@ -63,8 +63,8 @@ final class DocxConversions {
                     }
                 }
                 supported = supported.toBuilder().background(List.of()).foreground(List.of()).build();
-                var regions = supported.map((name, band) -> new PageRegion(band.height(), band.gap(),
-                        mapper.blocks(band.blocks(), section.id(), name, List.of())));
+                var regions = supported.map((name, band) -> band.toBuilder()
+                        .blocks(mapper.blocks(band.blocks(), section.id(), name, List.of())).build());
                 sections.add(new Section(section.id(), section.pageSettings(), mapper.blocks(section.blocks(), section.id(), "BODY", List.of()), section.firstPageNumber(), regions));
             }
             adapter.write(new SectionedDocument(source.metadata(), sections), output);
@@ -81,17 +81,24 @@ final class DocxConversions {
                 com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                 var at = new ProcessingIssue.Location(section, region, block.id(), path, -1, -1);
                 if (block instanceof Paragraph paragraph) { result.add(paragraph(paragraph, at)); }
-                else if (block instanceof Heading heading) { result.add(Heading.rich(heading.id(), paragraph(heading.paragraph(), at).inlines(), heading.level(), heading.format())); }
-                else if (block instanceof BulletItem item) { result.add(BulletItem.rich(item.id(), paragraph(item.paragraph(), at).inlines(), item.marker(), item.level(), item.format(), style(item.markerStyle(), at))); }
-                else if (block instanceof NumberedItem item) { result.add(NumberedItem.rich(item.id(), item.listId(), paragraph(item.paragraph(), at).inlines(), item.restartAt(), item.format(), item.level(), style(item.markerStyle(), at))); }
+                else if (block instanceof Heading heading) {
+                    var mapped = paragraph(heading.paragraph(), at);
+                    result.add(Heading.rich(heading.id(), mapped.inlines(), heading.level(), mapped.format()));
+                } else if (block instanceof BulletItem item) {
+                    var mapped = paragraph(item.paragraph(), at);
+                    result.add(BulletItem.rich(item.id(), mapped.inlines(), item.marker(), item.level(), mapped.format(), style(item.markerStyle(), at)));
+                } else if (block instanceof NumberedItem item) {
+                    var mapped = paragraph(item.paragraph(), at);
+                    result.add(NumberedItem.rich(item.id(), item.listId(), mapped.inlines(), item.restartAt(), mapped.format(), item.level(), style(item.markerStyle(), at)));
+                }
                 else if (block instanceof Caption caption) {
                     add(issues, policy, "EXPORT", "MODEL", "DOCX", "CAPTION", at,
                             "caption numbering has no DOCX semantic mapping", "CAPTION_REPLACED_WITH_UNNUMBERED_TEXT", ProcessingPolicy.Treatment.DEGRADE);
-                    result.add(new Paragraph(caption.id(), caption.text(), caption.format()));
+                    result.add(paragraph(new Paragraph(caption.id(), caption.text(), caption.format()), at));
                 } else if (block instanceof CrossReference reference) {
                     add(issues, policy, "EXPORT", "MODEL", "DOCX", "CROSS_REFERENCE", at,
                             "independent reference has no DOCX semantic mapping", "REFERENCE_REPLACED_WITH_UNRESOLVED_TEXT", ProcessingPolicy.Treatment.DEGRADE);
-                    result.add(new Paragraph(reference.id(), reference.prefix() + "[unresolved reference]", reference.format()));
+                    result.add(paragraph(new Paragraph(reference.id(), reference.prefix() + "[unresolved reference]", reference.format()), at));
                 }
                 else if (block instanceof Table table) {
                     var rows = new ArrayList<TableRow>();
@@ -108,12 +115,22 @@ final class DocxConversions {
                         }
                         rows.add(new TableRow(cells));
                     }
-                    result.add(new Table(table.id(), table.columns(), rows, table.headerRows(), table.format()));
+                    var format = table.format();
+                    if (format.rotation() != 0) {
+                        rotation(at, "Table rotation has no native DOCX semantic mapping");
+                        format = format.toBuilder().rotation(0).build();
+                    }
+                    result.add(new Table(table.id(), table.columns(), rows, table.headerRows(), format));
                 } else { result.add(block); }
             }
             return List.copyOf(result);
         }
         private Paragraph paragraph(Paragraph source, ProcessingIssue.Location at) {
+            var format = source.format();
+            if (format.rotation() != 0) {
+                rotation(at, "Paragraph rotation has no native DOCX semantic mapping");
+                format = format.toBuilder().rotation(0).build();
+            }
             var content = new ArrayList<InlineContent>(); int offset = 0;
             for (var value : source.content()) {
                 if (value instanceof InlineText run) {
@@ -123,9 +140,16 @@ final class DocxConversions {
                     add(issues, policy, "EXPORT", "MODEL", "DOCX", "NOTES", at.range(offset, offset + 1),
                             "inline note marker has no DOCX export mapping", "NOTE_MARKER_REMOVED", ProcessingPolicy.Treatment.DISCARD);
                     offset++;
+                } else if (value instanceof InlineImage image && image.rotation() != 0) {
+                    rotation(at.range(offset, offset + 1), "Inline image rotation has no portable DOCX image mapping");
+                    content.add(image.toBuilder().rotation(0).build()); offset++;
                 } else { content.add(value); offset++; }
             }
-            return Paragraph.mixed(source.id(), content, source.format());
+            return Paragraph.mixed(source.id(), content, format);
+        }
+        private void rotation(ProcessingIssue.Location at, String reason) {
+            add(issues, policy, "EXPORT", "MODEL", "DOCX", "ELEMENT_ROTATION", at,
+                    reason, "ROTATION_REMOVED", ProcessingPolicy.Treatment.DEGRADE);
         }
         private InlineStyle style(InlineStyle source, ProcessingIssue.Location at) {
             if (Set.of("", "bold", "italic", "boldItalic").contains(source.fontRole())) { return source; }

@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored fictional example. -->
+<document version="1" title="商务报价书（虚构样例）" author="Export4j">
+  <page width="595.3" height="841.9" margin="42" />
+  <footer height="18" gap="8">
+    <p id="q-footer" size="9" line-height="16" align="RIGHT" color="#777777">商务报价书 · <page-number width="14" /> / <page-count width="14" /></p>
+  </footer>
+  <p id="q-kicker" size="9" line-height="14" color="#546E7A" space-after="5">EXPORT4J / 自编虚构业务文档示例</p>
+  <heading id="q-title" level="1" size="22" line-height="31" color="#173B57" space-before="0" space-after="8">${quote.title}</heading>
+  <p id="q-meta" size="10" line-height="16.5" space-after="5">报价编号：${quote.number}　　出具日期：${quote.issued}
+有效期至：${quote.validUntil}　　计价币种：${quote.currency}</p>
+  <table id="q-parties" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10" draw-borders="false">
+    <columns>
+      <column weight="1" />
+      <column weight="1" />
+    </columns>
+    <row>
+      <cell size="10" line-height="16">报价方</cell>
+      <cell size="10" line-height="16">客户方</cell>
+    </row>
+    <row>
+      <cell size="10" line-height="16">${seller.name}
+联系人：${seller.contact}
+邮箱：${seller.email}
+地址：${seller.address}</cell>
+      <cell size="10" line-height="16">${buyer.name}
+联系人：${buyer.contact}
+邮箱：${buyer.email}
+项目：${buyer.project}</cell>
+    </row>
+  </table>
+  <heading id="q-overview-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">01 / 方案与报价边界</heading>
+  <p id="q-overview" size="10" line-height="16.5" space-after="5">${quote.summary}</p>
+  <p id="q-duration" size="10" line-height="16.5" space-after="5"><span role="bold">实施安排：</span>${quote.duration}</p>
+  <heading id="q-detail-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">02 / 分组服务明细与工作量</heading>
+  <rows id="q-items" items="items" as="item" padding-top="4" padding-bottom="4" padding-left="4" padding-right="4" space-after="10">
+    <columns>
+      <column weight="26" />
+      <column weight="60" />
+      <column weight="217" />
+      <column weight="32" />
+      <column weight="32" />
+      <column weight="67" />
+      <column weight="77" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16" row-span="2" align="CENTER">序号</cell>
+      <cell size="10" line-height="16" row-span="2">服务分组</cell>
+      <cell size="10" line-height="16" row-span="2">服务项目与范围</cell>
+      <cell size="10" line-height="16" column-span="2" align="CENTER">工作量</cell>
+      <cell size="10" line-height="16" column-span="2" align="CENTER">未税金额 / CNY</cell>
+    </header>
+    <header>
+      <cell size="10" line-height="16">数量</cell>
+      <cell size="10" line-height="16">单位</cell>
+      <cell size="10" line-height="16">单价</cell>
+      <cell size="10" line-height="16">金额</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16" align="CENTER">${item.number}</cell>
+      <cell size="10" line-height="16" color="#385671">${item.group}</cell>
+      <cell size="10" line-height="16"><span role="bold">${item.name}</span>
+${item.description}</cell>
+      <cell size="10" line-height="16" align="RIGHT">${item.quantity}</cell>
+      <cell size="10" line-height="16">${item.unit}</cell>
+      <cell size="10" line-height="16" align="RIGHT">${item.unitPrice}</cell>
+      <cell size="10" line-height="16" align="RIGHT">${item.amount}</cell>
+    </row>
+  </rows>
+  <rows id="q-group-totals" items="groupTotals" as="group" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="3" />
+      <column weight="1" />
+      <column weight="1.2" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">分组汇总</cell>
+      <cell size="10" line-height="16">项目数</cell>
+      <cell size="10" line-height="16">未税小计</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${group.name}</cell>
+      <cell size="10" line-height="16">${group.count}</cell>
+      <cell size="10" line-height="16" align="RIGHT">${group.amount}</cell>
+    </row>
+  </rows>
+  <table id="q-totals" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="393" />
+      <column weight="118" />
+    </columns>
+    <row>
+      <cell size="10" line-height="16">标准未税小计</cell>
+      <cell size="10" line-height="16" align="RIGHT">${quote.subtotal}</cell>
+    </row>
+    <row>
+      <cell size="10" line-height="16">税额（演示税率 ${quote.taxRate}）</cell>
+      <cell size="10" line-height="16" align="RIGHT">${quote.tax}</cell>
+    </row>
+    <row>
+      <cell size="10" line-height="16" color="#173B57"><span role="bold">标准含税合计 / CNY</span></cell>
+      <cell size="10" line-height="16" align="RIGHT" color="#173B57">${quote.total}</cell>
+    </row>
+  </table>
+  <p id="q-discount-note" size="10" line-height="16.5" space-after="5" color="#546E7A">可选商务优惠测算：须另行书面确认，不直接替代上表标准含税报价。</p>
+  <table id="q-discount" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="1" />
+      <column weight="1" />
+      <column weight="1" />
+      <column weight="1" />
+    </columns>
+    <row>
+      <cell size="10" line-height="16">未税折扣 ${quote.discountRate}
+${quote.discount}</cell>
+      <cell size="10" line-height="16">折后未税额
+${quote.net}</cell>
+      <cell size="10" line-height="16">折后税额
+${quote.discountedTax}</cell>
+      <cell size="10" line-height="16">优惠后含税测算
+${quote.payable}</cell>
+    </row>
+  </table>
+  <heading id="q-delivery-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">03 / 阶段交付与验收依据</heading>
+  <rows id="q-deliveries" items="deliveries" as="delivery" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="115" />
+      <column weight="75" />
+      <column weight="175" />
+      <column weight="146" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">交付阶段</cell>
+      <cell size="10" line-height="16">计划时间</cell>
+      <cell size="10" line-height="16">交付内容</cell>
+      <cell size="10" line-height="16">验收证据</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${delivery.phase}</cell>
+      <cell size="10" line-height="16">${delivery.date}</cell>
+      <cell size="10" line-height="16">${delivery.output}</cell>
+      <cell size="10" line-height="16">${delivery.evidence}</cell>
+    </row>
+  </rows>
+  <heading id="q-sla-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">04 / 试运行支持与服务级别</heading>
+  <p id="q-sla-scope" size="10" line-height="16.5" space-after="5">试运行支持限交付后连续四周的工作时段。响应是接收、定位及同步处理计划，不等于承诺在同一时间内完成全部修复。</p>
+  <rows id="q-sla" items="sla" as="service" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="65" />
+      <column weight="180" />
+      <column weight="116" />
+      <column weight="150" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">级别</cell>
+      <cell size="10" line-height="16">触发条件</cell>
+      <cell size="10" line-height="16">响应要求</cell>
+      <cell size="10" line-height="16">处理目标与边界</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${service.level}</cell>
+      <cell size="10" line-height="16">${service.trigger}</cell>
+      <cell size="10" line-height="16">${service.response}</cell>
+      <cell size="10" line-height="16"><span role="bold">${service.target}</span>
+${service.boundary}</cell>
+    </row>
+  </rows>
+  <heading id="q-payment-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">05 / 付款节点</heading>
+  <rows id="q-payments" items="payments" as="payment" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="90" />
+      <column weight="65" />
+      <column weight="356" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">节点</cell>
+      <cell size="10" line-height="16">比例</cell>
+      <cell size="10" line-height="16">付款条件</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${payment.stage}</cell>
+      <cell size="10" line-height="16">${payment.percent}</cell>
+      <cell size="10" line-height="16">${payment.condition}</cell>
+    </row>
+  </rows>
+  <heading id="q-assumptions-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">06 / 关键假设与客户配合</heading>
+  <each items="assumptions" as="assumption">
+    <bullet size="10" line-height="16.5" space-after="4">${assumption.text}</bullet>
+  </each>
+  <heading id="q-exclusions-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">07 / 不包含的范围</heading>
+  <each items="exclusions" as="exclusion">
+    <bullet size="10" line-height="16.5" space-after="4">${exclusion.text}</bullet>
+  </each>
+  <heading id="q-terms-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">08 / 商务条款与确认</heading>
+  <each items="terms" as="term">
+    <bullet id="q-term" size="10" line-height="16.5" space-after="4">${term.text}</bullet>
+  </each>
+  <table id="q-confirmation" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="1" />
+    </columns>
+    <row>
+      <cell>
+        <p id="q-check-title" size="10" line-height="16.5" space-after="5"><span role="bold" color="#173B57">商务确认清单</span></p>
+        <table id="q-confirmation-checks" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10" draw-borders="false">
+          <columns>
+            <column weight="60" />
+            <column weight="425" />
+          </columns>
+          <row>
+            <cell size="10" line-height="16">范围确认</cell>
+            <cell size="10" line-height="16">${confirmation.scope}</cell>
+          </row>
+          <row>
+            <cell size="10" line-height="16">金额确认</cell>
+            <cell size="10" line-height="16">${confirmation.commercial}</cell>
+          </row>
+        </table>
+        <p id="q-signature" size="10" line-height="16.5" space-after="5">${confirmation.signature}</p>
+        <p id="q-sign-date" size="10" line-height="16.5" space-after="5">${confirmation.date}</p>
+      </cell>
+    </row>
+  </table>
+</document>

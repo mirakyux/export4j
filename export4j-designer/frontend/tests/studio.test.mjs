@@ -35,7 +35,7 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
         const page=await browser.newPage({viewport:{width:1440,height:1050},acceptDownloads:true});
         page.setDefaultTimeout(12000);
         const errors=[],executed=[];page.on('pageerror',error=>errors.push(error.message));
-        const check=async(name,work)=>{if(scenarioFilter&&!scenarioFilter.test(name))return;executed.push(name);return t.test(name,async()=>{try{await work();}catch(error){console.error(name,error,await page.evaluate(()=>({status:$('status').textContent,busy,selection:selectedPaths,images:state.images})));await page.screenshot({path:path.join(output,'failure-'+name.slice(0,14).replaceAll(' ','-')+'.png')});throw error;}});};
+        const check=async(name,work)=>{if(scenarioFilter&&!scenarioFilter.test(name))return;executed.push(name);return t.test(name,async()=>{try{await work();}catch(error){const details=await page.evaluate(()=>{const editor=document.querySelector('.ProseMirror'),view=editor?.pmViewDesc?.view,selection=document.getSelection(),toolbar=document.querySelector('[aria-label="画布文字格式"]');let coords;try{coords=view?{from:view.coordsAtPos(view.state.selection.from),to:view.coordsAtPos(view.state.selection.to)}:null;}catch(error){coords=String(error);}return {status:$('status').textContent,busy,selection:selectedPaths,images:state.images,active:document.activeElement?.outerHTML,domSelection:selection?.toString(),pmSelection:view?.state.selection.toJSON(),editor:editor?.getBoundingClientRect().toJSON(),coords,toolbar:toolbar?.getBoundingClientRect().toJSON(),toolbarStyle:toolbar?.getAttribute('style'),canvasScroll:document.querySelector('.canvas-scroll')?.scrollTop};});await writeFile(path.join(output,'failure-state-'+name.slice(0,24).replaceAll(' ','-')+'.json'),JSON.stringify(details,null,2));console.error(name,error,details);await page.screenshot({path:path.join(output,'failure-'+name.slice(0,14).replaceAll(' ','-')+'.png')});throw error;}});};
         await page.goto(origin);await page.waitForFunction(()=>typeof state!=='undefined'&&state&&!busy&&pages.length>0);
         const idle=async()=>{await page.waitForFunction(()=>!busy&&!DesignerStudioBridge.snapshot().pending&&pages.length>0&&document.querySelector('.page-image')?.dataset.preview===previewId);};
         const load=async(xml=source,data={name:'Ada'})=>{await page.mouse.up();await page.keyboard.press('Escape');await page.evaluate(async ({xml,data})=>{$('data').value=JSON.stringify(data);await DesignerStudioBridge.apply(xml);await DesignerStudioBridge.flush();await DesignerStudioBridge.select([]);},{xml,data});await idle();await page.locator('.canvas-scroll').evaluate(node=>node.scrollTop=0);};
@@ -147,6 +147,8 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
             await load('<document version="1"><page width="420" height="600" margin="30"/><p id="alpha">Alpha ${name}</p><p id="beta" color="#336699">Beta <span role="bold">strong</span><page-number width="24"/></p></document>');
             await edit('alpha');assert.equal(await page.locator('.ProseMirror > p').count(),2,'adjacent source paragraphs must share a continuous text editor');
             await page.keyboard.press('Control+Home');await page.keyboard.press('Control+Shift+End');
+            const selected=await page.evaluate(()=>document.getSelection().toString());
+            assert.ok(selected.includes('Alpha')&&selected.includes('Beta')&&selected.includes('${name}'),'rapid document navigation must select the complete source');
             const toolbar=page.getByRole('toolbar',{name:'画布文字格式'});await toolbar.waitFor({state:'visible'});
             await toolbar.getByRole('button',{name:'下划线',exact:true}).click();await page.keyboard.press('Control+Enter');await idle();
             const retained=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml');return {ids:[...document.querySelectorAll('p')].map(node=>node.id),color:document.querySelector('#beta').getAttribute('color'),fields:document.querySelectorAll('page-number').length,underlined:document.querySelectorAll('span[underline="true"]').length};});
@@ -160,6 +162,45 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
             await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();
             const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);await download.saveAs(path.join(output,'continuous-template.zip'));await page.locator('#close-template-export').click();
             await page.screenshot({path:path.join(output,'continuous-editing.png'),fullPage:true});
+        });
+        await check('selection formatting survives inspector scrolling and follows canvas scrolling',async()=>{
+            await load('<document version="1"><page width="420" height="1200" margin="30"/><p id="scroll-text" space-before="150">SCROLL FORMAT</p></document>');
+            await edit('scroll-text');await page.keyboard.press('Home');await page.keyboard.press('Shift+End');
+            const toolbar=page.getByRole('toolbar',{name:'画布文字格式'});await toolbar.waitFor({state:'visible'});
+            const selected=await page.evaluate(()=>document.getSelection().toString());assert.ok(selected.length);
+            const scroll=await page.locator('#properties').evaluate(node=>{const before=node.scrollTop;node.scrollTop=before+40;return {before,after:node.scrollTop};});
+            assert.ok(scroll.after>scroll.before,'the inspector must really scroll');
+            await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+            assert.equal(await toolbar.isVisible(),true);assert.equal(await page.evaluate(()=>document.getSelection().toString()),selected);
+            const before=await toolbar.boundingBox(),textBefore=await page.locator('.ProseMirror > p').boundingBox();
+            const canvasScroll=await page.locator('.canvas-scroll').evaluate(node=>{const before=node.scrollTop;node.scrollTop+=30;return {before,after:node.scrollTop};});
+            assert.ok(canvasScroll.after>canvasScroll.before,'the canvas must really scroll');
+            await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+            assert.equal(await toolbar.isVisible(),true);assert.equal(await page.evaluate(()=>document.getSelection().toString()),selected);
+            const after=await toolbar.boundingBox(),textAfter=await page.locator('.ProseMirror > p').boundingBox();
+            await writeFile(path.join(output,'toolbar-scroll-geometry.json'),JSON.stringify({before,after,textBefore,textAfter,canvasScroll,scroll},null,2));
+            assert.ok(Math.abs((after.y-before.y)-(textAfter.y-textBefore.y))<2,'the toolbar must follow the selected text');
+            await toolbar.getByRole('button',{name:'下划线',exact:true}).click();await finish();assert.match(await xml(),/underline="true"/);
+            await page.screenshot({path:path.join(output,'selection-toolbar-scroll.png'),fullPage:true});
+        });
+        await check('replacing a same-size image undoes the resource before the previous text edit',async()=>{
+            await load();
+            const upload=async color=>{
+                const bytes=await page.evaluate(color=>{const canvas=document.createElement('canvas');canvas.width=40;canvas.height=24;const context=canvas.getContext('2d');context.fillStyle=color;context.fillRect(0,0,40,24);return canvas.toDataURL('image/png').split(',')[1];},color);
+                await page.locator('#resources-tab').click();await page.evaluate(async()=>{await drafts();assetKind='image';$('asset-file').value='';});
+                await page.locator('#asset-file').setInputFiles({name:'replace.png',mimeType:'image/png',buffer:Buffer.from(bytes,'base64')});
+                await page.locator('#question-answer').fill('undo_test');await page.locator('#question-ok').click();await idle();
+            };
+            const pixel=()=>page.evaluate(async()=>{const response=await fetch('/api/image?name=undo_test&revision='+state.revision,{headers:{'X-Designer-Token':token}});const image=await createImageBitmap(await response.blob());const canvas=document.createElement('canvas');canvas.width=40;canvas.height=24;const context=canvas.getContext('2d');context.drawImage(image,0,0);image.close();return [...context.getImageData(1,1,1,1).data];});
+            await upload('#ff0000');await load('<document version="1"><page width="420" height="600" margin="30"/><p id="text">Before</p><p line-height="32"><image ref="undo_test" width="40" height="24"/></p></document>');
+            await page.locator('#canvas-tab').click();await edit('text');await page.keyboard.press('End');await page.keyboard.type(' edited');await finish();
+            const source=await xml(),identity=await page.evaluate(()=>state.resourceIdentity);await upload('#0000ff');
+            assert.equal(await xml(),source);assert.notEqual(await page.evaluate(()=>state.resourceIdentity),identity);assert.deepEqual(await pixel(),[0,0,255,255]);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),source);assert.deepEqual(await pixel(),[255,0,0,255]);
+            await page.locator('#redo').click();await idle();assert.equal(await xml(),source);assert.deepEqual(await pixel(),[0,0,255,255]);
+            await page.locator('#undo').click();await idle();await page.locator('#undo').click();await idle();
+            assert.doesNotMatch(await xml(),/Before edited/);assert.deepEqual(await pixel(),[255,0,0,255]);
+            await page.screenshot({path:path.join(output,'resource-replacement-undo.png'),fullPage:true});
         });
         await check('sidebar properties compose with active canvas text and survive subsequent text undo',async()=>{
             await load();await page.getByRole('button',{name:'便捷编辑',exact:true}).click();await edit('second');await page.keyboard.press('End');await page.keyboard.type(' canvas');

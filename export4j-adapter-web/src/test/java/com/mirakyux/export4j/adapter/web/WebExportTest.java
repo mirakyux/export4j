@@ -2,7 +2,10 @@
 package com.mirakyux.export4j.adapter.web;
 
 import com.mirakyux.export4j.model.Block;
+import com.mirakyux.export4j.model.BulletItem;
+import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
@@ -48,6 +51,43 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebExportTest {
+    @Test void legacyExportPoliciesCheckRotationForEveryAcceptedParagraphTableAndImageLocation() throws IOException {
+        var rotated = BODY.toBuilder().rotation(90).build();
+        var picture = new InlineImage(image(), 12, 12, 0, "Image", "", 45);
+        var cases = List.<Block>of(new Paragraph("paragraph", "Paragraph", rotated),
+                new Heading("heading", "Heading", 1, rotated),
+                new BulletItem("bullet", "Bullet", "•", 1, rotated),
+                new NumberedItem("number", "list", "Number", 0, rotated),
+                new Caption("caption", "Figure", "Caption", rotated),
+                new CrossReference("reference", "See ", "target", CrossReference.Kind.PAGE, rotated),
+                Table.builder("rotated-table").columns(new ColumnWidth.Fraction(1))
+                        .format(com.mirakyux.export4j.model.TableFormat.DEFAULT.toBuilder().rotation(-90).build())
+                        .row(TableCell.builder().text("Cell").build()).build(),
+                Paragraph.mixed("picture", List.of(picture), BODY),
+                Table.builder("image-cell").columns(new ColumnWidth.Fraction(1)).row(TableCell.builder().content(List.of(picture)).build()).build(),
+                Table.builder("nested-table").columns(new ColumnWidth.Fraction(1)).row(TableCell.builder().blocks(List.of(new Paragraph("nested", "Nested", rotated))).build()).build());
+        var warn = ExportPolicy.builder().defaultAction(UnsupportedAction.IGNORE).on(ExportFeature.ELEMENT_ROTATION, UnsupportedAction.WARN).build();
+        for (var source : cases) {
+            for (boolean html : List.of(true, false)) {
+                var rejected = new ByteArrayOutputStream();
+                var error = assertThrows(ExportException.class, () -> (html ? new HtmlAdapter().export(doc(source)) : new MarkdownAdapter().export(doc(source))).to(rejected));
+                assertEquals(ExportFeature.ELEMENT_ROTATION, error.diagnostic().feature()); assertEquals(0, rejected.size());
+                var warned = new ByteArrayOutputStream();
+                var result = (html ? HtmlAdapter.builder().policy(warn).build().export(doc(source))
+                        : MarkdownAdapter.builder().policy(warn).build().export(doc(source))).to(warned);
+                assertEquals(1, result.diagnostics().size()); assertEquals(ExportFeature.ELEMENT_ROTATION, result.diagnostics().getFirst().feature());
+                var ignored = new ByteArrayOutputStream();
+                var quiet = (html ? HtmlAdapter.builder().policy(all(UnsupportedAction.IGNORE)).build().export(doc(source))
+                        : MarkdownAdapter.builder().policy(all(UnsupportedAction.IGNORE)).build().export(doc(source))).to(ignored);
+                assertTrue(quiet.diagnostics().isEmpty()); assertEquals(warned.toString(StandardCharsets.UTF_8), ignored.toString(StandardCharsets.UTF_8));
+            }
+        }
+        var band = new PageDocument(doc(p("body", "Body")), PageRegions.builder()
+                .header(new PageRegion(20, 0, List.of(new Paragraph("header", "Header", rotated)))).build());
+        var result = HtmlAdapter.builder().policy(warn).build().export(band).to(new ByteArrayOutputStream());
+        assertEquals("HEADER", result.diagnostics().getFirst().location().region());
+        assertEquals(ExportFeature.ELEMENT_ROTATION, result.diagnostics().getFirst().feature());
+    }
     @Test void pageOverlaysAreFlattenedWithExplicitGeometryAndPaintOrderLoss() throws IOException {
         var regions = PageRegions.builder()
                 .background(new com.mirakyux.export4j.model.PageOverlay(0, 0, 100, new PageRegion(20, 0, List.of(p("bg", "BACKGROUND")))))

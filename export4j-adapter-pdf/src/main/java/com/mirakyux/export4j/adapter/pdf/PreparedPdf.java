@@ -47,6 +47,12 @@ public final class PreparedPdf {
         return new PreparedPdf(bytes.toByteArray(), new Result(document.getNumberOfPages(), changes, bytes.size(),
                 new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues)), execution);
     }
+    PreparedPdf preflight(PdfAdapter adapter) throws IOException {
+        try (var document = adapter.openCandidate(bytes)) {
+            if (document.getNumberOfPages() != result.pageCount()) { throw new PdfOperationException(PdfOperationException.Code.INVALID_PDF, 0, -1); }
+        }
+        return this;
+    }
     public ProcessingReport preview() { return new ProcessingReport(ProcessingReport.Phase.PREVIEW, result.report().issues()); }
     public int pageCount() { return result.pageCount(); }
     public long outputBytes() { return result.outputBytes(); }

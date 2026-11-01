@@ -73,7 +73,7 @@ var component = OpenTypeText.builder(text, List.of(instance))
 
 COLRv0 层、COLRv1 实色／线性／径向／扫描渐变及合成、sbix／CBDT 中的 PNG／BGRA 图像由 HarfBuzz 在布局阶段评价。palette 和当前前景色显式传入，透明结果保持透明，不用黑色轮廓覆盖空着色。彩色结果按 `colorDpi` 生成带 alpha 的图像，PDF／SVG／PNG 共享结果；因此彩色字形不承诺无限放大的矢量清晰度。
 
-字体内 SVG 图像等不能由当前着色器处理的格式抛 `UNSUPPORTED_PAINT`，不冒充已支持；字体外资源不外联。测试覆盖自编 COLRv0／COLRv1 几何、28 种合成模式和真实 Noto COLRv1／sbix 字形。未穷举全部外部字体／设备／阅读器。
+同一彩色字体中的普通字形保留单色轮廓，只有实际带彩色表示的字形进入着色。字体内 SVG 图像、sbix JPEG／TIFF 等不能由当前着色器处理的格式抛 `UNSUPPORTED_PAINT`，不会静默删除字形；字体外资源不外联。测试覆盖自编 COLRv0／COLRv1 几何、混合普通字形、28 种合成模式、sbix JPEG 拒绝和真实 Noto COLRv1／sbix 字形。未穷举全部外部字体／设备／阅读器。
 
 ## 错误、预算与资源
 

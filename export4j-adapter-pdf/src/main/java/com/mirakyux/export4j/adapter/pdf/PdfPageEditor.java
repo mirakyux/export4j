@@ -128,7 +128,8 @@ public final class PdfPageEditor {
                         page.setCropBox(nativeBox(page, crop.rectangle()));
                     } else if (operation instanceof Scale scale) { scale(document, page, scale.factor()); }
                 }
-                return PreparedPdf.encode(document, operations.size() - (int) issues.stream().filter(item -> item.feature().equals("TEXT_SHAPING")).count(), issues, limits, control);
+                return PreparedPdf.encode(document, operations.size() - (int) issues.stream().filter(item -> item.feature().equals("TEXT_SHAPING")).count(), issues, limits, control)
+                        .preflight(adapter);
             }
         });
     }

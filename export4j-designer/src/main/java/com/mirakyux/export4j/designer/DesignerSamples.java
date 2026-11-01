@@ -14,13 +14,21 @@ import javax.imageio.ImageIO;
 
 /** Self-authored fictional business examples, shared by the UI and reproducible scenarios. */
 final class DesignerSamples {
-    private record Sample(String name, String description) { }
+    private record Sample(String name, String description, String resource) {
+        Sample(String name, String description) { this(name, description, ""); }
+    }
     private static final List<Sample> SAMPLES = List.of(
             new Sample("巡检报告", "图文标题、数据列表与条件内容"),
             new Sample("密集静态表单", "检查项目、填写栏与表格"),
             new Sample("分页长表", "数据行绑定与跨页重复表头"),
             new Sample("目录与交叉引用", "自动目录、题注与页码引用"),
-            new Sample("药品不良反应报告表", "三页密集表单、18 列合并表头、内容自然分页与页码"));
+            new Sample("药品不良反应报告表", "三页密集表单、18 列合并表头、内容自然分页与页码", "adverse-reaction"),
+            new Sample("服务合同", "Logo 与版本页眉、多章节条款、交付验收矩阵、SLA 与签署附件", "common/service-contract"),
+            new Sample("个人简历", "照片与双栏概况、工作履历、成果项目与技能矩阵", "common/resume"),
+            new Sample("用户手册", "安装运维、操作流程、权限参数与跨页排障清单", "common/user-manual"),
+            new Sample("报价单", "分组长明细、含税计算、交付方案与商务条款", "common/quotation"),
+            new Sample("会议纪要", "议题讨论、方案比较、决策与责任行动台账", "common/meeting-minutes"),
+            new Sample("项目周报", "健康度、预算资源、工作流进度与风险变更台账", "common/weekly-report"));
     static final List<String> NAMES = SAMPLES.stream().map(Sample::name).toList();
     private DesignerSamples() { }
     static List<Map<String, Object>> catalog() {
@@ -39,12 +47,34 @@ final class DesignerSamples {
                 """).build(), "{}");
     }
     private static String sampleResource(String name) throws IOException {
+        return new String(sampleBytes(name), StandardCharsets.UTF_8);
+    }
+    private static byte[] sampleBytes(String name) throws IOException {
         try (var input = DesignerSamples.class.getResourceAsStream("/designer/samples/" + name)) {
             if (input == null) { throw new IOException("bundled designer sample missing: " + name); }
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            return input.readAllBytes();
         }
     }
     static DesignerProject create(int index) throws IOException {
+        if (index < 0 || index >= SAMPLES.size()) { throw new IllegalArgumentException("unknown designer sample"); }
+        var sample = SAMPLES.get(index);
+        if (!sample.resource().isEmpty()) {
+            var source = sampleResource(sample.resource() + ".xml");
+            var resources = sample.resource().startsWith("common/")
+                    ? DesignerService.defaults(source, "LXGWWenKaiTC-Regular.ttf", "LXGWWenKaiTC-OFL.txt")
+                    : DesignerService.defaults(source);
+            String image = switch (sample.resource()) {
+                case "common/resume" -> "resume_portrait";
+                case "common/service-contract" -> "contract_logo";
+                default -> "";
+            };
+            if (!image.isEmpty()) {
+                resources.image(image, ImageResource.load(sampleBytes("common/assets/" + image + ".png")))
+                        .license(image + "-license.txt", sampleResource("common/assets/" + image + "-license.txt"));
+            }
+            return new DesignerProject(resources.build(),
+                    sampleResource(sample.resource() + ".json"));
+        }
         String page = "<page width='595' height='842' margin='42'/>";
         String source; String data;
         switch (index) {
@@ -107,10 +137,6 @@ final class DesignerSamples {
                         + "<page-break id='reference-break'/><heading id='appendix' level='1' size='20' line-height='30'>附录 / Appendix</heading>"
                         + "<p id='reference-end'>REFERENCE-END 引用目标保留。</p></document>";
                 data = "{}";
-            }
-            case 4 -> {
-                return new DesignerProject(DesignerService.defaults(sampleResource("adverse-reaction.xml")).build(),
-                        sampleResource("adverse-reaction.json"));
             }
             default -> throw new IllegalArgumentException("unknown designer sample");
         }

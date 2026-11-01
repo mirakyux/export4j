@@ -73,6 +73,84 @@ class BlockCellsSemanticsTest {
         }
     }
 
+    @Test void hyperlinkBoundsFollowActualNestedAndParagraphDrawingTransforms() {
+        var engine = DocumentEngine.builder(fonts).build();
+        for (int host : List.of(0, 1, 2)) {
+            for (int angle : List.of(0, 45, 90, 180)) {
+                var linked = new Paragraph("rotated-link", List.of(new InlineText("LINK", STYLE, "https://example.com/rotated"),
+                        new InlineText(" plain tail", STYLE)), PARAGRAPH.toBuilder().rotation(angle).build());
+                Block source = host > 0 ? Table.builder("rotated-table").format(format -> format.padding(7).rotation(-90))
+                        .row(TableCell.builder().blocks(List.of(linked)).build()).row("ASYMMETRIC SECOND ROW").build() : linked;
+                if (host == 2) { source = new ComponentBlock("host", FlowColumn.builder().padding(5).add(new SemanticTable((Table) source)).build()); }
+                var result = engine.layout(new Document(DocumentMetadata.EMPTY, PAGE, List.of(source)));
+                var links = result.display().extras().externalLinks();
+                assertEquals(1, links.size(), "rotation must preserve the coalesced link run");
+                double[] firstBaseline = {0};
+                SemanticFragments.walk(result.body().pages().getFirst().elements().getFirst(), ignored -> { }, leaf -> {
+                    if (leaf.blockId().equals("rotated-link")) { firstBaseline[0] = leaf.layout().lines().getFirst().baselineY(); }
+                });
+                var painted = linkedDrawingBounds(result.display().pages().getFirst(), firstBaseline[0]).getFirst();
+                var hit = links.getFirst().bounds();
+                assertEquals(painted.getX(), hit.x(), 1e-8); assertEquals(painted.getY(), hit.y(), 1e-8);
+                assertEquals(painted.getWidth(), hit.width(), 1e-8); assertEquals(painted.getHeight(), hit.height(), 1e-8);
+                if (host == 0 && angle == 180) { assertTrue(hit.x() > PAGE.size().width() / 2); }
+            }
+        }
+    }
+
+    @Test void rotatedSemanticTableContinuationKeepsEverySourceLinkOnItsPaintedFragment() {
+        var table = Table.builder("rotated-continuation").format(format -> format.padding(7).rotation(180).allowRowSplit(true))
+                .header("HEADER");
+        for (int index = 0; index < 20; index++) {
+            table.row(TableCell.builder().blocks(List.of(new Paragraph("link-" + index,
+                    List.of(new InlineText("LINK", STYLE, "https://example.com/" + index), new InlineText(" plain tail", STYLE)),
+                    PARAGRAPH.toBuilder().rotation(45).build()))).build());
+        }
+        var block = new ComponentBlock("host", FlowColumn.builder().padding(5).add(new SemanticTable(table.build())).build());
+        var result = DocumentEngine.builder(fonts).build().layout(new Document(DocumentMetadata.EMPTY, PAGE, List.of(block)));
+        assertTrue(result.body().pages().size() > 2);
+        assertEquals(20, result.display().extras().externalLinks().size());
+        assertEquals(20, result.display().extras().externalLinks().stream().map(link -> link.destination()).distinct().count());
+        for (var page : result.body().pages()) {
+            double[] firstBaseline = {0};
+            SemanticFragments.walk(page.elements().getFirst(), ignored -> { }, leaf -> {
+                if (leaf.blockId().startsWith("link-")) { firstBaseline[0] = leaf.layout().lines().getFirst().baselineY(); }
+            });
+            var expected = linkedDrawingBounds(result.display().pages().get(page.pageIndex()), firstBaseline[0]);
+            var actual = result.display().extras().externalLinks().stream().filter(link -> link.pageIndex() == page.pageIndex()).toList();
+            assertEquals(expected.size(), actual.size());
+            for (int index = 0; index < expected.size(); index++) {
+                var painted = expected.get(index); var hit = actual.get(index).bounds();
+                assertEquals(painted.getX(), hit.x(), 1e-8); assertEquals(painted.getY(), hit.y(), 1e-8);
+                assertEquals(painted.getWidth(), hit.width(), 1e-8); assertEquals(painted.getHeight(), hit.height(), 1e-8);
+            }
+        }
+    }
+
+    private static List<java.awt.geom.Rectangle2D> linkedDrawingBounds(DisplayPage page, double firstBaseline) {
+        var result = new ArrayList<java.awt.geom.Rectangle2D>();
+        var states = new ArrayDeque<java.awt.geom.AffineTransform>();
+        var state = new java.awt.geom.AffineTransform();
+        for (var command : page.commands()) {
+            switch (command) {
+                case DrawCommand.Save ignored -> states.push(new java.awt.geom.AffineTransform(state));
+                case DrawCommand.Restore ignored -> state = states.pop();
+                case DrawCommand.Transform transform -> {
+                    var m = transform.matrix();
+                    state.concatenate(new java.awt.geom.AffineTransform(m.a(), m.b(), m.c(), m.d(), m.e(), m.f()));
+                }
+                case DrawCommand.GlyphText text when text.run().text().startsWith("LINK") -> {
+                    double width = text.run().glyphs().stream().limit(4).mapToDouble(glyph -> glyph.advance()).sum();
+                    result.add(state.createTransformedShape(new java.awt.geom.Rectangle2D.Double(text.baseline().x(),
+                            text.baseline().y() - firstBaseline, width, PARAGRAPH.lineHeight())).getBounds2D());
+                }
+                default -> { }
+            }
+        }
+        assertTrue(!result.isEmpty(), "linked text drawing not found");
+        return result;
+    }
+
     @Test void descendantsResolveAfterContentsAndSectionRestartWithoutChangingSources() {
         var before = Paragraph.mixed("before", List.of(text("BEFORE P="), field(InlineField.Kind.PAGE, "", 18)), PARAGRAPH);
         var inner = inner(List.of(text("INNER P="), field(InlineField.Kind.PAGE, "", 18), text(" N="),

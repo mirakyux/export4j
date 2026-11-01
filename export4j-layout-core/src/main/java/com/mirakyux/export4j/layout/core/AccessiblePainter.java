@@ -112,8 +112,19 @@ final class AccessiblePainter {
         return new DisplayDocument(layout.metadata(), pages, com.mirakyux.export4j.graphics.DocumentExtras.EMPTY, tree);
     }
     private static Logical logical(Block block, String id, Map<String, Logical> cells) {
+        var inlines = switch (block) {
+            case Paragraph paragraph -> paragraph.inlines();
+            case Heading heading -> heading.inlines();
+            case BulletItem bullet -> bullet.inlines();
+            case NumberedItem numbered -> numbered.inlines();
+            default -> List.<com.mirakyux.export4j.model.InlineText>of();
+        };
+        requireUnlinked(inlines);
         if (block instanceof Heading heading) { return new Logical(id, Role.valueOf("H" + heading.level())); }
         if (block instanceof Paragraph paragraph) {
+            if (paragraph.images().stream().anyMatch(image -> !image.image().hyperlink().isEmpty())) {
+                throw new IllegalArgumentException("accessible source hyperlinks require explicit interaction and accessibility bindings");
+            }
             if (!paragraph.images().isEmpty()) {
                 if (paragraph.images().size() != 1 || !paragraph.text().equals("\ufffc")) { throw new IllegalArgumentException("mixed accessible figures require explicit bindings"); }
                 return new Logical(id, Role.FIGURE, paragraph.images().getFirst().image().altText(), Cell.NONE);
@@ -129,6 +140,7 @@ final class AccessiblePainter {
             for (int r = 0; r < table.rows().size(); r++) {
                 var row = new Logical(id + "-row" + r, Role.TR);
                 for (var anchor : grid.anchorRows().get(r)) {
+                    requireUnlinked(anchor.cell().inlines());
                     if (anchor.cell().hasBlocks() || !anchor.cell().images().isEmpty()) { throw new IllegalArgumentException("complex accessible cells require explicit bindings"); }
                     boolean header = r < table.headerRows(); var headers = new ArrayList<String>();
                     if (!header) {
@@ -148,6 +160,11 @@ final class AccessiblePainter {
             return result;
         }
         throw new IllegalArgumentException("source block requires explicit accessibility bindings");
+    }
+    private static void requireUnlinked(List<com.mirakyux.export4j.model.InlineText> inlines) {
+        if (inlines.stream().anyMatch(inline -> !inline.hyperlink().isEmpty())) {
+            throw new IllegalArgumentException("accessible source hyperlinks require explicit interaction and accessibility bindings");
+        }
     }
     private static List<DrawCommand> fragment(LayoutPage page, LayoutFragment fragment) {
         return DocumentPainter.paintPage(new LayoutPage(page.pageIndex(), page.size(), page.contentBounds(), List.of(fragment))).commands();

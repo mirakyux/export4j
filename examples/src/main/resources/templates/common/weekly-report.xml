@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored fictional example. -->
+<document version="1" title="项目周报（虚构样例）" author="Export4j">
+  <page width="595.3" height="841.9" margin="42" />
+  <footer height="18" gap="8">
+    <p id="w-footer" size="9" line-height="16" align="RIGHT" color="#777777">项目周报 · <page-number width="14" /> / <page-count width="14" /></p>
+  </footer>
+  <p id="w-kicker" size="9" line-height="14" color="#546E7A" space-after="5">EXPORT4J / 自编虚构业务文档示例</p>
+  <heading id="w-title" level="1" size="22" line-height="31" color="#173B57" space-before="0" space-after="8">${report.title}</heading>
+  <p id="w-meta" size="10" line-height="16.5" space-after="5">${report.week}　　报告周期：${report.period}
+编制：${report.owner}　　审核：${report.reviewer}</p>
+  <table id="w-overview" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="2" />
+      <column weight="1" />
+    </columns>
+    <row>
+      <cell size="10" line-height="16" color="#173B57">整体状态：${report.status}</cell>
+      <cell size="10" line-height="16" color="#173B57">总体进度：${report.progress}</cell>
+    </row>
+  </table>
+  <p id="w-summary" size="10" line-height="16.5" space-after="5">${report.summary}</p>
+  <heading id="w-management-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">01 / 管理摘要与需要关注的事项</heading>
+  <each items="management" as="summary">
+    <bullet size="10" line-height="16.5" space-after="4">${summary.text}</bullet>
+  </each>
+  <heading id="w-health-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">02 / 项目健康度</heading>
+  <rows id="w-health" items="health" as="healthItem" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="55" />
+      <column weight="65" />
+      <column weight="80" />
+      <column weight="216" />
+      <column weight="95" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">维度</cell>
+      <cell size="10" line-height="16">当前状态</cell>
+      <cell size="10" line-height="16">环比</cell>
+      <cell size="10" line-height="16">事实依据</cell>
+      <cell size="10" line-height="16">责任人</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${healthItem.dimension}</cell>
+      <cell size="10" line-height="16">${healthItem.status}</cell>
+      <cell size="10" line-height="16">${healthItem.change}</cell>
+      <cell size="10" line-height="16">${healthItem.evidence}</cell>
+      <cell size="10" line-height="16">${healthItem.owner}</cell>
+    </row>
+  </rows>
+  <heading id="w-metrics-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">03 / 指标及变化趋势</heading>
+  <rows id="w-metrics" items="metrics" as="metric" padding-top="4" padding-bottom="4" padding-left="5" padding-right="5" space-after="10">
+    <columns>
+      <column weight="130" />
+      <column weight="65" />
+      <column weight="65" />
+      <column weight="65" />
+      <column weight="85" />
+      <column weight="101" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16" row-span="2">指标</cell>
+      <cell size="10" line-height="16" column-span="3" align="CENTER">度量值</cell>
+      <cell size="10" line-height="16" column-span="2" align="CENTER">变化及说明</cell>
+    </header>
+    <header>
+      <cell size="10" line-height="16">上周</cell>
+      <cell size="10" line-height="16">本周</cell>
+      <cell size="10" line-height="16">最终目标</cell>
+      <cell size="10" line-height="16">趋势</cell>
+      <cell size="10" line-height="16">状态</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${metric.name}</cell>
+      <cell size="10" line-height="16">${metric.previous}</cell>
+      <cell size="10" line-height="16">${metric.actual}</cell>
+      <cell size="10" line-height="16">${metric.target}</cell>
+      <cell size="10" line-height="16">${metric.trend}</cell>
+      <cell size="10" line-height="16">${metric.status}</cell>
+    </row>
+  </rows>
+  <heading id="w-milestones-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">04 / 里程碑、交付与验收条件</heading>
+  <rows id="w-milestones" items="milestones" as="milestone" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="95" />
+      <column weight="85" />
+      <column weight="60" />
+      <column weight="95" />
+      <column weight="176" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">里程碑</cell>
+      <cell size="10" line-height="16">计划日期</cell>
+      <cell size="10" line-height="16">进度</cell>
+      <cell size="10" line-height="16">负责人</cell>
+      <cell size="10" line-height="16">验收状态</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${milestone.name}</cell>
+      <cell size="10" line-height="16">${milestone.due}</cell>
+      <cell size="10" line-height="16">${milestone.progress}</cell>
+      <cell size="10" line-height="16">${milestone.owner}</cell>
+      <cell size="10" line-height="16">${milestone.acceptance}</cell>
+    </row>
+  </rows>
+  <heading id="w-workstreams-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">05 / 工作流明细与证据</heading>
+  <each items="workstreams" as="stream">
+    <table id="w-workstream" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+      <columns>
+        <column weight="1" />
+      </columns>
+      <row>
+        <cell>
+          <p size="11" line-height="19" space-after="4"><span role="bold" color="#173B57">${stream.name}</span> / ${stream.owner}</p>
+          <p size="10" line-height="16.5" space-after="4"><span role="bold">本周完成：</span>${stream.done}</p>
+          <p size="10" line-height="16.5" space-after="4"><span role="bold">证据与边界：</span>${stream.evidence}</p>
+          <table id="w-workstream-state" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10" draw-borders="false">
+            <columns>
+              <column weight="62" />
+              <column weight="425" />
+            </columns>
+            <row>
+              <cell size="10" line-height="16">下周工作</cell>
+              <cell size="10" line-height="16">${stream.next}</cell>
+            </row>
+            <row>
+              <cell size="10" line-height="16">阻塞与依赖</cell>
+              <cell size="10" line-height="16">${stream.blocker}</cell>
+            </row>
+          </table>
+        </cell>
+      </row>
+    </table>
+  </each>
+  <heading id="w-budget-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">06 / 预算与资源安排</heading>
+  <rows id="w-budget" items="budget" as="budgetLine" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="90" />
+      <column weight="70" />
+      <column weight="70" />
+      <column weight="70" />
+      <column weight="70" />
+      <column weight="141" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">费用类别</cell>
+      <cell size="10" line-height="16">已批预算</cell>
+      <cell size="10" line-height="16">已发生</cell>
+      <cell size="10" line-height="16">已承诺</cell>
+      <cell size="10" line-height="16">剩余</cell>
+      <cell size="10" line-height="16">说明</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${budgetLine.category}</cell>
+      <cell size="10" line-height="16">${budgetLine.approved}</cell>
+      <cell size="10" line-height="16">${budgetLine.spent}</cell>
+      <cell size="10" line-height="16">${budgetLine.committed}</cell>
+      <cell size="10" line-height="16">${budgetLine.remaining}</cell>
+      <cell size="10" line-height="16">${budgetLine.note}</cell>
+    </row>
+  </rows>
+  <table id="w-budget-total" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="90" />
+      <column weight="70" />
+      <column weight="70" />
+      <column weight="70" />
+      <column weight="70" />
+      <column weight="141" />
+    </columns>
+    <row>
+      <cell size="10" line-height="16">预算合计</cell>
+      <cell size="10" line-height="16">${budgetSummary.approved}</cell>
+      <cell size="10" line-height="16">${budgetSummary.spent}</cell>
+      <cell size="10" line-height="16">${budgetSummary.committed}</cell>
+      <cell size="10" line-height="16">${budgetSummary.remaining}</cell>
+      <cell size="10" line-height="16">人民币 / CNY</cell>
+    </row>
+  </table>
+  <p id="w-budget-basis" size="10" line-height="16.5" space-after="5">${budgetSummary.basis}</p>
+  <rows id="w-resources" items="resources" as="resource" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="85" />
+      <column weight="75" />
+      <column weight="75" />
+      <column weight="75" />
+      <column weight="201" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">角色</cell>
+      <cell size="10" line-height="16">计划投入</cell>
+      <cell size="10" line-height="16">实际投入</cell>
+      <cell size="10" line-height="16">下周安排</cell>
+      <cell size="10" line-height="16">容量及约束</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${resource.role}</cell>
+      <cell size="10" line-height="16">${resource.planned}</cell>
+      <cell size="10" line-height="16">${resource.actual}</cell>
+      <cell size="10" line-height="16">${resource.next}</cell>
+      <cell size="10" line-height="16">${resource.constraint}</cell>
+    </row>
+  </rows>
+  <heading id="w-risks-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">07 / 风险、依赖与问题跟踪</heading>
+  <rows id="w-risks" items="risks" as="risk" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="42" />
+      <column weight="32" />
+      <column weight="128" />
+      <column weight="145" />
+      <column weight="82" />
+      <column weight="82" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">风险号</cell>
+      <cell size="10" line-height="16">等级</cell>
+      <cell size="10" line-height="16">风险描述</cell>
+      <cell size="10" line-height="16">应对措施</cell>
+      <cell size="10" line-height="16">负责人</cell>
+      <cell size="10" line-height="16">复核日期</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${risk.id}</cell>
+      <cell size="10" line-height="16">${risk.level}</cell>
+      <cell size="10" line-height="16">${risk.description}</cell>
+      <cell size="10" line-height="16">${risk.response}</cell>
+      <cell size="10" line-height="16">${risk.owner}</cell>
+      <cell size="10" line-height="16">${risk.due}</cell>
+    </row>
+  </rows>
+  <rows id="w-dependencies" items="dependencies" as="dependency" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="52" />
+      <column weight="145" />
+      <column weight="90" />
+      <column weight="82" />
+      <column weight="142" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">依赖号</cell>
+      <cell size="10" line-height="16">需要的条件</cell>
+      <cell size="10" line-height="16">提供方</cell>
+      <cell size="10" line-height="16">期限</cell>
+      <cell size="10" line-height="16">未就绪时处理</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${dependency.id}</cell>
+      <cell size="10" line-height="16">${dependency.need}</cell>
+      <cell size="10" line-height="16">${dependency.provider}</cell>
+      <cell size="10" line-height="16">${dependency.due}</cell>
+      <cell size="10" line-height="16">${dependency.fallback}</cell>
+    </row>
+  </rows>
+  <rows id="w-issues" items="issues" as="issue" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="52" />
+      <column weight="175" />
+      <column weight="43" />
+      <column weight="91" />
+      <column weight="150" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">问题号</cell>
+      <cell size="10" line-height="16">问题</cell>
+      <cell size="10" line-height="16">优先级</cell>
+      <cell size="10" line-height="16">负责人</cell>
+      <cell size="10" line-height="16">当前状态</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${issue.id}</cell>
+      <cell size="10" line-height="16">${issue.issue}</cell>
+      <cell size="10" line-height="16">${issue.priority}</cell>
+      <cell size="10" line-height="16">${issue.owner}</cell>
+      <cell size="10" line-height="16">${issue.state}</cell>
+    </row>
+  </rows>
+  <heading id="w-changes-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">08 / 变更与范围控制</heading>
+  <rows id="w-changes" items="changes" as="change" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="55" />
+      <column weight="155" />
+      <column weight="180" />
+      <column weight="121" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">变更号</cell>
+      <cell size="10" line-height="16">请求</cell>
+      <cell size="10" line-height="16">影响判断</cell>
+      <cell size="10" line-height="16">处理决定</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${change.id}</cell>
+      <cell size="10" line-height="16">${change.request}</cell>
+      <cell size="10" line-height="16">${change.impact}</cell>
+      <cell size="10" line-height="16">${change.decision}</cell>
+    </row>
+  </rows>
+  <heading id="w-next-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">09 / 下周计划</heading>
+  <each items="nextWeek" as="plan">
+    <bullet id="w-next-plan" size="10" line-height="16.5" space-after="4">${plan.text}</bullet>
+  </each>
+  <heading id="w-decisions-title" level="2" size="12" line-height="20" color="#173B57" space-before="8" space-after="5">10 / 需要管理层决定的事项</heading>
+  <rows id="w-decisions" items="decisions" as="decision" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="60" />
+      <column weight="270" />
+      <column weight="95" />
+      <column weight="86" />
+    </columns>
+    <header>
+      <cell size="10" line-height="16">编号</cell>
+      <cell size="10" line-height="16">需要决定的事项</cell>
+      <cell size="10" line-height="16">决策人</cell>
+      <cell size="10" line-height="16">期限</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="16">${decision.id}</cell>
+      <cell size="10" line-height="16">${decision.decision}</cell>
+      <cell size="10" line-height="16">${decision.owner}</cell>
+      <cell size="10" line-height="16">${decision.due}</cell>
+    </row>
+  </rows>
+  <p id="w-note" size="10" line-height="16.5" space-after="5" color="#546E7A">本周报将已完成、已验证与已验收分别登记；全部预算、项目进展及人员信息均为虚构，仅展示复杂文档结构。</p>
+</document>

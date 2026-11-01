@@ -38,6 +38,7 @@ final class VariableCellFlow {
         ExecutionContext.checkpoint();
         if (depth > 64) { throw new IllegalArgumentException("variable cell nesting budget exceeded"); }
         if (content instanceof FontScope scope) { return prepare(scope.content(), maximum.withFonts(scope.fonts()), streams, header, depth + 1); }
+        if (content instanceof FontRoleScope scope) { return prepare(scope.selected(maximum), maximum, streams, header, depth + 1); }
         if (content instanceof StyleScope scope) { return prepare(scope.content(), scope.scoped(maximum), streams, header, depth + 1); }
         if (content instanceof ChoiceGroup choices) { return prepare(choices.resolved(maximum).text(), maximum, streams, header, depth + 1); }
         if (content instanceof SemanticTable semantic) {
@@ -88,6 +89,21 @@ final class VariableCellFlow {
                     var builder = new DisplayListBuilder(new PageSize(width, layout.height()));
                     TextLayoutPainter.draw(builder, layout, new Point(0, 0), text.color());
                     return new ComponentLayout(width, layout.height(), count, builder.build().commands(), diagnostics);
+                }
+            };
+        }
+        if (content instanceof RichTextComponent.Flowing rich) {
+            var text = rich.source();
+            var style = text.inheritance().resolveStyle(text.style(), maximum);
+            int units = text.inlines().stream().mapToInt(inline -> inline.text().length()).sum();
+            return new TextLines(units, style.lineHeight(), rich.pagination(), header) {
+                private ParagraphLayout measured;
+                @Override void measure(ComponentContext context, IntToDoubleFunction widths) {
+                    measured = text.shape(maximum, widths); size = measured.lines().size();
+                }
+                @Override ComponentLayout paint(int first, int count) {
+                    return PreparedCellFlow.paintText(measured, first, count, width, step,
+                            com.mirakyux.export4j.graphics.RgbColor.BLACK);
                 }
             };
         }

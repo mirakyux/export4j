@@ -207,16 +207,21 @@ public final class DocxAdapter {
             semanticBudget.node();
             var block = visit.block();
             if (block instanceof Table table) {
+                requireUnrotated(table.format().rotation());
                 checkBlockTable(table);
                 semanticBudget.slots(table.rows().size(), table.columns().size());
                 for (var row : table.rows()) {
                     for (var cell : row.cells()) {
                         if (cell.hasBlocks()) { continue; }
+                        for (var image : cell.images()) { requireUnrotated(image.image().rotation()); }
                         semanticBudget.text(cell.text()); textBytes += escapedBytes(cell.text());
                     }
                 }
             } else {
-                var source = paragraph(block).text(); semanticBudget.text(source); textBytes += escapedBytes(source);
+                var paragraph = paragraph(block);
+                requireUnrotated(paragraph.format().rotation());
+                for (var image : paragraph.images()) { requireUnrotated(image.image().rotation()); }
+                var source = paragraph.text(); semanticBudget.text(source); textBytes += escapedBytes(source);
             }
             if (textBytes > limits.maxEntryBytes()) { throw new IOException("DOCX source text exceeds entry byte budget"); }
         }
@@ -397,6 +402,10 @@ public final class DocxAdapter {
             case PageBreak b -> new Paragraph(b.id(), "", ParagraphFormat.of(12));
             default -> throw new IOException("unsupported DOCX block type: " + block.getClass().getSimpleName());
         };
+    }
+
+    private static void requireUnrotated(double rotation) throws IOException {
+        if (rotation != 0) { throw new IOException("DOCX rotation requires an explicit conversion loss policy"); }
     }
 
     private static void properties(StringBuilder xml, ParagraphFormat f, int heading, int number, int level) {

@@ -16,6 +16,11 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import com.mirakyux.export4j.graphics.DocumentExtras;
+import com.mirakyux.export4j.graphics.AffineTransform;
+import com.mirakyux.export4j.graphics.BlendMode;
+import com.mirakyux.export4j.graphics.DrawCommand;
+import com.mirakyux.export4j.graphics.Paint;
+import com.mirakyux.export4j.graphics.VectorPath;
 import com.mirakyux.export4j.graphics.FontFamily;
 import com.mirakyux.export4j.graphics.Point;
 import com.mirakyux.export4j.graphics.Rect;
@@ -115,6 +120,41 @@ class PdfSpoolBackendTest {
             }
         });
         assertFalse(output.closed); assertClean();
+    }
+
+    @Test void globalCommandBudgetCountsGroupsTilesAndRepeatedUsesBeforeCopyingThePage() throws Exception {
+        var bounds = new Rect(0, 0, 20, 20);
+        var fills = List.<DrawCommand>of(new DrawCommand.FillRect(new Rect(0, 0, 10, 20), RgbColor.BLACK),
+                new DrawCommand.FillRect(new Rect(10, 0, 10, 20), RgbColor.BLACK));
+        var tile = new Paint.Tile(bounds, 20, 20, AffineTransform.IDENTITY, fills);
+        var path = new VectorPath(List.of(new VectorPath.MoveTo(new Point(0, 0)), new VectorPath.LineTo(new Point(20, 0)),
+                new VectorPath.LineTo(new Point(20, 20)), new VectorPath.LineTo(new Point(0, 20)), new VectorPath.Close()));
+        var groupPage = new DisplayListBuilder(SIZE).group(bounds, fills, 1, BlendMode.NORMAL).build();
+        var tilePage = new DisplayListBuilder(SIZE).fillPath(path, tile).build();
+        var repeatedTilePage = new DisplayListBuilder(SIZE).fillPath(path, tile).fillPath(path, tile).build();
+        for (var page : List.of(groupPage, tilePage, repeatedTilePage)) {
+            int cost = page == repeatedTilePage ? 6 : 3;
+            var defaults = PdfSpoolLimits.DEFAULT;
+            var bounded = new PdfSpoolLimits(defaults.maxPages(), cost * 2L - 1, defaults.maxObjectsPerPage(), defaults.maxObjects(),
+                    defaults.maxPageBytes(), defaults.maxTemporaryBytes(), defaults.maxOutputBytes());
+            var output = new TrackingOutput();
+            try (var writer = new PdfSpoolBackend(temporary, PdfLimits.DEFAULT, bounded).open(DocumentMetadata.EMPTY, output)) {
+                writer.accept(page);
+                int acceptedBytes = output.size();
+                assertThrows(IOException.class, () -> writer.accept(page));
+                assertEquals(acceptedBytes, output.size(), "an over-budget nested page must not be copied");
+                assertThrows(IllegalStateException.class, writer::finish);
+            }
+            assertFalse(output.closed); assertClean();
+            var exact = new PdfSpoolLimits(defaults.maxPages(), cost, defaults.maxObjectsPerPage(), defaults.maxObjects(),
+                    defaults.maxPageBytes(), defaults.maxTemporaryBytes(), defaults.maxOutputBytes());
+            output = new TrackingOutput();
+            try (var writer = new PdfSpoolBackend(temporary, PdfLimits.DEFAULT, exact).open(DocumentMetadata.EMPTY, output)) {
+                writer.accept(page); writer.finish();
+            }
+            try (var pdf = Loader.loadPDF(output.toByteArray())) { assertEquals(1, pdf.getNumberOfPages()); }
+            assertFalse(output.closed); assertClean();
+        }
     }
 
     @Test void cancellationDuringCopyCleansIndicesWithoutClosingOutput() throws Exception {

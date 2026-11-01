@@ -19,7 +19,7 @@ try (var output = Files.newOutputStream(Path.of("output/accessible.pdf"))) {
 
 `engine` 为显式字体配置的 `DocumentEngine`，`document` 为对应的源 `Document`。源模型与布局必须一致。当前自动映射包括标题、普通段落、简单项目列表、独立行内图像、文本单元格表格及其续页。列表标记与正文分别映射 `Lbl`／`LBody`；图像使用 `InlineImage` 的替代文本；物理表头拥有稳定 ID，数据格关联对应表头，重复绘制的续页表头作为 artifact，不重复逻辑内容。
 
-块单元格、混排图像、自定义组件及其他复杂来源需要调用方提供明确绑定，自动映射入口会拒绝。原有普通 `paint`／导出入口继续生成普通 PDF，不推断无障碍语义。
+块单元格、混排图像、自定义组件及其他复杂来源需要调用方提供明确绑定，自动映射入口会拒绝。含文字或图片外链的源也会拒绝，避免自动映射时静默删除交互；当前 PDF/UA 后端尚不支持交互对象的 OBJR 标签关联。原有普通 `paint`／导出入口继续生成普通 PDF，不推断无障碍语义。
 
 直接使用 Display List 时，第四个 `DisplayDocument` 参数为后端中立的 `AccessibilityTree`。每个 `Node` 声明角色、稳定 ID、可选语言、图像替代文本、表格属性和有序子节点；`CommandRange` 以从 0 开始的页／指令索引指定半开区间。非语义装饰必须加入 `artifacts`。模型检查以下条件：
 

@@ -98,12 +98,17 @@ public final class PdfArchivalConverter {
             for (int index = 0; index < input.getNumberOfPages(); index++) {
                 ExecutionContext.progress("PDF_A_CONVERT", "", index, index, input.getNumberOfPages());
                 var original = input.getPage(index); var box = original.getCropBox(); boolean rotated = original.getRotation() % 180 != 0;
-                float width = rotated ? box.getHeight() : box.getWidth(); float height = rotated ? box.getWidth() : box.getHeight();
-                long w = (long) Math.floor(width * options.dpi() / 72d), h = (long) Math.floor(height * options.dpi() / 72d);
+                float unit = original.getUserUnit();
+                float width = (rotated ? box.getHeight() : box.getWidth()) * unit;
+                float height = (rotated ? box.getWidth() : box.getHeight()) * unit;
+                float scale = (float) (options.dpi() / 72d * unit);
+                long nativeWidth = (long) Math.floor(box.getWidth() * scale), nativeHeight = (long) Math.floor(box.getHeight() * scale);
+                long w = rotated ? nativeHeight : nativeWidth, h = rotated ? nativeWidth : nativeHeight;
                 if (w <= 0 || h <= 0 || w > Integer.MAX_VALUE || h > Integer.MAX_VALUE || w > (options.maxPixels() - pixels) / h) { throw new IOException("archival conversion pixel budget exceeded"); }
                 pixels += w * h;
-                var raster = renderer.renderImageWithDPI(index, options.dpi(), ImageType.RGB);
+                var raster = renderer.renderImage(index, scale, ImageType.RGB);
                 try {
+                    if (raster.getWidth() != w || raster.getHeight() != h) { throw new IOException("archival renderer dimensions differ from the reserved pixel budget"); }
                     var page = new PDPage(new PDRectangle(width, height)); pdf.addPage(page);
                     var image = LosslessFactory.createFromImage(pdf, raster);
                     try (var stream = new PDPageContentStream(pdf, page)) { stream.drawImage(image, 0, 0, width, height); }
@@ -146,7 +151,10 @@ public final class PdfArchivalConverter {
             }
         }
         for (var page : pdf.getPages()) {
-            if (!Float.isFinite(page.getCropBox().getWidth()) || !Float.isFinite(page.getCropBox().getHeight()) || page.getCropBox().getWidth() <= 0 || page.getCropBox().getHeight() <= 0 || page.getCropBox().getWidth() > 14_400 || page.getCropBox().getHeight() > 14_400) { throw new IOException("invalid archival source page geometry"); }
+            float unit = page.getCOSObject().getFloat(COSName.USER_UNIT, 1);
+            double width = (double) page.getCropBox().getWidth() * unit, height = (double) page.getCropBox().getHeight() * unit;
+            if (!Float.isFinite(unit) || unit <= 0 || !Double.isFinite(width) || !Double.isFinite(height)
+                    || width <= 0 || height <= 0 || width > 14_400 || height > 14_400) { throw new IOException("invalid archival source page geometry"); }
         }
     }
 

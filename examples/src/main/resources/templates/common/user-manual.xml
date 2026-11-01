@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored operations handbook with fictional product data. -->
+<document version="1" title="${title}" author="Export4j">
+  <page width="595.3" height="841.9" margin-top="38" margin-right="42" margin-bottom="34" margin-left="42"/>
+  <header height="20" gap="8"><p id="manual-running-header" size="8.5" line-height="15" color="#627084" space-after="0">${product.code} / 管理与使用手册 · ${product.version}</p></header>
+  <footer height="18" gap="8"><p id="manual-footer" size="9" line-height="16" align="RIGHT" color="#627084" space-after="0">${product.code} · 第 <page-number width="20"/> / <page-count width="20"/> 页</p></footer>
+  <p id="manual-kicker" size="9" line-height="16" color="#426680" space-after="5">OPERATIONS HANDBOOK / 自编虚构产品示例</p>
+  <heading id="manual-title" level="1" size="24" line-height="34" color="#18334D" space-before="0" space-after="8">${title}</heading>
+  <p id="manual-version" size="10" line-height="17" color="#627084" space-after="12">产品：${product.name}    型号：${product.code}
+版本：${product.version}    更新：${product.date}    维护：${product.owner}</p>
+  <p id="manual-introduction" size="10.5" line-height="18" space-after="10">${product.introduction}</p>
+  <table id="manual-reading-guide" draw-borders="false" padding-top="7" padding-bottom="7" padding-left="8" padding-right="8" space-after="10"><columns><column weight="1"/><column weight="1"/></columns>
+    <row><cell><p size="11" line-height="19" role="bold" color="#18334D" space-after="5">阅读路径</p><p size="10" line-height="17" space-after="0">${product.audience}</p></cell><cell><p size="11" line-height="19" role="bold" color="#8A4B23" space-after="5">能力与责任边界</p><p size="10" line-height="17" space-after="0">${product.boundary}</p></cell></row>
+  </table>
+  <heading id="manual-revision-title" level="2" size="13" line-height="23" color="#18334D" space-before="7" space-after="6">01 / 版本记录与术语</heading>
+  <rows id="manual-revisions" items="revisions" as="revision" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-after="10"><columns><column width="43"/><column width="82"/><column width="89"/><column weight="1"/></columns>
+    <header><cell size="9.5" line-height="15.5">版本</cell><cell size="9.5" line-height="15.5">日期</cell><cell size="9.5" line-height="15.5">维护方</cell><cell size="9.5" line-height="15.5">修订范围</cell></header>
+    <row><cell size="9.5" line-height="15.5">${revision.version}</cell><cell size="9.5" line-height="15.5">${revision.date}</cell><cell size="9.5" line-height="15.5">${revision.owner}</cell><cell size="9.5" line-height="15.5">${revision.change}</cell></row>
+  </rows>
+  <rows id="manual-glossary" items="terms" as="term" row-split="true" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-after="12"><columns><column width="76"/><column weight="1"/><column width="154"/></columns>
+    <header><cell size="9.5" line-height="15.5">术语</cell><cell size="9.5" line-height="15.5">含义</cell><cell size="9.5" line-height="15.5">示例</cell></header>
+    <row><cell size="9.5" line-height="15.5" role="bold" color="#426680">${term.term}</cell><cell size="9.5" line-height="15.5">${term.meaning}</cell><cell size="9.5" line-height="15.5">${term.example}</cell></row>
+  </rows>
+  <heading id="manual-before-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">02 / 安装准备与首次设置</heading>
+  <each items="notices" as="notice"><bullet size="10" line-height="17" space-after="4">${notice.text}</bullet></each>
+  <rows id="manual-requirements" items="requirements" as="requirement" row-split="true" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-before="6" space-after="10"><columns><column width="73"/><column weight="1"/><column weight="1"/><column width="72"/></columns>
+    <header><cell size="9.5" line-height="15.5">检查项</cell><cell size="9.5" line-height="15.5">准备要求</cell><cell size="9.5" line-height="15.5">确认方法</cell><cell size="9.5" line-height="15.5">责任人</cell></header>
+    <row><cell size="9.5" line-height="15.5" role="bold">${requirement.item}</cell><cell size="9.5" line-height="15.5">${requirement.requirement}</cell><cell size="9.5" line-height="15.5">${requirement.check}</cell><cell size="9.5" line-height="15.5">${requirement.owner}</cell></row>
+  </rows>
+  <rows id="manual-installation" items="installation" as="step" row-split="true" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-after="12"><columns><column width="40"/><column width="85"/><column weight="1"/><column weight="1"/></columns>
+    <header><cell size="9.5" line-height="15.5">步骤</cell><cell size="9.5" line-height="15.5">操作</cell><cell size="9.5" line-height="15.5">完成标志</cell><cell size="9.5" line-height="15.5">注意事项</cell></header>
+    <row><cell size="9.5" line-height="15.5" color="#426680">${step.number}</cell><cell size="9.5" line-height="15.5" role="bold">${step.action}</cell><cell size="9.5" line-height="15.5">${step.result}</cell><cell size="9.5" line-height="15.5">${step.note}</cell></row>
+  </rows>
+  <heading id="manual-workflow-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">03 / 从草稿到交付的工作流程</heading>
+  <table id="manual-workflow-cards" padding-top="7" padding-bottom="7" padding-left="8" padding-right="8" space-after="10"><columns><column weight="1"/><column weight="1"/><column weight="1"/></columns>
+    <row><cell><p size="11" line-height="19" role="bold" color="#18334D" space-after="4">设计 / 准备与验证</p><p size="9.5" line-height="16" space-after="0">字段、资源、模板草稿
+长短数据与错误策略检查</p></cell><cell><p size="11" line-height="19" role="bold" color="#18334D" space-after="4">发布 / 审核与固定</p><p size="9.5" line-height="16" space-after="0">冻结模板和资源快照
+业务确认并批准使用版本</p></cell><cell><p size="11" line-height="19" role="bold" color="#18334D" space-after="4">业务 / 执行与交付</p><p size="9.5" line-height="16" space-after="0">提交任务并检查实际结果
+下载、归档与责任交接</p></cell></row>
+  </table>
+  <rows id="manual-workflow" items="workflow" as="stage" row-split="true" padding-top="4" padding-bottom="4" padding-left="5" padding-right="5" space-after="12"><columns><column width="40"/><column width="43"/><column width="105"/><column weight="1"/><column width="108"/><column width="66"/></columns>
+    <header><cell size="9.5" line-height="15.5">编号</cell><cell size="9.5" line-height="15.5">阶段</cell><cell size="9.5" line-height="15.5">输入</cell><cell size="9.5" line-height="15.5">主要动作</cell><cell size="9.5" line-height="15.5">输出</cell><cell size="9.5" line-height="15.5">责任</cell></header>
+    <row><cell size="9.5" line-height="15.5">${stage.code}</cell><cell size="9.5" line-height="15.5" role="bold">${stage.stage}</cell><cell size="9.5" line-height="15.5">${stage.input}</cell><cell size="9.5" line-height="15.5">${stage.action}</cell><cell size="9.5" line-height="15.5">${stage.output}</cell><cell size="9.5" line-height="15.5">${stage.owner}</cell></row>
+  </rows>
+  <heading id="manual-roles-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">04 / 角色权限矩阵</heading>
+  <rows id="manual-roles" items="roles" as="role" padding-top="4" padding-bottom="4" padding-left="5" padding-right="5" space-after="12"><columns><column width="77"/><column weight="1"/><column weight="1"/><column weight="1"/><column weight="1"/><column weight="1"/><column weight="1"/></columns>
+    <header><cell size="9.5" line-height="15.5">角色</cell><cell size="9.5" line-height="15.5">查看</cell><cell size="9.5" line-height="15.5">编辑</cell><cell size="9.5" line-height="15.5">执行</cell><cell size="9.5" line-height="15.5">发布</cell><cell size="9.5" line-height="15.5">成员管理</cell><cell size="9.5" line-height="15.5">审计</cell></header>
+    <row><cell size="9.5" line-height="15.5" role="bold">${role.role}</cell><cell size="9.5" line-height="15.5">${role.read}</cell><cell size="9.5" line-height="15.5">${role.edit}</cell><cell size="9.5" line-height="15.5">${role.execute}</cell><cell size="9.5" line-height="15.5">${role.publish}</cell><cell size="9.5" line-height="15.5">${role.manage}</cell><cell size="9.5" line-height="15.5">${role.audit}</cell></row>
+  </rows>
+  <heading id="manual-parameters-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">05 / 参数矩阵与预算</heading>
+  <rows id="manual-parameters" items="parameters" as="parameter" row-split="true" padding-top="4" padding-bottom="4" padding-left="5" padding-right="5" space-after="12"><columns><column width="70"/><column width="73"/><column width="67"/><column weight="1"/><column weight="1"/></columns>
+    <header><cell row-span="2" size="9.5" line-height="15.5">参数</cell><cell row-span="2" size="9.5" line-height="15.5">演示默认值</cell><cell row-span="2" size="9.5" line-height="15.5">作用范围</cell><cell column-span="2" size="10" line-height="17" align="CENTER" color="#18334D">行为与校验</cell></header>
+    <header><cell size="9.5" line-height="15.5">用途说明</cell><cell size="9.5" line-height="15.5">检查与失败方式</cell></header>
+    <row><cell size="9.5" line-height="15.5" role="bold">${parameter.name}</cell><cell size="9.5" line-height="15.5">${parameter.value}</cell><cell size="9.5" line-height="15.5">${parameter.scope}</cell><cell size="9.5" line-height="15.5">${parameter.description}</cell><cell size="9.5" line-height="15.5">${parameter.validation}</cell></row>
+  </rows>
+  <heading id="manual-operation-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">06 / 详细操作步骤</heading>
+  <each items="operations" as="operation">
+    <numbered list-id="manual-operation-steps" size="10.5" line-height="18" space-after="4"><span role="bold" color="#18334D">${operation.code} ${operation.name}：</span>${operation.description}</numbered>
+    <p size="10" line-height="17" first-indent="18" subsequent-indent="18" space-after="8"><span role="bold" color="#426680">完成标志：</span>${operation.expected} <span role="bold" color="#8A4B23">注意：</span>${operation.caution}</p>
+  </each>
+  <heading id="manual-troubleshooting-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">07 / 故障排查与处理矩阵</heading>
+  <rows id="manual-troubleshooting" items="troubleshooting" as="problem" row-split="false" padding-top="4" padding-bottom="4" padding-left="5" padding-right="5" space-after="12"><columns><column width="40"/><column width="91"/><column width="166"/><column weight="1"/></columns>
+    <header><cell size="9.5" line-height="15.5">编号</cell><cell size="9.5" line-height="15.5">现象</cell><cell size="9.5" line-height="15.5">可能原因与检查</cell><cell size="9.5" line-height="15.5">处理方式与边界</cell></header>
+    <row><cell size="9.5" line-height="15.5" color="#8A4B23" role="bold">${problem.code}</cell><cell size="9.5" line-height="15.5" role="bold">${problem.symptom}</cell><cell size="9.5" line-height="15.5"><span color="#426680">${problem.cause}</span>
+${problem.checks}</cell><cell size="9.5" line-height="15.5">${problem.solution}</cell></row>
+  </rows>
+  <heading id="manual-maintenance-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">08 / 日常维护与恢复演练</heading>
+  <p id="manual-maintenance" size="10.5" line-height="18" space-after="10">${product.maintenance}</p>
+  <rows id="manual-maintenance-tasks" items="maintenanceTasks" as="task" row-split="true" padding-top="4" padding-bottom="4" padding-left="5" padding-right="5" space-after="10"><columns><column width="61"/><column width="86"/><column weight="1"/><column width="116"/><column width="80"/></columns>
+    <header><cell size="9.5" line-height="15.5">频率</cell><cell size="9.5" line-height="15.5">任务</cell><cell size="9.5" line-height="15.5">检查步骤</cell><cell size="9.5" line-height="15.5">保留证据</cell><cell size="9.5" line-height="15.5">负责人</cell></header>
+    <row><cell size="9.5" line-height="15.5">${task.frequency}</cell><cell size="9.5" line-height="15.5" role="bold">${task.task}</cell><cell size="9.5" line-height="15.5">${task.procedure}</cell><cell size="9.5" line-height="15.5">${task.evidence}</cell><cell size="9.5" line-height="15.5">${task.owner}</cell></row>
+  </rows>
+  <p id="manual-recovery-title" size="11" line-height="20" color="#18334D" role="bold" keep-with-next="true" space-after="5">隔离恢复的六个步骤</p>
+  <each items="recovery" as="recoveryStep"><numbered list-id="manual-recovery-steps" size="10" line-height="17" space-after="5">${recoveryStep.text}</numbered></each>
+  <heading id="manual-acceptance-title" level="2" size="13" line-height="23" color="#18334D" space-before="10" space-after="6">09 / 发布及恢复验收清单</heading>
+  <rows id="manual-acceptance" items="acceptance" as="check" row-split="true" padding-top="4" padding-bottom="4" padding-left="5" padding-right="5" space-after="12"><columns><column width="40"/><column width="87"/><column weight="1"/><column width="136"/><column width="45"/></columns>
+    <header><cell size="9.5" line-height="15.5">编号</cell><cell size="9.5" line-height="15.5">检查项</cell><cell size="9.5" line-height="15.5">通过条件</cell><cell size="9.5" line-height="15.5">验收材料</cell><cell size="9.5" line-height="15.5">级别</cell></header>
+    <row><cell size="9.5" line-height="15.5">${check.code}</cell><cell size="9.5" line-height="15.5" role="bold">${check.item}</cell><cell size="9.5" line-height="15.5">${check.expected}</cell><cell size="9.5" line-height="15.5">${check.evidence}</cell><cell size="9.5" line-height="15.5"><style-if test="check.required" operator="TRUE" role="bold" color="#8A4B23"/>${check.priority}</cell></row>
+  </rows>
+  <table id="manual-signoff" padding-top="8" padding-bottom="8" padding-left="8" padding-right="8" space-after="12"><columns><column weight="1"/></columns><row><cell><p size="11" line-height="20" role="bold" color="#18334D" space-after="5">验收记录</p><p size="10" line-height="22" space-after="0">${support.closure}</p></cell></row></table>
+  <heading id="manual-appendix-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">附录 A / 文件清单与支持材料</heading>
+  <rows id="manual-files" items="files" as="file" row-split="true" padding-top="4" padding-bottom="4" padding-left="6" padding-right="6" space-after="10"><columns><column width="86"/><column weight="1"/><column width="118"/><column width="113"/></columns>
+    <header><cell size="9.5" line-height="15.5">示例相对目录</cell><cell size="9.5" line-height="15.5">用途</cell><cell size="9.5" line-height="15.5">保留方式</cell><cell size="9.5" line-height="15.5">访问范围</cell></header>
+    <row><cell size="9.5" line-height="15.5" role="bold" color="#426680">${file.path}</cell><cell size="9.5" line-height="15.5">${file.purpose}</cell><cell size="9.5" line-height="15.5">${file.retention}</cell><cell size="9.5" line-height="15.5">${file.access}</cell></row>
+  </rows>
+  <p id="manual-support" size="10" line-height="17" space-after="7"><span role="bold" color="#18334D">示例支持：</span>${support.contact}
+${support.report}</p>
+  <p id="manual-disclaimer" size="9" line-height="16" color="#627084" space-after="0">${product.disclaimer}</p>
+</document>

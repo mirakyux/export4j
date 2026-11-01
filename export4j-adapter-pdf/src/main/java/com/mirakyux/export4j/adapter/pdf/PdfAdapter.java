@@ -454,7 +454,15 @@ public final class PdfAdapter {
 
     PDDocument open(PdfInput input, PdfPreflight budget) throws IOException {
         if (input.byteSize() > limits.maxInputBytes() || input.byteSize() > limits.maxTotalInputBytes()) { throw budget.failure(PdfOperationException.Code.INPUT_LIMIT); }
-        byte[] bytes = input.bytes();
+        return openEncoded(input.bytes(), input.password(), budget);
+    }
+
+    PDDocument openCandidate(byte[] bytes) throws IOException {
+        // Encoded output has already passed maxOutputBytes; input-byte limits belong to its source.
+        return openEncoded(bytes, "", preflight(false));
+    }
+
+    private PDDocument openEncoded(byte[] bytes, String password, PdfPreflight budget) throws IOException {
         if (bytes.length < 8 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F' || bytes[4] != '-') {
             throw budget.failure(PdfOperationException.Code.INVALID_PDF);
         }
@@ -462,7 +470,7 @@ public final class PdfAdapter {
         var reader = new RandomAccessReadBuffer(bytes);
         PDDocument document = null;
         try {
-            document = new PdfPreflight.Parser(reader, input.password(), budget).parse(false);
+            document = new PdfPreflight.Parser(reader, password, budget).parse(false);
             if (!Float.isFinite(document.getVersion()) || document.getVersion() < 1 || document.getVersion() > 2) {
                 throw budget.failure(PdfOperationException.Code.UNSUPPORTED_FEATURE);
             }

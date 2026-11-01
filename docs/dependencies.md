@@ -10,6 +10,8 @@ TypeScript 7.0.2、esbuild 0.28.2、类型声明及 Playwright 1.64.1 仅用于�
 
 ## Java 与验证依赖
 
+常用文档示例另携带 Joon Tae Kim 的 Pexels 简历配图，按 Pexels License 使用，不重新授权为 Apache-2.0。裁切、尺寸及来源见[图片资源记录](../examples/src/main/resources/templates/common/assets/README.md)，原作者与许可链接随设计器模板 ZIP 保留。合同 Logo 为项目自绘；两类图片均本地打包，不新增运行时下载或 Java 依赖。
+
 可选 `export4j-opentype` 内部依赖 LWJGL 3.4.3 的 `lwjgl`／`lwjgl-harfbuzz` 两个 Java 制品（BSD-3-Clause）。应用显式选择平台 native classifier，生产 POM 不自动传递平台二进制。Windows 实际内含 HarfBuzz 14.3.0，与绑定头版本分别核对；HarfBuzz、libffi、liburing 等内含许可原文随清单保存，见[原生制品记录](../third-party/native-artifacts.csv)。核心原有 JDK 路径不强制加载 JNI。
 
 Linux／macOS x64 与 arm64 的 native JAR 校验值已按实际下载及 Central 发布摘要审查，进入严格依赖验证；此状态只证明固定制品被识别，不代表跨平台加载／渲染或阅读器测试通过。库测试与隔离调用方共享显式 classifier 选择逻辑，未知平台／架构拒绝。平台实际运行结果另见[阶段一百零五](verification/phase-105-publication-and-compatibility.md)。
@@ -174,7 +176,7 @@ detached CMS 样例及独立验签使用本机 Git 附带的 OpenSSL（Apache-2.
 
 资源不能仅凭可下载或可打开就视为可再分发。新增资源必须记录原始来源、作者或权利人、版本或哈希、许可证、用途和分发限制。
 
-当前示例图片由项目代码生成。精确绘制示例的 PDF 标准字体不嵌入；文本示例及字体、文本、PDF 测试使用 `assets/fonts` 内的固定字体，详见[字体来源与哈希](../assets/fonts/README.md)。
+除已单独登记的简历配图外，示例图片由项目代码生成。精确绘制示例的 PDF 标准字体不嵌入；文本示例及字体、文本、PDF 测试使用 `assets/fonts` 内的固定字体，详见[字体来源与哈希](../assets/fonts/README.md)。
 
 2026-10-16 两层块格／XML 嵌套格由项目自主实现，仍为 16 模块。合成报告、XML 与 BlockCellsExample 生成的双色 PNG 采用 Apache-2.0，沿用已登记字体与验证工具，无新增外部依赖／资源。模板适配器仅在测试配置依赖 DOCX 适配器，以验证同一语义树的标准输出；生产仍只依赖模型与 JDK。
 

@@ -32,7 +32,8 @@ final class InlineHyperlinks {
 
     static List<DocumentExtras.ExternalLink> collect(SectionedDocument document, DocumentLayout body, int pageOffset, long maxLinks) {
         Map<String, Block> blocks = new HashMap<>();
-        SemanticTree.walk(document.sections().stream().flatMap(section -> section.blocks().stream()).toList(),
+        var rotationSources = new ArrayList<>(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
+        SemanticTree.walk(rotationSources,
                 visit -> blocks.put(visit.block().id(), visit.block()));
         for (var page : body.pages()) {
             for (var fragment : page.elements()) {
@@ -40,6 +41,7 @@ final class InlineHyperlinks {
                     for (var located : ComponentSemantics.locate(component.layout(), component.origin())) {
                         var source = located.placement().source();
                         if (!blocks.containsKey(source.id())) {
+                            rotationSources.add(source);
                             SemanticTree.walk(source, visit -> blocks.put(visit.block().id(), visit.block()));
                         }
                     }
@@ -47,11 +49,12 @@ final class InlineHyperlinks {
             }
         }
         List<DocumentExtras.ExternalLink> result = new ArrayList<>();
+        var rotations = ModelRotations.of(rotationSources);
         Map<Table, TableGrid> grids = new java.util.IdentityHashMap<>();
         for (var page : body.pages()) {
             for (var fragment : page.elements()) {
                 List<Source> sources = new ArrayList<>();
-                SemanticFragments.walk(fragment, ignored -> { }, leaf -> {
+                SemanticFragments.walk(fragment, rotations, ignored -> { }, leaf -> {
                     var block = blocks.get(leaf.blockId());
                     if (block instanceof Table table) {
                         var original = grids.computeIfAbsent(table, Table::grid)
@@ -68,9 +71,11 @@ final class InlineHyperlinks {
                 });
                 for (var paragraph : sources) {
                     ExecutionContext.checkpoint();
+                    var collector = new Collector(result, maxLinks, paragraph);
                     InlineLinkGeometry.collect(paragraph.text(), paragraph.inlines(), paragraph.step(),
                             paragraph.origin(), paragraph.layout(), page.pageIndex() + pageOffset, page.size().width(),
-                            (link, source) -> append(result, maxLinks, link, paragraph, source));
+                            collector::accept);
+                    collector.finish();
                 }
             }
         }
@@ -95,5 +100,54 @@ final class InlineHyperlinks {
                     "inline link interaction budget exceeded", null);
         }
         links.add(link);
+    }
+
+    /** Coalesces source-line glyph boxes before rotation, so angled text keeps one interaction per run. */
+    private static final class Collector {
+        private final List<DocumentExtras.ExternalLink> links;
+        private final long maxLinks;
+        private final Source source;
+        private DocumentExtras.ExternalLink pending;
+        private int sourceIndex;
+
+        Collector(List<DocumentExtras.ExternalLink> links, long maxLinks, Source source) {
+            this.links = links; this.maxLinks = maxLinks; this.source = source;
+        }
+        void accept(DocumentExtras.ExternalLink link, int index) {
+            if (pending != null) {
+                var a = pending.bounds(); var b = link.bounds();
+                if (pending.pageIndex() == link.pageIndex() && pending.destination().equals(link.destination())
+                        && a.y() == b.y() && a.height() == b.height() && Math.abs(a.x() + a.width() - b.x()) < 1e-8) {
+                    pending = new DocumentExtras.ExternalLink(link.pageIndex(),
+                            new Rect(a.x(), a.y(), b.x() + b.width() - a.x(), a.height()), link.destination());
+                    return;
+                }
+                finish();
+            }
+            pending = link; sourceIndex = index;
+        }
+        void finish() {
+            if (pending != null) {
+                append(links, maxLinks, transformed(pending, source.context().transform()), source, sourceIndex);
+                pending = null;
+            }
+        }
+    }
+
+    static DocumentExtras.ExternalLink transformed(DocumentExtras.ExternalLink link,
+            com.mirakyux.export4j.graphics.AffineTransform transform) {
+        if (transform.equals(com.mirakyux.export4j.graphics.AffineTransform.IDENTITY)) { return link; }
+        var bounds = link.bounds();
+        double left = Double.POSITIVE_INFINITY, top = Double.POSITIVE_INFINITY;
+        double right = Double.NEGATIVE_INFINITY, bottom = Double.NEGATIVE_INFINITY;
+        for (double x : new double[] {bounds.x(), bounds.x() + bounds.width()}) {
+            for (double y : new double[] {bounds.y(), bounds.y() + bounds.height()}) {
+                double px = transform.a() * x + transform.c() * y + transform.e();
+                double py = transform.b() * x + transform.d() * y + transform.f();
+                left = Math.min(left, px); right = Math.max(right, px);
+                top = Math.min(top, py); bottom = Math.max(bottom, py);
+            }
+        }
+        return new DocumentExtras.ExternalLink(link.pageIndex(), new Rect(left, top, right - left, bottom - top), link.destination());
     }
 }

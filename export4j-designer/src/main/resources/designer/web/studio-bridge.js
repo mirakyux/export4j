@@ -27,7 +27,7 @@ const DesignerStudioBridge = (() => {
         if(options.local)return;
         const old=state&&capture();
         // A new bundle has a different resource identity. Its server history remains authoritative.
-        const resources=state&&JSON.stringify([state.fonts,state.images,state.fragments,state.licenses])!==JSON.stringify([value.fonts,value.images,value.fragments,value.licenses]);
+        const resources=state&&state.resourceIdentity!==value.resourceIdentity;
         if(options.session||options.serverHistory||!state||resources){history=[];cursor=-1;localHistory=false;draftBase=undefined;if(options.session)session++;}
         else if(old&&(old.source!==value.source||old.data!==value.data))changedHistory(old,{source:value.source,data:value.data,paths:old.paths,ids:old.ids});
         synchronized=sequence;failure=undefined;

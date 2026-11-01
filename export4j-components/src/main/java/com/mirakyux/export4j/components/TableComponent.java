@@ -66,6 +66,6 @@ public record TableComponent(Table table) implements Component {
             }
         }
         return new ComponentLayout(fragment.width(), fragment.height(), Math.toIntExact(lines),
-                DocumentPainter.paint(layout).pages().getFirst().commands(), diagnostics);
+                DocumentPainter.paint(layout, ModelRotations.of(List.of(table))).pages().getFirst().commands(), diagnostics);
     }
 }

@@ -6,6 +6,16 @@ records and original license locations are listed in
 third-party/designer-browser-components.json. Full original notices also ship
 with the browser bundle as THIRD-PARTY-NOTICES.txt.
 
+The common-document resume example includes a cropped photograph by Joon Tae
+Kim, "Man in White Crew Neck Shirt", under the Pexels License:
+https://www.pexels.com/photo/man-in-white-crew-neck-shirt-8586504/
+https://www.pexels.com/license/
+Its source and usage notice is preserved alongside the bundled image at
+templates/common/assets/resume_portrait-license.txt (examples) and
+designer/samples/common/assets/resume_portrait-license.txt (designer).
+It is a layout illustration and does not depict the fictional resume subject
+or imply endorsement. The photograph is not licensed under Apache-2.0.
+
 This project uses the following third-party components. Their original license
 terms are preserved under third-party/licenses and inside dependency artifacts.
 

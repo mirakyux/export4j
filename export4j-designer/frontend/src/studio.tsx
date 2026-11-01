@@ -153,7 +153,12 @@ function Rich({editing,page,scale,finish}:{editing:Editing;page:number;scale:num
     return ()=>{activeEditors--;view.current=null;editor.destroy();};
   },[]);
   useLayoutEffect(()=>{view.current?.setProps({editable:()=>!bridge.snapshot().busy});},[snapshot.busy]);
-  useEffect(()=>{const hide=()=>setToolbar(null);window.addEventListener('resize',hide);window.addEventListener('scroll',hide,true);return ()=>{window.removeEventListener('resize',hide);window.removeEventListener('scroll',hide,true);};},[]);
+  useEffect(()=>{
+    let frame=0;
+    const reposition=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(view.current)selectionChanged(view.current);});};
+    window.addEventListener('resize',reposition);window.addEventListener('scroll',reposition,true);
+    return ()=>{cancelAnimationFrame(frame);window.removeEventListener('resize',reposition);window.removeEventListener('scroll',reposition,true);};
+  },[]);
   useLayoutEffect(()=>{if(bridge.snapshot().source!==authored.current)finish();},[snapshot.source]);
   return <div className="studio-rich" onPointerDown={event=>event.stopPropagation()} style={session.current?{'--studio-scale':scale,fontSize:12*scale,lineHeight:18*scale+'px'} as React.CSSProperties:paragraphStyle(editing.node,snapshot.formats[editing.path]||{},scale)}>
     <div className="studio-edit-actions"><span>{editing.continuation?'跨页段落 · 编辑完整原文':'正在编辑 · Ctrl + Enter 完成'}</span><button onClick={commit}>完成</button></div>

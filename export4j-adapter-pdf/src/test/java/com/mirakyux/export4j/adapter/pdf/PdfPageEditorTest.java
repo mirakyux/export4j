@@ -168,6 +168,51 @@ class PdfPageEditorTest {
         try (var paths = Files.list(directory)) { assertEquals(1, paths.count()); }
         cancelled.set(false); prepared.to(target); assertArrayEquals(out.toByteArray(), Files.readAllBytes(target));
     }
+    @Test void encodedCandidateOperatorBudgetRejectsAddedStreamsBeforePublicationUnderEveryPolicy() throws Exception {
+        byte[] source = blankSource(); var output = new ByteArrayOutputStream();
+        var target = directory.resolve("operator-budget.pdf"); Files.writeString(target, "PREVIOUS");
+        var bounded = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxContentOperators(2).build()).build();
+        var ignore = ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.IGNORE, ProcessingPolicy.Treatment.DEGRADE).build();
+        for (var policy : java.util.List.of(ProcessingPolicy.STRICT, WARN, ignore)) {
+            var input = bounded.input(source, "");
+            assertEquals(PdfOperationException.Code.OPERATOR_LIMIT, assertThrows(PdfOperationException.class,
+                    () -> bounded.editPages(input).policy(policy).scale(0, .5).prepare().to(output)).code());
+            assertEquals(PdfOperationException.Code.OPERATOR_LIMIT, assertThrows(PdfOperationException.class,
+                    () -> bounded.editPages(input).policy(policy).scale(0, .5).prepare().to(target)).code());
+            assertEquals(0, output.size()); assertEquals("PREVIOUS", Files.readString(target));
+        }
+        var exact = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxContentOperators(3).build()).build();
+        exact.editPages(exact.input(source, "")).scale(0, .5).prepare().to(output);
+        assertEquals(120, exact.read(exact.input(output.toByteArray(), "")).pages().getFirst().mediaBox().width());
+        try (var files = Files.list(directory)) { assertEquals(java.util.List.of(target), files.toList()); }
+    }
+    @Test void encodedCandidateChecksSourceAndAddedImagePixelsTogether() throws Exception {
+        byte[] source;
+        try (var pdf = Loader.loadPDF(blankSource())) {
+            var image = org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject.createFromByteArray(pdf, red().bytes(), "source");
+            try (var stream = new PDPageContentStream(pdf, pdf.getPage(0))) { stream.drawImage(image, 10, 10, 20, 20); }
+            source = save(pdf);
+        }
+        var bounded = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxImagePixels(7).build()).build();
+        var output = new ByteArrayOutputStream();
+        assertEquals(PdfOperationException.Code.IMAGE_LIMIT, assertThrows(PdfOperationException.class,
+                () -> bounded.editPages(bounded.input(source, "")).image(0, red(), new PdfPageEditor.Rectangle(40, 40, 20, 20), PdfPageEditor.Layer.OVER_CONTENT).prepare().to(output)).code());
+        assertEquals(0, output.size());
+        var exact = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxImagePixels(8).build()).build();
+        exact.editPages(exact.input(source, "")).image(0, red(), new PdfPageEditor.Rectangle(40, 40, 20, 20), PdfPageEditor.Layer.OVER_CONTENT).prepare().to(output);
+        assertEquals(1, exact.read(exact.input(output.toByteArray(), "")).pages().size());
+    }
+    @Test void candidateOutputByteAllowanceRemainsSeparateFromInputByteAllowance() throws Exception {
+        byte[] source = blankSource();
+        var adapter = PdfAdapter.builder().limits(PdfLimits.DEFAULT.toBuilder().maxInputBytes(source.length).build()).build();
+        var prepared = adapter.editPages(adapter.input(source, "")).text(0, "NEW", 20, 80, style(), PdfPageEditor.Layer.OVER_CONTENT).prepare();
+        assertTrue(prepared.outputBytes() > source.length);
+        var output = new ByteArrayOutputStream(); prepared.to(output);
+        try (var pdf = Loader.loadPDF(output.toByteArray())) { assertEquals("NEW", new PDFTextStripper().getText(pdf).strip()); }
+    }
+    private static byte[] blankSource() throws IOException {
+        try (var pdf = new PDDocument()) { pdf.addPage(new PDPage(new PDRectangle(240, 300))); return save(pdf); }
+    }
     private static PdfPageEditor.TextStyle style() throws IOException { return new PdfPageEditor.TextStyle(PdfFont.of(Files.readAllBytes(Path.of("../assets/fonts/LiberationSans-Regular.ttf"))), 12, 0x224466, .7); }
     private static ImageResource red() throws IOException {
         var image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB); var graphics = image.createGraphics(); graphics.setColor(Color.RED); graphics.fillRect(0, 0, 2, 2); graphics.dispose();

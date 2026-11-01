@@ -135,6 +135,29 @@ class OpenTypeTest {
             }
         }
     }
+    @Test void mixedColorFontsKeepOrdinaryGlyphOutlinesAndSourceRanges() throws Exception {
+        for (String name : List.of("Export4j-ColorV0-Test.ttf", "Export4j-ColorV1-Test.ttf")) {
+            var run = OpenTypeShaper.shape(font(name), "aAa", OpenTypeShaper.Options.of(36));
+            assertEquals(3, run.glyphs().size());
+            for (int index : List.of(0, 2)) {
+                var glyph = run.glyphs().get(index);
+                assertFalse(glyph.outlines().isEmpty(), name);
+                assertTrue(glyph.colorCommands().isEmpty(), name);
+                assertEquals(index, glyph.sourceStart()); assertEquals(index + 1, glyph.sourceEnd());
+            }
+            assertTrue(run.glyphs().get(1).outlines().isEmpty());
+            assertFalse(run.glyphs().get(1).colorCommands().isEmpty());
+            assertEquals(run.glyphs().get(0).outlines(), run.glyphs().get(2).outlines());
+        }
+    }
+    @Test void unsupportedSbixImagesFailInsteadOfDisappearingWhileOrdinaryGlyphsStillWork() throws Exception {
+        var font = font("Export4j-Sbix-Jpeg-Test.ttf");
+        assertFalse(OpenTypeShaper.shape(font, "a", OpenTypeShaper.Options.of(24)).glyphs().getFirst().outlines().isEmpty());
+        for (String text : List.of("A", "aA")) {
+            assertEquals(OpenTypeException.Code.UNSUPPORTED_PAINT,
+                    assertThrows(OpenTypeException.class, () -> OpenTypeShaper.shape(font, text, OpenTypeShaper.Options.of(24))).code());
+        }
+    }
     @Test void allColrv1CompositeAndGradientGlyphsRenderWithoutMonochromeFallback() throws Exception {
         var f = font("Export4j-ColorV1-Test.ttf");
         for (int cp = 65; cp < 97; cp++) {

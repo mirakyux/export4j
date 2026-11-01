@@ -72,7 +72,7 @@ DOCX [样式级联](docx-style-import-api.md)支持默认值、basedOn、字符�
 
 [HTML/CSS 导入](html-import-api.md)保持默认语义模式，并提供显式 CSS 布局模式。离线选择器／媒体级联、页面／分页规则、Flex／Grid、尺寸和相对／绝对定位映射为确定的组件树，显式字体和资源由调用方提供。布局叶保留真实段落及最终外链／字段；不能表达组件布局的语义输出按 ERROR／WARN／IGNORE 与明确处理返回损失，不执行脚本或隐式外联。
 
-默认 `ParagraphLayouter` 对组合字符、阿拉伯语、希伯来语等需要塑形的文本，以及静态 CFF 字体，使用显式物理字体的 JDK OpenType 布局。语义段落、富文本单元格、`FlowText`、页眉页脚、脚注和目录文本因此共享该能力。简单文字仍保持原有度量；需要对纯拉丁文字显式启用 kerning／连字时继续使用 `OpenTypeText`。
+默认 `ParagraphLayouter` 对组合字符、阿拉伯语、希伯来语等需要塑形的文本使用显式物理字体的 JDK OpenType 布局。静态 CFF 的简单文字可保留原生字形映射，复杂塑形或显式 `layoutOpenType` 才使用轮廓。语义段落、富文本单元格、`FlowText`、页眉页脚、脚注和目录文本共享此路由。简单文字仍保持原有度量；需要对纯拉丁文字显式启用 kerning／连字时继续使用 `OpenTypeText`。
 
 塑形结果保存在 `TextLine.outlines()`，简单路径保存在 `runs()`，两者互斥。分页或自定义布局调整基线时使用 `atBaseline()`，不能只复制旧的六个字段。`minimumLineHeight(group, size)` 可查询兼容两种路径的行高下限。固定行距不足明确失败，不自动缩小字号。字形簇跨越不同富文本样式边界目前拒绝，调用方应让同一组合字符位于同一行内节点。
 

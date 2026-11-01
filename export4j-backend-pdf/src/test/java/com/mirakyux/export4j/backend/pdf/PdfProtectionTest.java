@@ -63,9 +63,43 @@ class PdfProtectionTest {
         try (var pdf = Loader.loadPDF(bytes, "reader-secret")) {
             assertTrue(pdf.isEncrypted()); assertEquals(256, pdf.getEncryption().getLength());
             var permission = pdf.getCurrentAccessPermission();
+            assertFalse(permission.isOwnerPermission());
             assertFalse(permission.canPrint()); assertFalse(permission.canExtractContent()); assertFalse(permission.canModify());
         }
         try (var pdf = Loader.loadPDF(bytes, "owner-secret")) { assertTrue(pdf.getCurrentAccessPermission().isOwnerPermission()); }
         assertFalse(encryption.toString().contains("owner-secret"));
+    }
+    @Test void effectivePasswordLimitsRejectUtf8TruncationAndNormalizationCollisions() {
+        var permissions = PdfEncryption.Permissions.READ_ONLY;
+        String prefix = "密".repeat(50);
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption((prefix + "owner").toCharArray(), (prefix + "user").toCharArray(), permissions));
+        String overLimit = "密".repeat(42) + "ab"; // 128 UTF-8 bytes, despite only 44 UTF-16 units.
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption(overLimit.toCharArray(), "user".toCharArray(), permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("owner".toCharArray(), overLimit.toCharArray(), permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("\ufb03".repeat(43).toCharArray(), "user".toCharArray(), permissions), "NFKC expands each ligature to three bytes");
+        for (var pair : List.of(new String[] {"Pass\u00adword", "Password"}, new String[] {"\uff21", "A"},
+                new String[] {"owner\u00a0name", "owner name"}, new String[] {"owner\u200bname", "owner name"})) {
+            assertThrows(IllegalArgumentException.class, () -> new PdfEncryption(pair[0].toCharArray(), pair[1].toCharArray(), permissions));
+        }
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("\u00ad".toCharArray(), new char[0], permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("owner".toCharArray(), new char[] {'\ud800'}, permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption(new char[] {'\udc00'}, "user".toCharArray(), permissions));
+    }
+    @Test void exactUtf8BoundaryAndPreparedUnicodeKeepOwnerAndUserAuthenticationSeparate() throws IOException {
+        for (var pair : List.of(new String[] {"密".repeat(42) + "O", "密".repeat(42) + "U"},
+                new String[] {"O\ufb03ce\u00ad-owner", "reader\u00a0name"},
+                new String[] {"owner", ""})) {
+            var owner = pair[0].toCharArray(); var user = pair[1].toCharArray();
+            var encryption = new PdfEncryption(owner, user, PdfEncryption.Permissions.READ_ONLY);
+            java.util.Arrays.fill(owner, 'x'); java.util.Arrays.fill(user, 'x');
+            var output = new ByteArrayOutputStream();
+            new PdfBackend(PdfLimits.DEFAULT, PdfOptions.DEFAULT.withEncryption(encryption)).write(
+                    new DisplayDocument(DocumentMetadata.EMPTY, List.of(new DisplayListBuilder(PageSize.A4).build())), output);
+            try (var pdf = Loader.loadPDF(output.toByteArray(), pair[1])) {
+                assertFalse(pdf.getCurrentAccessPermission().isOwnerPermission());
+                assertFalse(pdf.getCurrentAccessPermission().canModify());
+            }
+            try (var pdf = Loader.loadPDF(output.toByteArray(), pair[0])) { assertTrue(pdf.getCurrentAccessPermission().isOwnerPermission()); }
+        }
     }
 }

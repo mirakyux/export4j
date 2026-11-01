@@ -37,8 +37,9 @@ public final class DocumentPainter {
         Objects.requireNonNull(layout, "layout");
         rotations = Map.copyOf(rotations);
         List<DisplayPage> pages = new ArrayList<>();
+        var semanticRotations = new java.util.IdentityHashMap<com.mirakyux.export4j.model.Table, Map<String, Double>>();
         for (LayoutPage page : layout.pages()) {
-            pages.add(paintPage(page, rotations));
+            pages.add(paintPage(page, rotations, semanticRotations));
         }
         return new DisplayDocument(layout.metadata(), pages);
     }
@@ -65,6 +66,11 @@ public final class DocumentPainter {
 
     /** Draws a page with rotations fitted inside each fragment's measured box. */
     public static DisplayPage paintPage(LayoutPage page, Map<String, Double> rotations) {
+        return paintPage(page, rotations, new java.util.IdentityHashMap<>());
+    }
+
+    private static DisplayPage paintPage(LayoutPage page, Map<String, Double> rotations,
+            java.util.IdentityHashMap<com.mirakyux.export4j.model.Table, Map<String, Double>> semanticRotations) {
         Objects.requireNonNull(page, "page");
         Objects.requireNonNull(rotations, "rotations");
         DisplayListBuilder builder = new DisplayListBuilder(page.size());
@@ -83,7 +89,7 @@ public final class DocumentPainter {
                 case TableFragment table -> paintTable(builder, table, rotations);
                 case ComponentFragment component -> {
                     builder.save().transform(AffineTransform.translation(component.origin().x(), component.origin().y()));
-                    paintComponent(builder, component.layout());
+                    paintComponent(builder, component.layout(), semanticRotations);
                     builder.restore();
                 }
             }
@@ -97,6 +103,11 @@ public final class DocumentPainter {
      * @throws IllegalArgumentException when semantic placement geometry is unsupported or clipped
      */
     public static void paintComponent(DisplayListBuilder builder, ComponentLayout component) {
+        paintComponent(builder, component, new java.util.IdentityHashMap<>());
+    }
+
+    private static void paintComponent(DisplayListBuilder builder, ComponentLayout component,
+            java.util.IdentityHashMap<com.mirakyux.export4j.model.Table, Map<String, Double>> semanticRotations) {
         Objects.requireNonNull(builder, "builder");
         Objects.requireNonNull(component, "component");
         ComponentSemantics.locate(component, new Point(0, 0));
@@ -113,12 +124,33 @@ public final class DocumentPainter {
                     && component.semanticPlacements().get(slot).commandIndex() == index) {
                 var placement = component.semanticPlacements().get(slot++);
                 var table = new DisplayListBuilder(new com.mirakyux.export4j.model.PageSize(component.width(), component.height()));
-                paintTable(table, placement.fragment(), Map.of());
+                var rotations = semanticRotations.computeIfAbsent(placement.source(), DocumentPainter::sourceRotations);
+                var fragment = placement.fragment();
+                double angle = rotations.getOrDefault(fragment.blockId(), 0.0);
+                if (angle != 0) {
+                    table.save().transform(AffineTransform.fittedRotation(new Rect(fragment.origin().x(), fragment.origin().y(),
+                            fragment.width(), fragment.height()), angle));
+                }
+                paintTable(table, fragment, rotations);
+                if (angle != 0) { table.restore(); }
                 commands.addAll(table.build().commands());
             }
             if (index < staticCommands.size()) { commands.add(staticCommands.get(index)); }
         }
         builder.appendCommands(commands);
+    }
+
+    private static Map<String, Double> sourceRotations(com.mirakyux.export4j.model.Table source) {
+        var rotations = new java.util.HashMap<String, Double>();
+        com.mirakyux.export4j.model.SemanticTree.walk(source, visit -> {
+            double angle = switch (visit.block()) {
+                case com.mirakyux.export4j.model.Paragraph paragraph -> paragraph.format().rotation();
+                case com.mirakyux.export4j.model.Table table -> table.format().rotation();
+                default -> 0;
+            };
+            if (angle != 0) { rotations.put(visit.block().id(), angle); }
+        });
+        return Map.copyOf(rotations);
     }
 
     private static void paintTable(DisplayListBuilder builder, TableFragment table, Map<String, Double> rotations) {

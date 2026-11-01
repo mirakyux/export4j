@@ -97,6 +97,70 @@ class StreamingRichTextExportTest {
         }
     }
 
+    @Test void singleAndReplaySemanticRowsRotateNestedInkAndLinkBoxesTogether() throws IOException {
+        var format = com.mirakyux.export4j.model.ParagraphFormat.builder().fontSize(10).lineHeight(20).spaceAfter(0).build();
+        double baseline = new com.mirakyux.export4j.text.ParagraphLayouter().layout("X tail", regular, 160,
+                com.mirakyux.export4j.text.ParagraphStyle.builder().fontSize(10).lineHeight(20).build()).lines().getFirst().baselineY();
+        var engine = DocumentEngine.builder(regular).build();
+        for (boolean replay : List.of(false, true)) {
+            for (int angle : List.of(0, 45, 180)) {
+                var pages = new ArrayList<DisplayPage>();
+                var links = new ArrayList<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink>();
+                var opens = new java.util.concurrent.atomic.AtomicInteger();
+                TableRowSource.Factory factory = () -> {
+                    opens.incrementAndGet();
+                    return new Source(5, index -> {
+                        var child = new com.mirakyux.export4j.model.Paragraph("child-" + index,
+                                List.of(new InlineText("X", PLAIN, "https://example.com/" + index), new InlineText(" tail", PLAIN)),
+                                format.toBuilder().rotation(45).build());
+                        var nested = com.mirakyux.export4j.model.Table.builder("nested-" + index)
+                                .format(value -> value.padding(0).spaceAfter(0).rotation(angle))
+                                .row(TableCell.builder().blocks(List.of(child)).build()).build();
+                        return new TableRow(List.of(TableCell.builder().blocks(List.of(nested)).build()));
+                    }, new ArrayList<>());
+                };
+                var spec = table().toBuilder().semanticCells(true).allowRowSplit(true).build();
+                var request = replay ? engine.exportReplay(spec, factory) : engine.exportSemantic(spec, factory);
+                var summary = request.backend((metadata, output) -> new PageWriter() {
+                    @Override public void accept(DisplayPage page) { pages.add(page); }
+                    @Override public void accept(DisplayPage page, List<com.mirakyux.export4j.graphics.DocumentExtras.ExternalLink> interactions) {
+                        pages.add(page); links.addAll(interactions);
+                    }
+                    @Override public void finish() { }
+                    @Override public void close() { }
+                }).to(new ByteArrayOutputStream());
+                assertTrue(summary.pages() > 1); assertEquals(5, links.size()); assertEquals(replay ? 2 : 1, opens.get());
+                for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
+                    var expected = new ArrayList<java.awt.geom.Rectangle2D>();
+                    var states = new java.util.ArrayDeque<java.awt.geom.AffineTransform>();
+                    var state = new java.awt.geom.AffineTransform();
+                    for (var command : pages.get(pageIndex).commands()) {
+                        switch (command) {
+                            case DrawCommand.Save ignored -> states.push(new java.awt.geom.AffineTransform(state));
+                            case DrawCommand.Restore ignored -> state = states.pop();
+                            case DrawCommand.Transform transform -> {
+                                var m = transform.matrix();
+                                state.concatenate(new java.awt.geom.AffineTransform(m.a(), m.b(), m.c(), m.d(), m.e(), m.f()));
+                            }
+                            case DrawCommand.GlyphText text when text.run().text().startsWith("X") -> expected.add(state.createTransformedShape(
+                                    new java.awt.geom.Rectangle2D.Double(text.baseline().x(), text.baseline().y() - baseline,
+                                            text.run().glyphs().getFirst().advance(), 20)).getBounds2D());
+                            default -> { }
+                        }
+                    }
+                    int currentPage = pageIndex;
+                    var actual = links.stream().filter(link -> link.pageIndex() == currentPage).toList();
+                    assertEquals(expected.size(), actual.size());
+                    for (int index = 0; index < expected.size(); index++) {
+                        var ink = expected.get(index); var hit = actual.get(index).bounds();
+                        assertEquals(ink.getX(), hit.x(), 1e-8); assertEquals(ink.getY(), hit.y(), 1e-8);
+                        assertEquals(ink.getWidth(), hit.width(), 1e-8); assertEquals(ink.getHeight(), hit.height(), 1e-8);
+                    }
+                }
+            }
+        }
+    }
+
     @Test void registeredRolesReachFinalPagesWhileSourceRemainsLazyAndOwned() throws IOException {
         var events = new ArrayList<String>();
         var source = new Source(5, index -> row(new InlineText("R" + index, PLAIN), new InlineText("B", role("bold"))), events);

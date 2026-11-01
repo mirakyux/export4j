@@ -33,9 +33,13 @@ val frontendBuild by tasks.registering(Exec::class) {
 tasks.named<ProcessResources>("processResources") {
     dependsOn(frontendBuild)
     from(layout.buildDirectory.dir("frontend")) { into("designer/web") }
+    from(rootProject.file("examples/src/main/resources/templates/common")) {
+        include("*.xml", "*.json", "assets/*.png", "assets/*-license.txt")
+        into("designer/samples/common")
+    }
     from(rootProject.file("assets/fonts")) {
-        include("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf", "ZCOOLXiaoWei-Regular.ttf",
-            "LiberationSans-OFL.txt", "ZCOOLXiaoWei-OFL.txt")
+        include("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf", "ZCOOLXiaoWei-Regular.ttf", "LXGWWenKaiTC-Regular.ttf",
+            "LiberationSans-OFL.txt", "ZCOOLXiaoWei-OFL.txt", "LXGWWenKaiTC-OFL.txt")
         into("designer/fonts")
     }
 }

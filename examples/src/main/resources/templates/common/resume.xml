@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored two-column resume with fictional achievements. -->
+<document version="1" title="${title} · 工程师履历（虚构）" author="Export4j">
+  <page width="595.3" height="841.9" margin-top="34" margin-right="40" margin-bottom="30" margin-left="40"/>
+  <header height="18" gap="6"><p id="resume-running-header" size="8.5" line-height="15" color="#627084" space-after="0">ENGINEERING PROFILE / 文档、数据与可靠交付 · 虚构履历</p></header>
+  <footer height="18" gap="6"><p id="resume-footer" size="8.5" line-height="15" align="RIGHT" color="#627084" space-after="0">${title} · 第 <page-number width="20"/> / <page-count width="20"/> 页</p></footer>
+  <table id="resume-identity" row-split="false" draw-borders="false" padding-top="0" padding-bottom="0" padding-left="0" padding-right="0" space-after="12">
+    <columns><column weight="1"/><column width="80"/></columns>
+    <row>
+      <cell>
+        <p id="resume-name" size="29" line-height="39" color="#18334D" role="bold" space-before="0" space-after="3">${title}</p>
+        <p id="resume-role" size="12" line-height="21" color="#426680" space-after="4">${person.role}</p>
+        <p id="resume-contact" size="9.5" line-height="17" color="#627084" space-after="0">${person.contact}</p>
+      </cell>
+      <cell size="9" line-height="84" align="RIGHT"><image ref="resume_portrait" width="64" height="80" alt="简历示例配图，非履历本人"/></cell>
+    </row>
+  </table>
+  <rows id="resume-highlights" items="highlights" as="highlight" padding-top="4" padding-bottom="4" padding-left="7" padding-right="7" space-after="12">
+    <columns><column width="85"/><column width="78"/><column weight="1"/></columns>
+    <header><cell size="9.5" line-height="16" color="#18334D">履历侧重</cell><cell size="9.5" line-height="16" color="#18334D">概览</cell><cell size="9.5" line-height="16" color="#18334D">实际工作内容</cell></header>
+    <row><cell size="9.5" line-height="16">${highlight.metric}</cell><cell size="10.5" line-height="16" role="bold" color="#18334D">${highlight.value}</cell><cell size="9.5" line-height="16">${highlight.explanation}</cell></row>
+  </rows>
+  <table id="resume-two-column-layout" row-split="true" draw-borders="false" padding-top="6" padding-bottom="6" padding-left="8" padding-right="8" space-after="10">
+    <columns><column width="151"/><column weight="1"/></columns>
+    <row>
+      <cell>
+        <p id="resume-sidebar-about" size="11.5" line-height="21" color="#18334D" role="bold" space-after="7">个人信息 / ABOUT</p>
+        <p size="9.5" line-height="17" space-after="5">${person.location}
+${person.availability}</p>
+        <p size="9.5" line-height="17" color="#426680" space-after="13">${person.focus}</p>
+        <p id="resume-skills-title" size="11.5" line-height="21" color="#18334D" role="bold" space-after="6">技能矩阵</p>
+        <table id="resume-skills-matrix" row-split="true" padding-top="5" padding-bottom="5" padding-left="5" padding-right="5" space-after="12"><columns><column weight="1"/></columns>
+          <row><cell size="9.5" line-height="16"><span role="bold" color="#18334D">语言与运行时</span>
+${skills.java}</cell></row>
+          <row><cell size="9.5" line-height="16"><span role="bold" color="#18334D">数据处理</span>
+${skills.data}</cell></row>
+          <row><cell size="9.5" line-height="16"><span role="bold" color="#18334D">平台能力</span>
+${skills.platform}</cell></row>
+          <row><cell size="9.5" line-height="16"><span role="bold" color="#18334D">工程交付</span>
+${skills.delivery}</cell></row>
+          <row><cell size="9.5" line-height="16"><span role="bold" color="#18334D">质量与验证</span>
+${skills.quality}</cell></row>
+        </table>
+        <table id="resume-education-group" row-split="false" draw-borders="false" padding-top="0" padding-bottom="0" padding-left="0" padding-right="0" space-after="12"><columns><column weight="1"/></columns>
+          <row><cell>
+            <p id="resume-education-title" size="11.5" line-height="21" color="#18334D" role="bold" space-after="5">教育经历</p>
+            <p id="resume-education" size="9.5" line-height="17" space-after="5"><span role="bold">${education.school}</span>
+${education.major}
+${education.period}</p>
+            <p size="9.5" line-height="17" space-after="0">${education.detail}</p>
+          </cell></row>
+        </table>
+        <p id="resume-certifications-title" size="11.5" line-height="21" color="#18334D" role="bold" space-after="5">认证与学习</p>
+        <p size="9.5" line-height="17" space-after="4">${certifications.first}
+${certifications.second}</p>
+        <p size="8.5" line-height="15" color="#627084" space-after="12">${certifications.note}</p>
+        <p id="resume-languages-title" size="11.5" line-height="21" color="#18334D" role="bold" space-after="5">语言</p>
+        <p size="9.5" line-height="17" space-after="12">${person.languages}</p>
+        <p id="resume-community-title" size="11.5" line-height="21" color="#18334D" role="bold" space-after="5">分享与协作</p>
+        <p size="9.5" line-height="17" space-after="7">${community.sharing}</p>
+        <p size="9.5" line-height="17" space-after="12">${community.mentoring}</p>
+        <p size="11.5" line-height="21" color="#18334D" role="bold" space-after="5">工作方式</p>
+        <p size="9.5" line-height="17" space-after="0">${person.workingStyle}</p>
+      </cell>
+      <cell>
+        <p id="resume-profile-title" size="12.5" line-height="22" color="#18334D" role="bold" space-after="6">01 / 个人概况</p>
+        <p id="resume-profile" size="10.5" line-height="18" space-after="12">${person.summary}</p>
+        <p id="resume-experience-title" size="12.5" line-height="22" color="#18334D" role="bold" space-after="7">02 / 工作经历</p>
+        <p size="11" line-height="19" role="bold" color="#18334D" space-after="3">${jobs.current.company}</p>
+        <p size="9.5" line-height="16" color="#627084" space-after="5">${jobs.current.role} · ${jobs.current.period}</p>
+        <p size="10" line-height="17" space-after="6">${jobs.current.scope}</p>
+        <p size="10" line-height="17" space-after="6"><span role="bold">实施：</span>${jobs.current.delivery}</p>
+        <p size="10" line-height="17" space-after="12"><span role="bold" color="#426680">成果：</span>${jobs.current.impact}</p>
+        <p size="11" line-height="19" role="bold" color="#18334D" space-after="3">${jobs.previous.company}</p>
+        <p size="9.5" line-height="16" color="#627084" space-after="5">${jobs.previous.role} · ${jobs.previous.period}</p>
+        <p size="10" line-height="17" space-after="6">${jobs.previous.scope}</p>
+        <p size="10" line-height="17" space-after="6"><span role="bold">实施：</span>${jobs.previous.delivery}</p>
+        <p size="10" line-height="17" space-after="12"><span role="bold" color="#426680">成果：</span>${jobs.previous.impact}</p>
+        <table id="resume-project-document-group" row-split="false" draw-borders="false" padding-top="0" padding-bottom="0" padding-left="0" padding-right="0" space-after="0"><columns><column weight="1"/></columns><row><cell>
+          <table id="resume-project-document" row-split="true" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="10"><columns><column width="47"/><column weight="1"/></columns>
+          <row><cell column-span="2"><p id="resume-project-title" size="11" line-height="19" role="bold" color="#18334D" space-after="2">代表项目 / ${projects.document.name}</p><p size="9" line-height="15" color="#627084" space-after="0">${projects.document.role}</p></cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">问题</cell><cell size="10" line-height="17">${projects.document.problem}</cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">方案</cell><cell size="10" line-height="17">${projects.document.solution}</cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">结果</cell><cell size="10" line-height="17">${projects.document.result}</cell></row>
+          </table>
+        </cell></row></table>
+        <table id="resume-project-data-group" row-split="false" draw-borders="false" padding-top="0" padding-bottom="0" padding-left="0" padding-right="0" space-after="0"><columns><column weight="1"/></columns><row><cell>
+          <table id="resume-project-data" row-split="true" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="10"><columns><column width="47"/><column weight="1"/></columns>
+          <row><cell column-span="2"><p size="11" line-height="19" role="bold" color="#18334D" space-after="2">代表项目 / ${projects.data.name}</p><p size="9" line-height="15" color="#627084" space-after="0">${projects.data.role}</p></cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">问题</cell><cell size="10" line-height="17">${projects.data.problem}</cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">方案</cell><cell size="10" line-height="17">${projects.data.solution}</cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">结果</cell><cell size="10" line-height="17">${projects.data.result}</cell></row>
+          </table>
+        </cell></row></table>
+        <table id="resume-project-release-group" row-split="false" draw-borders="false" padding-top="0" padding-bottom="0" padding-left="0" padding-right="0" space-after="0"><columns><column weight="1"/></columns><row><cell>
+          <table id="resume-project-release" row-split="true" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="10"><columns><column width="47"/><column weight="1"/></columns>
+          <row><cell column-span="2"><p size="11" line-height="19" role="bold" color="#18334D" space-after="2">代表项目 / ${projects.release.name}</p><p size="9" line-height="15" color="#627084" space-after="0">${projects.release.role}</p></cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">问题</cell><cell size="10" line-height="17">${projects.release.problem}</cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">方案</cell><cell size="10" line-height="17">${projects.release.solution}</cell></row>
+          <row><cell size="9.5" line-height="17" color="#426680">结果</cell><cell size="10" line-height="17">${projects.release.result}</cell></row>
+          </table>
+        </cell></row></table>
+        <p id="resume-project-name" size="11" line-height="19" color="#18334D" role="bold" space-after="5">${project.name}</p>
+        <p id="resume-project-description" size="10" line-height="17" space-after="0">${project.description}</p>
+      </cell>
+    </row>
+  </table>
+  <p id="resume-disclaimer" size="8.5" line-height="15" color="#627084" space-after="0">${person.disclaimer}</p>
+</document>

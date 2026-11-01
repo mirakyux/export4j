@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored fictional example. -->
+<document version="1" title="会议纪要（虚构样例）" author="Export4j">
+  <page width="595.3" height="841.9" margin="38" />
+  <footer height="18" gap="8">
+    <p id="m-footer" size="9" line-height="16" align="RIGHT" color="#777777">会议纪要 · <page-number width="14" /> / <page-count width="14" /></p>
+  </footer>
+  <p id="m-kicker" size="9" line-height="14" color="#546E7A" space-after="5">EXPORT4J / 自编虚构业务文档示例</p>
+  <heading id="m-title" level="1" size="22" line-height="31" color="#173B57" space-before="0" space-after="8">${meeting.title}</heading>
+  <p id="m-number" size="10" line-height="16" space-after="5">纪要编号：${meeting.number}</p>
+  <table id="m-info" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="1" />
+      <column weight="1" />
+    </columns>
+    <row>
+      <cell size="10" line-height="15.5">日期：${meeting.date}</cell>
+      <cell size="10" line-height="15.5">时间：${meeting.time}</cell>
+    </row>
+    <row>
+      <cell size="10" line-height="15.5">主持：${meeting.chair}</cell>
+      <cell size="10" line-height="15.5">记录：${meeting.recorder}</cell>
+    </row>
+    <row>
+      <cell size="10" line-height="15.5" column-span="2">地点：${meeting.location}
+参会角色：${meeting.participants}</cell>
+    </row>
+  </table>
+  <p id="m-purpose" size="10" line-height="16" space-after="5"><span role="bold">会议目标：</span>${meeting.purpose}</p>
+  <heading id="m-attendees-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">01 / 参会角色与协作责任</heading>
+  <rows id="m-attendees" items="attendees" as="attendee" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="85" />
+      <column weight="85" />
+      <column weight="285" />
+      <column weight="56" />
+    </columns>
+    <header>
+      <cell size="10" line-height="15.5">参会人</cell>
+      <cell size="10" line-height="15.5">角色</cell>
+      <cell size="10" line-height="15.5">责任范围</cell>
+      <cell size="10" line-height="15.5">出席</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="15.5">${attendee.name}</cell>
+      <cell size="10" line-height="15.5">${attendee.role}</cell>
+      <cell size="10" line-height="15.5">${attendee.responsibility}</cell>
+      <cell size="10" line-height="15.5">${attendee.attendance}</cell>
+    </row>
+  </rows>
+  <heading id="m-agenda-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">02 / 议程与讨论摘要</heading>
+  <rows id="m-agenda" items="agenda" as="agendaItem" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="36" />
+      <column weight="120" />
+      <column weight="85" />
+      <column weight="270" />
+    </columns>
+    <header>
+      <cell size="10" line-height="15.5">编号</cell>
+      <cell size="10" line-height="15.5">议题</cell>
+      <cell size="10" line-height="15.5">主责人</cell>
+      <cell size="10" line-height="15.5">摘要</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="15.5">${agendaItem.number}</cell>
+      <cell size="10" line-height="15.5">${agendaItem.topic}</cell>
+      <cell size="10" line-height="15.5">${agendaItem.owner}</cell>
+      <cell size="10" line-height="15.5">${agendaItem.summary}</cell>
+    </row>
+  </rows>
+  <heading id="m-discussion-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">03 / 详细讨论与结论</heading>
+  <each items="agenda" as="topic">
+    <p size="11" line-height="19" space-before="5" space-after="4" keep-with-next="true"><span role="bold" color="#173B57">${topic.number} / ${topic.topic}</span></p>
+    <p size="10" line-height="16" space-after="4">${topic.discussion}</p>
+    <p size="10" line-height="16" space-after="7"><span role="bold" color="#385671">会议结论：</span>${topic.conclusion}</p>
+  </each>
+  <heading id="m-options-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">04 / 批次恢复方案比较</heading>
+  <rows id="m-options" items="options" as="option" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="110" />
+      <column weight="135" />
+      <column weight="180" />
+      <column weight="86" />
+    </columns>
+    <header>
+      <cell size="10" line-height="15.5">方案</cell>
+      <cell size="10" line-height="15.5">收益</cell>
+      <cell size="10" line-height="15.5">代价与风险</cell>
+      <cell size="10" line-height="15.5">结论</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="15.5">${option.option}</cell>
+      <cell size="10" line-height="15.5">${option.benefit}</cell>
+      <cell size="10" line-height="15.5">${option.cost}</cell>
+      <cell size="10" line-height="15.5">${option.result}</cell>
+    </row>
+  </rows>
+  <heading id="m-decisions-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">05 / 决策登记</heading>
+  <rows id="m-decisions" items="decisions" as="decision" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="57" />
+      <column weight="303" />
+      <column weight="95" />
+      <column weight="56" />
+    </columns>
+    <header>
+      <cell size="10" line-height="15.5">决策号</cell>
+      <cell size="10" line-height="15.5">已确认事项</cell>
+      <cell size="10" line-height="15.5">责任人</cell>
+      <cell size="10" line-height="15.5">状态</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="15.5">${decision.id}</cell>
+      <cell size="10" line-height="15.5">${decision.text}</cell>
+      <cell size="10" line-height="15.5">${decision.owner}</cell>
+      <cell size="10" line-height="15.5">${decision.status}</cell>
+    </row>
+  </rows>
+  <heading id="m-actions-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">06 / 行动项、负责人及完成期限</heading>
+  <rows id="m-actions" items="actions" as="action" padding-top="3" padding-bottom="3" padding-left="5" padding-right="5" space-after="10">
+    <columns>
+      <column weight="43" />
+      <column weight="210" />
+      <column weight="89" />
+      <column weight="103" />
+      <column weight="66" />
+    </columns>
+    <header>
+      <cell size="9.5" line-height="15">编号</cell>
+      <cell size="9.5" line-height="15">行动项</cell>
+      <cell size="9.5" line-height="15">负责人</cell>
+      <cell size="9.5" line-height="15">完成期限</cell>
+      <cell size="9.5" line-height="15">状态</cell>
+    </header>
+    <row>
+      <cell size="9.5" line-height="15">${action.number}</cell>
+      <cell size="9.5" line-height="15">${action.task}</cell>
+      <cell size="9.5" line-height="15">${action.owner}</cell>
+      <cell size="9.5" line-height="15">${action.due}</cell>
+      <cell size="9.5" line-height="15">${action.status}</cell>
+    </row>
+  </rows>
+  <heading id="m-risks-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">07 / 风险与待决事项</heading>
+  <rows id="m-risks" items="risks" as="risk" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="45" />
+      <column weight="190" />
+      <column weight="180" />
+      <column weight="96" />
+    </columns>
+    <header>
+      <cell size="10" line-height="15.5">风险号</cell>
+      <cell size="10" line-height="15.5">影响</cell>
+      <cell size="10" line-height="15.5">处置与升级条件</cell>
+      <cell size="10" line-height="15.5">责任人</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="15.5">${risk.id}</cell>
+      <cell size="10" line-height="15.5">${risk.description}</cell>
+      <cell size="10" line-height="15.5">${risk.response}</cell>
+      <cell size="10" line-height="15.5">${risk.owner}</cell>
+    </row>
+  </rows>
+  <rows id="m-pending" items="pending" as="pendingItem" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="65" />
+      <column weight="265" />
+      <column weight="95" />
+      <column weight="86" />
+    </columns>
+    <header>
+      <cell size="10" line-height="15.5">待决号</cell>
+      <cell size="10" line-height="15.5">待确认问题</cell>
+      <cell size="10" line-height="15.5">确认人</cell>
+      <cell size="10" line-height="15.5">期限</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="15.5">${pendingItem.id}</cell>
+      <cell size="10" line-height="15.5">${pendingItem.question}</cell>
+      <cell size="10" line-height="15.5">${pendingItem.owner}</cell>
+      <cell size="10" line-height="15.5">${pendingItem.due}</cell>
+    </row>
+  </rows>
+  <heading id="m-attachments-title" level="2" size="12" line-height="20" color="#173B57" space-before="6" space-after="5">08 / 附件与归档</heading>
+  <rows id="m-attachments" items="attachments" as="attachment" padding-top="3" padding-bottom="3" padding-left="6" padding-right="6" space-before="0" space-after="10">
+    <columns>
+      <column weight="58" />
+      <column weight="205" />
+      <column weight="248" />
+    </columns>
+    <header>
+      <cell size="10" line-height="15.5">附件号</cell>
+      <cell size="10" line-height="15.5">材料名称</cell>
+      <cell size="10" line-height="15.5">用途与核对点</cell>
+    </header>
+    <row>
+      <cell size="10" line-height="15.5">${attachment.id}</cell>
+      <cell size="10" line-height="15.5">${attachment.name}</cell>
+      <cell size="10" line-height="15.5">${attachment.purpose}</cell>
+    </row>
+  </rows>
+  <p id="m-next" size="10" line-height="16" space-after="5"><span role="bold">下次会议：</span>${meeting.nextMeeting}</p>
+  <p id="m-note" size="10" line-height="16" space-after="5" color="#546E7A">纪要按决策号与行动号追踪，修订需保留原因和确认记录。全部人物、机构、时间与协作事项均为虚构。</p>
+</document>

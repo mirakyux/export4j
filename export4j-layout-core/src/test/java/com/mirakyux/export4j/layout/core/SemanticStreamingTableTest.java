@@ -38,6 +38,23 @@ class SemanticStreamingTableTest {
         @Override public Optional<TableRow> next() { int index = reads++; return index < rows.size() ? Optional.of(rows.get(index)) : Optional.empty(); }
         @Override public void close() { throw new AssertionError("layouter borrows source"); }
     }
+    @Test void emptySemanticStreamAcceptsHeadersThatExactlyFillTheViewport() throws Exception {
+        var specification = table().toBuilder().columns(100).padding(0)
+                .pageSettings(new PageSettings(new PageSize(120, 70), PageMargins.uniform(10)))
+                .headerRows(List.of(new TableRow(List.of(new TableCell("HEADER", new CellFormat(10, 50, ParagraphAlignment.LEFT)))))).build();
+        var pages = new ArrayList<LayoutPage>(); var source = new Source(List.of());
+        var result = new SemanticStreamingTableLayouter().layout(specification, source, fonts, Map.of(), StreamingTableLimits.DEFAULT, Map.of(),
+                (page, notes, sources) -> pages.add(page));
+        assertEquals(1, result.pages()); assertEquals(0, result.bodyRows()); assertEquals(1, result.sourceCells());
+        assertEquals(6, result.sourceCodePoints()); assertEquals(1, result.outputLines()); assertEquals(1, source.reads);
+        var fragment = (TableFragment) pages.getFirst().elements().getFirst();
+        assertEquals(50, fragment.height()); assertTrue(fragment.rows().getFirst().header());
+        assertEquals(1, fragment.rows().size()); assertEquals(0, fragment.rows().getFirst().rowIndex());
+        var actualBody = new Source(List.of(row("BODY")));
+        var failure = assertThrows(DocumentLayoutException.class, () -> new SemanticStreamingTableLayouter().layout(specification,
+                actualBody, fonts, Map.of(), StreamingTableLimits.DEFAULT, Map.of(), (page, notes, sources) -> fail("body cannot fit")));
+        assertEquals(DocumentLayoutException.Code.CONTENT_TOO_TALL, failure.code());
+    }
     @Test void packsIndependentGroupsOnOnePageRepeatingHeadersOnlyAtPhysicalBoundaries() throws Exception {
         var source = new Source(java.util.stream.IntStream.range(0, 12).mapToObj(index -> row("ROW " + index)).toList());
         var pages = new ArrayList<LayoutPage>();

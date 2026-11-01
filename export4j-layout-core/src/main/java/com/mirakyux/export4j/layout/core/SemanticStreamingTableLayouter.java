@@ -91,10 +91,15 @@ public final class SemanticStreamingTableLayouter {
                 var row = table.headerRows().get(index); countRow(row, index); int column = 0;
                 for (var cell : row.cells()) { headerSources.put(new CellKey(index, column), cell); column += cell.columnSpan(); }
             }
-            var blank = new TableRow(java.util.stream.IntStream.range(0, table.columnWidths().size())
-                    .mapToObj(ignored -> new TableCell("", CellFormat.of(1))).toList());
-            var measured = cursor(List.of(blank), 0).take(bounds.height()).orElseThrow(() -> tooTall("streaming headers exceed viewport", 0));
-            var header = measured.rows().stream().filter(TableRowFragment::header).toList();
+            List<TableRowFragment> header = List.of();
+            if (!table.headerRows().isEmpty()) {
+                // Measure the real header group as an ordinary table, without an invented body row.
+                var headers = cursor(List.of(), 0, 0);
+                var measured = headers.take(bounds.height()).orElseThrow(() -> tooTall("streaming headers exceed viewport", 0));
+                if (!headers.done()) { throw tooTall("streaming headers exceed viewport", 0); }
+                header = measured.rows().stream().map(row -> new TableRowFragment(row.rowIndex(), true, false,
+                        row.cells(), row.continuedRow())).toList();
+            }
             headerHeight = header.stream().flatMap(row -> row.cells().stream())
                     .mapToDouble(cell -> cell.bounds().y() + cell.bounds().height()).max().orElse(0);
             while (true) {
@@ -155,9 +160,13 @@ public final class SemanticStreamingTableLayouter {
         }
 
         private TableCursor cursor(List<TableRow> body, long start) {
+            return cursor(body, start, table.headerRows().size());
+        }
+
+        private TableCursor cursor(List<TableRow> body, long start, int headerCount) {
             var rows = new ArrayList<>(table.headerRows()); rows.addAll(body);
             var semantic = new Table(table.id(), table.columnWidths().stream().<ColumnWidth>map(ColumnWidth.Fixed::new).toList(),
-                    rows, table.headerRows().size(), new TableFormat(table.padding(), 0, 0, table.allowRowSplit()));
+                    rows, headerCount, new TableFormat(table.padding(), 0, 0, table.allowRowSplit()));
             try { return layouter.prepareTable(semantic, new ComponentContext(width, bounds.height(), fonts, 0, 0, 1, roles)); }
             catch (DocumentLayoutException failure) { throw remap(failure, start); }
         }

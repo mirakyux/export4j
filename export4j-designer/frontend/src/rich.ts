@@ -231,9 +231,18 @@ export function mountRich(host:HTMLElement,node:Element,options:RichOptions):Edi
     const boundary=direction==='previous'?state.selection.from===1:state.selection.to===state.doc.content.size-1;
     return boundary?options.navigate?.(direction,direction==='previous'?'end':'start')??false:false;
   };
+  const documentEdge=(end:boolean,extend=false)=>(state:EditorState,dispatch?:((tr:Transaction)=>void))=>{
+    const position=end?state.doc.content.size-1:1;
+    dispatch?.(state.tr.setSelection(TextSelection.create(state.doc,extend?state.selection.anchor:position,position)).scrollIntoView());
+    return true;
+  };
   const bindings={...baseKeymap,
     'Mod-z':undo,'Mod-y':redo,'Mod-Shift-z':redo,
     'Mod-b':toggleMark(schema.marks.strong),'Mod-u':toggleMark(schema.marks.underline),
+    // Keep document navigation and its following extension in the same synchronous
+    // selection model; native selectionchange can arrive after the next keydown.
+    'Mod-Home':documentEdge(false),'Mod-End':documentEdge(true),
+    'Mod-Shift-Home':documentEdge(false,true),'Mod-Shift-End':documentEdge(true,true),
     'Shift-Enter':(state:EditorState,dispatch?:((tr:Transaction)=>void))=>{dispatch?.(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());return true;},
     'Mod-Enter':()=>{options.commit();return true;},
     Backspace:chainCommands((state:EditorState)=>!session&&state.selection.empty&&state.selection.from===1?options.merge():false,baseKeymap.Backspace),

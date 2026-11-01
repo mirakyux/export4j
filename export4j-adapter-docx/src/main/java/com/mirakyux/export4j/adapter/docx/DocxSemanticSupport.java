@@ -147,7 +147,7 @@ final class DocxSemanticSupport {
     }
     static SectionedDocument map(SectionedDocument source, UnaryOperator<Paragraph> mapper) {
         return new SectionedDocument(source.metadata(), source.sections().stream().map(s -> new Section(s.id(), s.pageSettings(), mapBlocks(s.blocks(), mapper), s.firstPageNumber(),
-                s.pageRegions().map((name, region) -> new PageRegion(region.height(), region.gap(), mapBlocks(region.blocks(), mapper))))).toList(), source.navigation());
+                s.pageRegions().map((name, region) -> region.toBuilder().blocks(mapBlocks(region.blocks(), mapper)).build()))).toList(), source.navigation());
     }
     static List<Block> mapBlocks(List<Block> source, UnaryOperator<Paragraph> mapper) {
         var result = new ArrayList<Block>();

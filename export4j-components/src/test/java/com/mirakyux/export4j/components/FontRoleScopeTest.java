@@ -155,6 +155,31 @@ class FontRoleScopeTest {
         assertEquals(source.replace("\n", ""), parts.stream().map(part -> logical(part.layout())).collect(Collectors.joining()));
     }
 
+    @Test void splittableGridResolvesRoleBeforeFixedAndVariableContinuation() {
+        String source = "alpha beta gamma delta ".repeat(35);
+        var scoped = new FontRoleScope(FlowText.builder(source).style(STYLE).build(), "brand");
+        var grid = GridTable.builder().columns(1).allowRowSplit(true).defaults(cell -> cell.padding(0))
+                .row(row -> row.cell(scoped)).build();
+        var context = context(100, Map.of("brand", bold));
+        var regions = new FlowRegions(List.of(1.0), 100);
+        for (var parts : List.of(grid.layoutRegions(context, regions),
+                grid.layoutVariableRegions(context, regions, List.of(110.0, 240.0)))) {
+            assertEquals(1, parts.getFirst().regionIndex());
+            assertTrue(parts.size() > 1);
+            assertEquals(source.replaceAll("\\s", ""), parts.stream().map(part -> logical(part.layout()))
+                    .collect(Collectors.joining()).replaceAll("\\s", ""));
+            assertTrue(parts.stream().flatMap(part -> glyphs(part.layout()).stream())
+                    .allMatch(run -> run.run().font().id().equals(bold.fonts().getFirst().data().id())));
+        }
+        var calls = new AtomicInteger();
+        Component child = viewport -> { calls.incrementAndGet(); return new Spacer(1).layout(viewport); };
+        var unknown = GridTable.builder().columns(1).allowRowSplit(true)
+                .row(row -> row.cell(new FontRoleScope(child, "unknown"))).build();
+        assertThrows(IllegalArgumentException.class, () -> unknown.layoutRegions(context, regions));
+        assertThrows(IllegalArgumentException.class, () -> unknown.layoutVariableRegions(context, regions, List.of(110.0, 240.0)));
+        assertEquals(0, calls.get());
+    }
+
     @Test void atomicWidthsAndColumnAlignmentSurviveRoleAndStyleScopes() {
         var mark = CheckMark.builder().size(9).build();
         var scope = new FontRoleScope(StyleScope.builder(mark).style(STYLE).build(), "brand");

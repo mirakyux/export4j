@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """Rebuild project-authored geometric OpenType test fixtures, using pinned fontTools."""
 from pathlib import Path
+import io
+
+from PIL import Image
 
 from fontTools.cffLib import FDArrayIndex, FDSelect, FontDict
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib.tables.otTables import CompositeMode, PaintFormat
+from fontTools.ttLib import newTable
+from fontTools.ttLib.tables.sbixGlyph import Glyph
+from fontTools.ttLib.tables.sbixStrike import Strike
 
 ROOT = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 
@@ -63,7 +69,7 @@ def color_fonts():
     names = [".notdef", "box", "left", "right"] + [f"color{i}" for i in range(32)]
     for version in (0, 1):
         builder = FontBuilder(1000, isTTF=True)
-        common(builder, names, {65 + i: f"color{i}" for i in range(32)},
+        common(builder, names, {**{65 + i: f"color{i}" for i in range(32)}, 97: "box"},
                f"Export4j Color V{version} Test")
         shapes = {}
         for name in names:
@@ -102,6 +108,29 @@ def color_fonts():
         builder.save(ROOT / f"Export4j-ColorV{version}-Test.ttf")
 
 
+def sbix_font():
+    names = [".notdef", "box", "bitmap"]
+    builder = FontBuilder(1000, isTTF=True)
+    common(builder, names, {97: "box", 65: "bitmap"}, "Export4j Sbix JPEG Test")
+    shapes = {}
+    for name in names:
+        pen = TTGlyphPen(None)
+        if name == "box":
+            pen.moveTo((0, 0)); pen.lineTo((1000, 0)); pen.lineTo((1000, 800)); pen.lineTo((0, 800)); pen.closePath()
+        shapes[name] = pen.glyph()
+    builder.setupGlyf(shapes)
+    pixels = io.BytesIO()
+    Image.new("RGB", (16, 16), "red").save(pixels, format="JPEG")
+    bitmap = newTable("sbix")
+    strike = Strike(ppem=16, resolution=72)
+    strike.glyphs["bitmap"] = Glyph(glyphName="bitmap", graphicType="jpg ", imageData=pixels.getvalue())
+    bitmap.strikes[16] = strike
+    builder.font["sbix"] = bitmap
+    builder.font["head"].created = builder.font["head"].modified = 3818448000
+    builder.save(ROOT / "Export4j-Sbix-Jpeg-Test.ttf")
+
+
 if __name__ == "__main__":
     cid_font()
     color_fonts()
+    sbix_font()

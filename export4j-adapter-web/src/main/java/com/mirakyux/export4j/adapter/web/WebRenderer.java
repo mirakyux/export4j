@@ -404,7 +404,7 @@ final class WebRenderer {
     private void markdownTableGeometry(Table table, ExportLocation location) throws IOException {
         boolean simpleWidths = table.columns().stream().allMatch(column -> column instanceof ColumnWidth.Fraction value
                 && value.weight() == ((ColumnWidth.Fraction) table.columns().getFirst()).weight());
-        if (!simpleWidths || !table.format().equals(TableFormat.DEFAULT)) {
+        if (!simpleWidths || !table.format().toBuilder().rotation(0).build().equals(TableFormat.DEFAULT)) {
             loss(ExportFeature.TABLE_GEOMETRY, location, "Table widths, padding, borders and pagination omitted from Markdown");
         }
     }
@@ -416,7 +416,7 @@ final class WebRenderer {
         return new Paragraph("cell", cell.text(), format, cell.inlines(), cell.images(), cell.fields());
     }
     private void paragraphPolicy(ParagraphFormat format, ParagraphFormat normal, ExportLocation location) throws IOException {
-        if (!format.equals(normal)) { loss(ExportFeature.PARAGRAPH_STYLE, location, "Paragraph geometry and pagination replaced with Markdown flow"); }
+        if (!format.toBuilder().rotation(0).build().equals(normal)) { loss(ExportFeature.PARAGRAPH_STYLE, location, "Paragraph geometry and pagination replaced with Markdown flow"); }
     }
     private static String paragraphCss(ParagraphFormat format) {
         var pagination = format.pagination();
@@ -522,6 +522,7 @@ final class WebRenderer {
                     if (++blocks > limits.maxBlocks()) { limit(location, "Block budget exceeded"); }
                     sourceText(block.id(), location);
                     if (block instanceof Table table) {
+                        rotation(table.format().rotation(), location, "Table rotation omitted from flowing output");
                         slots += (long) table.rows().size() * table.columns().size();
                         if (slots > limits.maxTableSlots()) { limit(location, "Table slot budget exceeded"); }
                         for (var anchors : table.grid().anchorRows()) {
@@ -536,13 +537,14 @@ final class WebRenderer {
                     else if (block instanceof Heading heading) { scanInlines(heading.paragraph(), location); }
                     else if (block instanceof BulletItem item) { scanInlines(item.paragraph(), location); sourceText(item.marker(), location); sourceText(item.markerStyle().fontRole(), location); }
                     else if (block instanceof NumberedItem item) { scanInlines(item.paragraph(), location); sourceText(item.listId(), location); sourceText(item.markerStyle().fontRole(), location); }
-                    else if (block instanceof Caption caption) { sourceText(caption.text(), location); sourceText(caption.kind(), location); }
-                    else if (block instanceof CrossReference reference) { sourceText(reference.prefix(), location); sourceText(reference.targetId(), location); }
+                    else if (block instanceof Caption caption) { rotation(caption.format().rotation(), location, "Caption rotation omitted from flowing output"); sourceText(caption.text(), location); sourceText(caption.kind(), location); }
+                    else if (block instanceof CrossReference reference) { rotation(reference.format().rotation(), location, "Reference rotation omitted from flowing output"); sourceText(reference.prefix(), location); sourceText(reference.targetId(), location); }
                 } catch (IOException failure) { throw new UncheckedIOException(failure); }
             });
         } catch (UncheckedIOException failure) { throw failure.getCause(); }
     }
     private void scanInlines(Paragraph paragraph, ExportLocation location) throws IOException {
+        rotation(paragraph.format().rotation(), location, "Paragraph rotation omitted from flowing output");
         int offset = 0;
         for (var item : paragraph.content()) {
             var source = location.offset(offset);
@@ -550,6 +552,7 @@ final class WebRenderer {
             if (item instanceof InlineText text) {
                 sourceText(text.text(), source); sourceText(text.hyperlink(), source); sourceText(text.style().fontRole(), source); offset += text.text().length();
             } else if (item instanceof InlineImage image) {
+                rotation(image.rotation(), source, "Inline image rotation omitted from flowing output");
                 sourceText(image.altText(), source); sourceText(image.hyperlink(), source); offset++;
                 if (imageIds.add(image.resource().id())) {
                     imageBytes += image.resource().byteSize();
@@ -559,6 +562,9 @@ final class WebRenderer {
                 sourceText(field.targetId(), source); sourceText(field.style().fontRole(), source); offset++;
             }
         }
+    }
+    private void rotation(double degrees, ExportLocation location, String message) throws IOException {
+        if (degrees != 0) { loss(ExportFeature.ELEMENT_ROTATION, location, message); }
     }
     private void sourceText(String value, ExportLocation location) throws IOException {
         for (int i = 0; i < value.length();) {

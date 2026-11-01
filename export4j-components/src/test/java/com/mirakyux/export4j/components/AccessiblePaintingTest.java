@@ -82,6 +82,25 @@ class AccessiblePaintingTest {
         var figure = DocumentEngine.builder(fonts()).build().layout(noAlt);
         assertThrows(IllegalArgumentException.class, () -> DocumentPainter.paintAccessible(noAlt, figure.body(), "en-US"));
     }
+    @Test void sourceHyperlinksRequireExplicitAccessibleInteractionBindings() throws Exception {
+        var format = ParagraphFormat.of(12);
+        var linked = List.of(new com.mirakyux.export4j.model.InlineText("Linked",
+                com.mirakyux.export4j.model.InlineStyle.of(12), "https://example.com"));
+        List<com.mirakyux.export4j.model.Block> blocks = List.of(new Paragraph("paragraph", linked, format),
+                Heading.rich("heading", linked, 1, format), BulletItem.rich("bullet", linked, "-", 1, format),
+                NumberedItem.rich("number", "list", linked, 0, format, 1),
+                Table.builder("table").row(TableCell.rich(linked, CellFormat.of(12))).build(),
+                Paragraph.mixed("figure", List.of(InlineImage.builder().resource(image()).width(18).height(12)
+                        .altText("Blue square").hyperlink("https://example.com/image").build()), format));
+        var engine = DocumentEngine.builder(fonts()).build();
+        for (var block : blocks) {
+            var source = new Document(DocumentMetadata.EMPTY, PageSettings.A4, List.of(block));
+            var laidOut = engine.layout(source);
+            assertEquals(1, laidOut.display().extras().externalLinks().size(), "ordinary output preserves the source interaction");
+            var failure = assertThrows(IllegalArgumentException.class, () -> DocumentPainter.paintAccessible(source, laidOut.body(), "en-US"));
+            assertTrue(failure.getMessage().contains("hyperlinks require explicit interaction and accessibility bindings"));
+        }
+    }
     private static String text(com.mirakyux.export4j.graphics.DisplayDocument display, AccessibilityTree.Node node) {
         var result = new StringBuilder(); for (var range : node.content()) { for (int i = range.firstCommand(); i < range.endCommand(); i++) {
             if (display.pages().get(range.pageIndex()).commands().get(i) instanceof DrawCommand.GlyphText command) { result.append(command.run().text()); }

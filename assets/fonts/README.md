@@ -70,7 +70,8 @@ Source Sans 3 使用同一固定标签中的 [LICENSE.md](https://raw.githubuser
 | `SourceSans3VF-Upright.otf` | Adobe Source Sans 标签 `3.052R` 的 `VF/SourceSans3VF-Upright.otf` | `SourceSans3-OFL.txt`；CFF2 权重插值 |
 | `NotoSansBengali-Regular.ttf`、`NotoSansTamil-Regular.ttf`、`NotoSansMyanmar-Regular.ttf`、`NotoSansKhmer-Regular.ttf`、`NotoSansSinhala-Regular.ttf`、`NotoSansHebrew-Regular.ttf` | `notofonts/noto-fonts` 提交 `ffebf8c1ee449e544955a7e813c54f9b73848eac` 的 `hinted/ttf/<字体族>/<文件名>` | 共用 `NotoNaskhArabic-OFL.txt`；孟加拉、泰米尔、缅甸、高棉、僧伽罗与希伯来语簇和独立塑形对照 |
 | `NotoColorEmoji-COLRv1.ttf`、`NotoColorEmoji-sbix.ttf` | `googlefonts/color-fonts` 提交 `0046ea4c3b69e9fbbe464c2594816894e3aa5e4b` 的 `fonts/noto-glyf_colr_1.ttf`、`fonts/noto-sbix.ttf` | `ColorFonts-LICENSE.txt`（Apache-2.0）；保留原字节与内部名称，验证真实 COLRv1 和 PNG/sbix 着色 |
-| `Export4j-CID-Test.otf`、`Export4j-ColorV0-Test.ttf`、`Export4j-ColorV1-Test.ttf` | 项目自编 `scripts/generate_opentype_fixtures.py`，fontTools 4.62.1，固定字体时间戳 | 项目 Apache-2.0；自主矩形、圆形和渐变，无外部字形轮廓。覆盖 CID CFF、双 palette、COLRv0、COLRv1 三种渐变及 28 种合成模式 |
+| `Export4j-CID-Test.otf`、`Export4j-ColorV0-Test.ttf`、`Export4j-ColorV1-Test.ttf` | 项目自编 `scripts/generate_opentype_fixtures.py`，fontTools 4.62.1，固定字体时间戳 | 项目 Apache-2.0；自主矩形、圆形和渐变，无外部字形轮廓。覆盖 CID CFF、双 palette、COLRv0、COLRv1 三种渐变及 28 种合成模式，以及同字体内的普通轮廓字形 |
+| `Export4j-Sbix-Jpeg-Test.ttf` | 项目自编 `scripts/generate_opentype_fixtures.py`，fontTools 4.62.1、Pillow 12.3.0，固定字体时间戳 | 项目 Apache-2.0；自主矩形和纯色图像，验证普通轮廓可用及未支持的 sbix JPEG 明确拒绝 |
 
 两份 Noto 彩色字体由上游配置从 SVG 图像重新生成，并非复制已发布的 OFL Noto 字体。上游固定子模块 `font-srcs/noto-emoji` 指向提交 `b960563a023fbd1337227bf2a8a2d5a91889a333`：其图像／工具的 Apache-2.0 原文保存在 `NotoEmoji-Artwork-LICENSE.txt`，旗帜来源及例外原文保存在 `NotoEmoji-RegionFlags-LICENSE.txt`。字体来源、图像来源和普通静态 Noto 字体的 OFL 不混用。
 
@@ -95,5 +96,6 @@ Source Sans 3 使用同一固定标签中的 [LICENSE.md](https://raw.githubuser
 | `NotoEmoji-Artwork-LICENSE.txt` | 11,357 | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
 | `NotoEmoji-RegionFlags-LICENSE.txt` | 3,479 | `73af5be6e2ea006b75bebfd2f463f252c5ce8c94024c639dbdd97f0456272a5a` |
 | `Export4j-CID-Test.otf` | 1,144 | `6bb6f3506ce4e04b6922546ae6ccc1689f14e2682156536bd965dc934af5fe36` |
-| `Export4j-ColorV0-Test.ttf` | 1,996 | `a8f79a18311ff2f340c3bf0be0314fc90b870caaf1e0d244aa7ff86b6bd1c347` |
-| `Export4j-ColorV1-Test.ttf` | 2,096 | `88056d20ed7d032028c1753f3ae679589d58b0cc119458f0cf46f758975d9e97` |
+| `Export4j-ColorV0-Test.ttf` | 2,004 | `5dfaa50fdbec3d89ca9192fadda33f4816ed46ea03e994235c0b2e5a36cd4bf1` |
+| `Export4j-ColorV1-Test.ttf` | 2,104 | `ced5fa1aa6ee341f485e3a55191de5e82f2be4e0bb2a31c046419a369b07e806` |
+| `Export4j-Sbix-Jpeg-Test.ttf` | 1,668 | `a2be55e475b4aff9178c2acf48b60ddb9167c900002b98a33fcb2f8ae0968db7` |

@@ -36,6 +36,8 @@ import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.PageSettings;
+import com.mirakyux.export4j.model.PageRegion;
+import com.mirakyux.export4j.model.PageRegions;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
@@ -59,6 +61,33 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
 class DocxSemanticTest {
+    @Test void bodyEditsAndPortableProjectionPreserveEveryPageRegionGeometry() throws IOException {
+        var header = new PageRegion(24, 4, 0, 3, 7, List.of(bandParagraph("header", "Header")));
+        var footer = new PageRegion(20, 2, 8, 0, 9, List.of(bandParagraph("footer", "Footer")));
+        var first = new PageRegion(28, 3, 2, 5, 0, List.of(bandParagraph("first", "First")));
+        var even = new PageRegion(22, 5, 1, 6, 8, List.of(bandParagraph("even", "Even")));
+        var regions = PageRegions.builder().header(header).footer(footer)
+                .variant(PageRegions.Variant.FIRST, new PageRegions.Bands(first, PageRegion.EMPTY))
+                .variant(PageRegions.Variant.EVEN, new PageRegions.Bands(PageRegion.EMPTY, even)).build();
+        var body = new SectionedDocument(DocumentMetadata.EMPTY, List.of(new Section("s", PageSettings.A4,
+                List.of(p("body", "OLD")), 7, regions)));
+        var source = new DocxSemanticDocument(body);
+        var edited = source.edit().replaceText("body", 0, 3, "READY").execute().document();
+        assertEquals(regions, edited.body().sections().getFirst().pageRegions());
+        assertEquals(7, edited.body().sections().getFirst().firstPageNumber());
+        assertEquals("READY", ((Paragraph) edited.body().sections().getFirst().blocks().getFirst()).text());
+        var projected = ADAPTER.project(edited, ProcessingPolicy.STRICT);
+        assertEquals(regions, projected.document().sections().getFirst().pageRegions());
+        assertTrue(projected.report().issues().isEmpty());
+        assertEquals("OLD", ((Paragraph) source.body().sections().getFirst().blocks().getFirst()).text());
+        var headerEdit = source.edit().replaceText("header", 0, 6, "Changed").execute().document();
+        assertEquals(header.toBuilder().blocks(List.of(bandParagraph("header", "Changed"))).build(),
+                headerEdit.body().sections().getFirst().pageRegions().header());
+        assertEquals(footer, headerEdit.body().sections().getFirst().pageRegions().footer());
+    }
+    private static Paragraph bandParagraph(String id, String text) {
+        return new Paragraph(id, List.of(new InlineText(text, InlineStyle.of(12))), ParagraphFormat.of(12));
+    }
     private static final DocxAdapter ADAPTER = new DocxAdapter();
     private static final OffsetDateTime DATE = OffsetDateTime.parse("2026-01-01T00:00:00Z");
     private static Placement floating() { return new Placement(Axis.offset(RelativeTo.MARGIN, 12), Axis.offset(RelativeTo.PARAGRAPH, 8), Wrap.SQUARE, WrapSide.BOTH, List.of(), false, true, true, 4, 3, 4, 5, 6); }

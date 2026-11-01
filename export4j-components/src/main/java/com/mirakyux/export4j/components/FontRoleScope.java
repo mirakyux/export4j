@@ -49,7 +49,7 @@ public record FontRoleScope(Component content, String fontRole) implements Width
         return selected(context).layoutVariableRegions(context, regions, widths);
     }
 
-    private FontScope selected(ComponentContext context) {
+    FontScope selected(ComponentContext context) {
         Objects.requireNonNull(context, "context");
         ExecutionContext.checkpoint();
         FontGroup fonts = context.fontRoles().get(fontRole);

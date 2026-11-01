@@ -83,7 +83,7 @@ public record RichTextComponent(List<InlineText> inlines, ParagraphStyle style,
         return new Flowing(this, pagination);
     }
 
-    private record Flowing(RichTextComponent source, PaginationPolicy pagination) implements WidthAwareRegionFlow {
+    record Flowing(RichTextComponent source, PaginationPolicy pagination) implements WidthAwareRegionFlow {
         @Override public List<RegionFlow.Fragment> layoutRegions(ComponentContext context, FlowRegions regions) {
             ComponentSupport.fits(context.width(), regions.continuationHeight(), context);
             var shaped = source.shape(context);
@@ -100,11 +100,11 @@ public record RichTextComponent(List<InlineText> inlines, ParagraphStyle style,
         }
     }
 
-    private ParagraphLayout shape(ComponentContext context) {
+    ParagraphLayout shape(ComponentContext context) {
         return shape(context, line -> context.width());
     }
 
-    private ParagraphLayout shape(ComponentContext context, IntToDoubleFunction widths) {
+    ParagraphLayout shape(ComponentContext context, IntToDoubleFunction widths) {
         Objects.requireNonNull(context, "context");
         var spans = new ArrayList<StyledSpan>(inlines.size());
         int sourceOffset = 0;

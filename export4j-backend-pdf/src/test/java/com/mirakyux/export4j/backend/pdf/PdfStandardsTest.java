@@ -12,9 +12,13 @@ import java.time.Instant;
 import java.util.List;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationText;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import com.mirakyux.export4j.graphics.AccessibilityTree;
@@ -25,6 +29,7 @@ import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.graphics.core.DisplayListBuilder;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.PageSize;
+import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 
 /** Prevents false DocMDP approval after visible edits and silent loss of explicitly requested tagging. */
 class PdfStandardsTest {
@@ -84,6 +89,70 @@ class PdfStandardsTest {
         var target = new PdfBackend(PdfLimits.DEFAULT, PdfOptions.DEFAULT.withAccessibility(PdfAccessibility.PDF_UA_1));
         assertThrows(PdfRenderException.class, () -> target.write(new DisplayDocument(document.metadata(), List.of(page)), output)); assertEquals(0, output.size());
         assertThrows(IOException.class, () -> target.open(document.metadata(), output));
+    }
+    @Test void archivalRasterizationPreservesPhysicalCropDimensionsUserUnitsAndRotation() throws Exception {
+        record Geometry(float unit, int rotation, int width, int height) { }
+        var archival = archival();
+        for (var geometry : List.of(new Geometry(1, 0, 40, 30), new Geometry(2, 0, 80, 60), new Geometry(1.5f, 90, 45, 60))) {
+            Path source = archivalSource("geometry-" + geometry.unit() + "-" + geometry.rotation(), geometry.unit(), geometry.rotation(), 1);
+            var output = new ByteArrayOutputStream();
+            PdfArchivalConverter.convert(source, output, archivalOptions(archival, 100_000), archivalPolicy());
+            try (var pdf = Loader.loadPDF(output.toByteArray())) {
+                var page = pdf.getPage(0);
+                assertEquals(geometry.width(), page.getMediaBox().getWidth()); assertEquals(geometry.height(), page.getMediaBox().getHeight());
+                assertEquals(1, page.getUserUnit()); assertEquals(0, page.getRotation());
+                var imageName = page.getResources().getXObjectNames().iterator().next();
+                var image = (PDImageXObject) page.getResources().getXObject(imageName);
+                assertEquals(geometry.width(), image.getWidth()); assertEquals(geometry.height(), image.getHeight());
+                var raster = new PDFRenderer(pdf).renderImage(0, 1);
+                try {
+                    int x = geometry.rotation() == 0 ? geometry.width() / 4 : geometry.width() / 2;
+                    int y = geometry.rotation() == 0 ? geometry.height() / 2 : geometry.height() / 4;
+                    assertEquals(0, raster.getRGB(x, y) & 0xffffff, "the visible cropped rectangle must keep its physical placement");
+                    assertEquals(0xffffff, raster.getRGB(geometry.width() - x - 1, geometry.height() - y - 1) & 0xffffff);
+                } finally { raster.flush(); }
+            }
+        }
+    }
+    @Test void archivalPixelBudgetUsesUserUnitsCumulativelyAndKeepsOldTargetsOnFailure() throws Exception {
+        var archival = archival();
+        for (int pages : new int[] {1, 2}) {
+            Path source = archivalSource("budget-" + pages, 2, 0, pages), target = directory.resolve("budget-" + pages + "-out.pdf");
+            Files.writeString(target, "PREVIOUS");
+            var tooSmall = archivalOptions(archival, pages * 4_800L - 1);
+            assertThrows(IOException.class, () -> PdfArchivalConverter.convert(source, target, tooSmall, archivalPolicy()));
+            assertEquals("PREVIOUS", Files.readString(target));
+            var output = new ByteArrayOutputStream();
+            assertThrows(IOException.class, () -> PdfArchivalConverter.convert(source, output, tooSmall, archivalPolicy()));
+            assertEquals(0, output.size(), "raster budgeting fails before PDF publication");
+            PdfArchivalConverter.convert(source, target, archivalOptions(archival, pages * 4_800L), archivalPolicy());
+            try (var pdf = Loader.loadPDF(target.toFile())) { assertEquals(pages, pdf.getNumberOfPages()); }
+        }
+        try (var files = Files.list(directory)) { assertTrue(files.noneMatch(path -> path.getFileName().toString().startsWith(".export4j-archive-"))); }
+    }
+    private Path archivalSource(String name, float unit, int rotation, int pages) throws IOException {
+        var target = directory.resolve(name + ".pdf");
+        try (var pdf = new PDDocument()) {
+            for (int index = 0; index < pages; index++) {
+                var page = new PDPage(new PDRectangle(100, 100)); page.setCropBox(new PDRectangle(10, 20, 40, 30));
+                page.setUserUnit(unit); page.setRotation(rotation); pdf.addPage(page);
+                try (var stream = new PDPageContentStream(pdf, page)) { stream.addRect(10, 20, 20, 30); stream.fill(); }
+            }
+            pdf.save(target.toFile());
+        }
+        return target;
+    }
+    private static PdfArchival archival() throws IOException {
+        try (var input = PdfStandardsTest.class.getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
+            var font = com.mirakyux.export4j.font.TrueTypeFontLoader.load(input, com.mirakyux.export4j.font.TrueTypeFontLoader.DEFAULT_MAX_BYTES).data();
+            return new PdfArchival(java.awt.color.ICC_Profile.getInstance(java.awt.color.ColorSpace.CS_sRGB).getData(), font);
+        }
+    }
+    private static PdfArchivalConverter.Options archivalOptions(PdfArchival archival, long maxPixels) {
+        return new PdfArchivalConverter.Options(archival, DocumentMetadata.EMPTY, 72, 1_000_000, 10, maxPixels, 1_000_000, 1_000, 1_000_000);
+    }
+    private static ProcessingPolicy archivalPolicy() {
+        return ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
     }
     private Path certified(PdfSigner.CertificationPermission permission) throws Exception {
         Path source = directory.resolve("source-" + permission + ".pdf"), target = directory.resolve("certified-" + permission + ".pdf");

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0; self-authored layout and fictional project terms. -->
+<document version="1" title="${title}" author="Export4j">
+  <page width="595.3" height="841.9" margin-top="40" margin-right="42" margin-bottom="36" margin-left="42"/>
+  <header height="38" gap="8">
+    <table id="contract-brand-header" draw-borders="false" padding-top="0" padding-bottom="0" padding-left="0" padding-right="0" space-after="0">
+      <columns><column width="35"/><column weight="1"/><column width="126"/></columns>
+      <row>
+        <cell size="9" line-height="30"><image ref="contract_logo" width="25" height="25" alt="青木示例公司几何标记"/></cell>
+        <cell>
+          <p id="contract-running-header" size="9.5" line-height="16" color="#18334D" role="bold" space-after="0">星河 × 青木 / 项目服务与交付约定</p>
+          <p size="8.5" line-height="14" color="#627084" space-after="0">虚构示例 · ${contract.number}</p>
+        </cell>
+        <cell size="9" line-height="30" align="RIGHT" color="#627084">${contract.version}</cell>
+      </row>
+    </table>
+  </header>
+  <footer height="18" gap="8"><p id="contract-footer" size="9" line-height="16" align="RIGHT" color="#627084" space-after="0">${contract.number} · 第 <page-number width="20"/> / <page-count width="20"/> 页</p></footer>
+  <p id="contract-kicker" size="9" line-height="16" color="#426680" space-after="5">PROJECT SERVICES AGREEMENT / 2026</p>
+  <heading id="contract-title" level="1" size="24" line-height="34" color="#18334D" space-before="0" space-after="8">${title}</heading>
+  <p id="contract-meta" size="10" line-height="18" space-after="12">合同编号：${contract.number}    签订日期：${contract.date}    ${contract.version}</p>
+  <table id="contract-overview" padding-top="7" padding-bottom="7" padding-left="8" padding-right="8" space-after="12">
+    <columns><column width="76"/><column weight="1"/><column width="70"/><column weight="1"/></columns>
+    <row><cell column-span="4" size="10.5" line-height="18">${contract.overview}</cell></row>
+    <row><cell size="10" line-height="17" role="bold" color="#18334D">实施周期</cell><cell size="10" line-height="17">${contract.term}</cell><cell size="10" line-height="17" role="bold" color="#18334D">质保期限</cell><cell size="10" line-height="17">${contract.warranty}</cell></row>
+  </table>
+  <rows id="contract-parties" items="parties" as="party" padding-top="7" padding-bottom="7" padding-left="8" padding-right="8" space-after="12">
+    <columns><column width="85"/><column weight="1"/></columns>
+    <header><cell size="10" line-height="17" color="#18334D">合同主体</cell><cell size="10" line-height="17" color="#18334D">名称、授权与联系信息</cell></header>
+    <row><cell size="10.5" line-height="18">${party.role}</cell><cell><p size="11" line-height="18" space-after="3" role="bold">${party.name}</p><p size="10" line-height="17" space-after="0">项目联系人：${party.contact}
+地址：${party.address}
+主体编号：${party.code}    授权代表：${party.representative}</p></cell></row>
+  </rows>
+  <heading id="contract-scope-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">01 / 服务范围与责任边界</heading>
+  <p id="contract-scope" size="10.5" line-height="18" space-after="8">${contract.scope}</p>
+  <p id="contract-exclusions" size="10.5" line-height="18" space-after="10"><span role="bold" color="#8A4B23">明确排除：</span>${contract.exclusions}</p>
+  <rows id="contract-work-packages" items="workPackages" as="package" row-split="true" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="12">
+    <columns><column width="45"/><column width="75"/><column weight="1"/><column weight="1"/><column width="105"/></columns>
+    <header><cell size="9.5" line-height="16">编号</cell><cell size="9.5" line-height="16">工作包</cell><cell size="9.5" line-height="16">包含内容</cell><cell size="9.5" line-height="16">不包含内容</cell><cell size="9.5" line-height="16">交付证据</cell></header>
+    <row><cell size="9.5" line-height="16">${package.code}</cell><cell size="9.5" line-height="16" role="bold">${package.name}</cell><cell size="9.5" line-height="16">${package.included}</cell><cell size="9.5" line-height="16">${package.excluded}</cell><cell size="9.5" line-height="16">${package.evidence}</cell></row>
+  </rows>
+  <heading id="contract-milestones-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">02 / 实施里程碑与阶段门禁</heading>
+  <rows id="contract-milestones" items="milestones" as="milestone" row-split="true" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="12">
+    <columns><column width="42"/><column width="65"/><column width="67"/><column weight="1"/><column weight="1"/><column width="93"/></columns>
+    <header><cell size="9.5" line-height="16">编号</cell><cell size="9.5" line-height="16">阶段</cell><cell size="9.5" line-height="16">计划日期</cell><cell size="9.5" line-height="16">进入条件</cell><cell size="9.5" line-height="16">输出材料</cell><cell size="9.5" line-height="16">阶段确认</cell></header>
+    <row><cell size="9.5" line-height="16">${milestone.code}</cell><cell size="9.5" line-height="16" role="bold">${milestone.name}</cell><cell size="9.5" line-height="16">${milestone.date}</cell><cell size="9.5" line-height="16">${milestone.input}</cell><cell size="9.5" line-height="16">${milestone.output}</cell><cell size="9.5" line-height="16">${milestone.gate}</cell></row>
+  </rows>
+  <heading id="contract-delivery-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">03 / 交付与验收矩阵</heading>
+  <p id="contract-acceptance" size="10.5" line-height="18" space-after="10">${contract.acceptance}</p>
+  <rows id="contract-deliverables" items="deliverables" as="delivery" row-split="true" padding-top="5" padding-bottom="5" padding-left="5" padding-right="5" space-after="12">
+    <columns><column width="41"/><column width="62"/><column width="80"/><column width="96"/><column width="96"/><column width="79"/><column weight="1"/></columns>
+    <header><cell row-span="2" size="9.5" line-height="16">编号</cell><cell row-span="2" size="9.5" line-height="16">验收对象</cell><cell column-span="3" size="10" line-height="17" align="CENTER" color="#18334D">输入、操作与预期结果</cell><cell column-span="2" size="10" line-height="17" align="CENTER" color="#18334D">留档与确认</cell></header>
+    <header><cell size="9.5" line-height="16">输入样例</cell><cell size="9.5" line-height="16">检查步骤</cell><cell size="9.5" line-height="16">预期结果</cell><cell size="9.5" line-height="16">交付证据</cell><cell size="9.5" line-height="16">确认人</cell></header>
+    <row><cell size="9.5" line-height="16">${delivery.code}</cell><cell size="9.5" line-height="16" role="bold">${delivery.item}</cell><cell size="9.5" line-height="16">${delivery.input}</cell><cell size="9.5" line-height="16">${delivery.test}</cell><cell size="9.5" line-height="16">${delivery.expected}</cell><cell size="9.5" line-height="16">${delivery.evidence}</cell><cell size="9.5" line-height="16">${delivery.owner}</cell></row>
+  </rows>
+  <heading id="contract-payment-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">04 / 服务费用与分期付款</heading>
+  <p id="contract-price" size="10.5" line-height="18" space-after="10">${contract.price}</p>
+  <rows id="contract-fee-items" items="lineItems" as="fee" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="0">
+    <columns><column width="42"/><column weight="1"/><column width="48"/><column width="42"/><column width="80"/><column width="88"/></columns>
+    <header><cell size="10" line-height="17">编号</cell><cell size="10" line-height="17">费用项目</cell><cell size="10" line-height="17" align="RIGHT">数量</cell><cell size="10" line-height="17">单位</cell><cell size="10" line-height="17" align="RIGHT">单价 / 元</cell><cell size="10" line-height="17" align="RIGHT">金额 / 元</cell></header>
+    <row><cell size="10" line-height="17">${fee.code}</cell><cell size="10" line-height="17">${fee.name}</cell><cell size="10" line-height="17" align="RIGHT">${fee.quantity}</cell><cell size="10" line-height="17">${fee.unit}</cell><cell size="10" line-height="17" align="RIGHT">${fee.unitPrice}</cell><cell size="10" line-height="17" align="RIGHT">${fee.amount}</cell></row>
+  </rows>
+  <table id="contract-fee-totals" padding-top="5" padding-bottom="5" padding-left="8" padding-right="8" space-after="12"><columns><column weight="1"/><column width="112"/></columns>
+    <row><cell size="10" line-height="17" align="RIGHT">未税服务费</cell><cell size="10" line-height="17" align="RIGHT">${contract.subtotal}</cell></row>
+    <row><cell size="10" line-height="17" align="RIGHT">税额（${contract.taxRate}）</cell><cell size="10" line-height="17" align="RIGHT">${contract.tax}</cell></row>
+    <row><cell size="11" line-height="19" align="RIGHT" role="bold" color="#18334D">含税合同总额 / CNY</cell><cell size="11" line-height="19" align="RIGHT" role="bold" color="#18334D">${contract.total}</cell></row>
+  </table>
+  <rows id="contract-payments" items="payments" as="payment" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="10"><columns><column width="80"/><column weight="1"/><column width="45"/><column width="82"/><column width="110"/></columns>
+    <header><cell size="9.5" line-height="16">节点</cell><cell size="9.5" line-height="16">付款条件</cell><cell size="9.5" line-height="16">比例</cell><cell size="9.5" line-height="16" align="RIGHT">金额 / 元</cell><cell size="9.5" line-height="16">证明材料</cell></header>
+    <row><cell size="9.5" line-height="16">${payment.stage}</cell><cell size="9.5" line-height="16">${payment.condition}</cell><cell size="9.5" line-height="16">${payment.percent}</cell><cell size="9.5" line-height="16" align="RIGHT">${payment.amount}</cell><cell size="9.5" line-height="16">${payment.evidence}</cell></row>
+  </rows>
+  <p id="contract-billing" size="10.5" line-height="18" space-after="10">${contract.billing}</p>
+  <heading id="contract-execution-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">05 / 实施配合与沟通</heading>
+  <each items="execution" as="clause"><p size="10.5" line-height="18" space-after="8"><span role="bold" color="#18334D">${clause.title}  </span>${clause.text}</p></each>
+  <heading id="contract-sla-title" level="2" size="13" line-height="23" color="#18334D" space-before="8" space-after="6">06 / 质保与服务响应矩阵</heading>
+  <rows id="contract-sla" items="sla" as="service" row-split="true" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="10"><columns><column width="32"/><column width="40"/><column weight="1"/><column width="79"/><column width="93"/><column width="114"/></columns>
+    <header><cell size="9.5" line-height="16">级别</cell><cell size="9.5" line-height="16">名称</cell><cell size="9.5" line-height="16">影响判断</cell><cell size="9.5" line-height="16">首次响应</cell><cell size="9.5" line-height="16">缓解安排</cell><cell size="9.5" line-height="16">恢复与关闭</cell></header>
+    <row><cell size="9.5" line-height="16" role="bold" color="#8A4B23">${service.code}</cell><cell size="9.5" line-height="16">${service.level}</cell><cell size="9.5" line-height="16">${service.impact}</cell><cell size="9.5" line-height="16">${service.response}</cell><cell size="9.5" line-height="16">${service.workaround}</cell><cell size="9.5" line-height="16">${service.recovery}</cell></row>
+  </rows>
+  <each items="support" as="supportItem"><bullet size="10" line-height="17" space-after="5" keep-together="true">${supportItem.text}</bullet></each>
+  <heading id="contract-data-title" level="2" size="13" line-height="23" color="#18334D" space-before="10" space-after="6">07 / 数据分类与处理约定</heading>
+  <rows id="contract-data-classes" items="dataClasses" as="classification" row-split="true" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="10"><columns><column width="58"/><column width="111"/><column width="91"/><column width="115"/><column weight="1"/></columns>
+    <header><cell size="9.5" line-height="16">类别</cell><cell size="9.5" line-height="16">资料示例</cell><cell size="9.5" line-height="16">访问要求</cell><cell size="9.5" line-height="16">保留要求</cell><cell size="9.5" line-height="16">处理方式</cell></header>
+    <row><cell size="9.5" line-height="16" role="bold">${classification.level}</cell><cell size="9.5" line-height="16">${classification.examples}</cell><cell size="9.5" line-height="16">${classification.access}</cell><cell size="9.5" line-height="16">${classification.retention}</cell><cell size="9.5" line-height="16">${classification.handling}</cell></row>
+  </rows>
+  <each items="dataProcessing" as="dataClause"><p size="10.5" line-height="18" space-after="8"><span role="bold" color="#18334D">${dataClause.title}  </span>${dataClause.text}</p></each>
+  <heading id="contract-confidentiality-title" level="2" size="13" line-height="23" color="#18334D" space-before="10" space-after="6">08 / 保密、成果与移交</heading>
+  <p id="contract-confidentiality" size="10.5" line-height="18" space-after="8">${contract.confidentiality}</p>
+  <p id="contract-ownership" size="10.5" line-height="18" space-after="8">${contract.ownership}</p>
+  <p id="contract-handover" size="10.5" line-height="18" space-after="10">${contract.handover}</p>
+  <heading id="contract-change-title" level="2" size="13" line-height="23" color="#18334D" space-before="10" space-after="6">09 / 变更管理与登记表</heading>
+  <p id="contract-change" size="10.5" line-height="18" space-after="10" min-lines-before="2" min-lines-after="2">${contract.change}</p>
+  <rows id="contract-change-steps" items="changeSteps" as="change" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="10"><columns><column width="88"/><column width="93"/><column weight="1"/><column weight="1"/></columns>
+    <header><cell size="9.5" line-height="16">步骤</cell><cell size="9.5" line-height="16">责任</cell><cell size="9.5" line-height="16">输入</cell><cell size="9.5" line-height="16">结果</cell></header>
+    <row><cell size="9.5" line-height="16">${change.step}</cell><cell size="9.5" line-height="16">${change.owner}</cell><cell size="9.5" line-height="16">${change.input}</cell><cell size="9.5" line-height="16">${change.result}</cell></row>
+  </rows>
+  <table id="contract-change-form" padding-top="6" padding-bottom="6" padding-left="8" padding-right="8" space-after="12"><columns><column width="76"/><column weight="1"/><column width="76"/><column weight="1"/></columns>
+    <row><cell size="10" line-height="18">变更编号</cell><cell size="10" line-height="18">________________</cell><cell size="10" line-height="18">提出日期</cell><cell size="10" line-height="18">________________</cell></row>
+    <row><cell size="10" line-height="18" row-span="2">影响范围</cell><cell size="10" line-height="18" column-span="3">受影响成果 / 接口 / 资源：________________________________</cell></row>
+    <row><cell size="10" line-height="18" column-span="3">费用及日期变化：________________________________________</cell></row>
+    <row><cell size="10" line-height="18">批准记录</cell><cell size="10" line-height="18" column-span="3">双方授权代表：________________    批准日期：____________</cell></row>
+  </table>
+  <heading id="contract-continuity-title" level="2" size="13" line-height="23" color="#18334D" space-before="10" space-after="6">10 / 暂停、终止与争议处理</heading>
+  <p id="contract-continuity" size="10.5" line-height="18" space-after="8">${contract.continuity}</p>
+  <p id="contract-termination" size="10.5" line-height="18" space-after="8">${contract.termination}</p>
+  <p id="contract-disputes" size="10.5" line-height="18" space-after="10">${contract.disputes}</p>
+  <heading id="contract-attachments-title" level="2" size="13" line-height="23" color="#18334D" space-before="10" space-after="6">11 / 附件与版本清单</heading>
+  <rows id="contract-attachments" items="attachments" as="attachment" padding-top="5" padding-bottom="5" padding-left="6" padding-right="6" space-after="12"><columns><column width="45"/><column width="137"/><column width="82"/><column weight="1"/></columns>
+    <header><cell size="10" line-height="17">编号</cell><cell size="10" line-height="17">文件</cell><cell size="10" line-height="17">版本</cell><cell size="10" line-height="17">用途与关联</cell></header>
+    <row><cell size="10" line-height="17">${attachment.code}</cell><cell size="10" line-height="17">${attachment.name}</cell><cell size="10" line-height="17">${attachment.version}</cell><cell size="10" line-height="17">${attachment.purpose}</cell></row>
+  </rows>
+  <heading id="contract-signing-title" level="2" size="13" line-height="23" color="#18334D" space-before="10" space-after="6">12 / 生效与签署</heading>
+  <p id="contract-signing" size="10.5" line-height="18" space-after="10">${contract.signing}</p>
+  <table id="contract-signatures" padding-top="10" padding-bottom="10" padding-left="10" padding-right="10" space-after="12"><columns><column weight="1"/><column weight="1"/></columns>
+    <row><cell><p size="12" line-height="21" role="bold" color="#18334D" space-after="7">甲方 / 委托方</p><p size="10.5" line-height="23" space-after="0">单位盖章：________________________
+授权代表：________________________
+签署日期：________________________
+接收人及归档编号：________________</p></cell><cell><p size="12" line-height="21" role="bold" color="#18334D" space-after="7">乙方 / 服务方</p><p size="10.5" line-height="23" space-after="0">单位盖章：________________________
+授权代表：________________________
+签署日期：________________________
+接收人及归档编号：________________</p></cell></row>
+  </table>
+  <p id="contract-disclaimer" size="9" line-height="16" color="#627084" space-after="0">${contract.disclaimer}</p>
+</document>

@@ -82,8 +82,9 @@ class DesignerServerTest {
             assertTrue(match.find()); String token = match.group(1);
             var state = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
             var samples = (java.util.List<?>) state.get("samples");
-            assertEquals(5, samples.size());
+            assertEquals(11, samples.size());
             assertEquals("药品不良反应报告表", ((Map<?, ?>) samples.get(4)).get("name"));
+            assertEquals("项目周报", ((Map<?, ?>) samples.get(10)).get("name"));
             var blank = send(client, server.origin(), "new", token,
                     BindingJson.write(BindingJson.object("revision", state.get("revision"), "kind", "blank")), null);
             assertEquals(200, blank.statusCode());

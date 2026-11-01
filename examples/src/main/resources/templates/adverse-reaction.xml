@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Self-authored editable layout. All case data is fictional; not a regulatory submission form.
+     Dimensions, wrapping and cell padding preserve the dense three-page form proportions.
+     Longer bound values may expand rows and add pages. -->
+<document version="1" title="药品不良反应报告表（虚构样例）" author="Export4j">
+  <page width="595.3" height="841.9" margin-top="42.5" margin-right="29.5" margin-bottom="29.7" margin-left="28.3"/>
+  <footer height="18" gap="0"><p id="adr-page-number" size="10" line-height="18" align="CENTER" color="#888888">- <page-number width="16"/> -</p></footer>
+  <p id="adr-disclaimer" size="8" line-height="15" color="#888888" space-after="0">虚构样例 · 可编辑模板</p>
+  <heading id="adr-title" level="1" size="18" line-height="28" align="CENTER" space-before="0" space-after="12">上市许可持有人药品不良反应报告表</heading>
+  <p id="adr-report-type" size="10.5" line-height="15.5" space-after="0">严重报告${report.serious}           境外报告${report.overseas}           首次报告${report.initial}           跟踪报告${report.followup}           病例编号*</p>
+  <p id="adr-case-number" size="10.5" line-height="15.5" space-after="8"><span underline="true">${report.caseId}</span></p>
+  <p id="adr-report-source" size="10.5" line-height="15.5" space-after="31">报告来源*   医疗机构${report.medicalSource}   经营企业□   个人□   文献□   研究□   项目□   其他□   监管机构□</p>
+  <table id="adr-patient" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="51"/><column weight="45"/><column weight="72"/><column weight="49"/><column weight="48"/><column weight="65"/><column weight="57"/><column weight="64"/><column weight="86.5"/></columns>
+    <header><cell size="10.5" line-height="18.5" align="LEFT" column-span="9">患者信息</cell></header>
+    <row><cell size="10.5" line-height="14.75" align="CENTER">姓名*</cell><cell size="10.5" line-height="14.75" align="CENTER">性别*</cell><cell size="10.5" line-height="14.75" align="CENTER">出生日期*</cell><cell size="10.5" line-height="14.75" align="CENTER">年龄</cell><cell size="10.5" line-height="14.75" align="CENTER">国籍</cell><cell size="10.5" line-height="14.75" align="CENTER">民族 / 种族</cell><cell size="10.5" line-height="14.75" align="CENTER">身高
+（cm）</cell><cell size="10.5" line-height="14.75" align="CENTER">体重
+（kg）</cell><cell size="10.5" line-height="14.75" align="CENTER">联系电话</cell></row>
+    <row><cell size="10.5" line-height="14.75" align="CENTER">${patient.name}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.sex}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.birthDate}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.age}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.country}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.ethnicity}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.height}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.weight}</cell><cell size="10.5" line-height="14.75" align="CENTER">${patient.telephone}</cell></row>
+    <row><cell size="10.5" line-height="14.5" align="LEFT" column-span="4">医疗机构 / 经营企业名称：${patient.institution}</cell><cell size="10.5" line-height="14.5" align="LEFT" column-span="5" row-span="2">既往药品不良反应及药物过敏史
+有□       无□       不详${patient.allergyUnknown}</cell></row>
+    <row><cell size="10.5" line-height="14.5" align="LEFT" column-span="4">病房号 / 门诊号：${patient.recordId}</cell></row>
+    <row><cell size="10.5" line-height="15.8" align="LEFT" column-span="9">相关重要信息：
+吸烟    有□________无${patient.noSmoking}       不详□
+饮酒    有□________无${patient.noDrinking}       不详□
+过敏史  有□________无□           不详${patient.allergyUnknown}
+其他（如肝病史、肾病史、家族史）  有□______无□    不详□</cell></row>
+  </table>
+  <rows id="adr-diseases" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0" items="diseases" as="disease">
+    <columns><column weight="46"/><column weight="65"/><column weight="95"/><column weight="139"/><column weight="192.5"/></columns>
+    <header><cell size="10.5" line-height="16.3" align="LEFT" column-span="5">相关疾病信息（可重复）</cell></header>
+    <header><cell size="10.5" line-height="14.1" align="CENTER">序号</cell><cell size="10.5" line-height="14.1" align="CENTER">疾病名称</cell><cell size="10.5" line-height="14.1" align="CENTER">开始日期</cell><cell size="10.5" line-height="14.1" align="CENTER">结束日期</cell><cell size="10.5" line-height="14.1" align="CENTER">报告时疾病是否仍存在</cell></header>
+    <row><cell size="10.5" line-height="15.1" align="CENTER">${disease.number}</cell><cell size="10.5" line-height="15.1" align="CENTER">${disease.name}</cell><cell size="10.5" line-height="15.1" align="CENTER">${disease.start}</cell><cell size="10.5" line-height="15.1" align="CENTER">${disease.end}</cell><cell size="10.5" line-height="15.1" align="CENTER">${disease.ongoing}</cell></row>
+  </rows>
+  <table id="adr-suspect-heading" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="16" align="LEFT">怀疑用药（可重复）</cell></row>
+  </table>
+  <rows id="adr-suspect-drugs" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0" items="suspectDrugs" as="drug">
+    <columns><column weight="26"/><column weight="28.1"/><column weight="28.35"/><column weight="28.35"/><column weight="28.35"/><column weight="28.35"/><column weight="39.45"/><column weight="24.3"/><column weight="32.2"/><column weight="26.7"/><column weight="28.7"/><column weight="29.45"/><column weight="25.9"/><column weight="27.3"/><column weight="29.8"/><column weight="28.35"/><column weight="42.1"/><column weight="36.7"/></columns>
+    <header><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">序
+号</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">批
+准
+文
+号*</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">商
+品
+名</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">通
+用
+名
+称*</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">剂
+型*</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">规
+格</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">上市
+许可
+持有
+人/生
+产企
+业*</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">产
+品
+批
+号</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">失效
+日期
+/有
+效期
+至</cell><cell size="10.5" line-height="13.23" align="CENTER" column-span="3">用法用量</cell><cell size="10.5" line-height="13.23" align="CENTER" column-span="2">用药起止
+日期*</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">用
+药
+时
+间</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">治
+疗
+疾
+病*</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">是否
+存在
+以下
+情况
+可
+多选
+注1</cell><cell size="10.5" line-height="13.23" align="CENTER" row-span="2">对药品采取的措施注2</cell></header>
+    <header><cell size="10.5" line-height="13.23" align="CENTER">给
+药
+途
+径</cell><cell size="10.5" line-height="13.23" align="CENTER">单
+次
+剂
+量</cell><cell size="10.5" line-height="13.23" align="CENTER">给
+药
+频
+次</cell><cell size="10.5" line-height="13.23" align="CENTER">起</cell><cell size="10.5" line-height="13.23" align="CENTER">止</cell></header>
+    <row><cell size="10.5" line-height="15.5" align="CENTER">${drug.number}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.approval}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.brand}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.name}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.form}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.strength}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.holder}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.batch}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.expiry}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.route}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.dose}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.frequency}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.start}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.end}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.duration}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.indication}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.special}</cell><cell size="10.5" line-height="15.5" align="CENTER">${drug.action}</cell></row>
+  </rows>
+  <table id="adr-suspect-notes" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0" row-split="true">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="26.8">注1：1-假药  2-用药过量  3-父源暴露  4-使用了超出有效期的药品  5-检测并合格的批号  6-检测并不合格的批号  7-用药错误  8-误用  9-滥用  10-职业暴露  11-超说明书使用</cell></row>
+    <row><cell size="10.5" line-height="16.6">注2：1-停止用药  2-减少剂量  3-增加剂量  4-剂量不变  0-不详  9-不适用</cell></row>
+  </table>
+  <table id="adr-concomitant-heading" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="14.1" align="LEFT">合并用药（可重复）</cell></row>
+  </table>
+  <table id="adr-concomitant-drugs" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="26"/><column weight="28.1"/><column weight="28.35"/><column weight="28.35"/><column weight="28.35"/><column weight="28.35"/><column weight="39.45"/><column weight="24.3"/><column weight="32.2"/><column weight="26.7"/><column weight="28.7"/><column weight="29.45"/><column weight="25.9"/><column weight="27.3"/><column weight="29.8"/><column weight="28.35"/><column weight="42.1"/><column weight="36.7"/></columns>
+    <row><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">序
+号</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">批
+准
+文
+号*</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">商
+品
+名</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">通
+用
+名
+称*</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">剂
+型*</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">规
+格</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">上市
+许可
+持有
+人/生
+产企
+业*</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">产
+品
+批
+号</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">失效
+日期
+/有
+效期
+至</cell><cell size="10.5" line-height="13.83" align="CENTER" column-span="3">用法用量</cell><cell size="10.5" line-height="13.83" align="CENTER" column-span="2">用药起止
+日期*</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">用
+药
+时
+间</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">治
+疗
+疾
+病*</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">是否
+存在
+以下
+情况
+可
+多选
+注1</cell><cell size="10.5" line-height="13.83" align="CENTER" row-span="2">对药品采取的措施注2</cell></row>
+    <row><cell size="10.5" line-height="13.83" align="CENTER">给
+药
+途
+径</cell><cell size="10.5" line-height="13.83" align="CENTER">单
+次
+剂
+量</cell><cell size="10.5" line-height="13.83" align="CENTER">给
+药
+频
+次</cell><cell size="10.5" line-height="13.83" align="CENTER">起</cell><cell size="10.5" line-height="13.83" align="CENTER">止</cell></row>
+  </table>
+  <table id="adr-concomitant-notes" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="14.85" align="LEFT">注1：1-假药  2-用药过量  3-父源暴露  4-使用了超出有效期的药品  5-检测并合格的批号  6-检测并不合格的批号  7-用药错误  8-误用  9-滥用  10-职业暴露  11-超说明书使用</cell></row>
+    <row><cell size="10.5" line-height="14.1" align="LEFT">注2：1-停止用药  2-减少剂量  3-增加剂量  4-剂量不变  0-不详  9-不适用</cell></row>
+  </table>
+  <table id="adr-related-devices" padding-top="1" padding-bottom="15.85" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="14.85" align="LEFT">相关器械：${report.devices}</cell></row>
+  </table>
+  <table id="adr-reaction" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <header><cell size="10.5" line-height="14.1" align="LEFT">不良反应（可重复）</cell></header>
+    <row><cell size="10.5" line-height="19.58" align="LEFT">怀疑药品-不良反应术语*：  ${reaction.term}
+发生时间*：${reaction.start}      结束时间：${reaction.end}      持续时间：${reaction.duration}
+严重性*    严重□  非严重${reaction.nonSerious}
+死亡□ 先天异常或出生缺陷□  危及生命□  功能丧失/残疾□  住院或延长住院时间□ 其他重要医学事件□
+非预期*   是□   否□   不详${reaction.unexpected}
+停药或减量后，反应是否消失或减轻*     ${reaction.dechallenge}
+再次使用可疑药品后是否再次出现同样反应*     ${reaction.rechallenge}
+结果*   ${reaction.outcome}
+初始报告人评价*   ${reaction.reporterAssessment}
+上市许可持有人评价*   ${reaction.holderAssessment}</cell></row>
+  </table>
+  <table id="adr-reaction-description" padding-top="1" padding-bottom="46.7" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="15.4" align="LEFT">不良反应过程描述*（包括发生场所、症状、体征、临床检验等）及处理情况（可附页）：
+${reaction.description}</cell></row>
+  </table>
+  <table id="adr-death" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="17.19" align="LEFT">死亡时间：____年____月____日    直接死因：________________
+是否尸检：是□  否□  不详□       尸检结果：________________</cell></row>
+  </table>
+  <table id="adr-tests-heading" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="18.25" align="LEFT">相关实验室检查信息（可重复）</cell></row>
+  </table>
+  <table id="adr-tests" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="46"/><column weight="122"/><column weight="100"/><column weight="120"/><column weight="149.5"/></columns>
+    <row><cell size="10.5" line-height="14.1" align="CENTER">序号</cell><cell size="10.5" line-height="14.1" align="CENTER">检查项目</cell><cell size="10.5" line-height="14.1" align="CENTER">检查日期</cell><cell size="10.5" line-height="14.1" align="CENTER">结果（单位）</cell><cell size="10.5" line-height="14.1" align="CENTER">正常值范围（低值-高值）</cell></row>
+  </table>
+  <each items="tests" as="test">
+    <table id="adr-test-result" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+      <columns><column weight="46"/><column weight="122"/><column weight="100"/><column weight="120"/><column weight="149.5"/></columns>
+      <row><cell size="10.5" line-height="14.1">${test.number}</cell><cell size="10.5" line-height="14.1">${test.name}</cell><cell size="10.5" line-height="14.1">${test.date}</cell><cell size="10.5" line-height="14.1">${test.result}</cell><cell size="10.5" line-height="14.1">${test.reference}</cell></row>
+    </table>
+  </each>
+  <table id="adr-reporter" padding-top="1" padding-bottom="1" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="1"/></columns>
+    <row><cell size="10.5" line-height="15.1" align="LEFT">初始报告人姓名*：${reporter.name}    职业*：医生${reporter.doctor}  药师□  护士□  其他医务人员□
+消费者及其他人员□
+所在单位：${reporter.institution}    联系电话：${reporter.contact}    电子邮箱：未提供</cell></row>
+    <row><cell size="10.5" line-height="17.6" align="LEFT">事件发生国家 / 地区*：${report.country}    首次获知时间*：${report.firstReceived}    企业病例编号：${report.caseId}
+最近一次获知时间（仅适用于跟踪报告）：${report.lastReceived}
+上市许可持有人名称*：${report.holder}    联系人：${report.contact}
+电话：${report.contactDetails}    地址：${report.address}</cell></row>
+  </table>
+  <table id="adr-remarks" padding-top="5" padding-bottom="5" padding-left="5" padding-right="5" space-before="0" space-after="0">
+    <columns><column weight="60"/><column weight="477.5"/></columns>
+    <row><cell size="10.5" line-height="15.4" align="CENTER">备    注</cell><cell size="10.5" line-height="15.4" align="LEFT">其他需说明的情况：
+${report.remarks}</cell></row>
+  </table>
+</document>

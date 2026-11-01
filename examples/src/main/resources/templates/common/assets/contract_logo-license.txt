@@ -1,0 +1,8 @@
+Fictional Qingmu sample mark
+SPDX-License-Identifier: Apache-2.0
+
+The geometric tree mark is an original Export4j sample asset for the
+fictional Qingmu company in the service-contract template.
+It is not intended to identify an actual business.
+contract_logo.svg is the editable vector source; contract_logo.png is
+the 256 x 256 pixel RGB version embedded by the XML template.

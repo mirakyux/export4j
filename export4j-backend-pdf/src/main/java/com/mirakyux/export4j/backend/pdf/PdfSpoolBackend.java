@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +32,7 @@ import com.mirakyux.export4j.graphics.DocumentExtras;
 import com.mirakyux.export4j.graphics.PageBackend;
 import com.mirakyux.export4j.graphics.PageWriter;
 import com.mirakyux.export4j.graphics.PageNavigation;
+import com.mirakyux.export4j.graphics.core.GraphicsResources;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 
@@ -144,10 +146,10 @@ public final class PdfSpoolBackend implements PageBackend {
                 ExecutionContext.checkpoint();
                 Objects.requireNonNull(page, "page");
                 links = List.copyOf(links);
-                if (pages == limits.maxPages() || navigation != null && pages == navigation.pages()
-                        || page.commands().size() > limits.maxCommands() - commands) {
+                if (pages == limits.maxPages() || navigation != null && pages == navigation.pages()) {
                     throw new IOException("PDF spool page or command budget exceeded");
                 }
+                long pageCommands = commandCount(page);
                 var localLinks = new ArrayList<DocumentExtras.ExternalLink>(links.size());
                 for (var link : links) {
                     if (link.pageIndex() != pages) { throw new IOException("PDF spool link page index is not current"); }
@@ -173,11 +175,24 @@ public final class PdfSpoolBackend implements PageBackend {
                     leafPages.add(pageObject);
                 }
                 Files.delete(pageFile);
-                commands += page.commands().size(); pages++;
+                commands += pageCommands; pages++;
                 if (leafPages.size() == LEAF_PAGES) { finishLeaf(); }
                 checkTemporaryBudget();
                 ExecutionContext.checkpoint();
             } catch (IOException | RuntimeException | Error failure) { terminal = true; throw failure; }
+        }
+
+        private long commandCount(DisplayPage page) throws IOException {
+            long[] count = {0};
+            try {
+                GraphicsResources.walk(page.commands(), ignored -> {
+                    if (count[0] == limits.maxCommands() - commands) {
+                        throw new UncheckedIOException(new IOException("PDF spool command budget exceeded"));
+                    }
+                    count[0]++;
+                });
+            } catch (UncheckedIOException failure) { throw failure.getCause(); }
+            return count[0];
         }
 
         @Override public void finish() throws IOException {

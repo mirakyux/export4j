@@ -13,7 +13,6 @@ import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineText;
-import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
@@ -65,7 +64,7 @@ final class DocxSemanticProjection {
             }
         }
         var mapped = DocxSemanticSupport.map(doc.body(), p -> portableParagraph(p, images, issues, policy));
-        var sections = mapped.sections().stream().map(s -> new Section(s.id(), s.pageSettings(), insertBoxes(s.blocks(), boxes, images, new HashSet<>(), issues, policy), s.firstPageNumber(), s.pageRegions().map((name, band) -> new PageRegion(band.height(), band.gap(), insertBoxes(band.blocks(), boxes, images, new HashSet<>(), issues, policy))))).toList();
+        var sections = mapped.sections().stream().map(s -> new Section(s.id(), s.pageSettings(), insertBoxes(s.blocks(), boxes, images, new HashSet<>(), issues, policy), s.firstPageNumber(), s.pageRegions().map((name, band) -> band.toBuilder().blocks(insertBoxes(band.blocks(), boxes, images, new HashSet<>(), issues, policy)).build()))).toList();
         return new DocumentConversion.Input(new SectionedDocument(mapped.metadata(), sections, mapped.navigation()), List.of(), new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues));
     }
     private static Paragraph portableParagraph(Paragraph paragraph, Map<Point, InlineImage> images, List<ProcessingIssue> issues, ProcessingPolicy policy) {

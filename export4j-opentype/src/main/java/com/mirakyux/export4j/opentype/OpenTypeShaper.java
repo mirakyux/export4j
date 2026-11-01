@@ -115,6 +115,7 @@ public final class OpenTypeShaper {
                 var result = new ArrayList<Glyph>();
                 double scale = options.fontSize() / font.unitsPerEm(), penX = 0, penY = 0;
                 long segments = 0, colorPixels = 0;
+                var colorGlyphs = font.color() ? NativeColor.colrGlyphs(nativeFont) : new java.util.BitSet();
                 for (int i = 0; i < count; i++) {
                     ExecutionContext.checkpoint();
                     var info = Objects.requireNonNull(infos).get(i); var position = Objects.requireNonNull(positions).get(i);
@@ -128,12 +129,13 @@ public final class OpenTypeShaper {
                     var paths = FontOutlines.paths(transformed);
                     segments += paths.stream().mapToLong(path -> path.segments().size()).sum();
                     if (segments > 2_000_000) { throw budget("shaped outline budget exceeded"); }
-                    List<DrawCommand> color = font.color() ? NativeColor.paint(nativeFont, info.codepoint(), font.palette(), options, foreground) : List.of();
+                    boolean colored = font.color() && NativeColor.hasGlyph(nativeFont, info.codepoint(), colorGlyphs);
+                    List<DrawCommand> color = colored ? NativeColor.paint(nativeFont, info.codepoint(), font.palette(), options, foreground) : List.of();
                     for (var command : color) {
                         if (command instanceof DrawCommand.Image image) { colorPixels += (long) image.image().width() * image.image().height(); }
                     }
                     if (colorPixels > 64_000_000) { throw budget("shaped run cumulative color pixel budget exceeded"); }
-                    if (font.color()) { paths = List.of(); }
+                    if (colored) { paths = List.of(); }
                     result.add(new Glyph(info.codepoint(), start, end, penX + position.x_offset() * scale,
                             penY - position.y_offset() * scale, position.x_advance() * scale, -position.y_advance() * scale, paths, color));
                     penX += position.x_advance() * scale; penY -= position.y_advance() * scale;

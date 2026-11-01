@@ -87,13 +87,16 @@ final class DesignerService {
         }
     }
     static XmlTemplateBundle.Builder defaults(String source) throws IOException {
+        return defaults(source, "ZCOOLXiaoWei-Regular.ttf", "ZCOOLXiaoWei-OFL.txt");
+    }
+    static XmlTemplateBundle.Builder defaults(String source, String chineseFont, String chineseLicense) throws IOException {
         return XmlTemplateBundle.builder(source).limits(new XmlTemplateBundle.Limits(16 * 1024 * 1024,
                 16 * 1024 * 1024, 256, 1_000_000, 8_000_000))
                 .font("Regular.ttf", resource("LiberationSans-Regular.ttf"))
                 .font("Bold.ttf", resource("LiberationSans-Bold.ttf"))
-                .font("Chinese.ttf", resource("ZCOOLXiaoWei-Regular.ttf"))
+                .font("Chinese.ttf", resource(chineseFont))
                 .license("LiberationSans-OFL.txt", new String(resource("LiberationSans-OFL.txt"), StandardCharsets.UTF_8))
-                .license("ZCOOLXiaoWei-OFL.txt", new String(resource("ZCOOLXiaoWei-OFL.txt"), StandardCharsets.UTF_8));
+                .license(chineseLicense, new String(resource(chineseLicense), StandardCharsets.UTF_8));
     }
     static DesignerProject open(Path path, String data) throws Exception {
         if (path.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".xml")) {
@@ -457,9 +460,9 @@ final class DesignerService {
             var engine = engine(project.bundle());
             DocumentConversion.Target target = switch (format) {
                 case PDF -> engine.conversionTarget("PDF", new PdfBackend());
-                case DOCX -> withRotationLoss(format, new DocxAdapter().conversionTarget());
-                case HTML -> withRotationLoss(format, new HtmlAdapter().conversionTarget());
-                case MARKDOWN -> withRotationLoss(format, new MarkdownAdapter().conversionTarget());
+                case DOCX -> withPageRegionLoss(format, new DocxAdapter().conversionTarget());
+                case HTML -> withPageRegionLoss(format, new HtmlAdapter().conversionTarget());
+                case MARKDOWN -> withPageRegionLoss(format, new MarkdownAdapter().conversionTarget());
                 case SVG, PNG -> new DocumentConversion.Target(format.name(), (document, notes, rules, output) -> {
                     var layout = engine(project.bundle(), notes).layout(document);
                     var display = layout.display(); var issues = new ArrayList<ProcessingIssue>();
@@ -496,19 +499,18 @@ final class DesignerService {
         });
     }
 
-    private static DocumentConversion.Target withRotationLoss(Format format, DocumentConversion.Target target) {
+    private static DocumentConversion.Target withPageRegionLoss(Format format, DocumentConversion.Target target) {
         return new DocumentConversion.Target(target.format(), (document, notes, rules, output) -> {
-            var issues = rotationLosses(document, format, rules);
+            var issues = pageRegionLosses(document, format, rules);
             var actual = target.writer().write(document, notes, rules, output);
             issues.addAll(actual.issues());
             return new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues);
         });
     }
 
-    private static ArrayList<ProcessingIssue> rotationLosses(SectionedDocument document, Format format, ProcessingPolicy rules) {
+    private static ArrayList<ProcessingIssue> pageRegionLosses(SectionedDocument document, Format format, ProcessingPolicy rules) {
         var issues = new ArrayList<ProcessingIssue>();
         for (var section : document.sections()) {
-            rotationBlocks(issues, format, rules, section.id(), "BODY", section.blocks());
             for (var region : section.pageRegions().headers()) {
                 regionLosses(issues, format, rules, section.id(), "HEADER", region);
             }
@@ -533,56 +535,6 @@ final class DesignerService {
             }
             issues.add(issue);
         }
-        rotationBlocks(issues, format, rules, section, name, region.blocks());
     }
 
-    private static void rotationBlocks(List<ProcessingIssue> issues, Format format, ProcessingPolicy rules,
-            String section, String region, List<com.mirakyux.export4j.model.Block> blocks) {
-            SemanticTree.walk(blocks, visit -> {
-                var block = visit.block();
-                double angle = switch (block) {
-                    case com.mirakyux.export4j.model.Paragraph p -> p.format().rotation();
-                    case com.mirakyux.export4j.model.Heading h -> h.format().rotation();
-                    case com.mirakyux.export4j.model.BulletItem b -> b.format().rotation();
-                    case com.mirakyux.export4j.model.NumberedItem n -> n.format().rotation();
-                    case com.mirakyux.export4j.model.Caption c -> c.format().rotation();
-                    case com.mirakyux.export4j.model.CrossReference r -> r.format().rotation();
-                    case com.mirakyux.export4j.model.Table t -> t.format().rotation();
-                    default -> 0;
-                };
-                if (angle != 0) { rotationIssue(issues, format, rules, section, region, block.id(), -1, -1); }
-                if (block instanceof com.mirakyux.export4j.model.Paragraph p) {
-                    for (var image : p.images()) {
-                        if (image.image().rotation() != 0) {
-                            rotationIssue(issues, format, rules, section, region, p.id(), image.sourceIndex(), image.sourceIndex() + 1);
-                        }
-                    }
-                }
-                if (block instanceof com.mirakyux.export4j.model.Table table) {
-                    for (var row : table.rows()) {
-                        for (var cell : row.cells()) {
-                            for (var image : cell.images()) {
-                                if (image.image().rotation() != 0) {
-                                    rotationIssue(issues, format, rules, section, region, table.id(), -1, -1);
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-    }
-
-    private static void rotationIssue(List<ProcessingIssue> issues, Format format, ProcessingPolicy rules,
-            String section, String region, String block, int start, int end) {
-        var rule = rules.resolve(format.name(), "ELEMENT_ROTATION", "EXPORT");
-        var issue = new ProcessingIssue("EXPORT", "MODEL", format.name(), "ELEMENT_ROTATION", "EXPORT",
-                new ProcessingIssue.Location(section, region, block, List.of(), start, end),
-                "target format retains content but cannot retain element rotation", rule.action(), rule.treatment(),
-                List.of("ROTATION_REMOVED"));
-        if (rule.action() == ProcessingPolicy.Action.ERROR) { throw new ProcessingException(issue); }
-        if (rule.treatment() != ProcessingPolicy.Treatment.DEGRADE) {
-            throw new IllegalArgumentException("element rotation loss requires DEGRADE");
-        }
-        issues.add(issue);
-    }
 }

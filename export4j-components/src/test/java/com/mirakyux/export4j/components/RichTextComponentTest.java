@@ -66,6 +66,51 @@ class RichTextComponentTest {
         assertThrows(IllegalArgumentException.class, () -> rich.flow(com.mirakyux.export4j.model.PaginationPolicy.builder().keepWithNext(true).build()));
     }
 
+    @Test void splittableGridKeepsRichRunsAcrossFixedAndChangingWidths() {
+        String first = "alpha beta gamma delta ".repeat(18);
+        String second = "ONE\nTWO\nTHREE\nFOUR";
+        var rich = RichTextComponent.builder().lineHeight(20)
+                .add(first, new InlineStyle("bold", 10, 0xff0000, 0, true, false))
+                .add(second, new InlineStyle("italic", 10, 0x0000ff, 0, false, true)).build();
+        var grid = GridTable.builder().columns(1).allowRowSplit(true).defaults(cell -> cell.padding(2))
+                .row(row -> row.cell(rich.flow(new com.mirakyux.export4j.model.PaginationPolicy(false, false, 2, 2)))).build();
+        var regions = new FlowRegions(List.of(1.0), 100);
+        var fixed = grid.layoutRegions(context(200, 100), regions);
+        var changing = grid.layoutVariableRegions(context(200, 100), regions, List.of(110.0, 200.0));
+        for (var parts : List.of(fixed, changing)) {
+            assertEquals(1, parts.getFirst().regionIndex(), "a short initial region must consume no source");
+            assertTrue(parts.size() > 2);
+            assertEquals((first + second).replaceAll("\\s", ""), parts.stream().map(part -> logical(part.layout()))
+                    .collect(Collectors.joining()).replaceAll("\\s", ""));
+            assertTrue(parts.stream().allMatch(part -> part.layout().height() <= 100));
+            var runs = parts.stream().flatMap(part -> glyphs(part.layout()).stream()).toList();
+            assertTrue(runs.stream().filter(run -> run.color().equals(RED))
+                    .allMatch(run -> run.run().font().id().equals(bold.fonts().getFirst().data().id())));
+            assertTrue(runs.stream().filter(run -> run.color().equals(BLUE))
+                    .allMatch(run -> run.run().font().id().equals(italic.fonts().getFirst().data().id())));
+            assertTrue(runs.stream().anyMatch(run -> run.color().equals(RED)));
+            assertTrue(runs.stream().anyMatch(run -> run.color().equals(BLUE)));
+        }
+        assertEquals(java.util.Set.of(110.0, 200.0), changing.stream().map(part -> part.layout().width()).collect(Collectors.toSet()));
+        assertThrows(IllegalArgumentException.class, () -> grid.layoutParts(context(200, 30)));
+    }
+
+    @Test void richGridContinuationDiagnosticsRetainOriginalUtf16SourceOnce() {
+        String source = "BEFORE\n".repeat(12) + "😀 END";
+        var rich = RichTextComponent.builder().add(source, InlineStyle.of(10)).lineHeight(20).build();
+        var placeholder = FontGroup.placeholder(regular.fonts(), '?');
+        var scoped = context(200, 100).withFonts(placeholder);
+        var grid = GridTable.builder().columns(1).allowRowSplit(true).defaults(cell -> cell.padding(0))
+                .row(row -> row.cell(rich.flow())).build();
+        for (var parts : List.of(grid.layoutRegions(scoped, new FlowRegions(List.of(1.0), 100)),
+                grid.layoutVariableRegions(scoped, new FlowRegions(List.of(1.0), 100), List.of(110.0, 200.0)))) {
+            var diagnostics = parts.stream().flatMap(part -> part.layout().diagnostics().stream()).toList();
+            assertEquals(1, diagnostics.size());
+            assertEquals(source.indexOf("😀"), diagnostics.getFirst().sourceStart());
+            assertEquals(source.indexOf("😀") + 2, diagnostics.getFirst().sourceEnd());
+        }
+    }
+
     @Test void realFontVariantsColorsDecorationsAndBaselineShiftsReachDrawingCommands() {
         var rich = RichTextComponent.builder()
                 .add("A", new InlineStyle("bold", 12, 0xff0000, 0, true, false))

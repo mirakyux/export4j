@@ -2,7 +2,6 @@
 """Independent XML/ZIP and final reference PDF content, destinations and render controls."""
 import argparse
 import csv
-import hashlib
 from importlib.metadata import version
 import json
 from pathlib import Path
@@ -15,7 +14,7 @@ from pypdf import PdfReader
 import pypdfium2 as pdfium
 from verify_adr_form import render
 from verify_advanced_pdf import difference, require
-from verify_production import check_bundle
+from verify_distributed_libraries import distributed_libraries
 from verify_semantic_tables import annotations
 from verify_streaming_rich_text import painted_spans, physical_fonts
 from verify_web_exports import Tree, safe
@@ -101,17 +100,7 @@ def web():
 
 
 def libraries(consumer):
-    check_bundle(consumer)
-    components = json.loads((ROOT / "build/reports/sbom.cdx.json").read_text(encoding="utf-8"))["components"]
-    own = [item for item in components if item["group"] == "com.mirakyux.export4j"]
-    require(len(own) == 15, "reference library inventory changed")
-    archives = list((consumer / "distributions").glob("*.zip"))
-    require(len(archives) == 1, "reference caller distribution ambiguous")
-    with ZipFile(archives[0]) as archive:
-        for item in own:
-            matches = [n for n in archive.namelist() if n.endswith("/" + item["name"] + "-" + item["version"] + ".jar")]
-            require(len(matches) == 1 and hashlib.sha256(archive.read(matches[0])).hexdigest() == item["hashes"][0]["content"],
-                    "reference caller distribution has stale library bytes")
+    return distributed_libraries(consumer, ROOT)
 
 
 def main():
@@ -121,7 +110,7 @@ def main():
     versions = {name: version(name) for name in ("pypdf", "pypdfium2", "Pillow", "markdown-it-py")}
     require(versions == {"pypdf": "6.10.0", "pypdfium2": "5.13.0", "Pillow": "12.3.0", "markdown-it-py": "4.0.0"}, "install pinned verification requirements")
     consumer = args.consumer_build_directory or Path((ROOT / "build/verification/consumer-build-directory.txt").read_text().strip())
-    libraries(consumer)
+    library_count = libraries(consumer)
     caller = consumer / "output"
     OUTPUT.mkdir(parents=True, exist_ok=True)
     original, root = bundle(SOURCE / "original.zip")
@@ -154,7 +143,7 @@ def main():
         require([exact_pixels(a, b) for a, b in zip(controls["source"], controls[name], strict=True)] == [False, True, True], "reference edit escaped its page")
     web()
     (OUTPUT / "report.json").write_text(json.dumps({"zipFiles": 5, "modelCycles": 3, "pdfPages": 16, "webFiles": 4,
-        "unchangedPixelExact": True, "consumerLibraries": 15, "versions": versions, "dualRender": metrics}, indent=2) + "\n")
+        "unchangedPixelExact": True, "consumerLibraries": library_count, "versions": versions, "dualRender": metrics}, indent=2) + "\n")
     print("XML independent references: 5 ZIPs, 3 cycles, 16 PDF pages, retargeted destinations, lexical copies and Web actions verified")
 
 

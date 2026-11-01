@@ -80,7 +80,7 @@ LF、CR 和 CRLF 产生显式换行，空输入及末尾换行保留空行。行
 
 ## 塑形支持边界
 
-`TextShaper` 是扩展接口。`SimpleTextShaper` 对普通水平拉丁、汉字、希腊、西里尔、假名与预组合韩文逐码点映射，不实现 kerning、连字、字形簇、字形偏移、GSUB/GPOS 或双向排序。显式注入该 shaper 时保持严格限制。默认 `ParagraphLayouter` 对复杂文字与 CFF 改走公共 JDK OpenType 路径，语义段落、单元格和固定页区可共享塑形结果。纯拉丁文字显式 kerning／连字开关仍使用组件 `OpenTypeText`，详见[能力指南](capabilities-api.md)。
+`TextShaper` 是扩展接口。`SimpleTextShaper` 对普通水平拉丁、汉字、希腊、西里尔、假名与预组合韩文逐码点映射，不实现 kerning、连字、字形簇、字形偏移、GSUB/GPOS 或双向排序。显式注入该 shaper 时保持严格限制。默认 `ParagraphLayouter` 对复杂文字使用公共 JDK OpenType 路径；静态 CFF 的简单文字可保留原生字形映射，复杂塑形或显式 `layoutOpenType` 才使用轮廓。语义段落、单元格和固定页区共享此路由。纯拉丁文字显式 kerning／连字开关仍使用组件 `OpenTypeText`，详见[能力指南](capabilities-api.md)。
 
 简单塑形器拒绝复杂或双向脚本、组合标记和多码点序列。默认公共路径支持样例中的阿拉伯语、希伯来语与组合字符，每个字形簇必须由一个显式物理字体覆盖；跨样式边界的字形簇明确失败。普通补充平面码点可以参与布局，但实际字体必须提供字形；这不代表支持多码点 emoji 序列或彩色 emoji。调用方可显式预先做 Unicode 规范化，库不隐式改写原文。
 

@@ -2,33 +2,114 @@
 package com.mirakyux.export4j.adapter.docx;
 
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.Heading;
+import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineField;
+import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.Note;
+import com.mirakyux.export4j.model.NumberedItem;
+import com.mirakyux.export4j.model.PageRegion;
+import com.mirakyux.export4j.model.PageRegions;
+import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
+import com.mirakyux.export4j.model.Section;
+import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
+import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.processing.DocumentConversion;
 import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.awt.image.BufferedImage;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocxConversionTest {
+    @Test void rotatedCaptionsAndReferencesReportBothContainerAndRotationLosses() throws Exception {
+        var rotated = ParagraphFormat.of(12).toBuilder().rotation(45).build();
+        var source = Document.builder().add(new Caption("caption", "Figure", "Caption", rotated))
+                .add(new CrossReference("reference", "See ", "caption", CrossReference.Kind.PAGE, rotated)).build();
+        for (var action : List.of(ProcessingPolicy.Action.WARN, ProcessingPolicy.Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().defaultRule(action, ProcessingPolicy.Treatment.DEGRADE).build();
+            var prepared = DocumentConversion.from(source).policy(policy).prepare(new DocxAdapter().conversionTarget());
+            var actual = prepared.to(new ByteArrayOutputStream());
+            assertEquals(List.of("CAPTION", "ELEMENT_ROTATION", "CROSS_REFERENCE", "ELEMENT_ROTATION"),
+                    actual.report().losses().stream().map(issue -> issue.feature()).toList());
+            assertEquals(prepared.preview().issues(), actual.report().issues());
+        }
+    }
+    @Test void rotationRequiresExplicitDegradationForParagraphsTablesImagesAndBands() throws Exception {
+        var pixels = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+        var encodedImage = new ByteArrayOutputStream();
+        try { assertTrue(ImageIO.write(pixels, "png", encodedImage)); } finally { pixels.flush(); }
+        var image = new InlineImage(ImageResource.load(encodedImage.toByteArray()), 12, 12, 0, "Image", "", 45);
+        var rotated = ParagraphFormat.of(12).toBuilder().rotation(90).build();
+        var nested = new Paragraph("nested", "Nested", rotated);
+        var table = Table.builder("table").columns(new ColumnWidth.Fraction(1))
+                .format(com.mirakyux.export4j.model.TableFormat.DEFAULT.toBuilder().rotation(-30).build())
+                .row(TableCell.builder().blocks(List.of(nested)).build())
+                .row(TableCell.builder().content(List.of(image)).build()).build();
+        var bands = PageRegions.builder().header(new PageRegion(20, 0, List.of(new Paragraph("header", "Header", rotated)))).build();
+        var source = new SectionedDocument(DocumentMetadata.EMPTY, List.of(new Section("s", PageSettings.A4, List.of(
+                Paragraph.mixed("body", List.of(new InlineText("😀", InlineStyle.of(12)), image), rotated),
+                new Heading("heading", "Heading", 1, rotated),
+                new BulletItem("bullet", "Bullet", "•", 1, rotated),
+                new NumberedItem("number", "list", "Number", 0, rotated), table), 0, bands)));
+        var adapter = new DocxAdapter(); var rejected = new ByteArrayOutputStream();
+        assertThrows(java.io.IOException.class, () -> adapter.write(source, rejected)); assertEquals(0, rejected.size());
+        assertEquals("ELEMENT_ROTATION", assertThrows(ProcessingException.class,
+                () -> DocumentConversion.from(source, List.of()).prepare(adapter.conversionTarget())).issue().feature());
+        for (var action : List.of(ProcessingPolicy.Action.WARN, ProcessingPolicy.Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().feature("ELEMENT_ROTATION", action, ProcessingPolicy.Treatment.DEGRADE).build();
+            var prepared = DocumentConversion.from(source, List.of()).policy(policy).prepare(adapter.conversionTarget());
+            var output = new ByteArrayOutputStream(); var actual = prepared.to(output);
+            assertEquals(prepared.preview().issues(), actual.report().issues());
+            assertEquals(9, actual.report().losses().size());
+            assertTrue(actual.report().losses().stream().allMatch(issue -> issue.feature().equals("ELEMENT_ROTATION") && issue.effects().equals(List.of("ROTATION_REMOVED"))));
+            assertEquals(action == ProcessingPolicy.Action.WARN ? 9 : 0, actual.report().warnings().size());
+            var imageLoss = actual.report().losses().stream().filter(issue -> issue.location().blockId().equals("body") && issue.location().startUtf16() == 2).findFirst().orElseThrow();
+            assertEquals(3, imageLoss.location().endUtf16());
+            assertTrue(actual.report().losses().stream().anyMatch(issue -> issue.location().blockId().equals("nested") && issue.location().cellPath().size() == 1));
+            assertTrue(actual.report().losses().stream().anyMatch(issue -> issue.location().region().equals("HEADER")));
+            var restored = adapter.read(new ByteArrayInputStream(output.toByteArray()), DocxAdapter.Policy.STRICT).document();
+            var stories = new java.util.ArrayList<>(restored.sections().getFirst().blocks());
+            stories.addAll(restored.sections().getFirst().pageRegions().header().blocks());
+            SemanticTree.walk(stories, visit -> {
+                if (visit.block() instanceof Table value) {
+                    assertEquals(0, value.format().rotation());
+                    for (var row : value.rows()) { for (var cell : row.cells()) {
+                        if (!cell.hasBlocks()) { for (var span : cell.images()) { assertEquals(0, span.image().rotation()); } }
+                    } }
+                } else {
+                    var paragraph = DocxSemanticSupport.paragraph(visit.block());
+                    assertEquals(0, paragraph.format().rotation());
+                    for (var span : paragraph.images()) { assertEquals(0, span.image().rotation()); }
+                }
+            });
+        }
+        assertEquals(90, ((Paragraph) source.sections().getFirst().blocks().getFirst()).format().rotation());
+        assertEquals(45, image.rotation());
+        var preserve = ProcessingPolicy.builder().feature("ELEMENT_ROTATION", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.PRESERVE).build();
+        assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(source, List.of()).policy(preserve).prepare(adapter.conversionTarget()));
+    }
     @Test void portableNavigationIsExplicitlyDiscardedWithoutHidingOldDeclarations() throws Exception {
         var source = new com.mirakyux.export4j.model.SectionedDocument(com.mirakyux.export4j.model.DocumentMetadata.EMPTY,
                 List.of(new com.mirakyux.export4j.model.Section("s", com.mirakyux.export4j.model.PageSettings.A4,

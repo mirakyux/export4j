@@ -287,7 +287,17 @@ public final class DesignerApp {
             var images = new ArrayList<Object>(); project.bundle().images().forEach((name, image) -> images.add(BindingJson.object("name", name, "width", image.pixelWidth(), "height", image.pixelHeight())));
             return BindingJson.object("revision", revision, "source", project.bundle().source(), "data", project.data(), "outline", entry(DesignerXml.outline(DesignerXml.parse(project.bundle().source()).getDocumentElement(), "")),
                     "fonts", fonts, "images", images, "fragments", project.bundle().fragments(), "licenses", project.bundle().licenses().keySet().stream().sorted().toList(),
+                    "resourceIdentity", resourceIdentity(project.bundle()),
                     "canUndo", history.canUndo(), "canRedo", history.canRedo(), "samples", DesignerSamples.catalog());
+        }
+        private static String resourceIdentity(com.mirakyux.export4j.adapter.template.XmlTemplateBundle bundle) throws Exception {
+            var resources = new java.util.TreeMap<String, String>();
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            bundle.fonts().forEach((name, bytes) -> resources.put("fonts/" + name, java.util.HexFormat.of().formatHex(digest.digest(bytes))));
+            bundle.images().forEach((name, image) -> resources.put("images/" + name, image.id()));
+            bundle.fragments().forEach((name, source) -> resources.put("fragments/" + name, source));
+            bundle.licenses().forEach((name, source) -> resources.put("licenses/" + name, source));
+            return java.util.HexFormat.of().formatHex(digest.digest(BindingJson.write(resources).getBytes(StandardCharsets.UTF_8)));
         }
         private static Map<String, Object> entry(DesignerXml.Entry entry) { return BindingJson.object("path", entry.path(), "tag", entry.tag(), "id", entry.id(), "label", entry.label(), "children", entry.children().stream().map(Server::entry).toList()); }
         private static Object report(ProcessingReport report) {

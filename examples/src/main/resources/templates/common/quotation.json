@@ -1,0 +1,436 @@
+{
+  "quote": {
+    "title": "业务文档工作台建设项目 · 商务报价书",
+    "number": "DEMO-Q-2026-001",
+    "issued": "2026-01-12",
+    "validUntil": "2026-02-11",
+    "currency": "人民币 / CNY",
+    "subtotal": "91700.00",
+    "discountRate": "5%",
+    "discount": "4585.00",
+    "net": "87115.00",
+    "discountedTax": "5226.90",
+    "payable": "92341.90",
+    "taxRate": "6%",
+    "tax": "5502.00",
+    "total": "97202.00",
+    "summary": "本方案覆盖需求梳理、核心实现、接口适配、质量验证及交付支持。报价依据已确认的六类文档场景与三类业务接口，采用分阶段交付和可复现的验收清单控制范围。",
+    "duration": "计划周期 10 周；客户侧资料、测试环境及接口条件按下列前提就绪后启动。"
+  },
+  "seller": {
+    "name": "示例技术服务有限公司（虚构）",
+    "contact": "示例商务部",
+    "email": "sales@example.com",
+    "address": "示例市示例路 100 号（虚构）"
+  },
+  "buyer": {
+    "name": "示例采购单位（虚构）",
+    "contact": "示例项目负责人",
+    "email": "buyer@example.com",
+    "project": "示例业务系统文档工作台建设"
+  },
+  "items": [
+    {
+      "group": "需求与治理",
+      "name": "业务访谈与现状调研",
+      "quantity": "3",
+      "unit": "人日",
+      "unitPrice": "1600.00",
+      "description": "访谈业务、运营与技术代表，整理现状流程和约束。",
+      "deliverable": "调研纪要、现状流程图",
+      "acceptance": "关键参与方确认问题清单",
+      "number": "01",
+      "amount": "4800.00"
+    },
+    {
+      "group": "需求与治理",
+      "name": "字段字典与数据分级",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1600.00",
+      "description": "统一字段含义、必填规则和敏感信息处理要求。",
+      "deliverable": "字段字典、数据分级表",
+      "acceptance": "覆盖本轮全部输入输出字段",
+      "number": "02",
+      "amount": "3200.00"
+    },
+    {
+      "group": "需求与治理",
+      "name": "方案与接口边界设计",
+      "quantity": "3",
+      "unit": "人日",
+      "unitPrice": "1800.00",
+      "description": "定义模块职责、接口契约和失败处理边界。",
+      "deliverable": "方案说明、接口清单",
+      "acceptance": "评审问题关闭并留存结论",
+      "number": "03",
+      "amount": "5400.00"
+    },
+    {
+      "group": "需求与治理",
+      "name": "项目计划与验收基线",
+      "quantity": "1",
+      "unit": "人日",
+      "unitPrice": "1500.00",
+      "description": "拆分里程碑、责任人及可复现的验收场景。",
+      "deliverable": "实施计划、验收清单",
+      "acceptance": "双方确认范围及节点",
+      "number": "04",
+      "amount": "1500.00"
+    },
+    {
+      "group": "核心实现",
+      "name": "模板目录与版本管理",
+      "quantity": "4",
+      "unit": "人日",
+      "unitPrice": "1500.00",
+      "description": "管理模板标识、说明、版本和启停状态。",
+      "deliverable": "管理页面、版本接口",
+      "acceptance": "支持新增、修改及停用流程",
+      "number": "05",
+      "amount": "6000.00"
+    },
+    {
+      "group": "核心实现",
+      "name": "字段映射与输入校验",
+      "quantity": "4",
+      "unit": "人日",
+      "unitPrice": "1500.00",
+      "description": "实现字段映射、类型检查和缺省值处理。",
+      "deliverable": "映射配置、校验规则",
+      "acceptance": "错误返回含明确字段定位",
+      "number": "06",
+      "amount": "6000.00"
+    },
+    {
+      "group": "核心实现",
+      "name": "文档生成任务管理",
+      "quantity": "5",
+      "unit": "人日",
+      "unitPrice": "1600.00",
+      "description": "实现任务状态、有限重试与同步取消。",
+      "deliverable": "任务接口、执行记录",
+      "acceptance": "失败与取消不会伪造成功",
+      "number": "07",
+      "amount": "8000.00"
+    },
+    {
+      "group": "核心实现",
+      "name": "批量处理与结果清单",
+      "quantity": "4",
+      "unit": "人日",
+      "unitPrice": "1600.00",
+      "description": "支持受控批次及逐条结果追踪。",
+      "deliverable": "批次入口、结果下载",
+      "acceptance": "单条失败可独立诊断",
+      "number": "08",
+      "amount": "6400.00"
+    },
+    {
+      "group": "核心实现",
+      "name": "权限与操作审计",
+      "quantity": "3",
+      "unit": "人日",
+      "unitPrice": "1600.00",
+      "description": "按角色限制模板和结果访问并记录关键操作。",
+      "deliverable": "权限配置、审计事件",
+      "acceptance": "越权访问被明确拒绝",
+      "number": "09",
+      "amount": "4800.00"
+    },
+    {
+      "group": "核心实现",
+      "name": "可观测性与问题定位",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1600.00",
+      "description": "提供关联标识、错误分类和容量监测指标。",
+      "deliverable": "运行指标、排查说明",
+      "acceptance": "可定位一次失败的执行链路",
+      "number": "10",
+      "amount": "3200.00"
+    },
+    {
+      "group": "接口与迁移",
+      "name": "统一身份接入",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1700.00",
+      "description": "对接已确认的测试身份服务。",
+      "deliverable": "身份适配、联调记录",
+      "acceptance": "登录过期和权限变更可验证",
+      "number": "11",
+      "amount": "3400.00"
+    },
+    {
+      "group": "接口与迁移",
+      "name": "业务数据查询接口",
+      "quantity": "3",
+      "unit": "人日",
+      "unitPrice": "1700.00",
+      "description": "接入三类业务查询并隔离超时和分页。",
+      "deliverable": "数据适配、契约样例",
+      "acceptance": "返回字段与确认契约一致",
+      "number": "12",
+      "amount": "5100.00"
+    },
+    {
+      "group": "接口与迁移",
+      "name": "文件存储与下载接入",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1700.00",
+      "description": "对接客户提供的对象存储及临时下载授权。",
+      "deliverable": "存储适配、下载校验",
+      "acceptance": "临时授权到期后不可访问",
+      "number": "13",
+      "amount": "3400.00"
+    },
+    {
+      "group": "接口与迁移",
+      "name": "历史模板迁移演练",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1500.00",
+      "description": "迁移六份已确认模板并登记兼容损失。",
+      "deliverable": "迁移记录、损失清单",
+      "acceptance": "逐份核对字段与输出内容",
+      "number": "14",
+      "amount": "3000.00"
+    },
+    {
+      "group": "质量与安全",
+      "name": "核心流程回归验证",
+      "quantity": "4",
+      "unit": "人日",
+      "unitPrice": "1400.00",
+      "description": "覆盖正常、异常、取消及重复请求路径。",
+      "deliverable": "回归记录、缺陷清单",
+      "acceptance": "关键链路检查全部通过",
+      "number": "15",
+      "amount": "5600.00"
+    },
+    {
+      "group": "质量与安全",
+      "name": "容量与资源验证",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1600.00",
+      "description": "按约定批量及并发测量耗时和峰值资源。",
+      "deliverable": "容量记录、推荐配置",
+      "acceptance": "达到书面约定的容量基线",
+      "number": "16",
+      "amount": "3200.00"
+    },
+    {
+      "group": "质量与安全",
+      "name": "输入与资源边界检查",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1700.00",
+      "description": "验证非法输入、资源上限及失败时目标保护。",
+      "deliverable": "边界检查、整改记录",
+      "acceptance": "高优先问题完成修复复验",
+      "number": "17",
+      "amount": "3400.00"
+    },
+    {
+      "group": "质量与安全",
+      "name": "备份与恢复演练",
+      "quantity": "1",
+      "unit": "人日",
+      "unitPrice": "1500.00",
+      "description": "演练模板、配置和结果清单恢复步骤。",
+      "deliverable": "恢复步骤、演练记录",
+      "acceptance": "在测试环境完成恢复核对",
+      "number": "18",
+      "amount": "1500.00"
+    },
+    {
+      "group": "交付与支持",
+      "name": "部署与回退准备",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1500.00",
+      "description": "编制部署配置、检查清单及可执行回退步骤。",
+      "deliverable": "部署包、回退说明",
+      "acceptance": "测试环境实际演练通过",
+      "number": "19",
+      "amount": "3000.00"
+    },
+    {
+      "group": "交付与支持",
+      "name": "操作培训",
+      "quantity": "2",
+      "unit": "场",
+      "unitPrice": "1800.00",
+      "description": "分别面向模板维护人员和运行管理人员培训。",
+      "deliverable": "培训材料、问题答复",
+      "acceptance": "完成两场演示与操作练习",
+      "number": "20",
+      "amount": "3600.00"
+    },
+    {
+      "group": "交付与支持",
+      "name": "试运行观察与问题关闭",
+      "quantity": "3",
+      "unit": "人日",
+      "unitPrice": "1400.00",
+      "description": "跟踪试运行问题并按优先级关闭。",
+      "deliverable": "问题台账、关闭证据",
+      "acceptance": "无未处置的阻断问题",
+      "number": "21",
+      "amount": "4200.00"
+    },
+    {
+      "group": "交付与支持",
+      "name": "成果移交与验收支持",
+      "quantity": "2",
+      "unit": "人日",
+      "unitPrice": "1500.00",
+      "description": "整理源码、配置、文档和使用资源的许可清单。",
+      "deliverable": "交付清单、验收纪要",
+      "acceptance": "交付项有唯一版本及接收记录",
+      "number": "22",
+      "amount": "3000.00"
+    }
+  ],
+  "groupTotals": [
+    {
+      "name": "需求与治理",
+      "count": "4",
+      "amount": "14900.00"
+    },
+    {
+      "name": "核心实现",
+      "count": "6",
+      "amount": "34400.00"
+    },
+    {
+      "name": "接口与迁移",
+      "count": "4",
+      "amount": "14900.00"
+    },
+    {
+      "name": "质量与安全",
+      "count": "4",
+      "amount": "13700.00"
+    },
+    {
+      "name": "交付与支持",
+      "count": "4",
+      "amount": "13800.00"
+    }
+  ],
+  "deliveries": [
+    {
+      "phase": "D1 / 范围基线",
+      "date": "第 1—2 周",
+      "output": "需求清单、字段字典、接口及验收基线",
+      "evidence": "双方评审纪要、范围确认版本"
+    },
+    {
+      "phase": "D2 / 可运行主链路",
+      "date": "第 3—5 周",
+      "output": "模板管理、字段绑定和单任务生成",
+      "evidence": "演示脚本、已知限制及检查记录"
+    },
+    {
+      "phase": "D3 / 接口及批处理",
+      "date": "第 6—7 周",
+      "output": "身份、存储及业务接口，批次结果清单",
+      "evidence": "联调记录、错误及取消路径验证"
+    },
+    {
+      "phase": "D4 / 质量与演练",
+      "date": "第 8—9 周",
+      "output": "回归、容量、输入边界及恢复演练",
+      "evidence": "缺陷关闭证据、资源测量及恢复记录"
+    },
+    {
+      "phase": "D5 / 验收移交",
+      "date": "第 10 周",
+      "output": "部署包、文档、培训与成果移交",
+      "evidence": "正式交付清单、验收及接收纪要"
+    }
+  ],
+  "sla": [
+    {
+      "level": "P1 / 阻断",
+      "trigger": "核心生成流程持续不可用且无可用替代方案",
+      "response": "工作时段 1 小时内响应",
+      "target": "4 小时内给出处置或绕行方案",
+      "boundary": "修复时间按实际根因评估并持续同步"
+    },
+    {
+      "level": "P2 / 主要",
+      "trigger": "受支持流程异常，但存在可用绕行方式",
+      "response": "工作时段 4 小时内响应",
+      "target": "1 个工作日内给出处理计划",
+      "boundary": "不承诺第三方服务故障的恢复时限"
+    },
+    {
+      "level": "P3 / 一般",
+      "trigger": "界面、说明或局部体验问题",
+      "response": "1 个工作日内响应",
+      "target": "纳入双方确认的修订批次",
+      "boundary": "不影响已确认的核心流程验收"
+    }
+  ],
+  "payments": [
+    {
+      "stage": "启动款",
+      "percent": "30%",
+      "condition": "范围基线确认、项目启动资料及付款通知齐备后支付。"
+    },
+    {
+      "stage": "阶段款",
+      "percent": "40%",
+      "condition": "完成 D3 演示，接口及批处理交付材料经确认后支付。"
+    },
+    {
+      "stage": "验收款",
+      "percent": "30%",
+      "condition": "D5 验收通过，资料移交与接收记录完成后支付。"
+    }
+  ],
+  "assumptions": [
+    {
+      "text": "客户指定一名有决策权限的项目联系人，业务问题通常在两个工作日内集中答复；重要范围调整保留书面结论。"
+    },
+    {
+      "text": "客户提供可用测试环境、测试账号及已确认接口文档。全部演示数据使用虚构或经处理的数据，真实业务数据的合法提供与授权由客户负责。"
+    },
+    {
+      "text": "容量验证基于约定的文档复杂度、批量和机器配置；超出基线的高并发、超长表格或特殊字体需要另行评估。"
+    }
+  ],
+  "exclusions": [
+    {
+      "text": "本报价不包含第三方软件许可、云资源费用、商用证书、硬件采购及长期生产运维。相关采购由客户单独安排。"
+    },
+    {
+      "text": "不包含未列明的历史数据清洗、扫描件识别、任意 Office 文档无损转换及法律或监管合规认证。"
+    },
+    {
+      "text": "新增外部接口、额外文档类型、重大流程变更及超出试运行期的持续支持，须另行确认工作量、费用和时间。"
+    }
+  ],
+  "terms": [
+    {
+      "text": "明细单价为未税价，标准含税合计按演示税率 6% 计算。另列 5% 项目优惠测算供商务确认；未经书面确认不替代标准报价，实际税务处理以适用规则及合同为准。"
+    },
+    {
+      "text": "报价有效期至 2026-02-11。到期后或项目范围、前提条件发生实质变化时，双方重新确认；本报价不直接替代正式合同。"
+    },
+    {
+      "text": "交付物以清单中的版本和接收记录为准。涉及第三方资源时提供来源及许可说明，双方原有工具和通用知识按合同约定保留。"
+    }
+  ],
+  "confirmation": {
+    "scope": "确认所选交付范围、接口和文档数量；无未说明的关键依赖。",
+    "commercial": "确认金额、折扣、税额、付款节点与报价有效期。",
+    "signature": "报价方授权代表：________________    客户授权代表：________________",
+    "date": "确认日期：________________        确认日期：________________"
+  }
+}

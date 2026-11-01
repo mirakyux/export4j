@@ -13,13 +13,16 @@ import java.util.Map;
 
 /** Reproducible templates, source-preserving edits, measured costs and real failure boundaries. */
 public final class DesignerScenarios {
+    // Source-edit regression scenarios have dedicated markers; the UI catalog can grow independently.
+    private static final List<Integer> SOURCE_EDIT_SAMPLES = List.of(0, 1, 2, 3, 4);
+
     private DesignerScenarios() { }
     /** Writes to a new output directory; timings and memory observations are environment-specific. */
     public static void main(String[] arguments) throws Exception {
         if (arguments.length != 1) { throw new IllegalArgumentException("provide one new output directory"); }
         Path output = Path.of(arguments[0]); Files.createDirectory(output);
         var scenarios = new ArrayList<Object>();
-        for (int sample = 0; sample < DesignerSamples.NAMES.size(); sample++) {
+        for (int sample : SOURCE_EDIT_SAMPLES) {
             long start = System.nanoTime();
             var project = DesignerSamples.create(sample); Path directory = Files.createDirectory(output.resolve("scenario-" + (sample + 1)));
             project.bundle().write(directory.resolve("template.zip")); DesignerService.saveText(directory.resolve("template.xml"), project.bundle().source());

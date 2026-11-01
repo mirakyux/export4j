@@ -181,8 +181,9 @@ public final class StreamingReplayRequest {
                                 var shifted = new LayoutPage(page.pageIndex() + contentsPages, page.size(), page.contentBounds(), withNotes.elements());
                                 var resolved = resolve(shifted, sources);
                                 extraLines += lineCount(withNotes) - lineCount(page);
-                                var links = externalLinks(resolved, sources);
-                                var display = DocumentPainter.paintPage(resolved); commands = Math.addExact(commands, display.commands().size());
+                                var rotations = sourceRotations(sources);
+                                var links = externalLinks(resolved, sources, rotations);
+                                var display = DocumentPainter.paintPage(resolved, rotations); commands = Math.addExact(commands, display.commands().size());
                                 writer.accept(display, links);
                             });
                     hashed.verifyProbe();
@@ -206,9 +207,11 @@ public final class StreamingReplayRequest {
                 try (var source = Objects.requireNonNull(factory.open(), "row source")) {
                     result = new SemanticStreamingTableLayouter().layout(table, source, fonts, roles, limits, Map.of(),
                             (page, notes, sources) -> {
-                                var resolved = resolve(page, sources); var display = DocumentPainter.paintPage(resolved);
+                                var resolved = resolve(page, sources);
+                                var rotations = sourceRotations(sources);
+                                var display = DocumentPainter.paintPage(resolved, rotations);
                                 commands = Math.addExact(commands, display.commands().size());
-                                writer.accept(display, externalLinks(resolved, sources));
+                                writer.accept(display, externalLinks(resolved, sources, rotations));
                             });
                 }
                 writer.finish();
@@ -414,12 +417,17 @@ public final class StreamingReplayRequest {
             ExecutionContext.checkpoint();
         }
 
-        private List<DocumentExtras.ExternalLink> externalLinks(LayoutPage page, Map<SemanticStreamingTableLayouter.CellKey, TableCell> sources) {
+        private Map<String, Double> sourceRotations(Map<SemanticStreamingTableLayouter.CellKey, TableCell> sources) {
+            return ModelRotations.of(sources.values().stream().flatMap(cell -> cell.blocks().stream()).toList());
+        }
+
+        private List<DocumentExtras.ExternalLink> externalLinks(LayoutPage page, Map<SemanticStreamingTableLayouter.CellKey, TableCell> sources,
+                Map<String, Double> rotations) {
             var blocks = new HashMap<String, Block>();
             for (var cell : sources.values()) { if (cell.hasBlocks()) { SemanticTree.walk(cell.blocks(), visit -> blocks.put(visit.block().id(), visit.block())); } }
             var result = new ArrayList<DocumentExtras.ExternalLink>();
             for (var fragment : page.elements()) {
-                SemanticFragments.walk(fragment, ignored -> { }, leaf -> {
+                SemanticFragments.walk(fragment, rotations, ignored -> { }, leaf -> {
                     TextSource source;
                     if (leaf.blockId().equals(table.id())) {
                         var cell = sources.get(new SemanticStreamingTableLayouter.CellKey(leaf.rowIndex(), leaf.columnIndex()));
@@ -434,7 +442,7 @@ public final class StreamingReplayRequest {
                     InlineLinkGeometry.collect(source.text(), source.inlines(), source.lineHeight(), leaf.origin(), leaf.layout(), page.pageIndex(), page.size().width(),
                             (link, at) -> {
                                 if (++externalCount > limits.maxLinks()) { throw budget(leaf, page.pageIndex(), at, "streaming external link budget exceeded"); }
-                                result.add(link);
+                                result.add(InlineHyperlinks.transformed(link, leaf.transform()));
                             });
                 });
             }

@@ -15,6 +15,7 @@ from PIL import Image
 from pypdf import PdfReader
 from verify_advanced_pdf import difference, render_pdfium, render_poppler, require
 from verify_production import check_bundle
+from verify_distributed_libraries import distributed_libraries as current_distributed_libraries
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "examples/build/embedded-png-recovery"
@@ -125,14 +126,7 @@ def edited_pixels(before, after):
 
 
 def distributed_libraries(consumer):
-    components = json.loads((ROOT / "build/reports/sbom.cdx.json").read_text(encoding="utf-8"))["components"]
-    expected = {f'{entry["name"]}-{entry["version"]}.jar': entry["hashes"][0]["content"]
-                for entry in components if entry["group"] == "com.mirakyux.export4j"}
-    with ZipFile(consumer / "distributions/isolated-library-consumer.zip") as archive:
-        actual = {Path(name).name: hashlib.sha256(archive.read(name)).hexdigest() for name in archive.namelist()
-                  if "/lib/export4j-" in name and name.endswith(".jar")}
-    require(len(expected) == 15 and actual == expected, "distributed caller JARs differ from current SBOM")
-    return len(actual)
+    return current_distributed_libraries(consumer, ROOT)
 
 
 def main():
