@@ -56,7 +56,7 @@ final class DesignerService {
     record Break(int page, String id, String path, double y) { }
     record ImageSpace(int page, String path, double width, double height) { }
     record Preview(ComponentDocumentLayout layout, List<Hit> hits, List<Break> breaks, Map<String, Map<String, String>> formats,
-            List<ImageSpace> imageSpaces) {
+            List<ImageSpace> imageSpaces, List<String> pageOwners) {
         BufferedImage image(int page) throws IOException {
             var bytes = new ByteArrayOutputStream();
             new RasterBackend(96).writePage(layout.display().pages().get(page), bytes);
@@ -64,6 +64,345 @@ final class DesignerService {
         }
     }
     private DesignerService() { }
+
+    /** A private, resource-free candidate contains the same empty 18 pt image paragraphs that the
+     * eventual paste will replace. Measuring the complete bound document preserves external references
+     * and counts every expansion of a repeated source position without changing retained history. */
+    static ImageSpace atomicImageSpace(DesignerProject project, String marker, ExecutionOptions execution) throws IOException {
+        return ExecutionContext.execute(execution, () -> {
+            var bound = project.bundle().compile().renderComplete(BindingJson.parse(project.data()));
+            var items = new HashMap<String, com.mirakyux.export4j.model.GridItem>();
+            var counts = new HashMap<String, Integer>();
+            var tables = new HashMap<String, com.mirakyux.export4j.model.Table>();
+            var regions = new java.util.HashSet<RegionMeasure>();
+            var keptStarts = new HashMap<String, String>();
+            var keptGridStarts = new HashMap<String, String>();
+            for (var section : bound.document().sections()) {
+                for (int index = 0; index < section.blocks().size(); index++) {
+                    var block = section.blocks().get(index);
+                    if (!hasImageMarker(List.of(block), marker)) { continue; }
+                    int first = index;
+                    while (first > 0) {
+                        var current = paragraphFormat(section.blocks().get(first));
+                        var previous = paragraphFormat(section.blocks().get(first - 1));
+                        if (current != null && current.pagination().pageBreakBefore()
+                                || previous == null || !previous.pagination().keepWithNext()) { break; }
+                        first--;
+                    }
+                    if (first < index) { keptStarts.put(block.id(), section.blocks().get(first).id()); }
+                }
+                SemanticTree.walk(section.blocks(), visit -> {
+                    if (visit.block() instanceof com.mirakyux.export4j.model.Table table) { tables.put(table.id(), table); }
+                    if (!(visit.block() instanceof com.mirakyux.export4j.model.GridItem item)) { return; }
+                    int[] count = {0};
+                    SemanticTree.walk(item.blocks(), child -> {
+                        if (child.block().id().equals(marker) || child.block().id().startsWith(marker + "@")) { count[0]++; }
+                    });
+                    if (count[0] > 0) {
+                        items.put(item.id(), item); counts.put(item.id(), count[0]);
+                        var root = section.blocks().get(visit.rootBlockIndex());
+                        if (root instanceof com.mirakyux.export4j.model.GridLayout grid
+                                && item.row() == grid.items().getFirst().row() && keptStarts.containsKey(root.id())) {
+                            keptGridStarts.put(item.id(), keptStarts.get(root.id()));
+                        }
+                    }
+                });
+                var settings = section.pageSettings();
+                var pageRegions = section.pageRegions();
+                java.util.stream.Stream.concat(pageRegions.headers().stream(), pageRegions.footers().stream()).forEach(region -> {
+                    if (!hasImageMarker(region.blocks(), marker)) { return; }
+                    double left = region.leftInset() < 0 ? settings.margins().left() : region.leftInset();
+                    double right = region.rightInset() < 0 ? settings.margins().right() : region.rightInset();
+                    regions.add(new RegionMeasure(region, settings.size().width() - left - right, region.height()));
+                });
+                java.util.stream.Stream.concat(pageRegions.background().stream(), pageRegions.foreground().stream()).forEach(box -> {
+                    if (!hasImageMarker(box.content().blocks(), marker)) { return; }
+                    double width = box.widthMode() == com.mirakyux.export4j.model.PageOverlay.SizeMode.FILL
+                            ? settings.size().width() - box.x() : box.width();
+                    double height = box.heightMode() == com.mirakyux.export4j.model.PageOverlay.SizeMode.FIXED
+                            ? box.content().height() : settings.size().height() - box.y();
+                    regions.add(new RegionMeasure(box.content(), width, height));
+                });
+            }
+            ComponentDocumentLayout layout;
+            try { layout = engine(project.bundle(), bound.notes()).layout(bound.document()); }
+            catch (com.mirakyux.export4j.layout.core.DocumentLayoutException ex) {
+                if (ex.code() == com.mirakyux.export4j.layout.core.DocumentLayoutException.Code.CONTENT_TOO_TALL) {
+                    return new ImageSpace(0, "", 0, 0);
+                }
+                throw ex;
+            }
+            double width = Double.POSITIVE_INFINITY, height = Double.POSITIVE_INFINITY;
+            int measured = 0;
+            for (var page : layout.body().pages()) {
+                double capacity = atomicBodyCapacity(layout, bound.document(), page);
+                var fragments = new HashMap<String, com.mirakyux.export4j.layout.LayoutFragment>();
+                for (var fragment : page.elements()) { fragments.put(fragment.blockId(), fragment); }
+                for (var fragment : page.elements()) {
+                    if (fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph
+                            && (paragraph.blockId().equals(marker) || paragraph.blockId().startsWith(marker + "@"))) {
+                        // Ordinary flow and columns can move this one image line past earlier content.
+                        // Atomic grid/cell ancestors below impose their additional consumption limits.
+                        double available = capacity - keptHeight(fragments, keptStarts.get(paragraph.blockId()), paragraph.origin().y());
+                        width = Math.min(width, paragraph.layout().width()); height = Math.min(height, available);
+                    }
+                    if (fragment instanceof com.mirakyux.export4j.layout.TableFragment table) {
+                        var model = tables.get(table.blockId());
+                        var space = tableImageSpace(table, model, tables, capacity,
+                                keptHeight(fragments, keptStarts.get(table.blockId()), table.origin().y()), marker);
+                        width = Math.min(width, space.width()); height = Math.min(height, space.height());
+                    }
+                    var item = items.get(fragment.blockId());
+                    if (item == null || !(fragment instanceof com.mirakyux.export4j.layout.ComponentFragment component)) { continue; }
+                    double bottom = fragment.origin().y();
+                    var children = new ArrayList<com.mirakyux.export4j.layout.LayoutFragment>();
+                    for (var child : item.blocks()) {
+                        var content = fragments.get(child.id());
+                        if (content == null) { throw new IOException("cannot locate grid image content"); }
+                        children.add(content);
+                        double contentHeight = content instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph
+                                ? paragraph.layout().height() : ((com.mirakyux.export4j.layout.TableFragment) content).height();
+                        bottom = Math.max(bottom, content.origin().y() + contentHeight);
+                    }
+                    // The item fragment spans the row's tallest sibling. Its own semantic children give
+                    // the real consumption, including the insertion's existing before/after spacing.
+                    double used = bottom - fragment.origin().y();
+                    double itemCapacity = capacity - keptHeight(fragments, keptGridStarts.get(item.id()), fragment.origin().y());
+                    var space = fixedImageSpace(children, tables, Math.max(0, itemCapacity - used) / counts.get(item.id()), marker);
+                    width = Math.min(width, Math.min(component.layout().width(), space.width()));
+                    height = Math.min(height, space.height());
+                    measured++;
+                }
+            }
+            // Fixed page regions cannot continue on another page. Their enclosing content, rather than
+            // an independently movable body row, must retain room for every inserted image line.
+            var regionRenderer = regions.isEmpty() ? null : engine(project.bundle());
+            for (var region : regions) {
+                var settings = com.mirakyux.export4j.model.PageSettings.builder().size(region.width(), region.height()).margins(0).build();
+                var local = regionRenderer.layout(new com.mirakyux.export4j.model.Document(
+                        com.mirakyux.export4j.model.DocumentMetadata.EMPTY, settings, region.region().blocks())).body();
+                if (local.pages().size() != 1) { return new ImageSpace(0, "", 0, 0); }
+                var fragments = local.pages().getFirst().elements();
+                var markers = imageMarkers(fragments, marker);
+                SemanticTree.walk(region.region().blocks(), visit -> {
+                    if (visit.block() instanceof com.mirakyux.export4j.model.Table table) { tables.put(table.id(), table); }
+                });
+                double used = 0;
+                for (var fragment : fragments) { used = Math.max(used, fragment.origin().y() + fragmentHeight(fragment)); }
+                var space = fixedImageSpace(fragments, tables, Math.max(0, region.height() - used) / markers.count(), marker);
+                width = Math.min(width, space.width()); height = Math.min(height, space.height());
+            }
+            if (measured != items.size() || !Double.isFinite(width) || !Double.isFinite(height)) {
+                throw new IOException("cannot locate every atomic image position");
+            }
+            return new ImageSpace(0, "", width, height);
+        });
+    }
+
+    private record ImageMarkers(int count, double width) { }
+
+    private static double keptHeight(Map<String, com.mirakyux.export4j.layout.LayoutFragment> fragments, String first, double y) {
+        var start = first == null ? null : fragments.get(first);
+        return start == null ? 0 : Math.max(0, y - start.origin().y());
+    }
+
+    private static com.mirakyux.export4j.model.ParagraphFormat paragraphFormat(com.mirakyux.export4j.model.Block block) {
+        return switch (block) {
+            case com.mirakyux.export4j.model.Paragraph p -> p.format();
+            case com.mirakyux.export4j.model.Heading h -> h.format();
+            case com.mirakyux.export4j.model.Caption c -> c.format();
+            case com.mirakyux.export4j.model.BulletItem b -> b.format();
+            case com.mirakyux.export4j.model.NumberedItem n -> n.format();
+            default -> null;
+        };
+    }
+
+    private record AvoidArea(com.mirakyux.export4j.model.PageOverlay source, com.mirakyux.export4j.graphics.Rect bounds) { }
+
+    /** Body IR bounds exclude bands, while avoiding boxes divide those bounds into shorter regions.
+     * Reuse final measured placement geometry, including AUTO height, rather than its declared viewport.
+     * A box restricted to one physical page can be passed on a later page; repeating boxes remain. */
+    private static double atomicBodyCapacity(ComponentDocumentLayout layout, SectionedDocument document,
+            com.mirakyux.export4j.layout.LayoutPage page) throws IOException {
+        int section = layout.bodySectionIndices().get(page.pageIndex());
+        var model = document.sections().get(section).pageRegions();
+        var areas = new ArrayList<AvoidArea>();
+        for (var kind : List.of(com.mirakyux.export4j.layout.core.PageComposition.Region.BACKGROUND,
+                com.mirakyux.export4j.layout.core.PageComposition.Region.FOREGROUND)) {
+            var boxes = kind == com.mirakyux.export4j.layout.core.PageComposition.Region.BACKGROUND ? model.background() : model.foreground();
+            for (int index = 0; index < boxes.size(); index++) {
+                var box = boxes.get(index);
+                if (box.bodyFlow() != com.mirakyux.export4j.model.PageOverlay.BodyFlow.AVOID) { continue; }
+                com.mirakyux.export4j.layout.core.PageComposition.Placed found = null;
+                for (var placed : layout.decorations()) {
+                    int bodyPage = placed.pageIndex() - layout.bodyPageOffset();
+                    if (placed.region() == kind && placed.placementIndex() == index && bodyPage >= 0
+                            && bodyPage < layout.bodySectionIndices().size() && layout.bodySectionIndices().get(bodyPage) == section) {
+                        found = placed; break;
+                    }
+                }
+                if (found == null) { throw new IOException("cannot locate body avoidance geometry"); }
+                var bounds = found.viewport();
+                areas.add(new AvoidArea(box, new com.mirakyux.export4j.graphics.Rect(
+                        bounds.x(), bounds.y(), bounds.width(), found.layout().height())));
+            }
+        }
+        var body = page.contentBounds();
+        if (areas.isEmpty()) { return body.height(); }
+        int physical = page.pageIndex() + layout.bodyPageOffset(), afterPositioned = physical;
+        for (var area : areas) { afterPositioned = Math.max(afterPositioned, area.source().page()); }
+        double available = 0;
+        for (int trial : new int[] {physical, afterPositioned}) {
+            var intervals = new ArrayList<com.mirakyux.export4j.graphics.Rect>();
+            for (var area : areas) {
+                var bounds = area.bounds();
+                if ((area.source().page() == 0 || area.source().page() == trial + 1)
+                        && bounds.x() < body.x() + body.width() && bounds.x() + bounds.width() > body.x()
+                        && bounds.y() < body.y() + body.height() && bounds.y() + bounds.height() > body.y()) {
+                    intervals.add(bounds);
+                }
+            }
+            intervals.sort(java.util.Comparator.comparingDouble(com.mirakyux.export4j.graphics.Rect::y));
+            double cursor = body.y();
+            for (var interval : intervals) {
+                double start = Math.max(body.y(), interval.y()), end = Math.min(body.y() + body.height(), interval.y() + interval.height());
+                available = Math.max(available, start - cursor); cursor = Math.max(cursor, end);
+            }
+            available = Math.max(available, body.y() + body.height() - cursor);
+        }
+        return available;
+    }
+
+    private static boolean hasImageMarker(List<com.mirakyux.export4j.model.Block> blocks, String marker) {
+        boolean[] found = {false};
+        SemanticTree.walk(blocks, visit -> {
+            if (visit.block().id().equals(marker) || visit.block().id().startsWith(marker + "@")) { found[0] = true; }
+        });
+        return found[0];
+    }
+
+    private static double fragmentHeight(com.mirakyux.export4j.layout.LayoutFragment fragment) {
+        return fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph
+                ? paragraph.layout().height() : ((com.mirakyux.export4j.layout.TableFragment) fragment).height();
+    }
+
+    /** Additional line height may first consume unused cell space, then grow the enclosing fixed flow.
+     * Sharing each ancestor's spare height across its marker occurrences keeps repeated pastes bounded. */
+    private static ImageSpace fixedImageSpace(List<com.mirakyux.export4j.layout.LayoutFragment> fragments,
+            Map<String, com.mirakyux.export4j.model.Table> tables, double extra, String marker) {
+        double width = Double.POSITIVE_INFINITY, height = Double.POSITIVE_INFINITY;
+        for (var fragment : fragments) {
+            if (fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph
+                    && (paragraph.blockId().equals(marker) || paragraph.blockId().startsWith(marker + "@"))) {
+                width = Math.min(width, paragraph.layout().width()); height = Math.min(height, 18 + extra);
+            } else if (fragment instanceof com.mirakyux.export4j.layout.TableFragment table) {
+                var padding = tables.get(table.blockId()).format().padding();
+                for (var row : table.rows()) {
+                    for (var cell : row.cells()) {
+                        var markers = imageMarkers(cell.blocks(), marker);
+                        if (markers.count() == 0) { continue; }
+                        double used = 0;
+                        for (var child : cell.blocks()) { used = Math.max(used, child.origin().y() + fragmentHeight(child)); }
+                        double spare = Math.max(0, cell.bounds().height() - padding.top() - padding.bottom() - used);
+                        var nested = fixedImageSpace(cell.blocks(), tables, extra + spare / markers.count(), marker);
+                        width = Math.min(width, nested.width()); height = Math.min(height, nested.height());
+                    }
+                }
+            }
+        }
+        return new ImageSpace(0, "", width, height);
+    }
+
+    private static ImageMarkers imageMarkers(List<com.mirakyux.export4j.layout.LayoutFragment> fragments, String marker) {
+        int count = 0; double width = Double.POSITIVE_INFINITY;
+        for (var fragment : fragments) {
+            if (fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph
+                    && (paragraph.blockId().equals(marker) || paragraph.blockId().startsWith(marker + "@"))) {
+                count++; width = Math.min(width, paragraph.layout().width());
+            } else if (fragment instanceof com.mirakyux.export4j.layout.TableFragment table) {
+                for (var row : table.rows()) {
+                    for (var cell : row.cells()) {
+                        var nested = imageMarkers(cell.blocks(), marker);
+                        count += nested.count(); width = Math.min(width, nested.width());
+                    }
+                }
+            }
+        }
+        return new ImageMarkers(count, width);
+    }
+
+    /** A body table can move complete row-span groups to a fresh page, while repeated headers and cell
+     * padding still consume space. Nested block content remains atomic under an atomic outer row. */
+    private static ImageSpace tableImageSpace(com.mirakyux.export4j.layout.TableFragment table,
+            com.mirakyux.export4j.model.Table model, Map<String, com.mirakyux.export4j.model.Table> models, double capacity,
+            double kept, String marker) {
+        double width = Double.POSITIVE_INFINITY, height = Double.POSITIVE_INFINITY, headerHeight = 0;
+        if (imageMarkers(List.of(table), marker).count() == 0) { return new ImageSpace(0, "", width, height); }
+        for (var row : table.rows()) {
+            if (row.header()) {
+                for (var cell : row.cells()) { headerHeight = Math.max(headerHeight, cell.bounds().y() + cell.bounds().height()); }
+            }
+        }
+        var groups = new HashMap<Integer, int[]>();
+        var anchors = model.grid().anchorRows();
+        for (int first = model.headerRows(); first < model.rows().size();) {
+            int end = first + 1;
+            for (int row = first; row < end; row++) {
+                for (var anchor : anchors.get(row)) { end = Math.max(end, row + anchor.cell().rowSpan()); }
+            }
+            for (int row = first; row < end; row++) { groups.put(row, new int[] {first, end}); }
+            first = end;
+        }
+        for (var row : table.rows()) {
+            for (var cell : row.cells()) {
+                var markers = imageMarkers(cell.blocks(), marker);
+                if (markers.count() == 0) { continue; }
+                double padding = model.format().padding().top() + model.format().padding().bottom();
+                double rowCapacity = capacity;
+                if (!row.header() && !model.format().allowRowSplit() && groups.get(row.rowIndex())[0] == model.headerRows()) {
+                    rowCapacity -= kept;
+                }
+                double available;
+                if (model.format().allowRowSplit() && !row.header()) {
+                    // Each image is one indivisible line; preceding cell text can continue on another page.
+                    available = rowCapacity - headerHeight - padding;
+                    double nestedCapacity = available;
+                    for (var child : cell.blocks()) {
+                        if (child instanceof com.mirakyux.export4j.layout.TableFragment nested) {
+                            var nestedSpace = tableImageSpace(nested, models.get(nested.blockId()), models, nestedCapacity, 0, marker);
+                            available = Math.min(available, nestedSpace.height());
+                        }
+                    }
+                } else {
+                    double reserved;
+                    if (row.header()) {
+                        reserved = table.height() - cell.bounds().height();
+                    } else {
+                        int[] group = groups.get(row.rowIndex());
+                        double top = Double.POSITIVE_INFINITY, bottom = 0;
+                        for (var peer : table.rows()) {
+                            if (peer.rowIndex() < group[0] || peer.rowIndex() >= group[1]) { continue; }
+                            for (var other : peer.cells()) {
+                                top = Math.min(top, other.bounds().y());
+                                bottom = Math.max(bottom, other.bounds().y() + other.bounds().height());
+                            }
+                        }
+                        reserved = headerHeight + bottom - top - cell.bounds().height();
+                    }
+                    double used = 0;
+                    for (var child : cell.blocks()) {
+                        used = Math.max(used, child.origin().y() + fragmentHeight(child));
+                    }
+                    var nested = fixedImageSpace(cell.blocks(), models,
+                            Math.max(0, rowCapacity - reserved - padding - used) / markers.count(), marker);
+                    available = nested.height();
+                }
+                width = Math.min(width, markers.width()); height = Math.min(height, available);
+            }
+        }
+        return new ImageSpace(0, "", width, height);
+    }
+
     static ProcessingPolicy policy(Format format, ProcessingPolicy.Action action, String treatment) {
         if (!treatment.equals("RECOMMENDED")) {
             return ProcessingPolicy.builder().defaultRule(action, ProcessingPolicy.Treatment.valueOf(treatment)).build();
@@ -169,12 +508,19 @@ final class DesignerService {
             Element sourceTree;
             try { sourceTree = DesignerXml.parse(source.source()).getDocumentElement(); }
             catch (Exception ex) { throw new IOException("cannot map designer page regions", ex); }
+            var sections = new ArrayList<String>();
+            for (int index = 0; index < DesignerXml.children(sourceTree).size(); index++) {
+                if (DesignerXml.children(sourceTree).get(index).getTagName().equals("section")) { sections.add("/" + index); }
+            }
+            if (sections.isEmpty()) { sections.add(""); }
+            var starts = new HashMap<String, Integer>();
+            var pageOwners = new ArrayList<>(java.util.Collections.nCopies(layout.bodyPageOffset(), ""));
             for (var page : layout.body().pages()) {
-                if (!page.elements().isEmpty()) {
-                    String path = source.paths().getOrDefault(page.elements().getFirst().blockId().split("@", 2)[0], "");
-                    imageSpaces.add(new ImageSpace(page.pageIndex() + layout.bodyPageOffset(), sectionPath(sourceTree, path),
-                            page.contentBounds().width(), page.contentBounds().height()));
-                }
+                String owner = sections.get(layout.bodySectionIndices().get(page.pageIndex()));
+                int physicalPage = page.pageIndex() + layout.bodyPageOffset();
+                pageOwners.add(owner);
+                starts.putIfAbsent(owner, physicalPage);
+                imageSpaces.add(new ImageSpace(physicalPage, owner, page.contentBounds().width(), page.contentBounds().height()));
                 for (var fragment : page.elements()) {
                     double width = page.contentBounds().width(); double height = 12;
                     var images = new ArrayList<ImageBounds>();
@@ -204,16 +550,6 @@ final class DesignerService {
                         tableHits(hits, page.pageIndex() + layout.bodyPageOffset(), table, sourceTree, path, 0, 0);
                     }
                 }
-            }
-            var sections = new ArrayList<String>();
-            for (int index = 0; index < DesignerXml.children(sourceTree).size(); index++) {
-                if (DesignerXml.children(sourceTree).get(index).getTagName().equals("section")) { sections.add("/" + index); }
-            }
-            if (sections.isEmpty()) { sections.add(""); }
-            var starts = new HashMap<String, Integer>();
-            for (var hit : hits) {
-                String owner = sectionPath(sourceTree, hit.path());
-                starts.merge(owner, hit.page(), Math::min);
             }
             for (var placed : layout.decorations()) {
                 String kind = placed.region().name().toLowerCase(java.util.Locale.ROOT);
@@ -306,7 +642,7 @@ final class DesignerService {
                     }
                 }
             }
-            return new Preview(layout, List.copyOf(hits), List.copyOf(breaks), paragraphDefaults(project, source, sourceTree), List.copyOf(imageSpaces));
+            return new Preview(layout, List.copyOf(hits), List.copyOf(breaks), paragraphDefaults(project, source, sourceTree), List.copyOf(imageSpaces), List.copyOf(pageOwners));
         });
     }
     /** Compile a reduced, unbound source to read paragraph defaults without guessing theme inheritance.
@@ -479,15 +815,6 @@ final class DesignerService {
                 }
             }
         }
-    }
-    private static String sectionPath(Element root, String path) {
-        if (path.isEmpty()) { return ""; }
-        String section = ""; String current = "";
-        for (String part : path.substring(1).split("/")) {
-            current += "/" + part;
-            if (DesignerXml.at(root.getOwnerDocument(), current).getTagName().equals("section")) { section = current; }
-        }
-        return section;
     }
     private static String regionPath(Element root, String section, String kind, String variant) {
         String found = directRegionPath(root, section, kind, variant);

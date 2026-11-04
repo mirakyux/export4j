@@ -311,7 +311,7 @@ public final class ComponentDocumentRenderer {
         if (lines > layoutLimits.maxLines()) {
             throw new IllegalArgumentException("sectioned document combined line budget exceeded");
         }
-        return new ComponentDocumentLayout(body, offset, composed.display(), contents.traces(), composed.placements(), footnotePages, resolvedReferences, referenceDiagnostics);
+        return new ComponentDocumentLayout(body, offset, composed.display(), contents.traces(), composed.placements(), footnotePages, resolvedReferences, referenceDiagnostics, sectionPages);
     }
 
     private static void validatePhysicalPlacements(SectionTemplate template, int physicalStart, int pageCount, int displayedStart) {

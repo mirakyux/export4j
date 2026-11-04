@@ -13,7 +13,7 @@ import com.mirakyux.export4j.layout.ComponentFragment;
 /** Body IR retains body-local page indices; bodyPageOffset maps them to final pages. Contents/decorations retain diagnostics. */
 public record ComponentDocumentLayout(DocumentLayout body, int bodyPageOffset, DisplayDocument display,
         List<ComponentLayout> contentsPages, List<PageComposition.Placed> decorations, List<ComponentLayout> footnotes,
-        List<ComponentLayout> resolvedReferences, List<ContextualDiagnostic> referenceDiagnostics) {
+        List<ComponentLayout> resolvedReferences, List<ContextualDiagnostic> referenceDiagnostics, List<Integer> bodySectionIndices) {
     public ComponentDocumentLayout {
         Objects.requireNonNull(body, "body");
         Objects.requireNonNull(display, "display");
@@ -22,10 +22,26 @@ public record ComponentDocumentLayout(DocumentLayout body, int bodyPageOffset, D
         footnotes = List.copyOf(footnotes);
         resolvedReferences = List.copyOf(resolvedReferences);
         referenceDiagnostics = List.copyOf(referenceDiagnostics);
+        bodySectionIndices = List.copyOf(bodySectionIndices);
+        if (bodySectionIndices.size() != body.pages().size() || bodySectionIndices.stream().anyMatch(index -> index < 0)) {
+            throw new IllegalArgumentException("one nonnegative section index is required per body page");
+        }
         if (bodyPageOffset < 0) {
             throw new IllegalArgumentException("body page offset must be nonnegative");
         }
     }
+
+    /** Compatibility constructor for layouts without explicit section ownership; all body pages belong to section zero. */
+    public ComponentDocumentLayout(DocumentLayout body, int bodyPageOffset, DisplayDocument display,
+            List<ComponentLayout> contentsPages, List<PageComposition.Placed> decorations, List<ComponentLayout> footnotes,
+            List<ComponentLayout> resolvedReferences, List<ContextualDiagnostic> referenceDiagnostics) {
+        this(body, bodyPageOffset, display, contentsPages, decorations, footnotes, resolvedReferences, referenceDiagnostics,
+                java.util.Collections.nCopies(body.pages().size(), 0));
+    }
+
+    /** Zero-based source section index for every body-local page, including empty pages; excludes contents pages. */
+    @Override
+    public List<Integer> bodySectionIndices() { return bodySectionIndices; }
 
     public ComponentDocumentLayout(DocumentLayout body, int bodyPageOffset, DisplayDocument display,
             List<ComponentLayout> contentsPages, List<PageComposition.Placed> decorations) {

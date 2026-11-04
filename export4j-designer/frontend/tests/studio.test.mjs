@@ -19,7 +19,7 @@ const source=`<document version="1"><page width="420" height="600" margin="30"/>
 <table id="table"><columns><column weight="1"/><column weight="1"/></columns><row><cell>Cell A</cell><cell>Cell B</cell></row></table>
 </document>`;
 
-test('canvas editing keeps template semantics and engine output', {timeout:360000}, async t=>{
+test('canvas editing keeps template semantics and engine output', {timeout:480000}, async t=>{
     await mkdir(output,{recursive:true});
     const java=process.env.JAVA_HOME?path.join(process.env.JAVA_HOME,'bin',process.platform==='win32'?'java.exe':'java'):'java';
     const child=suppliedOrigin?undefined:spawn(java,['-Djava.awt.headless=true','-cp',path.join(distribution,'lib/*'),
@@ -71,6 +71,395 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
         };
         const bodyOrder=()=>page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').documentElement.children].filter(node=>node.id).map(node=>node.id));
         const fixSelection=async()=>{await page.getByLabel('块排版方式').selectOption('FIXED');await idle();};
+        await check('blank pages accept their first pasted image and preserve undo',async()=>{
+            const cases=[
+                ['blank','<document version="1"><page width="420" height="600" margin="30"/></document>',0,''],
+                ['header','<document version="1"><page width="420" height="600" margin="30"/><header height="60"><p>HEADER</p></header></document>',0,''],
+                ['empty-section','<document version="1"><page width="420" height="600" margin="30"/><section id="first"/><section id="last"/></document>',1,'/2']
+            ];
+            for(const [name,source,pageIndex,owner] of cases){
+                await load(source,{});const before=await xml(),resources=await page.evaluate(()=>state.images.length);
+                assert.equal(await page.evaluate(index=>pages[index].ownerPath,pageIndex),owner);
+                await page.evaluate(async({pageIndex,owner})=>{
+                    const canvas=document.createElement('canvas');canvas.width=40;canvas.height=40;canvas.getContext('2d').fillRect(0,0,40,40);
+                    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+                    await DesignerStudioBridge.paste(new File([blob],'blank.png',{type:'image/png'}),pageIndex,30,30,owner);
+                },{pageIndex,owner});await idle();
+                assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'synced',name);
+                assert.equal(await page.evaluate(()=>state.images.length),resources+1,name);
+                const inserted=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),image=document.querySelector('image');return {width:image.getAttribute('width'),height:image.getAttribute('height'),owner:image.closest('section')?.id||''};});
+                assert.deepEqual(inserted,{width:'30',height:'30',owner:name==='empty-section'?'last':''});
+                await page.locator('#undo').click();await idle();assert.equal(await xml(),before);assert.equal(await page.evaluate(()=>state.images.length),resources);
+                await page.locator('#redo').click();await idle();assert.equal(await page.evaluate(()=>state.images.length),resources+1);
+                const [download]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);
+                await download.saveAs(path.join(output,'first-paste-'+name+'.pdf'));await page.locator('#close-export').click();
+            }
+        });
+        await check('blank canvas selects page or document properties and commits active text',async()=>{
+            await load();await edit('second');await page.keyboard.press('End');await page.keyboard.type(' retained');
+            await page.locator('.studio-background').first().click({position:{x:12,y:130}});await idle();
+            await page.waitForFunction(()=>selected?.tag==='document');assert.equal(await page.locator('.ProseMirror').count(),0);
+            assert.match(await xml(),/Second paragraph retained/);assert.equal(await page.locator('#node-page-settings').isVisible(),true);
+            await page.locator('#structured-properties').getByLabel('标题',{exact:true}).fill('Document properties');
+            await page.evaluate(async()=>{await drafts();});await idle();assert.match(await xml(),/title="Document properties"/);
+            await load('<document version="1"><page width="420" height="600" margin="30"/><section id="first"><p id="owner-text">FIRST</p></section><section id="empty"/></document>',{});
+            await (await object('owner-text')).click();
+            await page.locator('.studio-background').nth(1).click({position:{x:12,y:120}});await page.waitForFunction(()=>selected?.id==='empty');
+            assert.equal(await page.locator('#node-page-settings').isVisible(),true);
+            await page.locator('#node-page-settings').click();await page.locator('#page-dialog').waitFor();
+            assert.equal(await page.locator('#page-scope').inputValue(),'empty');await page.locator('#apply-page').click();await idle();
+            const scroll=page.locator('.canvas-scroll'),bounds=await scroll.boundingBox();assert.ok(bounds);
+            await page.mouse.click(bounds.x+5,bounds.y+20);await page.waitForFunction(()=>selected?.tag==='document');
+            assert.match(await xml(),/id="owner-text"/);assert.equal(await page.locator('#node-page-settings').isVisible(),true);
+            await page.screenshot({path:path.join(output,'blank-document-properties.png'),fullPage:true});
+        });
+        await check('page properties ignore component shortcuts and ordinary component commands still work',async()=>{
+            const sectioned='<document version="1"><page width="420" height="600" margin="30"/><section id="one"><p id="shortcut-first">KEEP ONE</p></section><section id="two"><p id="shortcut-next">KEEP TWO</p></section></document>';
+            for(const [source,index,owner] of [
+                [sectioned,0,'one'],
+                ['<document version="1"><page width="420" height="600" margin="30"/><section id="one"><p id="shortcut-first">KEEP ONE</p></section><section id="empty"/></document>',1,'empty'],
+                ['<document version="1"><page width="420" height="600" margin="30"/><p id="shortcut-first">KEEP DOCUMENT</p></document>',0,'']
+            ]){
+                await load(source,{});await (await object('shortcut-first')).click();
+                await page.locator('.studio-background').nth(index).click({position:{x:12,y:120}});await idle();
+                await page.waitForFunction(owner=>selected?.id===owner&&['document','section'].includes(selected.tag),owner);
+                assert.equal(await page.locator('#node-page-settings').isVisible(),true);
+                const capture=()=>page.evaluate(()=>({source:state.source,data:state.data,resourceIdentity:state.resourceIdentity,revision:state.revision,pages:pages.length,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+                const before=await capture();
+                for(const focus of ['page','canvas']){
+                    if(focus==='canvas'){
+                        await page.keyboard.press('Tab');
+                        assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'插入内容');
+                        await page.keyboard.press('Enter');
+                        await page.getByRole('menu',{name:'插入内容',exact:true}).waitFor();
+                        await page.keyboard.press('Escape');
+                        await page.getByRole('menu',{name:'插入内容',exact:true}).waitFor({state:'hidden'});
+                        for(let step=0;step<5;step++){
+                            await page.keyboard.press('Shift+Tab');
+                            if(await page.locator('.canvas-scroll').evaluate(node=>node===document.activeElement))break;
+                        }
+                        assert.equal(await page.locator('.canvas-scroll').evaluate(node=>node===document.activeElement),true);
+                    }
+                    for(const key of ['Delete','Backspace','Control+d','Meta+d','Alt+ArrowUp','Alt+ArrowDown']){
+                        await page.keyboard.press(key);await page.evaluate(()=>DesignerStudioBridge.settled());await idle();
+                        assert.deepEqual(await capture(),before,owner+' '+focus+' '+key+' must preserve content, resources and history');
+                    }
+                }
+                await page.keyboard.press('Shift+F10');
+                await page.getByRole('menu',{name:'在空白区域插入',exact:true}).waitFor();
+                assert.equal(await page.getByRole('menuitem',{name:'删除所选元素Delete',exact:true}).count(),0);
+                await page.keyboard.press('Escape');assert.deepEqual(await capture(),before);
+            }
+            await load(sectioned,{});const before=await xml();await (await object('shortcut-first')).click();
+            await page.keyboard.press('Control+d');await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('section').length),2);
+            assert.deepEqual(await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('section:first-of-type > p')].map(node=>node.textContent)),['KEEP ONE','KEEP ONE']);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),before);
+            for(const key of ['Delete','Backspace']){
+                await (await object('shortcut-first')).click();await page.keyboard.press(key);await idle();
+                assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('section').length),2);
+                assert.doesNotMatch(await xml(),/KEEP ONE/);assert.match(await xml(),/KEEP TWO/);
+                await page.locator('#undo').click();await idle();assert.equal(await xml(),before);
+            }
+            // Choosing a section explicitly in the structure tree retains its element commands.
+            await page.locator('.tree-item[data-path="/1"]').click();await page.keyboard.press('Control+d');await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('section').length),3);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),before);
+            await page.locator('.tree-item[data-path="/1"]').click();await page.keyboard.press('Delete');await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('section').length),1);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),before);
+        });
+        await check('blank page selection keeps navigation synchronized without scrolling',async()=>{
+            await load('<document version="1"><page width="420" height="220" margin="30"/><section id="one"><p>ONE</p></section><section id="two"><p>TWO</p></section></document>',{});
+            const before=await xml(),scroll=await page.locator('.canvas-scroll').evaluate(node=>node.scrollTop);
+            for(const index of [1,0]){
+                await page.locator('.studio-background').nth(index).click({position:{x:12,y:100}});await idle();
+                assert.equal(await page.evaluate(()=>currentPage),index);
+                assert.equal(await page.locator('#page-number').textContent(),(index+1)+' / 2');
+                assert.equal(await page.locator('#page-jump').inputValue(),String(index));
+                assert.equal(await page.locator('#previous').isDisabled(),index===0);
+                assert.equal(await page.locator('#next').isDisabled(),index===1);
+                assert.equal(await page.locator('.canvas-scroll').evaluate(node=>node.scrollTop),scroll);
+                assert.equal(await page.evaluate(()=>selected.id),index===0?'one':'two');
+            }
+            await page.locator('#next').click();await idle();assert.equal(await page.locator('#page-jump').inputValue(),'1');
+            await page.locator('#previous').click();await idle();assert.equal(await page.locator('#page-jump').inputValue(),'0');
+            assert.equal(await xml(),before);
+            await page.screenshot({path:path.join(output,'blank-page-navigation.png'),fullPage:true});
+        });
+        await check('page ownership survives section renames preview delays failures and relocation',async()=>{
+            const source='<document version="1"><page width="420" height="220" margin="30"/><section id="one"><p id="owner-anchor">ONE</p></section><section id="empty"/></document>';
+            for(const [index,renamed,delayed] of [[0,'renamed-one',false],[1,'renamed-empty',true]]){
+                await load(source,{});await (await object('owner-anchor')).click();
+                await page.locator('.studio-background').nth(index).click({position:{x:12,y:100}});await idle();
+                let release;const gate=new Promise(resolve=>{release=resolve;});
+                const handler=async route=>{await gate;await route.continue();};
+                if(delayed)await page.route('**/api/preview',handler);
+                try{
+                    const request=delayed?page.waitForRequest('**/api/preview'):undefined;
+                    await page.locator('#component-identity [data-attribute="id"]').fill(renamed);
+                    await page.locator('.studio-background').nth(index).click({position:{x:12,y:100}});
+                    if(request)await request;
+                    await page.waitForFunction(id=>state.source.includes('id="'+id+'"'),renamed);
+                    assert.equal(await page.evaluate(()=>selected.tag),'section');
+                    assert.equal(await page.evaluate(()=>selected.id),renamed);
+                }finally{release();if(delayed)await page.unrouteAll({behavior:'wait'});}
+                await idle();await page.waitForFunction(id=>selected?.id===id,renamed);
+                assert.equal(await page.evaluate(()=>selected.path),'/'+(index+1));
+            }
+            await load(source,{});await page.locator('.studio-background').first().click({position:{x:12,y:100}});await idle();
+            const failure=route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'controlled page ownership preview failure'})});
+            await page.route('**/api/preview',failure);
+            try{
+                await page.locator('#component-identity [data-attribute="id"]').fill('retained-owner');
+                await page.locator('.studio-background').first().click({position:{x:12,y:100}});
+                await page.waitForFunction(()=>!busy&&DesignerStudioBridge.snapshot().layoutState==='failed');
+                assert.equal(await page.evaluate(()=>selected.tag),'section');assert.equal(await page.evaluate(()=>selected.id),'retained-owner');
+                assert.match(await xml(),/id="retained-owner"/);
+            }finally{await page.unroute('**/api/preview',failure);}
+            await page.evaluate(()=>preview());await idle();
+            await load(source,{});
+            let release;const gate=new Promise(resolve=>{release=resolve;});
+            const handler=async route=>{await gate;await route.continue();};await page.route('**/api/preview',handler);
+            try{
+                await page.evaluate(async source=>{await DesignerStudioBridge.apply(source);await DesignerStudioBridge.flush();},source.replace('<section id="one">','<section id="inserted"/><section id="one">'));
+                await page.locator('.studio-background').first().click({position:{x:12,y:100}});
+                await page.waitForFunction(()=>!busy);assert.equal(await page.evaluate(()=>selected.id),'one');assert.equal(await page.evaluate(()=>selected.path),'/2');
+            }finally{release();await page.unrouteAll({behavior:'wait'});}
+            await idle();
+        });
+        await check('page ownership follows source identity across repagination and refuses ambiguous owners',async()=>{
+            const first='<p id="identity-first">ONE</p>',growth='<p id="identity-first" line-height="100">ONE</p><p id="identity-extra" line-height="100">MORE</p>';
+            for(const [kind,content,renamed,neighbor=''] of [['section-id','<p id="identity-next">TWO</p>',false],['child-id','<p id="identity-next">TWO</p>',true],['content','<p>TWO</p>',true],['empty','',true],['empty-neighbor','',true,'<section id="unchanged"/>']]){
+                const source='<document version="1"><page width="420" height="220" margin="30"/><section id="one">'+first+'</section><section id="two">'+content+'</section>'+neighbor+'</document>';
+                await load(source,{});
+                const changed=source.replace(first,growth).replace('id="two"','id="'+(renamed?'renamed-two':'two')+'"');
+                let release;const gate=new Promise(resolve=>{release=resolve;});
+                await page.route('**/api/preview',async route=>{await gate;await route.continue();});
+                try{
+                    const requested=page.waitForRequest('**/api/preview');
+                    await page.locator('#source-tab').click();await page.locator('#source').fill(changed);await page.locator('#canvas-tab').click();
+                    assert.equal(await page.locator('.studio-background').count(),neighbor?3:2,'the clicked page must still be the old second section');
+                    await page.locator('.studio-background').nth(1).click({position:{x:12,y:100}});await requested;
+                }finally{release();await page.unrouteAll({behavior:'wait'});}
+                await idle();assert.equal(await page.evaluate(()=>pages.length),neighbor?4:3,kind);
+                assert.equal(await page.evaluate(()=>selected?.id),renamed?'renamed-two':'two',kind);
+                assert.equal(await page.evaluate(()=>selected?.path),'/2',kind);
+                assert.equal(await xml(),changed);
+            }
+            for(const [kind,sections,replacements] of [
+                ['empty','<section id="two"/><section id="three"/>','<section id="renamed-two"/><section id="renamed-three"/>'],
+                ['moved-child','<section id="two"><p id="identity-next">TWO</p></section><section id="three"><p>THREE</p></section>','<section id="renamed-two"/><section id="three"><p>THREE</p><p id="identity-next">TWO</p></section>'],
+                ['split-children','<section id="two"><p id="identity-next">TWO</p><p id="identity-split">SPLIT</p></section><section id="three"><p>THREE</p></section>','<section id="renamed-two"><p id="identity-next">TWO</p></section><section id="renamed-three"><p>THREE</p><p id="identity-split">SPLIT</p></section>']
+            ]){
+                const source='<document version="1"><page width="420" height="220" margin="30"/><section id="one">'+first+'</section>'+sections+'<section id="keeper"><p>KEEP</p></section></document>';
+                await load(source,{});await page.getByRole('treeitem',{name:'分节 keeper',exact:true}).click();
+                const changed=source.replace(first,growth).replace(sections,replacements);
+                let release;const gate=new Promise(resolve=>{release=resolve;});await page.route('**/api/preview',async route=>{await gate;await route.continue();});
+                try{
+                    const requested=page.waitForRequest('**/api/preview');
+                    await page.locator('#source-tab').click();await page.locator('#source').fill(changed);await page.locator('#canvas-tab').click();
+                    await page.locator('.studio-background').nth(1).click({position:{x:12,y:100}});await requested;
+                }finally{release();await page.unrouteAll({behavior:'wait'});}
+                await idle();assert.equal(await page.evaluate(()=>selected?.id),'keeper',kind+': an ambiguous old page must not select a different section after refresh');
+                assert.match(await page.locator('#status').textContent(),/页面归属无法确认/);assert.equal(await xml(),changed);
+                await page.locator('.studio-background').nth(2).click({position:{x:12,y:100}});await idle();
+                assert.equal(await page.evaluate(()=>selected?.id),'renamed-two','choosing the page again uses its current owner');
+            }
+        });
+        const refreshedMenuInsert=async({entry,kind,tag,changed,dataOnly=false})=>{
+            const menu=page.getByRole('menu',{name:entry==='button'?'插入内容':'在空白区域插入',exact:true});
+            const open=async index=>{
+                if(entry==='button')await page.locator('.studio-host').nth(index).getByRole('button',{name:'插入内容',exact:true}).click();
+                else await page.locator('.studio-background').nth(index).click({button:'right',position:{x:12,y:100}});
+                await menu.waitFor();
+            };
+            let release;const gate=new Promise(resolve=>{release=resolve;});
+            await page.route('**/api/preview',async route=>{await gate;await route.continue();});
+            try{
+                const requested=page.waitForRequest('**/api/preview');
+                if(dataOnly)await page.evaluate(()=>{$('data').value=JSON.stringify({items:['ONE','MORE']});void preview();});
+                else{await page.locator('#source-tab').click();await page.locator('#source').fill(changed);await page.locator('#canvas-tab').click();}
+                await requested;assert.equal(await page.locator('.studio-background').count(),2);
+                await open(1);
+                release();await page.unrouteAll({behavior:'wait'});await idle();
+                assert.equal(await page.locator('.studio-background').count(),3);
+                assert.equal(await menu.count(),0,'a menu opened for an obsolete physical page must close after repagination');
+                assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().source),changed,'refreshing an open menu must preserve the source draft');
+            }finally{release();await page.unrouteAll({behavior:'wait'});}
+            await page.evaluate(async()=>{await drafts();});await idle();
+            assert.equal(await xml(),changed,'the refreshed source and data must be committed before testing insertion history');
+            await open(2);
+            await menu.getByRole('menuitem',{name:(entry==='context'?'插入':'')+kind,exact:true}).click();
+            if(tag==='p'){await page.locator('.ProseMirror').waitFor();await page.keyboard.press('Control+Enter');}
+            else if(tag==='grid'){await page.locator('#grid-layout-dialog').waitFor();await page.locator('[data-grid-layout="halves"]').click();}
+            else{
+                const dialog=page.getByRole('dialog',{name:'绑定数组数据',exact:true});await dialog.waitFor();
+                await dialog.getByRole('textbox',{name:'数组路径',exact:true}).fill('items');await dialog.getByRole('textbox',{name:'迭代变量',exact:true}).fill('record');
+                await dialog.getByRole('button',{name:'创建'+kind,exact:true}).click();
+            }
+            await idle();
+            if(await page.locator('.ProseMirror').count()){await page.keyboard.press('Control+Enter');await idle();}
+            const {contents,expectedFirst}=await page.evaluate(changed=>{
+                const canonical=node=>node.nodeType===1?{tag:node.tagName,attrs:[...node.attributes].map(attribute=>[attribute.name,attribute.value]).sort(([a],[b])=>a<b?-1:a>b?1:0),children:[...node.childNodes].map(canonical)}:{type:node.nodeType,text:node.nodeValue};
+                const document=new DOMParser().parseFromString(state.source,'application/xml'),expected=new DOMParser().parseFromString(changed,'application/xml');
+                return {contents:[...document.querySelectorAll('document > section')].map(section=>({id:section.id,structure:canonical(section),tags:[...section.children].map(node=>node.tagName)})),expectedFirst:canonical(expected.querySelector('section[id="one"]'))};
+            },changed);
+            assert.deepEqual(contents[0].structure,expectedFirst,'the former physical page must not receive the new content');
+            assert.equal(contents[1].id,'two');assert.deepEqual(contents[1].tags,[tag]);
+            assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'synced');
+            for(let step=0;step<4&&await xml()!==changed;step++){await page.locator('#undo').click();await idle();}
+            assert.equal(await xml(),changed,'insertion into the refreshed owner must remain undoable');
+        };
+        await check('insertion menus close when source repagination invalidates their page',async()=>{
+            const first='<p id="menu-first">ONE</p>',source='<document version="1"><page width="420" height="220" margin="30"/><section id="one">'+first+'</section><section id="two"/></document>';
+            const changed=source.replace(first,'<p id="menu-first" line-height="100">ONE</p><p id="menu-extra" line-height="100">MORE</p>');
+            for(const [entry,kind,tag] of [['button','段落','p'],['button','独立图文栅格','grid'],['button','数据表格','rows'],['context','段落','p']]){
+                await load(source,{items:[{name:'Alpha'}]});
+                await refreshedMenuInsert({entry,kind,tag,changed});
+            }
+        });
+        await check('insertion menus close when data-only repagination invalidates their page',async()=>{
+            const source='<document version="1"><page width="420" height="220" margin="30"/><section id="one"><each items="items" as="item"><p id="menu-data" line-height="100">${item}</p></each></section><section id="two"/></document>';
+            for(const entry of ['button','context']){
+                await load(source,{items:['ONE']});
+                await refreshedMenuInsert({entry,kind:'段落',tag:'p',changed:source,dataOnly:true});
+                assert.deepEqual(await page.evaluate(()=>JSON.parse(state.data).items),['ONE','MORE']);
+            }
+        });
+        await check('blank page insertion rechecks its target after awaiting pending edits',async()=>{
+            const first='<p id="waiting-first">ONE</p>',source='<document version="1"><page width="420" height="220" margin="30"/><section id="one">'+first+'</section><section id="two"/></document>';
+            const changed=source.replace(first,'<p id="waiting-first" line-height="100">ONE</p><p id="waiting-extra" line-height="100">MORE</p>');
+            await load(source,{});
+            let release;const gate=new Promise(resolve=>{release=resolve;});await page.route('**/api/preview',async route=>{await gate;await route.continue();});
+            try{
+                const requested=page.waitForRequest('**/api/preview');
+                await page.locator('#source-tab').click();await page.locator('#source').fill(changed);await page.locator('#canvas-tab').click();await requested;
+                assert.equal(await page.locator('.studio-background').count(),2);
+                await page.locator('.studio-background').nth(1).click({button:'right',position:{x:12,y:100}});
+                const before=await page.evaluate(()=>({source:DesignerStudioBridge.snapshot().source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+                await page.evaluate(()=>{const original=DesignerStudioBridge.settled;window.menuOriginalSettled=original;window.menuAwaitingSettled=false;window.menuSettledGate=new Promise(resolve=>window.menuReleaseSettled=resolve);DesignerStudioBridge.settled=async()=>{await original();window.menuAwaitingSettled=true;await window.menuSettledGate;};});
+                await page.getByRole('menu',{name:'在空白区域插入',exact:true}).getByRole('menuitem',{name:'插入段落',exact:true}).click();
+                await page.waitForFunction(()=>window.menuAwaitingSettled);
+                release();await page.unrouteAll({behavior:'wait'});await page.waitForFunction(()=>pages.length===3);
+                await page.evaluate(()=>{DesignerStudioBridge.settled=window.menuOriginalSettled;window.menuReleaseSettled();});await idle();
+                assert.deepEqual(await page.evaluate(()=>({source:DesignerStudioBridge.snapshot().source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo})),before,'an insertion started on the old page must reject after pending work refreshes the pages');
+                assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().source),changed);assert.equal(await page.locator('.ProseMirror').count(),0);
+            }finally{
+                await page.evaluate(()=>{if(window.menuOriginalSettled)DesignerStudioBridge.settled=window.menuOriginalSettled;window.menuReleaseSettled?.();delete window.menuOriginalSettled;delete window.menuAwaitingSettled;delete window.menuReleaseSettled;delete window.menuSettledGate;});
+                release();await page.unrouteAll({behavior:'wait'});
+            }
+        });
+        await check('blank page property selection rechecks its target after awaiting pending edits',async()=>{
+            const first='<p id="property-first">ONE</p>',source='<document version="1"><page width="420" height="220" margin="30"/><section id="one">'+first+'</section><section id="two"/></document>';
+            const changed=source.replace(first,'<p id="property-first" line-height="100">ONE</p><p id="property-extra" line-height="100">MORE</p>');
+            await load(source,{});await page.evaluate(()=>DesignerStudioBridge.select([entries.find(entry=>entry.id==='property-first').path]));
+            let release;const gate=new Promise(resolve=>{release=resolve;});await page.route('**/api/preview',async route=>{await gate;await route.continue();});
+            try{
+                const requested=page.waitForRequest('**/api/preview');
+                await page.locator('#source-tab').click();await page.locator('#source').fill(changed);await page.locator('#canvas-tab').click();await requested;
+                assert.equal(await page.locator('.studio-background').count(),2);
+                const before=await page.evaluate(()=>({source:DesignerStudioBridge.snapshot().source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+                await page.evaluate(()=>{const original=DesignerStudioBridge.settled;window.propertyOriginalSettled=original;window.propertyAwaitingSettled=false;window.propertySettledGate=new Promise(resolve=>window.propertyReleaseSettled=resolve);DesignerStudioBridge.settled=async()=>{await original();window.propertyAwaitingSettled=true;await window.propertySettledGate;};});
+                await page.locator('.studio-background').nth(1).click({position:{x:12,y:100}});await page.waitForFunction(()=>busy&&window.propertyAwaitingSettled);
+                release();await page.unrouteAll({behavior:'wait'});await page.waitForFunction(()=>pages.length===3);
+                await page.evaluate(()=>{DesignerStudioBridge.settled=window.propertyOriginalSettled;window.propertyReleaseSettled();});await idle();
+                assert.equal(await page.evaluate(()=>selected?.id),'property-first','an obsolete blank-page click must preserve the previous component selection');
+                assert.deepEqual(await page.evaluate(()=>({source:DesignerStudioBridge.snapshot().source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo})),before,'rejecting an obsolete property target must preserve drafts, resources and history');
+                assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().source),changed);assert.match(await page.locator('#status').textContent(),/重新选择/);
+            }finally{
+                await page.evaluate(()=>{if(window.propertyOriginalSettled)DesignerStudioBridge.settled=window.propertyOriginalSettled;window.propertyReleaseSettled?.();delete window.propertyOriginalSettled;delete window.propertyAwaitingSettled;delete window.propertyReleaseSettled;delete window.propertySettledGate;});
+                release();await page.unrouteAll({behavior:'wait'});
+            }
+            await page.locator('.studio-background').nth(2).click({position:{x:12,y:100}});await idle();await page.waitForFunction(()=>selected?.id==='two');
+            assert.equal(await page.locator('#node-page-settings').isVisible(),true);assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().source),changed);
+        });
+        await check('grid chooser rejects a page target invalidated while the dialog is open',async()=>{
+            const first='<p id="chooser-first">ONE</p>',source='<document version="1"><page width="420" height="220" margin="30"/><section id="one">'+first+'</section><section id="two"/></document>';
+            const changed=source.replace(first,'<p id="chooser-first" line-height="100">ONE</p><p id="chooser-extra" line-height="100">MORE</p>');
+            await load(source,{});
+            await page.evaluate(async changed=>{await DesignerStudioBridge.apply(changed);await DesignerStudioBridge.flush();clearTimeout(previewTimer);},changed);
+            let release;const gate=new Promise(resolve=>{release=resolve;});await page.route('**/api/preview',async route=>{await gate;await route.continue();});
+            try{
+                const requested=page.waitForRequest('**/api/preview');
+                await page.evaluate(()=>{void preview();});await requested;
+                assert.equal(await page.locator('.studio-background').count(),2);
+                await page.locator('.studio-host').nth(1).getByRole('button',{name:'插入内容',exact:true}).click();
+                await page.getByRole('menu',{name:'插入内容',exact:true}).getByRole('menuitem',{name:'独立图文栅格',exact:true}).click();await page.locator('#grid-layout-dialog').waitFor();
+                const before=await page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+                release();await page.unrouteAll({behavior:'wait'});await page.waitForFunction(()=>pages.length===3);
+                await page.locator('[data-grid-layout="halves"]').click();await idle();
+                assert.equal(await page.locator('#grid-layout-dialog').evaluate(node=>node.open),false);
+                assert.deepEqual(await page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo})),before,'confirming an obsolete grid target must preserve source, resources and history');
+                assert.equal(await xml(),changed);
+            }finally{release();await page.unrouteAll({behavior:'wait'});await page.keyboard.press('Escape');}
+        });
+        await check('document property insertion uses the current body section from keyboard and toolbar',async()=>{
+            for(const [body,index,owner,entry] of [
+                ['<section id="one"><p>ONE</p></section><section id="two"><p>TWO</p></section>',1,'two','keyboard'],
+                ['<section id="one"><p>ONE</p></section><section id="empty"/>',1,'empty','keyboard'],
+                ['<section id="one"><p>ONE</p></section><section id="empty"/>',1,'empty','toolbar'],
+                ['<p>ROOT</p>',0,'','keyboard']
+            ]){
+                await load('<document version="1"><page width="420" height="220" margin="30"/>'+body+'</document>',{});
+                await page.locator('.studio-background').nth(index).click({position:{x:12,y:100}});await idle();
+                const bounds=await page.locator('.canvas-scroll').boundingBox();assert.ok(bounds);
+                await page.mouse.click(bounds.x+5,bounds.y+20);await page.waitForFunction(()=>!busy&&selected.tag==='document');
+                const before=await xml();
+                if(entry==='keyboard'){
+                    await page.keyboard.press('Shift+F10');await page.getByRole('menu',{name:'在空白区域插入',exact:true}).getByRole('menuitem',{name:'插入段落',exact:true}).click();
+                }else{await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="p"]').click();}
+                await page.locator('.ProseMirror').waitFor();await page.keyboard.press('Home');await page.keyboard.press('Shift+End');await page.keyboard.type('INSERTED BODY');await page.keyboard.press('Control+Enter');await idle();
+                const inserted=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),node=[...document.querySelectorAll('p')].find(node=>node.textContent==='INSERTED BODY');return {owner:node?.closest('section')?.id||'',rootCount:document.querySelectorAll('document > p').length};});
+                assert.deepEqual(inserted,{owner,rootCount:owner?0:2});
+                assert.deepEqual(await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('p')].filter(node=>node.textContent!=='INSERTED BODY').map(node=>node.textContent)),[...body.matchAll(/<p>(.*?)<\/p>/g)].map(match=>match[1]));
+                for(let step=0;step<4&&await xml()!==before;step++){await page.locator('#undo').click();await idle();}
+                assert.equal(await xml(),before,'insert and text edits must remain undoable');
+            }
+        });
+        await check('empty page insertion uses its owner instead of another selected section',async()=>{
+            for(const [kind,entry,tag] of [
+                ['段落','button','p'],['独立图文栅格','button','grid'],
+                ['数据列表','button','list'],['数据表格','button','rows'],
+                ['段落','context','p'],['独立图文栅格','context','grid']
+            ]){
+                await load('<document version="1"><page width="420" height="220" margin="30"/><section id="one"><p id="other-section">ONE</p></section><section id="empty"/></document>',{items:[{name:'Alpha'}]});
+                await (await object('other-section')).click();
+                const before=await xml();
+                if(entry==='button')await page.locator('.studio-host').nth(1).getByRole('button',{name:'插入内容',exact:true}).click();
+                else await page.locator('.studio-background').nth(1).click({button:'right',position:{x:12,y:100}});
+                await page.getByRole('menu',{name:entry==='button'?'插入内容':'在空白区域插入',exact:true}).getByRole('menuitem',{name:(entry==='context'?'插入':'')+kind,exact:true}).click();
+                if(kind==='段落'){await page.locator('.ProseMirror').waitFor();await page.keyboard.type('EMPTY PAGE');await page.keyboard.press('Control+Enter');}
+                else if(kind==='独立图文栅格'){await page.locator('#grid-layout-dialog').waitFor();await page.locator('[data-grid-layout="halves"]').click();}
+                else{
+                    const dialog=page.getByRole('dialog',{name:'绑定数组数据',exact:true});await dialog.waitFor();
+                    await dialog.getByRole('textbox',{name:'数组路径',exact:true}).fill('items');await dialog.getByRole('textbox',{name:'迭代变量',exact:true}).fill('record');
+                    await dialog.getByRole('button',{name:'创建'+kind,exact:true}).click();
+                }
+                await idle();
+                if(await page.locator('.ProseMirror').count()){await page.keyboard.press('Control+Enter');await idle();}
+                const contents=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml');return [...document.querySelectorAll('document > section')].map(section=>[...section.children].map(node=>({tag:node.tagName,text:node.textContent})));});
+                assert.deepEqual(contents[0],[{tag:'p',text:'ONE'}]);assert.equal(contents[1].length,1);
+                assert.equal(contents[1][0].tag,tag);
+                if(kind==='段落')assert.ok(contents[1][0].text.includes('EMPTY PAGE'));
+                assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'synced');
+                for(let step=0;step<4&&await xml()!==before;step++){await page.locator('#undo').click();await idle();}
+                assert.equal(await xml(),before,entry+' '+kind+' must remain undoable');
+            }
+            await load('<document version="1"><page width="420" height="600" margin="30"/><navigation headings="true"><contents title="Contents"/></navigation><section id="body"><heading id="contents-heading" level="1">TITLE</heading></section><section id="empty"/></document>',{});
+            await page.locator('.studio-background').first().click({position:{x:12,y:180}});await idle();
+            assert.equal(await page.evaluate(()=>selected.tag),'document');
+            const capture=()=>page.evaluate(()=>({source:state.source,data:state.data,revision:state.revision,resourceIdentity:state.resourceIdentity,selection:selectedPaths,canUndo:DesignerStudioBridge.snapshot().canUndo}));
+            const before=await capture();
+            for(const entry of ['keyboard','button']){
+                if(entry==='keyboard')await page.keyboard.press('Shift+F10');
+                else await page.locator('.studio-host').first().getByRole('button',{name:'插入内容',exact:true}).click();
+                await page.getByRole('menu',{name:entry==='keyboard'?'在空白区域插入':'插入内容',exact:true}).getByRole('menuitem',{name:entry==='keyboard'?'插入段落':'段落',exact:true}).click();
+                await page.waitForFunction(()=>!busy&&$('status').textContent.includes('此页不属于正文分节'));
+                assert.deepEqual(await capture(),before,'generated contents page must reject insertion before source or resources change');
+                await page.keyboard.press('Escape');
+            }
+        });
         await check('workflow v2 table column borders support drag cancel keyboard and exact sizing',async()=>{
             await load('<document version="1"><page width="420" height="600" margin="30"/><table id="sizing" padding-left="9" padding-right="11"><columns><column weight="1"/><column weight="1"/></columns><header><cell>FIRST</cell><cell>SECOND</cell></header><row><cell>VALUE-A</cell><cell>VALUE-B</cell></row></table></document>',{});
             await (await object('sizing')).click();const divider=page.getByRole('separator',{name:'调整表格第 1、2 列宽',exact:true});await divider.waitFor();
@@ -140,6 +529,71 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
             await page.screenshot({path:path.join(output,'workflow-v2-preview-failed.png'),fullPage:true});
             await page.evaluate(async()=>{$('data').value='{"name":"RECOVERED"}';await DesignerStudioBridge.apply(state.source);await DesignerStudioBridge.flush();});await idle();await page.locator('.studio-table-divider').waitFor();
         });
+        await check('grid preview failure cancels a live drag without changing the source',async()=>{
+            const source='<document version="1"><page width="420" height="600" margin="30"/><grid id="grid" tracks="12" column-gap="12"><item id="left" row="1" column-start="1" column-span="6"><p>${body}</p></item><item id="right" row="1" column-start="7" column-span="6"><p>B</p></item></grid></document>';
+            await load(source,{body:'Short body'});await page.getByRole('button',{name:'精确排版',exact:true}).click();await idle();
+            await page.evaluate(async()=>{await DesignerStudioBridge.choose(entries.find(entry=>entry.id==='left').path);});
+            const divider=page.locator('.studio-grid-divider');await divider.waitFor();const bounds=await divider.boundingBox();assert.ok(bounds);
+            await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();await page.mouse.move(bounds.x+bounds.width/2+35,bounds.y+bounds.height/2);
+            await page.locator('[data-grid-drag="boundary"]').waitFor();
+            await page.evaluate(async()=>{$('data').value=JSON.stringify({body:'overflow '.repeat(3000)});await DesignerStudioBridge.apply(state.source);await DesignerStudioBridge.flush();});
+            await page.waitForFunction(()=>!busy&&DesignerStudioBridge.snapshot().layoutState==='failed');
+            assert.equal(await divider.count(),0);assert.equal(await page.locator('[data-grid-drag="boundary"]').count(),0);
+            await page.mouse.up();await page.evaluate(async()=>{await DesignerStudioBridge.settled();});
+            assert.equal(await xml(),source);assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'failed');
+            await page.screenshot({path:path.join(output,'grid-preview-failed.png'),fullPage:true});
+        });
+        await check('fixed component drag refuses pending preview geometry and works after synchronization',async()=>{
+            const source='<document version="1"><page width="420" height="300" margin="30"/><foreground><box x="40" y="70" width="160" height="50"><p id="pending-fixed" line-height="20">FIXED</p></box></foreground><p id="pending-body">BODY</p></document>',changed=source.replace('x="40"','x="100"');
+            await load(source,{});await page.getByRole('button',{name:'精确排版',exact:true}).click();await idle();await page.evaluate(()=>DesignerStudioBridge.select([entries.find(entry=>entry.id==='pending-fixed').path]));
+            const capture=()=>page.evaluate(()=>({source:state.source,data:state.data,revision:state.revision,identity:state.resourceIdentity,resources:state.images.length,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+            let release;const gate=new Promise(resolve=>{release=resolve;});await page.route('**/api/preview',async route=>{await gate;await route.continue();});
+            try{
+                const requested=page.waitForRequest('**/api/preview');
+                await page.evaluate(async changed=>{await DesignerStudioBridge.apply(changed);await DesignerStudioBridge.flush();clearTimeout(previewTimer);void preview();},changed);await requested;
+                const before=await capture(),handle=page.getByRole('button',{name:'拖动固定组件',exact:true}),bounds=await handle.boundingBox();assert.ok(bounds);
+                assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'pending');
+                await page.locator('.studio-surface').first().focus();await page.keyboard.press('ArrowRight');
+                assert.deepEqual(await capture(),before,'keyboard geometry must not replace the current x=100 source with a coordinate from the old preview');
+                await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();
+                assert.equal(await page.locator('.studio-surface[data-gesture]').count(),0,'pending preview geometry must not start a component gesture');
+                release();await page.unrouteAll({behavior:'wait'});await page.waitForFunction(()=>DesignerStudioBridge.snapshot().layoutState==='synced');
+                await page.mouse.move(bounds.x+bounds.width/2+20,bounds.y+bounds.height/2+20,{steps:4});await page.mouse.up();await idle();
+                assert.deepEqual(await capture(),before,'releasing an obsolete drag must preserve the current source, resources and history');assert.equal(await xml(),changed);
+            }finally{release();await page.unrouteAll({behavior:'wait'});await page.mouse.up();}
+            await page.locator('.studio-surface').first().focus();await page.keyboard.press('ArrowRight');await idle();
+            assert.equal(await page.evaluate(()=>Number(new DOMParser().parseFromString(state.source,'application/xml').querySelector('box').getAttribute('x'))),101,'a fresh synchronized keyboard edit must move the current x=100 component by 1 pt');
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),changed,'undo the keyboard edit before testing the fresh drag');
+            await holdDrag(page.getByRole('button',{name:'拖动固定组件',exact:true}),20,16);
+            const moved=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),box=document.querySelector('box');return {x:Number(box.getAttribute('x')),y:Number(box.getAttribute('y')),text:document.documentElement.textContent};});
+            assert.ok(moved.x>100&&moved.y>70,'a fresh synchronized gesture must move the current component');assert.equal(moved.text,'FIXEDBODY');
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),changed,'the fresh drag must remain undoable');
+        });
+        await check('grid swaps survive scrolling between pages and remain cancellable and undoable',async()=>{
+            const source='<document version="1"><page width="420" height="220" margin="30"/><grid id="scroll-grid" tracks="12"><item id="scroll-first" row="1" column-start="1" column-span="12"><p id="scroll-a" line-height="120">ROW ONE</p></item><item id="scroll-next" row="2" column-start="1" column-span="12"><p id="scroll-b" line-height="120">ROW TWO</p></item></grid></document>';
+            await page.setViewportSize({width:1440,height:700});
+            try{
+                await load(source,{});assert.equal(await page.evaluate(()=>pages.length),2);
+                const dragAcross=async()=>{
+                    await page.locator('#page-jump').selectOption('0');await page.waitForFunction(()=>currentPage===0);
+                    await page.getByRole('treeitem',{name:'栅格项 scroll-first',exact:true}).click();
+                    const grip=await page.getByRole('button',{name:'拖动栅格项 scroll-first',exact:true}).boundingBox();assert.ok(grip);
+                    await page.mouse.move(grip.x+grip.width/2,grip.y+grip.height/2);await page.mouse.down();await page.locator('[data-grid-drag="swap"]').waitFor();
+                    const identity=await page.evaluate(()=>({source:state.source,revision:state.revision,previewId}));
+                    await page.mouse.wheel(0,450);await page.waitForFunction(()=>currentPage===1);
+                    assert.deepEqual(await page.evaluate(()=>({source:state.source,revision:state.revision,previewId})),identity,'scrolling must keep the same source and precise preview');
+                    assert.equal(await page.locator('[data-grid-drag="swap"]').count(),1,'scrolling to a different current page must preserve the drag');
+                    const target=await page.locator('.studio-object[data-studio-path="/1/1"]').boundingBox();assert.ok(target);
+                    await page.mouse.move(target.x+target.width/2,target.y+target.height/2,{steps:5});await page.locator('.studio-grid-swap-target').waitFor();
+                };
+                await dragAcross();await page.mouse.up();await idle();
+                assert.deepEqual(await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('item')].map(node=>({id:node.id,row:node.getAttribute('row'),text:node.textContent}))),[{id:'scroll-next',row:'1',text:'ROW TWO'},{id:'scroll-first',row:'2',text:'ROW ONE'}]);
+                await page.screenshot({path:path.join(output,'grid-swap-after-scroll.png'),fullPage:true});
+                await page.locator('#undo').click();await idle();assert.equal(await xml(),source);
+                await dragAcross();await page.keyboard.press('Escape');await page.mouse.up();await idle();
+                assert.equal(await page.locator('[data-grid-drag="swap"]').count(),0);assert.equal(await xml(),source);
+            }finally{await page.mouse.up();await page.setViewportSize({width:1440,height:1050});}
+        });
         await check('image paste respects page margins in pt mm cm and in including edge and section overrides',async()=>{
             const cases=['margin="72"','margin="72pt"','margin="25.4mm"','margin="2.54cm"','margin="1in"','margin="12" margin-left="1in" margin-right="25.4mm" margin-top="2.54cm" margin-bottom="72pt"'];
             for(const attributes of cases){
@@ -176,6 +630,142 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
                     await download.saveAs(path.join(output,'image-paste-'+name+'.pdf'));await page.locator('#close-export').click();
                 }
             }
+        });
+        await check('image paste fits the remaining atomic grid item height and preserves history',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            await load('<document version="1"><page width="420" height="220" margin="30"/><grid id="image-grid" tracks="12" column-gap="12"><item id="left" row="1" column-start="1" column-span="6"><p id="image-anchor" line-height="20">EXISTING</p></item><item id="right" row="1" column-start="7" column-span="6"><p line-height="20">RIGHT</p></item></grid></document>',{});
+            const before=await page.evaluate(()=>({source:state.source,resources:state.images.length,identity:state.resourceIdentity}));
+            await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=100;canvas.height=1000;canvas.getContext('2d').fillRect(0,0,100,1000);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'atomic-grid.png',{type:'image/png'}),0,0,0,entries.find(entry=>entry.id==='image-anchor').path);});await idle();
+            const actual=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),image=document.querySelector('image[ref^="pasted_"]');return {source:state.source,layout:DesignerStudioBridge.snapshot().layoutState,status:$('status').textContent,height:Number(image?.getAttribute('height')),width:Number(image?.getAttribute('width')),lineHeight:Number(image?.parentElement.getAttribute('line-height')),resources:state.images.length,leftText:document.querySelector('item[id="left"]').textContent,rightText:document.querySelector('item[id="right"]').textContent};});
+            assert.equal(actual.layout,'synced',actual.status);assert.equal(actual.resources,before.resources+1,actual.status);
+            // The 160 pt body holds the original 20 pt line, 6 pt trailing space and a 134 pt image line.
+            assert.ok(actual.height>0&&actual.height<=130+1e-6,'image must fit the remaining 130 pt: '+actual.height);
+            assert.ok(Math.abs(actual.width/actual.height-.1)<1e-6,'scaling must preserve the original aspect ratio');
+            assert.ok(actual.lineHeight<=134+1e-6,'image paragraph must fit the remaining line height');
+            assert.equal(actual.leftText,'EXISTING');assert.equal(actual.rightText,'RIGHT');assert.equal(await page.evaluate(()=>pages.length),1);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),before.source);assert.equal(await page.evaluate(()=>state.resourceIdentity),before.identity);
+            await page.locator('#redo').click();await idle();assert.equal(await xml(),actual.source);assert.equal(await page.evaluate(()=>state.images.length),before.resources+1);
+            await writeFile(path.join(output,'image-paste-atomic-grid.xml'),actual.source);
+            const [download]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);
+            await download.saveAs(path.join(output,'image-paste-atomic-grid.pdf'));await page.locator('#close-export').click();
+        });
+        await check('image paste rejects an atomic grid item without line space before writing',async()=>{
+            await load('<document version="1"><page width="420" height="220" margin="30"/><grid id="full-image-grid" tracks="12"><item id="left" row="1" column-start="1" column-span="12"><p id="image-full" line-height="150">EXISTING</p></item></grid></document>',{});
+            const capture=()=>page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,resources:state.images.length,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo})),before=await capture();
+            const writes=[],watch=request=>{if(request.url().endsWith('/api/resource'))writes.push(request.url());};page.on('request',watch);
+            try{await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=100;canvas.height=1000;const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'full-grid.png',{type:'image/png'}),0,0,0,entries.find(entry=>entry.id==='image-full').path);});await idle();}
+            finally{page.off('request',watch);}
+            assert.equal(writes.length,0,'an item without line space must reject before posting image bytes');
+            assert.match(await page.locator('#status').textContent(),/没有足够.*原文和资源未修改/);assert.deepEqual(await capture(),before);
+            assert.deepEqual(await page.evaluate(async()=>{const current=await request('state');return {source:current.source,revision:current.revision,identity:current.resourceIdentity,resources:current.images.length};}),{source:before.source,revision:before.revision,identity:before.identity,resources:before.resources});
+        });
+        await check('image paste fits an occupied table cell and rejects a full atomic row',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            const source=height=>'<document version="1"><page width="420" height="220" margin="30"/><table id="cell-image-table"><columns><column weight="1"/></columns><row><cell><p id="cell-image-anchor" line-height="'+height+'" space-after="6">EXISTING CELL</p></cell></row></table></document>';
+            const paste=()=>page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=100;canvas.height=1000;canvas.getContext('2d').fillRect(0,0,100,1000);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'occupied-cell.png',{type:'image/png'}),0,0,0,entries.find(entry=>entry.id==='cell-image-anchor').path);});
+            const capture=()=>page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,resources:state.images.length,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+            await load(source(20),{});const before=await capture();await paste();await idle();
+            const actual=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),image=document.querySelector('image[ref^="pasted_"]'),cell=document.querySelector('p[id="cell-image-anchor"]').closest('cell');return {source:state.source,layout:DesignerStudioBridge.snapshot().layoutState,status:$('status').textContent,height:Number(image?.getAttribute('height')),width:Number(image?.getAttribute('width')),lineHeight:Number(image?.parentElement.getAttribute('line-height')),owner:image?.closest('table')?.id,sameCell:!!image&&image.closest('cell')===cell,resources:state.images.length,text:cell.textContent};});
+            assert.equal(actual.layout,'synced',actual.status);assert.equal(actual.resources,before.resources+1,actual.status);
+            // A 160 pt row reserves 12 pt for padding, 20 pt for the existing line and 6 pt for its trailing space.
+            assert.ok(Math.abs(actual.height-118)<1e-6,'the image must use the remaining 118 pt: '+actual.height);
+            assert.ok(Math.abs(actual.width/actual.height-.1)<1e-6);assert.ok(Math.abs(actual.lineHeight-122)<1e-6);
+            assert.equal(actual.owner,'cell-image-table');assert.equal(actual.sameCell,true);assert.equal(actual.text,'EXISTING CELL');assert.equal(await page.evaluate(()=>pages.length),1);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),before.source);assert.equal(await page.evaluate(()=>state.resourceIdentity),before.identity);
+            await page.locator('#redo').click();await idle();assert.equal(await xml(),actual.source);assert.equal(await page.evaluate(()=>state.images.length),before.resources+1);
+            await writeFile(path.join(output,'image-paste-occupied-cell.xml'),actual.source);
+            await load(source(140),{});const full=await capture(),writes=[],watch=request=>{if(request.url().endsWith('/api/resource'))writes.push(request.url());};page.on('request',watch);
+            try{await paste();await idle();}finally{page.off('request',watch);}
+            assert.equal(writes.length,0,'a full atomic row must reject before posting image bytes');
+            assert.match(await page.locator('#status').textContent(),/没有足够.*原文和资源未修改/);assert.deepEqual(await capture(),full);
+            assert.deepEqual(await page.evaluate(async()=>{const current=await request('state');return {source:current.source,revision:current.revision,identity:current.resourceIdentity,resources:current.images.length};}),{source:full.source,revision:full.revision,identity:full.identity,resources:full.resources});
+        });
+        const checkAtomicImageFit=async({source,name,height,lineHeight,width,pageCount=1,bitmapWidth=100,bitmapHeight=1000})=>{
+            await load(source,{});const before=await page.evaluate(()=>({source:state.source,resources:state.images.length,identity:state.resourceIdentity}));
+            await page.evaluate(async({bitmapWidth,bitmapHeight})=>{const canvas=document.createElement('canvas');canvas.width=bitmapWidth;canvas.height=bitmapHeight;canvas.getContext('2d').fillRect(0,0,bitmapWidth,bitmapHeight);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'atomic-space.png',{type:'image/png'}),0,0,0,entries.find(entry=>entry.id==='anchor').path);},{bitmapWidth,bitmapHeight});await idle();
+            const actual=await page.evaluate(source=>{
+                const document=new DOMParser().parseFromString(state.source,'application/xml'),original=new DOMParser().parseFromString(source,'application/xml'),originalRefs=new Set([...original.querySelectorAll('image')].map(image=>image.getAttribute('ref'))),newImages=[...document.querySelectorAll('image')].filter(image=>!originalRefs.has(image.getAttribute('ref'))),image=newImages[0],anchor=document.querySelector('[id="anchor"]');
+                const canonical=node=>node.nodeType===1?{tag:node.tagName,attrs:[...node.attributes].map(attribute=>[attribute.name,attribute.value]).sort(([a],[b])=>a<b?-1:a>b?1:0),children:[...node.childNodes].map(canonical)}:{type:node.nodeType,text:node.nodeValue};
+                const result={source:state.source,identity:state.resourceIdentity,resources:state.images.length,newImages:newImages.length,layout:DesignerStudioBridge.snapshot().layoutState,status:$('status').textContent,height:Number(image?.getAttribute('height')),width:Number(image?.getAttribute('width')),lineHeight:Number(image?.parentElement.getAttribute('line-height')),sameParent:!!image&&image.parentElement.parentElement===anchor.parentElement};
+                image?.parentElement.remove();return {...result,preserved:canonical(document.documentElement),original:canonical(original.documentElement)};
+            },before.source);
+            assert.equal(actual.layout,'synced',name+': '+actual.status);assert.equal(actual.resources,before.resources+1,name+': '+actual.status);assert.equal(actual.newImages,1,name+': exactly one new image reference');
+            assert.ok(Math.abs(actual.height-height)<1e-6,name+': expected '+height+' pt image, got '+actual.height);assert.ok(Math.abs(actual.lineHeight-lineHeight)<1e-6,name+': expected '+lineHeight+' pt line, got '+actual.lineHeight);
+            if(width!==undefined)assert.ok(Math.abs(actual.width-width)<1e-6,name+': expected '+width+' pt width, got '+actual.width);
+            assert.ok(Math.abs(actual.width/actual.height-bitmapWidth/bitmapHeight)<1e-6,name+': image aspect ratio');assert.equal(actual.sameParent,true,name+': insertion parent');
+            assert.deepEqual(actual.preserved,actual.original,name+': all original structure, attributes and content must be preserved');assert.equal(await page.evaluate(()=>pages.length),pageCount,name);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),before.source,name);assert.equal(await page.evaluate(()=>state.resourceIdentity),before.identity,name);
+            await page.locator('#redo').click();await idle();assert.equal(await xml(),actual.source,name);assert.equal(await page.evaluate(()=>state.resourceIdentity),actual.identity,name);assert.equal(await page.evaluate(()=>state.images.length),before.resources+1,name);
+            await writeFile(path.join(output,'image-paste-'+name+'.xml'),actual.source);
+            const [download]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);
+            await download.saveAs(path.join(output,'image-paste-'+name+'.pdf'));await page.locator('#close-export').click();
+        };
+        await check('image paste preserves target cell slack inside full atomic containers',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            const paragraph='<p id="anchor" line-height="20" space-after="6">EXISTING</p>';
+            const table=rightHeight=>'<table id="inner"><columns><column weight="1"/><column weight="1"/></columns><row><cell>'+paragraph+'</cell><cell line-height="'+rightHeight+'">TALL</cell></row></table>';
+            const document=body=>'<document version="1"><page width="420" height="220" margin="30"/>'+body+'</document>';
+            for(const fixture of [
+                {name:'full-table-inside-grid',height:118,lineHeight:122,source:document('<grid tracks="12"><item id="grid-item" row="1" column-start="1" column-span="12">'+table(148)+'</item></grid>')},
+                {name:'full-table-inside-atomic-cell',height:106,lineHeight:110,source:document('<table id="outer"><columns><column weight="1"/></columns><row><cell>'+table(136)+'</cell></row></table>')}
+            ])await checkAtomicImageFit(fixture);
+        });
+        await check('image paste fits the body region above an avoidance box',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            await checkAtomicImageFit({name:'body-grid-after-avoidance',height:90,lineHeight:94,source:'<document version="1"><page width="420" height="220" margin="30"/><foreground><box x="30" y="150" width="360" height="30" body-flow="AVOID"><p>BLOCK</p></box></foreground><grid tracks="12"><item id="grid-item" row="1" column-start="1" column-span="12"><p id="anchor" line-height="20" space-after="6">EXISTING</p></item></grid></document>'});
+        });
+        await check('image paste fits body and column paragraphs around avoidance boxes',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            const paragraph='<p id="anchor" line-height="20" space-after="6">EXISTING</p>',document=body=>'<document version="1"><page width="420" height="220" margin="30"/><foreground><box x="30" y="150" width="360" height="30" body-flow="AVOID"><p>BLOCK</p></box></foreground>'+body+'</document>';
+            for(const fixture of [
+                {name:'body-paragraph-after-avoidance',height:116,lineHeight:120,pageCount:2,source:document(paragraph)},
+                {name:'column-paragraph-after-avoidance',height:116,lineHeight:120,pageCount:1,source:document('<columns count="2" gap="12">'+paragraph+'</columns>')}
+            ])await checkAtomicImageFit(fixture);
+        });
+        await check('image paste honors keep with next on paragraphs and headings without changing their attributes',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            for(const tag of ['p','heading']){
+                const attributes=tag==='heading'?' level="2"':'';
+                await checkAtomicImageFit({name:tag+'-keep-with-next',height:130,lineHeight:134,source:'<document version="1"><page width="420" height="220" margin="30"/><'+tag+attributes+' id="anchor" size="12" line-height="20" space-before="0" space-after="6" keep-with-next="true">KEPT</'+tag+'></document>'});
+            }
+        });
+        await check('image paste keeps the preceding title with its grid or table container',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            const title='<p id="title" size="12" line-height="20" space-before="0" space-after="6" keep-with-next="true">KEPT</p>',paragraph='<p id="anchor" size="12" line-height="20" space-after="6">EXISTING</p>';
+            for(const [owner,container,height,lineHeight] of [
+                ['grid','<grid tracks="12"><item row="1" column-start="1" column-span="12">'+paragraph+'</item></grid>',104,108],
+                ['table','<table><columns><column weight="1"/></columns><row><cell>'+paragraph+'</cell></row></table>',92,96]
+            ])await checkAtomicImageFit({name:'kept-title-'+owner,source:'<document version="1"><page width="420" height="220" margin="30"/>'+title+container+'</document>',height,lineHeight});
+        });
+        await check('image paste measures container width instead of the previous inline image width',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();const resource=await page.evaluate(()=>state.images[0].name);
+            const paragraph='<p id="anchor" size="12" line-height="18" space-after="0"><image ref="'+resource+'" width="10" height="10" alt="original"/></p>';
+            for(const [owner,body,width] of [
+                ['body',paragraph,356],
+                ['grid','<grid tracks="12"><item row="1" column-start="1" column-span="12">'+paragraph+'</item></grid>',356],
+                ['cell','<table><columns><column weight="1"/></columns><row><cell>'+paragraph+'</cell></row></table>',344]
+            ])await checkAtomicImageFit({name:owner+'-existing-inline-image',source:'<document version="1"><page width="420" height="300" margin="30"/>'+body+'</document>',bitmapWidth:1000,bitmapHeight:100,width,height:width/10,lineHeight:width/10+4});
+        });
+        await check('image paste rejects a path invalidated while awaiting pending edits and allows a fresh retry',async()=>{
+            const source='<document version="1"><page width="420" height="300" margin="30"/><p id="paste-anchor">ORIGINAL</p><p id="paste-other">OTHER</p></document>',changed='<document version="1"><page width="420" height="300" margin="30"/><p id="paste-other">OTHER</p><p id="paste-anchor">ORIGINAL</p></document>';
+            await load(source,{});
+            const capture=()=>page.evaluate(()=>({source:state.source,data:state.data,revision:state.revision,identity:state.resourceIdentity,resources:state.images.length,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+            const writes=[],watch=request=>{if(request.url().endsWith('/api/resource'))writes.push(request.url());};page.on('request',watch);
+            try{
+                await page.evaluate(()=>{const original=DesignerStudioBridge.settled;window.stalePasteOriginalSettled=original;window.stalePasteWaiting=false;window.stalePasteGate=new Promise(resolve=>window.stalePasteRelease=resolve);DesignerStudioBridge.settled=async()=>{await original();window.stalePasteWaiting=true;await window.stalePasteGate;};const canvas=document.createElement('canvas');canvas.width=100;canvas.height=1000;canvas.toBlob(blob=>{window.stalePasteAttempt=DesignerStudioBridge.paste(new File([blob],'stale-path.png',{type:'image/png'}),0,0,0,entries.find(entry=>entry.id==='paste-anchor').path);},'image/png');});
+                await page.waitForFunction(()=>window.stalePasteWaiting);
+                await page.evaluate(async changed=>{await DesignerStudioBridge.apply(changed);await DesignerStudioBridge.flush();clearTimeout(previewTimer);await preview();},changed);const before=await capture();
+                await page.evaluate(async()=>{DesignerStudioBridge.settled=window.stalePasteOriginalSettled;window.stalePasteRelease();await window.stalePasteAttempt;});await idle();
+                assert.equal(writes.length,0,'an invalidated paste path must reject before posting image bytes');assert.deepEqual(await capture(),before,'the rejected paste must preserve the independent source change, resources and history');
+                assert.equal(await xml(),changed);assert.match(await page.locator('#status').textContent(),/粘贴位置.*变化.*重新选择/);
+            }finally{
+                page.off('request',watch);await page.evaluate(()=>{if(window.stalePasteOriginalSettled)DesignerStudioBridge.settled=window.stalePasteOriginalSettled;window.stalePasteRelease?.();delete window.stalePasteOriginalSettled;delete window.stalePasteWaiting;delete window.stalePasteGate;delete window.stalePasteRelease;delete window.stalePasteAttempt;});
+            }
+            const before=await capture();
+            await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=40;canvas.height=40;canvas.getContext('2d').fillRect(0,0,40,40);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'fresh-path.png',{type:'image/png'}),0,0,0,entries.find(entry=>entry.id==='paste-anchor').path);});await idle();
+            const fresh=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),image=document.querySelector('image[ref^="pasted_"]');return {resources:state.images.length,previousId:image?.parentElement.previousElementSibling?.id,text:document.documentElement.textContent};});
+            assert.equal(fresh.resources,before.resources+1);assert.equal(fresh.previousId,'paste-anchor');assert.equal(fresh.text,'OTHERORIGINAL');assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'synced');
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),changed);assert.equal(await page.evaluate(()=>state.resourceIdentity),before.identity);
         });
         await check('image paste rejects full regions and failed candidate layout without source or resource changes',async()=>{
             await page.getByRole('button',{name:'精确排版',exact:true}).click();
@@ -898,7 +1488,7 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
         await check('blank canvas insertion belongs to the current section',async()=>{
             await load('<document version="1"><page width="420" height="600" margin="30"/><section id="part-one"><p id="section-first">First section</p></section><section id="part-two"><p id="section-second">Second section</p></section></document>');
             await (await object('section-second')).click();
-            await page.locator('.studio-background').nth(1).click({position:{x:90,y:200}});await page.waitForFunction(()=>selectedPaths.length===0);
+            await page.locator('.studio-background').nth(1).click({position:{x:90,y:200}});await page.waitForFunction(()=>selected?.id==='part-two');
             const insert=page.locator('.studio-host').nth(1).getByRole('button',{name:'插入内容',exact:true});
             const overlaps=await insert.evaluate(button=>{const rect=button.getBoundingClientRect();return [...button.closest('.studio-host').querySelectorAll('.studio-object')].filter(node=>{const other=node.getBoundingClientRect();return Math.min(rect.right,other.right)>Math.max(rect.left,other.left)&&Math.min(rect.bottom,other.bottom)>Math.max(rect.top,other.top);}).map(node=>node.getAttribute('data-studio-path'));});
             assert.deepEqual(overlaps,[],'the blank insertion button must not cover existing document content');

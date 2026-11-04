@@ -16,13 +16,12 @@ export function insertBlock(state:Snapshot,path:string|undefined,after:boolean,k
   const document=xml(state.source),flow=path?flowPath(document,path):null;
   const anchor=flow?at(document,flow):null;
   let parent:Element=anchor?.parentElement??document.documentElement;
-  if(!anchor&&path&&at(document,path).tagName==='item')parent=at(document,path);
+  if(!anchor&&path&&['item','section'].includes(at(document,path).tagName))parent=at(document,path);
   if(!anchor&&parent===document.documentElement&&[...document.documentElement.children].some(node=>node.tagName==='section')){
-    const candidates=[...state.selectedPaths,...(state.pages[state.currentPage]?.hits??[]).map(hit=>hit.path)];
-    const section=candidates.map(path=>{try{return at(document,path).closest('section');}catch{return null;}}).find(Boolean);
-    const sections=[...document.documentElement.children].filter(node=>node.tagName==='section');
-    if(!section&&sections.length!==1)throw new Error('请先选择当前分节中的组件，再插入内容。');
-    parent=section??sections[0];
+    const owner=state.pages[state.currentPage]?.ownerPath;
+    if(owner==null)throw new Error('页面归属尚未确认，请完成预览后重试。');
+    parent=at(document,owner);
+    if(parent.tagName!=='section')throw new Error('此页不属于正文分节，请先选择正文页再插入内容。');
   }
   if(kind==='page-break'&&['header','footer'].includes(parent.tagName))throw new Error('页眉、页脚中不能插入分页符。');
   const columnOwner=parent.closest('columns');

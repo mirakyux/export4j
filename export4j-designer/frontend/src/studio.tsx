@@ -27,9 +27,26 @@ declare global {interface Window {DesignerBindings?:{pick(path:string):Promise<s
 let bridge:Bridge,snapshot:Snapshot,mode:'convenient'|'precise'='convenient',activeEditors=0;
 const listeners=new Set<()=>void>(),roots=new Map<HTMLElement,Root>();
 const subscribe=(listener:()=>void)=>{listeners.add(listener);return ()=>{listeners.delete(listener);};};
+export const watchCanvasState=subscribe;
 const read=()=>snapshot;
 const refresh=()=>listeners.forEach(listener=>listener());
 export function sync(){if(!bridge)return;snapshot=bridge.snapshot();refresh();}
+type CanvasContext=Pick<Snapshot,'source'|'data'|'resourceIdentity'|'session'|'pages'>;
+export function canvasContext(current=bridge.snapshot()):CanvasContext{return {source:current.source,data:current.data,resourceIdentity:current.resourceIdentity,session:current.session,pages:current.pages};}
+export function canvasContextMatches(context:CanvasContext,current=bridge.snapshot()):boolean {
+  return context.source===current.source&&context.data===current.data&&context.resourceIdentity===current.resourceIdentity&&context.session===current.session&&context.pages===current.pages;
+}
+export function requireCanvasContext(context:CanvasContext):Snapshot {
+  const current=bridge.snapshot();
+  if(!canvasContextMatches(context,current))throw new Error('页面或内容已变化，请在最新预览中重新选择插入位置。');
+  return current;
+}
+export function requireCanvasLayout(context:CanvasContext):Snapshot {
+  const current=requireCanvasContext(context);
+  if(current.pending||current.layoutState!=='synced')throw new Error('页面布局尚未同步，请等待最新预览后重试。');
+  return current;
+}
+function canvasLayoutReady(context:CanvasContext,current=bridge.snapshot()):boolean{return !current.busy&&!current.pending&&current.layoutState==='synced'&&canvasContextMatches(context,current);}
 let activeContainer:{path:string;session:number}|undefined;
 export async function finishText(){
   activeContainer=undefined;stopTextFocus?.();stopTextFocus=undefined;
@@ -77,8 +94,8 @@ export function focusText(path:string,point?:{x:number;y:number},replace=false,r
 }
 function useDocument(){return useSyncExternalStore(subscribe,read);}
 function fail(error:unknown){bridge.error(error instanceof Error?error.message:String(error));}
-async function applyGeometry(changes:Change[]){try{const result=geometry(bridge.snapshot(),changes);await bridge.apply(result.source,result.ids);}catch(error){fail(error);}}
-async function sortSelection(paths:string[],target:string,after:boolean){try{const current=bridge.snapshot(),result=reorder(current,paths,target,after);if(result.source!==serialize(xml(current.source)))await bridge.apply(result.source,undefined,result.paths);}catch(error){fail(error);}}
+async function applyGeometry(changes:Change[],context=canvasContext(),requireSyncedLayout=true){try{const current=requireSyncedLayout?requireCanvasLayout(context):requireCanvasContext(context);if(current.busy)return;const result=geometry(current,changes);await bridge.apply(result.source,result.ids);}catch(error){fail(error);}}
+async function sortSelection(paths:string[],target:string,after:boolean,context=canvasContext()){try{const current=requireCanvasContext(context);if(current.busy)return;const result=reorder(current,paths,target,after);if(result.source!==serialize(xml(current.source)))await bridge.apply(result.source,undefined,result.paths);}catch(error){fail(error);}}
 function flowSelection(state:Snapshot):string[]{
   let document:Document;try{document=xml(state.source);}catch{return [];}
   const paths=[...new Set(state.selectedPaths.map(path=>{try{return flowPath(document,path);}catch{return null;}}).filter((path):path is string=>path!==null))];
@@ -88,7 +105,7 @@ function sortStep(state:Snapshot,direction:number){
   const paths=flowSelection(state);if(!paths.length||paths.some(path=>parentPath(path)!==parentPath(paths[0])))return;
   const document=xml(state.source),siblings=state.entries.filter(entry=>parentPath(entry.path)===parentPath(paths[0])&&flowPath(document,entry.path)===entry.path).map(entry=>entry.path);
   const indices=paths.map(path=>siblings.indexOf(path)),edge=direction<0?Math.min(...indices):Math.max(...indices),target=siblings[edge+direction];
-  if(target)void sortSelection(paths,target,direction>0);
+  if(target)void sortSelection(paths,target,direction>0,canvasContext(state));
 }
 function gridInspectorReady(element:HTMLDivElement|null){if(element)window.document.dispatchEvent(new Event('designer-grid-inspector-ready'));}
 function ContainerTools({state}:{state:Snapshot}){
@@ -165,7 +182,8 @@ function Inspector(){
   const flow=flowSelection(state),allFlow=nodes.every(node=>!fixedBox(node))&&flow.length>0&&state.selectedPaths.every(path=>flowPath(document,path)===path)&&flow.every(path=>parentPath(path)===parentPath(flow[0])),canFix=nodes.every(positionable);
   if(!placed||(!canFix&&!allFlow))return null;
   const common=(name:string)=>{const values=nodes.map((node,index)=>name==='rotation'?(node.tagName==='box'?node.firstElementChild:node)?.getAttribute(name)??'0':boxes[index]?.getAttribute(name)??String((hitFor(state,state.selectedPaths[index])?.hit as any)?.[name]??''));return values.every(value=>value===values[0])?values[0]??'':'';};
-  const change=(value:Partial<Change>)=>applyGeometry(state.selectedPaths.map(path=>({path,...value})));
+  // Explicit inspector values extend the current source even while engine validation is queued.
+  const change=(value:Partial<Change>)=>applyGeometry(state.selectedPaths.map(path=>({path,...value})),canvasContext(state),false);
   const convert=(position:'FLOW'|'FIXED')=>change({position,page:placed.page});
   return <details className="studio-inspector" open><summary>{allFixed||canFix?'位置与尺寸':'组件顺序'}{(allFixed||canFix)&&<small>pt</small>}</summary>
     {(canFix||allFixed)&&<label>排版方式<select aria-label="块排版方式" disabled={state.busy} value={allFixed?'FIXED':allFlow?'FLOW':''} onChange={event=>convert(event.target.value as 'FLOW'|'FIXED')}>
@@ -190,7 +208,7 @@ function align(state:Snapshot,mode:string){
   const placed=state.selectedPaths.map(path=>({path,...hitFor(state,path)})).filter(item=>item.hit) as {path:string;hit:Hit;page:number}[];
   if(!placed.length)return;
   const page=state.pages[placed[0].page],left=Math.min(...placed.map(item=>item.hit.x)),top=Math.min(...placed.map(item=>item.hit.y));
-  void applyGeometry(placed.map(item=>({path:item.path,...(mode==='left'?{x:left}:mode==='top'?{y:top}:mode==='center'?{x:(page.width-item.hit.width)/2}:{y:(page.height-item.hit.height)/2})})));
+  void applyGeometry(placed.map(item=>({path:item.path,...(mode==='left'?{x:left}:mode==='top'?{y:top}:mode==='center'?{x:(page.width-item.hit.width)/2}:{y:(page.height-item.hit.height)/2})})),canvasContext(state));
 }
 function layerOrder(state:Snapshot,front:boolean){
   try{const document=xml(state.source);for(const path of state.selectedPaths){const box=fixedBox(at(document,path));if(box){if(front)box.parentElement!.append(box);else box.parentElement!.prepend(box);}}void bridge.apply(serialize(document));}catch(error){fail(error);}
@@ -318,14 +336,16 @@ function Rich({editing,page,scale,finish}:{editing:Editing;page:number;scale:num
     </div>,window.document.body)}<div ref={host}/>
   </div>;
 }
-interface Gesture {kind:string;startX:number;startY:number;paths:string[];rects:{path:string;hit:Hit;rotation:number}[];pointer:number;scale:number;width:number;height:number}
-interface PointerStart {clientX:number;clientY:number;pointerId:number;currentTarget:HTMLElement}
+interface Gesture {kind:string;startX:number;startY:number;paths:string[];rects:{path:string;hit:Hit;rotation:number}[];pointer:number;target:HTMLElement;context:CanvasContext;scale:number;width:number;height:number}
+interface PointerStart {clientX:number;clientY:number;pointerId:number;currentTarget:HTMLElement;context:CanvasContext}
 interface Press extends PointerStart {timer:ReturnType<typeof setTimeout>}
+interface Marquee {x:number;y:number;endX:number;endY:number;pointer:number;target:HTMLElement;context:CanvasContext;scale:number}
 interface Drop {path:string;page:number;after:boolean;x:number;y:number;width:number;label:string;paper:HTMLElement}
-interface BlockMenu {kind:'insert'|'actions';path?:string;after:boolean;left:number;top:number}
+interface BlockMenu {kind:'insert'|'actions';path?:string;after:boolean;left:number;top:number;context:CanvasContext}
 function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
   const state=useDocument(),model=state.pages[page],surface=useRef<HTMLDivElement>(null);
-  const [editing,setEditing]=useState<Editing|null>(null),[gesture,setGesture]=useState<Gesture|null>(null),[delta,setDelta]=useState({x:0,y:0}),[marquee,setMarquee]=useState<{x:number;y:number;endX:number;endY:number}|null>(null);
+  const [editing,setEditing]=useState<Editing|null>(null),[gesture,setGesture]=useState<Gesture|null>(null),[delta,setDelta]=useState({x:0,y:0}),[marquee,setMarquee]=useState<Marquee|null>(null);
+  const activeGesture=useRef<Gesture|null>(null),activeMarquee=useRef<Marquee|null>(null),blankClick=useRef<PointerStart|null>(null);
   const [drop,setDrop]=useState<Drop|null>(null);
   const [menu,setMenu]=useState<BlockMenu|null>(null),[guides,setGuides]=useState<SnapGuide[]>([]);
   const [blankOrigin,setBlankOrigin]=useState<{x:number;y:number}|null>(null);
@@ -334,18 +354,28 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
   const pointer=useRef<{x:number;y:number}|null>(null);
   const [paperWidth,setPaperWidth]=useState(()=>paper.getBoundingClientRect().width);
   const ignoreClick=useRef(false),press=useRef<Press|null>(null),scale=paperWidth/(model?.width||1);
-  const cancelPress=()=>{if(press.current){clearTimeout(press.current.timer);press.current=null;}};
-  const cancelGesture=()=>{cancelPress();setGesture(null);setDrop(null);setMarquee(null);setGuides([]);ignoreClick.current=true;};
+  const geometryDisabled=state.busy||state.pending||state.layoutState!=='synced';
+  const release=(target:HTMLElement,pointer:number)=>{if(target.hasPointerCapture(pointer))target.releasePointerCapture(pointer);};
+  const cancelPress=()=>{const value=press.current;press.current=null;if(value){clearTimeout(value.timer);release(value.currentTarget,value.pointerId);}};
+  const cancelGesture=(keepBlank=false)=>{
+    const value=activeGesture.current,selection=activeMarquee.current,blank=keepBlank?null:blankClick.current,active=!!value||!!selection||!!blank||!!press.current;
+    activeGesture.current=null;activeMarquee.current=null;if(!keepBlank)blankClick.current=null;cancelPress();
+    if(value)release(value.target,value.pointer);if(selection)release(selection.target,selection.pointer);
+    if(blank)release(blank.currentTarget,blank.pointerId);
+    setGesture(null);setDrop(null);setMarquee(null);setGuides([]);if(active)ignoreClick.current=true;
+  };
   useLayoutEffect(()=>{
     const measure=()=>{const width=paper.getBoundingClientRect().width;if(width>0)setPaperWidth(previous=>Math.abs(previous-width)>.1?width:previous);};
     const observer=new ResizeObserver(measure);observer.observe(paper);measure();return ()=>observer.disconnect();
   },[paper]);
-  useEffect(()=>cancelPress,[]);
+  useEffect(()=>()=>{const value=activeGesture.current,selection=activeMarquee.current,blank=blankClick.current;activeGesture.current=null;activeMarquee.current=null;blankClick.current=null;cancelPress();if(value)release(value.target,value.pointer);if(selection)release(selection.target,selection.pointer);if(blank)release(blank.currentTarget,blank.pointerId);},[]);
   useEffect(()=>{
     const current=bridge.snapshot();if(activeContainer&&current.selectedPaths.some(path=>path!==activeContainer!.path&&!path.startsWith(activeContainer!.path+'/')))activeContainer=undefined;
     if(editing&&!state.selectedPaths.some(path=>editing.paths.includes(path)))setEditing(null);
   },[state.selectedPaths.join('|')]);
   useEffect(()=>{if(activeContainer?.session!==state.session)activeContainer=undefined;cancelPress();setEditing(null);setMenu(null);ignoreClick.current=false;},[state.session]);
+  useLayoutEffect(()=>{setMenu(null);const blank=blankClick.current;cancelGesture(!!blank&&canvasContextMatches(blank.context,state));},[state.source,state.data,state.resourceIdentity,state.session,state.pages,paperWidth]);
+  useLayoutEffect(()=>{if(geometryDisabled)cancelGesture(!state.busy);},[state.layoutState,state.pending,state.busy]);
   useEffect(()=>{const finish=()=>{activeContainer=undefined;setEditing(null);setMenu(null);};for(const name of ['designer-history','designer-edit-end'])window.document.addEventListener(name,finish);return ()=>{for(const name of ['designer-history','designer-edit-end'])window.document.removeEventListener(name,finish);};},[]);
   useEffect(()=>{const other=(event:Event)=>{if((event as CustomEvent).detail.page!==page)setEditing(null);};window.document.addEventListener('designer-edit-start',other);return ()=>window.document.removeEventListener('designer-edit-start',other);},[page]);
   useLayoutEffect(()=>{
@@ -388,25 +418,27 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
   },[page,state.source,state.busy]);
   const openMenu=(event:React.MouseEvent<HTMLButtonElement>,kind:BlockMenu['kind'],path?:string,after=true)=>{
     event.preventDefault();event.stopPropagation();const bounds=event.currentTarget.getBoundingClientRect();
-    setMenu(previous=>previous?.kind===kind&&previous.path===path&&previous.after===after?null:{kind,path,after,left:Math.max(8,Math.min(window.innerWidth-224,bounds.left)),top:Math.max(64,Math.min(window.innerHeight-310,bounds.bottom+5))});
+    setMenu(previous=>previous?.kind===kind&&previous.path===path&&previous.after===after?null:{kind,path,after,context:canvasContext(),left:Math.max(8,Math.min(window.innerWidth-224,bounds.left)),top:Math.max(64,Math.min(window.innerHeight-310,bounds.bottom+5))});
   };
   const insert=(kind:BlockKind)=>{
     if(!menu)return;
-    if(kind==='grid'){
-      setMenu(null);window.document.dispatchEvent(new CustomEvent('designer-insert-grid',{detail:{path:menu.path,after:menu.after}}));return;
-    }
-    if(kind==='list'||kind==='rows'){
-      setMenu(null);window.document.dispatchEvent(new CustomEvent('designer-insert-bound',{detail:{kind,path:menu.path,after:menu.after}}));return;
-    }
     try{
-      const current={...bridge.snapshot(),currentPage:page},result=insertBlock(current,menu.path,menu.after,kind),placed=menu.path?hitFor(current,menu.path,page)?.hit:undefined;
+      const current={...requireCanvasContext(menu.context),currentPage:page};
+      if(kind==='grid'){
+        setMenu(null);window.document.dispatchEvent(new CustomEvent('designer-insert-grid',{detail:{path:menu.path,after:menu.after,page:menu.path?undefined:page,context:menu.context}}));return;
+      }
+      if(kind==='list'||kind==='rows'){
+        setMenu(null);window.document.dispatchEvent(new CustomEvent('designer-insert-bound',{detail:{kind,path:menu.path,after:menu.after,page:menu.path?undefined:page,context:menu.context}}));return;
+      }
+      const result=insertBlock(current,menu.path,menu.after,kind),placed=menu.path?hitFor(current,menu.path,page)?.hit:undefined;
       setMenu(null);void bridge.apply(result.source,result.ids,result.paths).then(()=>{
         if(kind==='p'||kind==='heading')editPath(result.paths[0],undefined,{id:result.ids[0],path:result.paths[0],x:placed?.x??30,y:placed?(menu.after?placed.y+placed.height+8:placed.y):30,width:placed?.width??model.width-60,height:24,images:[]},true);
         else if(kind==='table'||kind==='columns')focusText(result.paths[0]);
       }).catch(fail);
-    }catch(error){fail(error);}
+    }catch(error){setMenu(null);fail(error);}
   };
-  const duplicate=()=>{try{const result=duplicateBlocks(bridge.snapshot());setMenu(null);void bridge.apply(result.source,result.ids,result.paths).catch(fail);}catch(error){fail(error);}};
+  const menuAction=(action:(current:Snapshot)=>void)=>{if(!menu)return;setMenu(null);try{action(requireCanvasContext(menu.context));}catch(error){fail(error);}};
+  const duplicate=()=>menuAction(current=>{const result=duplicateBlocks(current);void bridge.apply(result.source,result.ids,result.paths).catch(fail);});
   const open=async(hit:Hit,event:React.MouseEvent,edit=false)=>{
     const current=bridge.snapshot(),source=xml(current.source),clickedPath=current.entries.find(entry=>entry.id&&entry.id===hit.id.split('@')[0])?.path??hit.path;
     const inside=activeContainer?.session===current.session&&(clickedPath===activeContainer.path||clickedPath.startsWith(activeContainer.path+'/'));
@@ -421,7 +453,7 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     else surface.current?.focus({preventScroll:true});
   };
   const startGesture=(start:PointerStart,kind:string,hit:Hit)=>{
-    const current=bridge.snapshot();if(current.busy||!start.currentTarget.isConnected)return;
+    const current=bridge.snapshot();if(!canvasLayoutReady(start.context,current)||!start.currentTarget.isConnected)return;
     const document=xml(current.source),flow=flowPath(document,hit.path),selectedFlow=flowSelection(current);
     const paths=flow?(selectedFlow.includes(flow)?selectedFlow:[flow]):current.selectedPaths.includes(hit.path)?current.selectedPaths:[hit.path];
     if(flow&&kind==='move')kind='sort';
@@ -429,26 +461,28 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     const rects=paths.map(path=>{const value=hitFor(current,path,page);const node=at(document,path);return value?{path,hit:value.hit,rotation:Number((node.tagName==='box'?node.firstElementChild:node)?.getAttribute('rotation')||0)}:null;}).filter(Boolean) as Gesture['rects'];
     if(!rects.length||kind!=='sort'&&!paths.every(path=>!!fixedBox(at(document,path))))return;
     if(paths.join('|')!==current.selectedPaths.join('|'))void bridge.select(paths);
-    setEditing(null);setGesture({kind,paths,startX:start.clientX,startY:start.clientY,rects,pointer:start.pointerId,scale,width:model.width,height:model.height});setDelta({x:0,y:0});
+    const next:Gesture={kind,paths,startX:start.clientX,startY:start.clientY,rects,pointer:start.pointerId,target:start.currentTarget,context:start.context,scale:paper.getBoundingClientRect().width/model.width,width:model.width,height:model.height};
+    activeGesture.current=next;setEditing(null);setGesture(next);setDelta({x:0,y:0});
     start.currentTarget.setPointerCapture(start.pointerId);
   };
   const begin=(event:React.PointerEvent<HTMLElement>,kind:string,hit:Hit)=>{
-    if(event.button!==0||state.busy)return;event.preventDefault();event.stopPropagation();
-    cancelPress();ignoreClick.current=false;try{startGesture(event,kind,hit);}catch(error){fail(error);}
+    if(event.button!==0||geometryDisabled)return;event.preventDefault();event.stopPropagation();
+    cancelPress();ignoreClick.current=false;try{startGesture({clientX:event.clientX,clientY:event.clientY,pointerId:event.pointerId,currentTarget:event.currentTarget,context:canvasContext(state)},kind,hit);}catch(error){fail(error);}
   };
   const hold=(event:React.PointerEvent<HTMLDivElement>,hit:Hit)=>{
-    if(event.button!==0||state.busy||editing||event.ctrlKey||event.metaKey||event.shiftKey)return;
+    if(event.button!==0||geometryDisabled||editing||event.ctrlKey||event.metaKey||event.shiftKey)return;
     cancelPress();ignoreClick.current=false;
-    const current=bridge.snapshot();let document:Document;try{document=xml(current.source);}catch(error){fail(error);return;}
+    const current=bridge.snapshot(),context=canvasContext(state);if(!canvasLayoutReady(context,current))return;
+    let document:Document;try{document=xml(current.source);}catch(error){fail(error);return;}
     // A cell edits independently; dragging moves the whole semantic table/control.
     const flow=flowPath(document,hit.path);
     const fixed=fixedPath(document,hit.path);
     const target=flow?hitFor(current,flow,page)?.hit:fixed&&hitFor(current,fixed,page)?.hit;
     if(!target)return;
     surface.current?.focus({preventScroll:true});
-    const start:PointerStart={clientX:event.clientX,clientY:event.clientY,pointerId:event.pointerId,currentTarget:event.currentTarget};
+    const start:PointerStart={clientX:event.clientX,clientY:event.clientY,pointerId:event.pointerId,currentTarget:event.currentTarget,context};
     event.currentTarget.setPointerCapture(event.pointerId);
-    press.current={...start,timer:setTimeout(()=>{press.current=null;ignoreClick.current=true;try{startGesture(start,'move',target);}catch(error){fail(error);}},350)};
+    press.current={...start,timer:setTimeout(()=>{press.current=null;ignoreClick.current=true;try{startGesture(start,'move',target);}catch(error){fail(error);}if(!activeGesture.current)release(start.currentTarget,start.pointerId);},350)};
   };
   const changeFor=(value:Gesture,item:Gesture['rects'][number],dx:number,dy:number):Change=>{
     const change:Change={path:item.path},hit=item.hit;
@@ -489,6 +523,7 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     if(gesture?.kind!=='sort')return;
     let frame:number;
     const tick=()=>{
+      if(!activeGesture.current||!canvasLayoutReady(gesture.context)){cancelGesture();return;}
       const scroller=paper.closest<HTMLElement>('.canvas-scroll'),point=pointer.current,bounds=scroller?.getBoundingClientRect();
       if(scroller&&bounds&&point){
         const step=point.y>bounds.bottom-36?12:point.y<bounds.top+36?-12:0,before=scroller.scrollTop;
@@ -502,29 +537,46 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     const hovered=(event.target as Element).closest<HTMLElement>('[data-grid-item-path]')?.dataset.gridItemPath??null;
     setHoveredGridItem(previous=>previous===hovered?previous:hovered);
     pointer.current={x:event.clientX,y:event.clientY};
+    if(blankClick.current&&blankClick.current.pointerId===event.pointerId&&Math.hypot(event.clientX-blankClick.current.clientX,event.clientY-blankClick.current.clientY)>4){cancelGesture();return;}
     if(press.current&&press.current.pointerId===event.pointerId&&Math.hypot(event.clientX-press.current.clientX,event.clientY-press.current.clientY)>6){cancelPress();ignoreClick.current=true;}
-    if(gesture&&gesture.pointer===event.pointerId){
-      const raw={x:(event.clientX-gesture.startX)/gesture.scale,y:(event.clientY-gesture.startY)/gesture.scale};
-      if(gesture.kind==='move'&&!event.altKey){
-        const targets=[{x:0,y:0,width:model.width,height:model.height},...model.hits.filter(hit=>!gesture.rects.some(item=>hit.path===item.path||hit.path.startsWith(item.path+'/')))];
-        const snapped=snapMove(gesture.rects[0].hit,raw.x,raw.y,targets,5/gesture.scale);setDelta(snapped);setGuides(snapped.guides);
+    const value=activeGesture.current,selection=activeMarquee.current;
+    if(value&&value.pointer===event.pointerId){
+      if(!canvasLayoutReady(value.context)){cancelGesture();return;}
+      const raw={x:(event.clientX-value.startX)/value.scale,y:(event.clientY-value.startY)/value.scale};
+      if(value.kind==='move'&&!event.altKey){
+        const targets=[{x:0,y:0,width:model.width,height:model.height},...model.hits.filter(hit=>!value.rects.some(item=>hit.path===item.path||hit.path.startsWith(item.path+'/')))];
+        const snapped=snapMove(value.rects[0].hit,raw.x,raw.y,targets,5/value.scale);setDelta(snapped);setGuides(snapped.guides);
       }else{setDelta(raw);setGuides([]);}
-      if(gesture.kind==='sort')setDrop(findDrop(event.clientX,event.clientY,gesture));
+      if(value.kind==='sort')setDrop(findDrop(event.clientX,event.clientY,value));
     }
-    if(marquee){const bounds=paper.getBoundingClientRect();setMarquee({...marquee,endX:(event.clientX-bounds.left)/scale,endY:(event.clientY-bounds.top)/scale});}
+    if(selection&&selection.pointer===event.pointerId){
+      if(!canvasLayoutReady(selection.context)){cancelGesture();return;}
+      const bounds=paper.getBoundingClientRect(),next={...selection,endX:(event.clientX-bounds.left)/selection.scale,endY:(event.clientY-bounds.top)/selection.scale};activeMarquee.current=next;setMarquee(next);
+    }
   };
   const stop=(event:React.PointerEvent)=>{
     cancelPress();
-    if(gesture&&gesture.pointer===event.pointerId){
-      const value=gesture,rawX=(event.clientX-value.startX)/value.scale,rawY=(event.clientY-value.startY)/value.scale;
-      const snap=value.kind==='move'&&!event.altKey?snapMove(value.rects[0].hit,rawX,rawY,[{x:0,y:0,width:model.width,height:model.height},...model.hits.filter(hit=>!value.rects.some(item=>hit.path===item.path||hit.path.startsWith(item.path+'/')))],5/value.scale):null;
-      const dx=snap?.x??rawX,dy=snap?.y??rawY;setGesture(null);setDrop(null);setGuides([]);ignoreClick.current=Math.hypot(dx,dy)>.25;
-      if(Math.hypot(dx,dy)>.25){if(value.kind==='sort'){const target=findDrop(event.clientX,event.clientY,value);if(target)void sortSelection(value.paths,target.path,target.after);}else void applyGeometry(value.rects.map(item=>changeFor(value,item,dx,dy)));}
+    const blank=blankClick.current;
+    if(blank&&blank.pointerId===event.pointerId){
+      blankClick.current=null;release(blank.currentTarget,blank.pointerId);
+      if(canvasContextMatches(blank.context)&&!bridge.snapshot().busy)window.document.dispatchEvent(new CustomEvent('designer-select-page',{detail:{page,context:blank.context}}));
+      return;
     }
-    if(marquee){
-      const left=Math.min(marquee.x,marquee.endX),right=Math.max(marquee.x,marquee.endX),top=Math.min(marquee.y,marquee.endY),bottom=Math.max(marquee.y,marquee.endY);
+    const value=activeGesture.current,selection=activeMarquee.current;
+    if(value&&value.pointer===event.pointerId){
+      if(!canvasLayoutReady(value.context)||Math.abs(paper.getBoundingClientRect().width/value.width-value.scale)>.0001){cancelGesture();return;}
+      const rawX=(event.clientX-value.startX)/value.scale,rawY=(event.clientY-value.startY)/value.scale;
+      const snap=value.kind==='move'&&!event.altKey?snapMove(value.rects[0].hit,rawX,rawY,[{x:0,y:0,width:model.width,height:model.height},...model.hits.filter(hit=>!value.rects.some(item=>hit.path===item.path||hit.path.startsWith(item.path+'/')))],5/value.scale):null;
+      const dx=snap?.x??rawX,dy=snap?.y??rawY;activeGesture.current=null;setGesture(null);setDrop(null);setGuides([]);ignoreClick.current=Math.hypot(dx,dy)>.25;release(value.target,value.pointer);
+      if(Math.hypot(dx,dy)>.25){if(value.kind==='sort'){const target=findDrop(event.clientX,event.clientY,value);if(target)void sortSelection(value.paths,target.path,target.after,value.context);}else void applyGeometry(value.rects.map(item=>changeFor(value,item,dx,dy)),value.context);}
+    }
+    if(selection&&selection.pointer===event.pointerId){
+      if(!canvasLayoutReady(selection.context)||Math.abs(paper.getBoundingClientRect().width/model.width-selection.scale)>.0001){cancelGesture();return;}
+      const left=Math.min(selection.x,selection.endX),right=Math.max(selection.x,selection.endX),top=Math.min(selection.y,selection.endY),bottom=Math.max(selection.y,selection.endY);
       const paths=[...new Set(model.hits.filter(hit=>hit.x<right&&hit.y<bottom&&hit.x+hit.width>left&&hit.y+hit.height>top).map(hit=>hit.path).filter(Boolean))];
-      void bridge.select(paths.filter(path=>!paths.some(other=>other!==path&&path.startsWith(other+'/'))));setMarquee(null);
+      activeMarquee.current=null;setMarquee(null);release(selection.target,selection.pointer);
+      if(Math.hypot(right-left,bottom-top)*selection.scale<=4)window.document.dispatchEvent(new CustomEvent('designer-select-page',{detail:{page}}));
+      else void bridge.select(paths.filter(path=>!paths.some(other=>other!==path&&path.startsWith(other+'/'))));
     }
   };
   if(!model)return null;
@@ -547,7 +599,7 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     ...[30,...model.hits.map(hit=>hit.y+hit.height+insertGap)].sort((a,b)=>a-b).map(y=>({x:30,y}))
   ];
   const insertPosition=insertCandidates.find(point=>point.x>=insertGap&&point.y>=insertGap&&point.x+insertWidth<=model.width-insertGap&&point.y+insertHeight<=model.height-insertGap&&!model.hits.some(hit=>point.x<hit.x+hit.width+insertGap&&point.x+insertWidth>hit.x-insertGap&&point.y<hit.y+hit.height+insertGap&&point.y+insertHeight>hit.y-insertGap));
-  return <div className="studio-surface" ref={surface} tabIndex={0} data-gesture={gesture?.kind} aria-label={'第 '+(page+1)+' 页编辑层'} onPointerMove={moving} onPointerLeave={()=>setHoveredGridItem(null)} onPointerUp={stop} onPointerCancel={cancelGesture} onLostPointerCapture={()=>{cancelPress();setGesture(null);}}
+  return <div className="studio-surface" ref={surface} tabIndex={0} data-gesture={gesture?.kind} aria-label={'第 '+(page+1)+' 页编辑层'} onPointerMove={moving} onPointerLeave={()=>setHoveredGridItem(null)} onPointerUp={stop} onPointerCancel={()=>cancelGesture()} onLostPointerCapture={()=>cancelGesture()}
     onKeyDown={event=>{
       if(event.key==='Escape'&&(gesture||press.current||marquee)){event.preventDefault();event.stopPropagation();cancelGesture();return;}
       if((event.target as Element).closest('.studio-rich,input,select,button'))return;
@@ -562,9 +614,11 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     <div className="studio-background" onPointerDown={event=>{
       if(event.button!==0||state.busy)return;
       activeContainer=undefined;if(activeEditors)void finishText();
+      const current=bridge.snapshot();if(current.busy)return;const context=canvasContext(current);
+      if(!canvasLayoutReady(canvasContext(state),current)){blankClick.current={clientX:event.clientX,clientY:event.clientY,pointerId:event.pointerId,currentTarget:event.currentTarget,context};event.currentTarget.setPointerCapture(event.pointerId);return;}
       const bounds=paper.getBoundingClientRect(),x=(event.clientX-bounds.left)/scale,y=(event.clientY-bounds.top)/scale;
       setBlankOrigin({x,y});
-      setMarquee({x,y,endX:x,endY:y});event.currentTarget.setPointerCapture(event.pointerId);
+      const next:Marquee={x,y,endX:x,endY:y,pointer:event.pointerId,target:event.currentTarget,context,scale};activeMarquee.current=next;setMarquee(next);event.currentTarget.setPointerCapture(event.pointerId);
     }}/>
     {gesture&&gesture.kind!=='sort'&&gesture.rects.map(item=><div key={item.path} className="studio-source-mask" style={{left:item.hit.x/model.width*100+'%',top:item.hit.y/model.height*100+'%',width:item.hit.width/model.width*100+'%',height:item.hit.height/model.height*100+'%'}}/>)}
     {reflow>.25&&tailBottom>tailTop&&<>
@@ -592,7 +646,7 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     <GridCanvas state={state} page={page} paper={paper} bridge={bridge} editing={!!editing} hoveredItem={hoveredGridItem} onEdit={focusText} onError={fail}/>
     <TableCanvas state={state} page={page} paper={paper} bridge={bridge} editing={!!editing} onError={fail}/>
     {flowBounds&&!editing&&!gridSelection&&<div className={'studio-flow-controls'+(gridRootSelection?' studio-grid-root-controls':'')} style={{left:flowBounds.x/model.width*100+'%',top:flowBounds.y/model.height*100+'%',width:(flowBounds.right-flowBounds.x)/model.width*100+'%',height:(flowBounds.bottom-flowBounds.y)/model.height*100+'%'}}>
-      <button className="studio-drag-handle" aria-label="拖动排序" title="拖动到插入线排序；也可用 Alt + ↑ / ↓" onPointerDown={event=>begin(event,'move',{...flowRects[0],path:flowPaths[0]})} onClick={event=>event.stopPropagation()}>⠿</button>
+      <button className="studio-drag-handle" aria-label="拖动排序" disabled={geometryDisabled} title="拖动到插入线排序；也可用 Alt + ↑ / ↓" onPointerDown={event=>begin(event,'move',{...flowRects[0],path:flowPaths[0]})} onClick={event=>event.stopPropagation()}>⠿</button>
       <span className="studio-layout-badge">自动占位{flowPaths.length>1?' · '+flowPaths.length+' 项':''}</span>
       {!gesture&&<><button className="studio-block-action studio-block-more" aria-label="组件操作" aria-haspopup="menu" onClick={event=>openMenu(event,'actions',flowPaths[0])}>···</button>
         <button className="studio-block-action studio-insert-before" aria-label="在前面插入" title="在组件前插入内容" aria-haspopup="menu" onClick={event=>openMenu(event,'insert',flowPaths[0],false)}>+</button>
@@ -601,24 +655,24 @@ function PageEditor({page,paper}:{page:number;paper:HTMLElement}){
     {state.selectedPaths.filter(path=>{try{return editing?.path!==path&&document&&!!fixedBox(at(document,path));}catch{return false;}}).map(path=>hitFor(state,path,page)?.hit).filter((hit):hit is Hit=>!!hit).map((hit,index)=>{
       const value=gesture?.rects.find(item=>item.path===hit.path),change=value&&gesture?changeFor(gesture,value,delta.x,delta.y):null;
       return <div key={hit.path+':'+index} className="studio-controls" style={{left:(change?.x??hit.x)/model.width*100+'%',top:(change?.y??hit.y)/model.height*100+'%',width:(change?.width??hit.width)/model.width*100+'%',height:(change?.height??hit.height)/model.height*100+'%'}}>
-        <button className="studio-drag-handle" aria-label="拖动固定组件" title="按组件的固定位置属性自由移动" onPointerDown={event=>begin(event,'move',hit)} onClick={event=>event.stopPropagation()}>⠿</button>
+        <button className="studio-drag-handle" aria-label="拖动固定组件" disabled={geometryDisabled} title="按组件的固定位置属性自由移动" onPointerDown={event=>begin(event,'move',hit)} onClick={event=>event.stopPropagation()}>⠿</button>
         <span className="studio-layout-badge">固定 · {fixedBox(at(document!,hit.path))?.getAttribute('body-flow')==='AVOID'?'避让':'遮盖'}</span>
         {gesture&&<span className="studio-dimensions">{Math.round(change?.x??hit.x)}, {Math.round(change?.y??hit.y)} · {Math.round(change?.width??hit.width)} × {Math.round(change?.height??hit.height)} pt</span>}
-        {['nw','n','ne','e','se','s','sw','w'].map(edge=><button key={edge} className={'studio-resize-edge edge-'+edge} aria-label={'调整对象大小 '+edge} title="拖动边缘调整大小；也可在检查器输入尺寸" onPointerDown={event=>begin(event,edge,hit)} onClick={event=>event.stopPropagation()}/>)}
-        <button className="studio-rotate" aria-label="旋转对象" title="拖动旋转，按 5° 吸附" onPointerDown={event=>begin(event,'rotate',hit)} onClick={event=>event.stopPropagation()}>↻</button>
+        {['nw','n','ne','e','se','s','sw','w'].map(edge=><button key={edge} className={'studio-resize-edge edge-'+edge} disabled={geometryDisabled} aria-label={'调整对象大小 '+edge} title="拖动边缘调整大小；也可在检查器输入尺寸" onPointerDown={event=>begin(event,edge,hit)} onClick={event=>event.stopPropagation()}/>)}
+        <button className="studio-rotate" aria-label="旋转对象" disabled={geometryDisabled} title="拖动旋转，按 5° 吸附" onPointerDown={event=>begin(event,'rotate',hit)} onClick={event=>event.stopPropagation()}>↻</button>
         {!gesture&&<button className="studio-block-action studio-block-more" aria-label="组件操作" aria-haspopup="menu" onClick={event=>openMenu(event,'actions',hit.path)}>···</button>}
       </div>;
     })}
     {editing&&<div ref={editingLayer} className="studio-editing-surface studio-object is-editing" style={{left:editing.bounds.x/model.width*100+'%',top:editing.bounds.y/model.height*100+'%',width:editing.bounds.width/model.width*100+'%',minHeight:editing.bounds.height/model.height*paper.getBoundingClientRect().height}}>
       <Rich key={editing.key} editing={editing} page={page} scale={scale} finish={focus=>{setEditing(null);if(focus)requestAnimationFrame(()=>surface.current?.focus({preventScroll:true}));}}/>
     </div>}
-    {!editing&&!flowBounds&&(!state.selectedPaths.length||!model.hits.length)&&<button className="studio-empty-insert studio-block-action" data-gutter={!insertPosition||undefined} style={{left:insertPosition?insertPosition.x/model.width*100+'%':-28,top:Math.min(insertPosition?.y??origin.y,model.height-insertHeight-insertGap)/model.height*100+'%'}} aria-label="插入内容" title="在当前页正文末尾插入内容" aria-haspopup="menu" onClick={event=>openMenu(event,'insert')}>{insertPosition?'+ 插入内容':'+'}</button>}
+    {!editing&&!flowBounds&&(!state.selectedPaths.length||!model.hits.length||state.selectedPaths.length===1&&state.selectedPaths[0]===model.ownerPath)&&<button className="studio-empty-insert studio-block-action" data-gutter={!insertPosition||undefined} style={{left:insertPosition?insertPosition.x/model.width*100+'%':-28,top:Math.min(insertPosition?.y??origin.y,model.height-insertHeight-insertGap)/model.height*100+'%'}} aria-label="插入内容" title="在当前页正文末尾插入内容" aria-haspopup="menu" onClick={event=>openMenu(event,'insert')}>{insertPosition?'+ 插入内容':'+'}</button>}
     {menu&&createPortal(<div className="studio-block-menu" role="menu" aria-label={menu.kind==='insert'?'插入内容':'组件操作'} style={{left:menu.left,top:menu.top,maxHeight:Math.max(80,window.innerHeight-menu.top-12),overflowY:'auto'}}>
       <div className="studio-menu-title">{menu.kind==='insert'?(menu.after?'在后面插入':'在前面插入'):state.selectedPaths.length>1?state.selectedPaths.length+' 个组件':'组件操作'}</div>
       {menu.kind==='insert'?blockGroups.map(([group,kinds])=><div key={group} role="group" aria-label={group}><div className="studio-menu-title">{group}</div>{kinds.map(kind=><button key={kind} role="menuitem" onClick={()=>insert(kind)}>{blockKinds.find(([value])=>value===kind)![1]}</button>)}</div>):<>
         <button role="menuitem" onClick={duplicate}>创建副本 <kbd>Ctrl D</kbd></button>
-        {flowPaths.length>0&&<><button role="menuitem" onClick={()=>{setMenu(null);sortStep(bridge.snapshot(),-1);}}>上移组件 <kbd>Alt ↑</kbd></button><button role="menuitem" onClick={()=>{setMenu(null);sortStep(bridge.snapshot(),1);}}>下移组件 <kbd>Alt ↓</kbd></button></>}
-        <button role="menuitem" className="danger" onClick={()=>{setMenu(null);removeSelection();}}>删除组件 <kbd>Delete</kbd></button>
+        {flowPaths.length>0&&<><button role="menuitem" onClick={()=>menuAction(current=>sortStep(current,-1))}>上移组件 <kbd>Alt ↑</kbd></button><button role="menuitem" onClick={()=>menuAction(current=>sortStep(current,1))}>下移组件 <kbd>Alt ↓</kbd></button></>}
+        <button role="menuitem" className="danger" onClick={()=>menuAction(()=>removeSelection())}>删除组件 <kbd>Delete</kbd></button>
       </>}
     </div>,window.document.body)}
     {gesture?.kind==='sort'&&createPortal(<div className="studio-drag-preview" style={{left:(pointer.current?.x??gesture.startX)+16,top:(pointer.current?.y??gesture.startY)+16}} role="status">{gesture.paths.length>1?gesture.paths.length+' 个组件':state.entries.find(entry=>entry.path===gesture.paths[0])?.label??'组件'}<small>{drop?'释放以放置':'移到同一容器的插入位置'}</small></div>,window.document.body)}
@@ -643,15 +697,23 @@ export function start(value:Bridge){
   document.addEventListener('keydown',event=>{
     if(event.defaultPrevented||snapshot.busy||!event.target||!(event.target as Element).closest('.studio-surface')||(event.target as Element).closest('.ProseMirror,input,select'))return;
     const directions:Record<string,[number,number]>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
-    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='d'){
-      event.preventDefault();event.stopImmediatePropagation();try{const result=duplicateBlocks(bridge.snapshot());void bridge.apply(result.source,result.ids,result.paths).catch(fail);}catch(error){fail(error);}return;
+    const duplicate=(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='d';
+    if(duplicate||['Delete','Backspace'].includes(event.key)){
+      event.preventDefault();event.stopImmediatePropagation();
+      try{
+        const current=bridge.snapshot(),document=xml(current.source);
+        // Page/document properties do not select a component for canvas commands.
+        if(!current.selectedPaths.length||current.selectedPaths.some(path=>['document','section'].includes(at(document,path).tagName)))return;
+        if(duplicate){const result=duplicateBlocks(current);void bridge.apply(result.source,result.ids,result.paths).catch(fail);}
+        else removeSelection();
+      }catch(error){fail(error);}return;
     }
-    if(['Delete','Backspace'].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();removeSelection();return;}
     if(directions[event.key]){
       if(event.altKey&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();sortStep(snapshot,event.key==='ArrowUp'?-1:1);return;}
-      const document=xml(snapshot.source);if(!snapshot.selectedPaths.length||!snapshot.selectedPaths.every(path=>!!fixedBox(at(document,path))))return;
+      const current=bridge.snapshot(),document=xml(current.source);if(!current.selectedPaths.length||!current.selectedPaths.every(path=>!!fixedBox(at(document,path))))return;
       const [dx,dy]=directions[event.key],step=event.shiftKey?10:1;event.preventDefault();event.stopImmediatePropagation();
-      void applyGeometry(snapshot.selectedPaths.map(path=>{const placed=hitFor(snapshot,path,snapshot.currentPage)??hitFor(snapshot,path);return {path,x:Math.max(0,(placed?.hit.x??0)+dx*step),y:Math.max(0,(placed?.hit.y??0)+dy*step)};}));
+      if(!canvasLayoutReady(canvasContext(snapshot),current))return;
+      void applyGeometry(current.selectedPaths.map(path=>{const placed=hitFor(current,path,current.currentPage)??hitFor(current,path);return {path,x:Math.max(0,(placed?.hit.x??0)+dx*step),y:Math.max(0,(placed?.hit.y??0)+dy*step)};}),canvasContext(current));
     }
   },true);
   for(const [name,family,weight] of [['Regular.ttf','Export4j body','400'],['Bold.ttf','Export4j body','700'],['Chinese.ttf','Export4j Chinese','400']]){

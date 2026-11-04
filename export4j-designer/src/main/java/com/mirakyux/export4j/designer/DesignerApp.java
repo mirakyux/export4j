@@ -176,6 +176,11 @@ public final class DesignerApp {
                     history = new DesignerProject.History(candidate); changed();
                 }
                 case "/api/resource" -> resource(request);
+                case "/api/image-space" -> {
+                    var candidate = new DesignerProject(history.current().bundle().toBuilder().source(text(request, "source")).build(), text(request, "data"));
+                    var space = DesignerService.atomicImageSpace(candidate, text(request, "marker"), DesignerService.execution(cancelled::get));
+                    json(exchange, BindingJson.object("width", space.width(), "height", space.height())); return;
+                }
                 case "/api/save" -> { download(exchange, "template.zip", "application/zip", history.current().bundle().encode()); return; }
                 case "/api/preview" -> {
                     long start = System.nanoTime();
@@ -188,7 +193,7 @@ public final class DesignerApp {
                     preview = candidate; previewId = UUID.randomUUID().toString(); var pages = new ArrayList<Object>();
                     for (int index = 0; index < candidate.layout().display().pages().size(); index++) {
                         var page = candidate.layout().display().pages().get(index); int number = index;
-                        pages.add(BindingJson.object("width", page.size().width(), "height", page.size().height(), "hits", candidate.hits().stream().filter(hit -> hit.page() == number)
+                        pages.add(BindingJson.object("width", page.size().width(), "height", page.size().height(), "ownerPath", candidate.pageOwners().get(number), "hits", candidate.hits().stream().filter(hit -> hit.page() == number)
                                 .map(hit -> {
                                     var value = BindingJson.object("id", hit.id(), "path", hit.path(), "x", hit.x(), "y", hit.y(), "width", hit.width(), "height", hit.height(),
                                             "images", hit.images().stream().map(image -> BindingJson.object("x", image.x(), "y", image.y(), "width", image.width(), "height", image.height())).toList());

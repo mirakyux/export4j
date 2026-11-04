@@ -145,7 +145,7 @@ public final class ComponentExample {
 
 目录由书签顺序生成，作为独立前置页面。先测量标题与条目，预留 48 pt 页码列，再计算目录页数及正文偏移，最后输出真实页数字和内部链接。条目可换行但不能拆页，目录标题在续页重复。没有书签、条目超高或页码列不足时明确失败。
 
-`ComponentDocumentLayout.body()` 的页索引属于正文局部坐标。最终页索引等于正文页索引加 `bodyPageOffset()`；`display()` 及 `decorations()` 已使用最终坐标。
+`ComponentDocumentLayout.body()` 的页索引属于正文局部坐标。最终页索引等于正文页索引加 `bodyPageOffset()`；`display()` 及 `decorations()` 已使用最终坐标。`bodySectionIndices()` 按正文页顺序返回所属源分节的零基索引，包括空白正文页，不包含前置目录页。旧构造器保留，未提供分节归属时将所有正文页视为第 0 节。
 
 | 目标类型 | 解析规则 |
 | --- | --- |

@@ -20,7 +20,7 @@ export function gridWidthLabel(span:number,tracks:number):string {
 interface Cell {path:string;id:string;gridPath:string;row:number;start:number;span:number;tracks:number;editable:boolean;empty:boolean;reason?:string}
 interface PlacedCell extends Cell {hit:Hit;page:number}
 interface Boundary {left:PlacedCell;right:PlacedCell;pitch:number;gap:number}
-type Drag = {pointer:number;source:string;target:HTMLElement;startX:number;startY:number} &
+type Drag = {pointer:number;source:string;session:number;pages:Snapshot['pages'];target:HTMLElement;startX:number;startY:number} &
   ({kind:'boundary';boundary:Boundary;start:number}|{kind:'swap';cell:PlacedCell;over:PlacedCell|null;x:number;y:number});
 
 function cellsFor(source:string):Cell[] {
@@ -97,7 +97,7 @@ export function GridCanvas({state,page,paper,bridge,editing,hoveredItem,onEdit,o
     const locate=()=>setInspectorHost(window.document.getElementById('studio-grid-context'));locate();
     window.document.addEventListener('designer-grid-inspector-ready',locate);return ()=>window.document.removeEventListener('designer-grid-inspector-ready',locate);
   },[]);
-  const disabled=state.busy||state.pending;
+  const disabled=state.busy||state.pending||state.layoutState!=='synced';
   const controlsDisabled=disabled||editing||!!drag;
   const boundaries:Boundary[]=here.flatMap(left=>{
     const right=here.find(right=>right.gridPath===left.gridPath&&right.row===left.row&&right.start===left.start+left.span);
@@ -107,7 +107,7 @@ export function GridCanvas({state,page,paper,bridge,editing,hoveredItem,onEdit,o
   });
   const apply=(path:string,operation:GridOperation)=>{
     try{
-      const current=bridge.snapshot();if(current.busy)return;
+      const current=bridge.snapshot();if(current.busy||current.pending||current.layoutState!=='synced'||current.source!==state.source||current.session!==state.session||current.pages!==state.pages)return;
       const context=gridContext(current.source,path),itemId=context?.itemPath?at(xml(current.source),context.itemPath).getAttribute('id'):null;
       const result=gridEdit(current,path,operation),selectionId=itemId&&result.ids.includes(itemId)?itemId:undefined;
       if(more)moreToggle.current?.focus();setMore(false);
@@ -118,7 +118,7 @@ export function GridCanvas({state,page,paper,bridge,editing,hoveredItem,onEdit,o
     const value=activeDrag.current;activeDrag.current=null;setDrag(null);
     if(value?.target.hasPointerCapture(value.pointer))value.target.releasePointerCapture(value.pointer);
   };
-  useEffect(()=>{cancel();setMore(false);},[state.session,state.source]);
+  useEffect(()=>{cancel();setMore(false);},[state.session,state.source,state.pages,state.layoutState,state.busy,state.pending,editing]);
   useEffect(()=>{setMore(false);},[active?.path]);
   useEffect(()=>{
     if(!more)return;
@@ -148,7 +148,8 @@ export function GridCanvas({state,page,paper,bridge,editing,hoveredItem,onEdit,o
     const move=(event:PointerEvent)=>{const next=update(event);if(next){event.preventDefault();activeDrag.current=next;setDrag(next);}};
     const stop=(event:PointerEvent)=>{
       const next=update(event);if(!next)return;event.preventDefault();event.stopPropagation();cancel();
-      if(bridge.snapshot().source!==next.source)return;
+      const current=bridge.snapshot();
+      if(current.source!==next.source||current.session!==next.session||current.pages!==next.pages||current.busy||current.pending||current.layoutState!=='synced')return;
       if(next.kind==='boundary'&&next.start!==next.boundary.right.start)apply(next.boundary.left.path,{type:'boundary',leftId:next.boundary.left.id,rightId:next.boundary.right.id,start:next.start});
       if(next.kind==='swap'&&next.over&&Math.hypot(event.clientX-next.startX,event.clientY-next.startY)>4)apply(next.cell.path,{type:'swap',target:next.over.path});
     };
@@ -159,8 +160,9 @@ export function GridCanvas({state,page,paper,bridge,editing,hoveredItem,onEdit,o
   },[!!drag,state.source,state.pages,scale]);
   useEffect(()=>()=>{const current=activeDrag.current;if(current?.target.hasPointerCapture(current.pointer))current.target.releasePointerCapture(current.pointer);activeDrag.current=null;},[]);
   const begin=(event:React.PointerEvent<HTMLButtonElement>,value:{kind:'boundary';boundary:Boundary}|{kind:'swap';cell:PlacedCell})=>{
-    event.preventDefault();event.stopPropagation();if(event.button!==0||disabled||editing)return;
-    const common={pointer:event.pointerId,target:event.currentTarget,source:state.source,startX:event.clientX,startY:event.clientY};
+    event.preventDefault();event.stopPropagation();const current=bridge.snapshot();
+    if(event.button!==0||disabled||editing||current.busy||current.pending||current.layoutState!=='synced'||current.source!==state.source||current.session!==state.session||current.pages!==state.pages)return;
+    const common={pointer:event.pointerId,target:event.currentTarget,source:state.source,session:state.session,pages:state.pages,startX:event.clientX,startY:event.clientY};
     const next:Drag=value.kind==='boundary'?{...common,...value,start:value.boundary.right.start}:{...common,...value,over:null,x:event.clientX,y:event.clientY};
     activeDrag.current=next;setDrag(next);setMore(false);event.currentTarget.setPointerCapture(event.pointerId);
     void bridge.choose(value.kind==='boundary'?value.boundary.left.path:value.cell.path);
@@ -181,13 +183,13 @@ export function GridCanvas({state,page,paper,bridge,editing,hoveredItem,onEdit,o
   return <div className="studio-grid-canvas" data-grid-drag={drag?.kind} onLostPointerCapture={event=>{if(activeDrag.current?.pointer===event.pointerId)cancel();}}>
     <style>{styles}</style>
     {!editing&&here.filter(cell=>cell.empty).map(cell=><span key={'empty-'+cell.path} className="studio-grid-empty-hint" aria-hidden="true" style={rect(cell.hit)}>双击编写</span>)}
-    {!editing&&boundaries.map(boundary=>{
+    {!editing&&!disabled&&boundaries.map(boundary=>{
       const {left,right}=boundary,moving=drag?.kind==='boundary'&&drag.boundary.left.path===left.path,newStart=moving?drag.start:right.start,x=left.hit.x+(newStart-left.start)*boundary.pitch-boundary.gap/2;
       return <button key={left.path+'-'+right.path} className="studio-grid-divider" role="separator" aria-orientation="vertical" aria-label={'调整两格宽度 '+left.id+' '+right.id} aria-valuemin={left.start+1} aria-valuemax={right.start+right.span-1} aria-valuenow={newStart} aria-valuetext={gridWidthLabel(newStart-left.start,left.tracks)+' / '+gridWidthLabel(right.start+right.span-newStart,left.tracks)} data-grid-left={left.id} data-grid-right={right.id} disabled={disabled} title="拖动分隔线调整两格宽度；方向键也可逐格调整" style={{left:x/model.width*100+'%',top:(left.hit.y+Math.max(left.hit.height,right.hit.height)/2)/model.height*100+'%',height:Math.min(60,Math.max(left.hit.height,right.hit.height)*scale)}} onPointerDown={event=>begin(event,{kind:'boundary',boundary})} onClick={event=>event.stopPropagation()} onKeyDown={event=>{
         if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();event.stopPropagation();const start=right.start+(event.key==='ArrowLeft'?-1:1);if(start>left.start&&start<right.start+right.span)apply(left.path,{type:'boundary',leftId:left.id,rightId:right.id,start});}
       }}><span aria-hidden="true">↔</span></button>;
     })}
-    {!editing&&here.filter(cell=>cell.editable&&(cell.path===active?.path||cell.path===hoveredItem)).map(cell=>{
+    {!editing&&!disabled&&here.filter(cell=>cell.editable&&(cell.path===active?.path||cell.path===hoveredItem)).map(cell=>{
       const style=gripStyle(cell);return style&&<button key={cell.path} className="studio-grid-item-grip" data-grid-item-path={cell.path} aria-label={'拖动栅格项 '+cell.id} title="拖到另一格交换位置；双击编辑此格；检查器内也可交换顺序" disabled={disabled} style={style} onPointerDown={event=>begin(event,{kind:'swap',cell})} onClick={event=>{event.stopPropagation();void bridge.choose(cell.path);}} onDoubleClick={event=>{event.preventDefault();event.stopPropagation();cancel();onEdit(cell.path);}}><svg aria-hidden="true" viewBox="0 0 12 12" style={{width:12,height:'100%'}} fill="currentColor">{[3,6,9].flatMap(y=>[4,8].map(x=><circle key={x+'-'+y} cx={x} cy={y} r="1"/>))}</svg></button>;
     })}
     {active&&inspectorHost&&createPortal(<div className="studio-grid-quickbar" role="toolbar" aria-label="栅格项操作" onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>

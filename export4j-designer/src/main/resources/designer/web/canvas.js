@@ -6,7 +6,7 @@ const DesignerCanvas = (() => {
     const entryFor=(id,path)=>path?entries.find(entry=>entry.path===path):entries.find(entry=>entry.id&&entry.id===id.split('@')[0]);
     function sortable(entry){let value=entry,parent;while((parent=entries.find(item=>item.path===value.path.slice(0,value.path.lastIndexOf('/'))))&&['each','list','then','else','if'].includes(parent.tag))value=parent;return value;}
     function clear() {
-        generation++;observer?.disconnect();pending=[];sheets=[];pointer=undefined;gesture=undefined;resetDrop();
+        generation++;observer?.disconnect();pending=[];cancelGestures();sheets=[];
         urls.forEach(url=>URL.revokeObjectURL(url));urls.clear();loadedPreview.clear();host().querySelectorAll('.page').forEach(paper=>DesignerStudio.dispose(paper));host().replaceChildren();
     }
     function activate(index) {
@@ -75,7 +75,7 @@ const DesignerCanvas = (() => {
         }finally{loading=false;}
     }
     function render() {
-        const previousScroll=scroller().scrollTop;generation++;observer?.disconnect();pending=[];pointer=undefined;gesture=undefined;resetDrop();
+        const previousScroll=scroller().scrollTop;generation++;observer?.disconnect();pending=[];cancelGestures();
         $('empty-preview').hidden=pages.length>0;$('page-jump').replaceChildren();
         observer=new IntersectionObserver(changes=>{
             changes.forEach(change=>{
@@ -145,16 +145,23 @@ const DesignerCanvas = (() => {
             return entry&&['document','section'].includes(parent?.tag)&&!['page','header','footer','background','foreground','navigation','notes'].includes(entry.tag)?{entry,rect:hit.getBoundingClientRect()}:undefined;
         }).filter(Boolean);
         if(body.length){const nearest=body.reduce((left,right)=>Math.abs(left.rect.top+left.rect.height/2-y)<=Math.abs(right.rect.top+right.rect.height/2-y)?left:right);return {path:nearest.entry.path,after:y>=nearest.rect.top+nearest.rect.height/2};}
-        const section=entries.find(item=>item.tag==='section'&&(selected?.path===item.path||selected?.path.startsWith(item.path+'/')))||entries.find(item=>item.tag==='section');
-        return {path:section?.path??'',container:true};
+        return {page:index,container:true};
     }
-    function editable() { return !busy&&!propertyDirty&&!sourceChanged()&&!dataChanged(); }
+    function editable() {const current=DesignerStudioBridge.snapshot();return !busy&&!propertyDirty&&!sourceChanged()&&!dataChanged()&&!current.pending&&current.layoutState==='synced';}
+    function validGesture(context){return editable()&&DesignerStudio.canvasContextMatches(context);}
+    function releasePointer(value){if(value?.element.hasPointerCapture(value.id))value.element.releasePointerCapture(value.id);}
+    function cancelGestures(){
+        const image=pointer,value=gesture;pointer=undefined;gesture=undefined;dragging=undefined;
+        if(image){image.node.style.width=image.originalWidth;image.node.style.height=image.originalHeight;image.node.classList.remove('resizing');releasePointer(image);}
+        if(value){if(value.moved)value.suppress();releasePointer(value);}resetDrop();
+    }
     function bindDrag(element,payload) {
         element.draggable=false;element.classList.add('draggable-control');let suppressClick=false;
         element.addEventListener('pointerdown',event=>{
-            if(event.button!==0||event.target.closest('.tree-chevron'))return;suppressClick=false;
+            if(event.button!==0||event.target.closest('.tree-chevron')||!editable())return;suppressClick=false;
+            cancelGestures();
             const active=payload.path&&selectedPaths.length>1&&selectedPaths.includes(payload.path)?{...payload,paths:selectedPaths.slice()}:payload;
-            gesture={id:event.pointerId,x:event.clientX,y:event.clientY,payload:active,element,moved:false,suppress:()=>{suppressClick=true;}};
+            gesture={id:event.pointerId,x:event.clientX,y:event.clientY,payload:active,element,context:DesignerStudio.canvasContext(),moved:false,suppress:()=>{suppressClick=true;}};
             element.setPointerCapture(event.pointerId);
         });
         element.addEventListener('click',event=>{if(suppressClick){event.preventDefault();event.stopImmediatePropagation();suppressClick=false;}},true);
@@ -170,33 +177,36 @@ const DesignerCanvas = (() => {
         if(dragging?.path&&(entry.path===dragging.path||dragging.paths?.includes(entry.path)||entry.path.slice(0,entry.path.lastIndexOf('/'))!==dragging.path.slice(0,dragging.path.lastIndexOf('/'))))return;
         return {hit,entry,after:event.clientY>rect.top+rect.height/2};
     }
-    async function reorder(from,target,after){
-        if(from.paths?.length>1){await edit({operation:'batch-relocate',paths:from.paths,target:target.path,after});return;}
+    async function reorder(from,target,after,context){
+        DesignerStudio.requireCanvasLayout(context);
+        if(from.paths?.length>1){await edit({operation:'batch-relocate',paths:from.paths,target:target.path,after},true,context,true);return;}
         const parent=from.path.slice(0,from.path.lastIndexOf('/')),start=Number(from.path.split('/').at(-1)),end=Number(target.path.split('/').at(-1));
         const index=end+(after?1:0)-(start<end?1:0);
-        await edit({operation:'relocate',path:from.path,target:target.path,after});
+        await edit({operation:'relocate',path:from.path,target:target.path,after},true,context,true);
         const moved=entries.find(entry=>entry.path===parent+'/'+index);if(moved){await choose(moved);document.querySelector(`.tree-item[data-path="${moved.path}"]`)?.scrollIntoView({block:'nearest'});DesignerCanvas.reveal(moved);}
     }
     function resizeImage(event,node,entry,source,imageNode,model,paper){
         event.preventDefault();event.stopPropagation();if(!editable())return;
+        cancelGestures();
         const width=Number(imageNode.getAttribute('width')),height=Number(imageNode.getAttribute('height')),scale=paper.getBoundingClientRect().width/model.width;
-        pointer={id:event.pointerId,x:event.clientX,y:event.clientY,width,height,scale,node,entry,source,imageNode,pageWidth:model.width,pageHeight:model.height,originalWidth:node.style.width,originalHeight:node.style.height,revision:state.revision};
+        pointer={id:event.pointerId,x:event.clientX,y:event.clientY,width,height,scale,node,paper,element:event.currentTarget,entry,source,imageNode,pageWidth:model.width,pageHeight:model.height,originalWidth:node.style.width,originalHeight:node.style.height,context:DesignerStudio.canvasContext()};
         event.target.setPointerCapture(event.pointerId);node.classList.add('resizing');
     }
     function start(){
+        DesignerStudio.watchCanvasState(()=>{if(gesture&&!validGesture(gesture.context)||pointer&&!validGesture(pointer.context))cancelGestures();});
         document.querySelectorAll('[data-insert]').forEach(button=>{bindDrag(button,{tag:button.dataset.insert});button.title=button.dataset.insert==='section'?'选中顶层正文后从此处新建分节。':'点击插入，或拖到画布中的插入线。';});
-        host().addEventListener('dragover',event=>{if(!dragging||!editable())return;const target=targetAt(event);resetDrop();if(target){event.preventDefault();drop=target;target.hit.classList.add(target.after?'drop-after':'drop-before');}});
-        host().addEventListener('drop',event=>{event.preventDefault();const target=drop,from=dragging;dragging=undefined;resetDrop();if(!target||!from)return;
-            run(async()=>{if(from.path){await reorder(from,target.entry,target.after);}else await insert(from.tag,{path:target.entry.path,after:target.after},from.imageName);});
+        host().addEventListener('dragover',event=>{if(!dragging||!gesture||!validGesture(gesture.context))return;const target=targetAt(event);resetDrop();if(target){event.preventDefault();drop=target;target.hit.classList.add(target.after?'drop-after':'drop-before');}});
+        host().addEventListener('drop',event=>{event.preventDefault();const target=drop,from=dragging,context=gesture?.context,valid=context&&validGesture(context);cancelGestures();if(!target||!from||!valid)return;
+            run(async()=>{DesignerStudio.requireCanvasLayout(context);if(from.path){await reorder(from,target.entry,target.after,context);}else await insert(from.tag,{path:target.entry.path,after:target.after},from.imageName,context,true);});
         });
         scroller().addEventListener('scroll',()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!sheets.length)return;const top=scroller().getBoundingClientRect().top+90;let index=0;sheets.forEach((sheet,n)=>{if(sheet.getBoundingClientRect().top<=top)index=n;});if(index!==currentPage)activate(index);});});
         scroller().addEventListener('contextmenu',event=>{if(event.target.closest('.page,.hit,.break-marker'))return;DesignerActions.blankContext(event,blankPlacement(currentPage,event.clientY));});
         $('page-jump').onchange=()=>scrollTo(Number($('page-jump').value));
         document.addEventListener('pointermove',event=>{
             if(!gesture||event.pointerId!==gesture.id)return;
+            if(!validGesture(gesture.context)){cancelGestures();return;}
             if(!gesture.moved&&Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y)<5)return;
             gesture.moved=true;gesture.suppress();event.preventDefault();
-            if(!editable()){status('请先完成当前编辑，再拖动。',true);return;}
             dragging=gesture.payload;const target=targetAt(event);resetDrop();
             document.body.classList.add('canvas-dragging');
             if(target){drop=target;target.hit.classList.add(target.after?'drop-after':'drop-before');}
@@ -204,19 +214,21 @@ const DesignerCanvas = (() => {
         });
         document.addEventListener('pointerup',event=>{
             if(!gesture||event.pointerId!==gesture.id)return;
-            const value=gesture,target=drop;gesture=undefined;dragging=undefined;resetDrop();
+            const value=gesture,target=drop,valid=validGesture(value.context);cancelGestures();
             if(!value.moved)return;event.preventDefault();value.suppress();
-            if(!target||!editable())return;
-            run(async()=>{if(value.payload.path)await reorder(value.payload,target.entry,target.after);else await insert(value.payload.tag,{path:target.entry.path,after:target.after},value.payload.imageName);});
+            if(!target||!valid)return;
+            run(async()=>{DesignerStudio.requireCanvasLayout(value.context);if(value.payload.path)await reorder(value.payload,target.entry,target.after,value.context);else await insert(value.payload.tag,{path:target.entry.path,after:target.after},value.payload.imageName,value.context,true);});
         });
-        document.addEventListener('pointermove',event=>{if(!pointer||event.pointerId!==pointer.id)return;const factor=Math.max(.1,Math.min(8,1+(event.clientX-pointer.x)/pointer.scale/pointer.width));pointer.factor=factor;pointer.node.style.width=pointer.width*factor/pointer.pageWidth*100+'%';pointer.node.style.height=pointer.height*factor/pointer.pageHeight*100+'%';pointer.node.title=`${(pointer.width*factor).toFixed(1)} × ${(pointer.height*factor).toFixed(1)} pt`;});
-        document.addEventListener('pointerup',event=>{if(!pointer||event.pointerId!==pointer.id)return;const value=pointer;pointer=undefined;value.node.classList.remove('resizing');if(!value.factor||value.revision!==state.revision)return;
-            run(async()=>{const width=+(value.width*value.factor).toFixed(2),height=+(value.height*value.factor).toFixed(2);value.imageNode.setAttribute('width',width);value.imageNode.setAttribute('height',height);value.source.setAttribute('line-height',String(Math.max(Number(value.source.getAttribute('line-height')||20),height+10)));await edit({operation:'replace',path:value.entry.path,xml:new XMLSerializer().serializeToString(value.source)});});
+        document.addEventListener('pointermove',event=>{if(!pointer||event.pointerId!==pointer.id)return;if(!validGesture(pointer.context)||Math.abs(pointer.paper.getBoundingClientRect().width/pointer.pageWidth-pointer.scale)>.0001){cancelGestures();return;}const factor=Math.max(.1,Math.min(8,1+(event.clientX-pointer.x)/pointer.scale/pointer.width));pointer.factor=factor;pointer.node.style.width=pointer.width*factor/pointer.pageWidth*100+'%';pointer.node.style.height=pointer.height*factor/pointer.pageHeight*100+'%';pointer.node.title=`${(pointer.width*factor).toFixed(1)} × ${(pointer.height*factor).toFixed(1)} pt`;});
+        document.addEventListener('pointerup',event=>{if(!pointer||event.pointerId!==pointer.id)return;const value=pointer,valid=validGesture(value.context)&&Math.abs(value.paper.getBoundingClientRect().width/value.pageWidth-value.scale)<=.0001;cancelGestures();if(!value.factor||!valid)return;
+            run(async()=>{DesignerStudio.requireCanvasLayout(value.context);const width=+(value.width*value.factor).toFixed(2),height=+(value.height*value.factor).toFixed(2);value.imageNode.setAttribute('width',width);value.imageNode.setAttribute('height',height);value.source.setAttribute('line-height',String(Math.max(Number(value.source.getAttribute('line-height')||20),height+10)));await edit({operation:'replace',path:value.entry.path,xml:new XMLSerializer().serializeToString(value.source)},true,value.context,true);});
         });
-        document.addEventListener('pointercancel',()=>{if(pointer){pointer.node.style.width=pointer.originalWidth;pointer.node.style.height=pointer.originalHeight;pointer.node.classList.remove('resizing');}pointer=undefined;if(gesture?.moved)gesture.suppress();gesture=undefined;dragging=undefined;resetDrop();highlight();});
+        document.addEventListener('pointercancel',()=>{cancelGestures();highlight();});
+        document.addEventListener('lostpointercapture',event=>{if(gesture?.id===event.pointerId||pointer?.id===event.pointerId)cancelGestures();});
+        document.addEventListener('keydown',event=>{if(event.key==='Escape'&&(gesture||pointer)){event.preventDefault();event.stopImmediatePropagation();cancelGestures();}},true);
         new ResizeObserver(()=>zoom()).observe(scroller());
     }
-    return {start,render,clear,zoom,scrollTo,highlight,reveal,bindDrag,selectEntry};
+    return {start,render,clear,zoom,scrollTo,activate,highlight,reveal,bindDrag,selectEntry};
 })();
 
 const DesignerAssets=(()=>{

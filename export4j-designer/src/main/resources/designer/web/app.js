@@ -122,6 +122,7 @@ function flatten(entry, depth = 0) {
     entries.push({...entry, depth}); entry.children.forEach(child => flatten(child, depth + 1));
 }
 function install(value, changed = true, options = {}) {
+    DesignerActions.close();
     if(options.session){clearPreview();selected=undefined;selectedPaths=[];}
     DesignerStudioBridge.accepted(value,options);
     const oldId = selected?.id, oldPath = selected?.path, oldSelections = selectedPaths.map(path => entries.find(entry => entry.path === path)).filter(Boolean);
@@ -222,8 +223,9 @@ async function drafts() {
     }
     await DesignerStudioBridge.flush();
 }
-async function edit(operation, render = true) {
+async function edit(operation, render = true, context, layout = false) {
     await DesignerStudioBridge.flush(false);
+    if(context){if(layout)DesignerStudio.requireCanvasLayout(context);else DesignerStudio.requireCanvasContext(context);}
     if (propertyDirty && !['properties','replace','batch-properties'].includes(operation.operation)) throw new Error('请先完成当前节点修改。');
     if (sourceChanged() || dataChanged()) throw new Error('请先应用模板源码或测试数据修改。');
     const path = operation.path ?? selected.path;
@@ -238,6 +240,7 @@ async function edit(operation, render = true) {
     }
 }
 function clearPreview(){
+    DesignerActions.close();
     clearTimeout(previewTimer);++previewGeneration;
     pages=[];previewId='';previewFormats={};currentPage=0;
     DesignerCanvas.clear();$('container-template-state')?.remove();$('pages').hidden=false;
@@ -267,6 +270,7 @@ async function preview(generation=++previewGeneration) {
     if(generation!==previewGeneration||session!==DesignerStudioBridge.snapshot().session)return;
     $('container-template-state')?.remove();$('pages').hidden=false;
     if(!DesignerStudioBridge.previewed(source,identity))return;
+    DesignerActions.close();
     pages = result.pages; previewId=result.previewId; previewFormats=result.formats||{};
     diagnostics({milliseconds:result.milliseconds, pages:pages.length, diagnostics:result.diagnostics});
     DesignerCanvas.render(); $('preview-status').textContent = result.milliseconds + ' ms · ' + pages.length + ' 页'; status('预览完成 · ' + pages.length + ' 页');
@@ -331,6 +335,21 @@ async function page(index) {
     DesignerCanvas.scrollTo(index);
 }
 function highlight() { DesignerCanvas.highlight(); DesignerStudio.sync(); }
+async function selectPageProperties(page,context=DesignerStudio.canvasContext()) {
+    DesignerStudio.requireCanvasContext(context);
+    await DesignerStudio.finishText();DesignerStudio.requireCanvasContext(context);
+    await drafts();DesignerStudio.requireCanvasContext(context);
+    const path=page===undefined?'':await DesignerStudioBridge.pageOwner(page);
+    DesignerStudio.requireCanvasContext(context);
+    const entry=entries.find(item=>item.path===path&&['document','section'].includes(item.tag));
+    if(!entry)throw new Error('页面归属已变化，请重新选择。');
+    if(page!==undefined)DesignerCanvas.activate(page);
+    await choose(entry);DesignerWorkspace.openInspector();document.querySelector('[data-inspect="properties"]').click();
+}
+document.addEventListener('designer-select-page',event=>{const context=event.detail?.context??DesignerStudio.canvasContext();void run(()=>selectPageProperties(event.detail?.page,context));});
+document.querySelector('.canvas-scroll').addEventListener('click',event=>{
+    if(!event.target.closest('.canvas-sheet,button,input,select,textarea,dialog')){const context=DesignerStudio.canvasContext();void run(()=>selectPageProperties(undefined,context));}
+});
 function zoom() { DesignerCanvas.zoom(); }
 function download(blob, name) {
     const url = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click();
@@ -491,16 +510,31 @@ document.addEventListener('designer-template-select',event=>{
     void run(async()=>{await drafts();const entry=entries.find(item=>item.path===path);if(!entry)throw new Error('模板位置已变化，请重新选择。');await choose(entry);DesignerWorkspace.openInspector({focus:true});document.querySelector('[data-inspect="properties"]').click();});
 });
 document.addEventListener('designer-template-insert',event=>{
-    const kind=event.detail?.kind;if(['if','each'].includes(kind))void run(()=>insert(kind));
+    const kind=event.detail?.kind,context=DesignerStudio.canvasContext();if(['if','each'].includes(kind))void run(()=>insert(kind,undefined,undefined,context));
 });
-async function insert(tag, placement, imageName) {
+async function insert(tag, placement, imageName, context=DesignerStudio.canvasContext(), layout = false) {
+    const check=()=>layout?DesignerStudio.requireCanvasLayout(context):DesignerStudio.requireCanvasContext(context);
+    check();
     await drafts();
-    const target=nodeAt(placement?.path??selected?.path??''),owner=insertionOwner(target,placement);
+    check();
+    const insertionPage=placement?.page??currentPage;
+    if(placement?.page!==undefined){
+        const {page,...position}=placement;
+        placement={...position,path:await DesignerStudioBridge.pageOwner(page),container:true};
+        check();
+    }
+    const target=nodeAt(placement?.path??selected?.path??'');let owner=insertionOwner(target,placement);
+    if(tag!=='section'&&owner?.tagName==='document'&&[...owner.children].some(node=>node.tagName==='section')){
+        const path=await DesignerStudioBridge.pageOwner(insertionPage);
+        check();
+        if(!path)throw new Error('此页不属于正文分节，请先选择正文页再插入内容。');
+        placement={path,container:true};owner=nodeAt(path);
+    }
     if(!canInsertAt(tag,owner))throw new Error('此处不能插入该元素。栅格内请先选择栅格项添加段落、表格或图片；栅格和正文分栏用于独立正文区域，不支持互相嵌套。');
     if (tag === 'section') {
         const path = placement?.path ?? selected?.path;
         const id = nextId();
-        await edit({operation:'start-section',path,id,initialId:'section-'+id});
+        await edit({operation:'start-section',path,id,initialId:'section-'+id},true,context,layout);
         const section = entries.find(entry=>entry.tag==='section'&&entry.id===id);
         if(section){await choose(section);DesignerCanvas.reveal(section);}
         return;
@@ -528,6 +562,7 @@ async function insert(tag, placement, imageName) {
         case 'columns': xml = `<columns id="${id}" count="2" gap="18" balanced="true"><p id="${id}-body">在这里编写正文。内容按阅读顺序流经各栏，填满后自动续页。可在结构树中添加、编辑和调整段落顺序。</p></columns>`; break;
         case 'grid': {
             const choice=await pickGridLayout({allowSelection:true});if(!choice)return;
+            check();
             if(choice.fromSelection){
                 const result=DesignerStudio.gridFromSelection(DesignerStudioBridge.snapshot(),choice.layout);
                 await DesignerStudioBridge.apply(result.source,result.ids,result.paths);await DesignerStudioBridge.flush();
@@ -552,6 +587,7 @@ async function insert(tag, placement, imageName) {
         case 'page-break': xml = `<page-break id="${id}"/>`; break;
         default: xml = `<p id="${id}" size="12" line-height="20">新段落</p>`;
     }
+    check();
     if(owner.tagName==='cell'&&(!placement||placement.container)){
         const document=new DOMParser().parseFromString(state.source,'application/xml'),cell=nodeForPath(document,bindingNodePath(owner));
         const blocks=[...cell.children].some(child=>['p','table'].includes(child.tagName));
@@ -563,7 +599,7 @@ async function insert(tag, placement, imageName) {
         }
         cell.append(document.importNode(new DOMParser().parseFromString(xml,'application/xml').documentElement,true));
         await DesignerStudioBridge.apply(new XMLSerializer().serializeToString(document),[id]);await DesignerStudioBridge.flush();
-    }else await edit({operation:placement&&!placement.container?'insert-beside':'insert', xml,...placement,...(data === undefined ? {} : {data})});
+    }else await edit({operation:placement&&!placement.container?'insert-beside':'insert', xml,...placement,...(data === undefined ? {} : {data})},true,context,layout);
     if(tag==='grid'){await focusGridContent(id+'-item-1');status('已插入独立图文栅格，可以直接编写第一格。');return;}
     const inserted = entries.find(entry => entry.id === (tag==='list'?id+'-item':id));
     const entry = tag==='list'&&inserted?entries.find(entry=>entry.path===inserted.path.slice(0,inserted.path.lastIndexOf('/'))):inserted;
@@ -609,9 +645,9 @@ document.querySelectorAll('[data-inspect]').forEach(button => button.addEventLis
     document.querySelectorAll('[data-inspect]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
     document.querySelectorAll('.inspect-view').forEach(view => view.classList.toggle('active', view.id === button.dataset.inspect));
 }));
-document.querySelectorAll('[data-insert]').forEach(button => button.addEventListener('click', () => run(() => insert(button.dataset.insert))));
-document.addEventListener('designer-insert-grid',event=>{void run(()=>insert('grid',event.detail));});
-document.addEventListener('designer-insert-bound',event=>{const {kind,...placement}=event.detail||{};if(['list','rows'].includes(kind))void run(()=>insert(kind,placement));});
+document.querySelectorAll('[data-insert]').forEach(button => button.addEventListener('click', () => {const context=DesignerStudio.canvasContext();return run(() => insert(button.dataset.insert,undefined,undefined,context));}));
+document.addEventListener('designer-insert-grid',event=>{const {context=DesignerStudio.canvasContext(),...placement}=event.detail||{};void run(()=>insert('grid',placement,undefined,context));});
+document.addEventListener('designer-insert-bound',event=>{const {kind,context=DesignerStudio.canvasContext(),...placement}=event.detail||{};if(['list','rows'].includes(kind))void run(()=>insert(kind,placement,undefined,context));});
 document.addEventListener('designer-insert-full-width',event=>{const {kind,...placement}=event.detail||{};if(['table','image'].includes(kind))void run(()=>insertFullWidth(kind,placement));});
 document.addEventListener('designer-add-grid-row',event=>{void run(()=>addVisualGridRow(event.detail.path));});
 document.addEventListener('designer-layout-grid-row',event=>{void run(async()=>{const choice=await pickGridLayout();if(choice)await applyGridOperation({type:'layout-row',layout:choice.layout},event.detail.path);});});

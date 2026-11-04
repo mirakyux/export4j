@@ -49,9 +49,9 @@ const DesignerStudioBridge = (() => {
         if(!renderedSource||renderedSource===source)return pages;
         if(mappedSource===source&&mappedPreview===previewId)return mappedPages;
         let old,next;try{old=parse(renderedSource);next=parse(source);}catch{return pages;}
-        const oldPaths=new Map(),newIds=new Map(),newNodes=new Map();
+        const oldPaths=new Map(),oldIds=new Map(),newIds=new Map(),newNodes=new Map();
         function visit(node,path,paths,ids){paths.set(path,node);const id=node.getAttribute('id');if(id){if(ids.has(id))ids.set(id,null);else ids.set(id,{node,path});}[...node.children].forEach((child,index)=>visit(child,path+'/'+index,paths,ids));}
-        visit(old.documentElement,'',oldPaths,new Map());visit(next.documentElement,'',newNodes,newIds);
+        visit(old.documentElement,'',oldPaths,oldIds);visit(next.documentElement,'',newNodes,newIds);
         function pathOf(node){if(!node.parentElement)return '';return pathOf(node.parentElement)+'/'+[...node.parentElement.children].indexOf(node);}
         function relocate(path){
             let node=oldPaths.get(path),suffix='';
@@ -64,6 +64,29 @@ const DesignerStudioBridge = (() => {
             if(original){const matches=[...newNodes].filter(([,node])=>node.isEqualNode(original));if(matches.length===1)return matches[0][0];}
             return null;
         }
+        const oldSections=[...old.documentElement.children].filter(node=>node.tagName==='section'),newSections=[...next.documentElement.children].filter(node=>node.tagName==='section');
+        const retainedSection=node=>{const id=node.getAttribute('id'),before=id&&oldIds.get(id),after=id&&newIds.get(id);return before?.node===node&&newSections.includes(after?.node)?after:null;};
+        const belongsToOtherSection=(node,original)=>{const previous=oldIds.get(node.getAttribute('id'))?.node;return oldSections.includes(previous)&&previous!==original;};
+        const sectionContent=node=>{const copy=node.cloneNode(true);copy.removeAttribute('id');return copy;};
+        function relocateOwner(path){
+            // Reflow can give this physical page number to another source section.
+            if(path==='')return '';
+            const original=oldPaths.get(path);if(!oldSections.includes(original))return null;
+            const retained=retainedSection(original);if(retained)return retained.path;
+            const owners=new Set();
+            for(const child of original.querySelectorAll('[id]')){
+                const id=child.getAttribute('id'),anchor=newIds.get(id);
+                if(oldIds.get(id)?.node!==child||!anchor)continue;
+                const owner=anchor.node.closest('section');
+                if(!newSections.includes(owner)||belongsToOtherSection(owner,original))return null;
+                owners.add(owner);
+            }
+            if(owners.size)return owners.size===1?pathOf([...owners][0]):null;
+            const content=sectionContent(original);
+            const previous=oldSections.filter(node=>!retainedSection(node)&&sectionContent(node).isEqualNode(content));
+            const candidates=newSections.filter(node=>!belongsToOtherSection(node,original)&&sectionContent(node).isEqualNode(content));
+            return previous.length===1&&candidates.length===1?pathOf(candidates[0]):null;
+        }
         function flowRoot(path){let node=newNodes.get(path);while(node?.parentElement){if(node.parentElement.tagName==='box')return null;if(['document','section','header','footer'].includes(node.parentElement.tagName)&&['p','heading','table','rows','bullet','numbered','caption','list','each','if','page-break','cross-reference'].includes(node.tagName))return pathOf(node);node=node.parentElement;}return null;}
         mappedPages=pages.map(page=>{
             const hits=page.hits.flatMap(hit=>{const path=relocate(hit.path);return path===null?[]:[{...hit,path}];});
@@ -75,9 +98,21 @@ const DesignerStudioBridge = (() => {
                 const gaps=physical.slice(0,-1).map((group,index)=>Math.max(0,physical[index+1].top-group.bottom));let y=physical[0].top;
                 logical.forEach((group,index)=>{const delta=y-group.top;for(const hit of group.hits){hit.y+=delta;hit.images=hit.images?.map(image=>({...image,y:image.y+delta}));}y+=group.bottom-group.top+(gaps[index]||0);});
             }
-            return {...page,hits};
+            return {...page,ownerPath:relocateOwner(page.ownerPath),hits};
         });
         mappedSource=source;mappedPreview=previewId;return mappedPages;
+    }
+    async function pageOwner(page){
+        if(!Number.isInteger(page)||page<0)throw new Error('页面已变化，请重新选择。');
+        const owner=DesignerStudioBridge.snapshot().pages[page]?.ownerPath;
+        if(owner==null){
+            await preview();
+            const current=DesignerStudioBridge.snapshot();
+            if(current.layoutState!=='synced')throw new Error('页面归属尚未确认，请完成预览后重试。');
+            throw new Error('页面归属无法确认，请在最新预览中重新选择。');
+        }
+        if(!entries.some(entry=>entry.path===owner&&['document','section'].includes(entry.tag)))throw new Error('页面已变化，请重新选择。');
+        return owner;
     }
     function scheduleSync(source,data,restore){
         const version=++sequence;syncing=true;layoutPending=true;failure=undefined;syncFailureIdentity=undefined;
@@ -173,40 +208,22 @@ const DesignerStudioBridge = (() => {
         if(flowTags.has(anchor.tagName)&&paragraphOwner(anchor.parentElement))return {anchor,owner:anchor.parentElement,after:anchor};
         throw new Error('当前位置不支持图片段落，请先选择正文、表格单元格或栅格项中的内容。');
     }
-    function imageBounds(document,placement,page){
-        const widths=[],models=remappedPages(state.source),model=models[page]||models[currentPage];let constrained=false;
-        let region;
-        for(let node=placement.owner;node;node=node.parentElement)if(node.tagName==='box'||['header','footer'].includes(node.tagName)&&['document','section'].includes(node.parentElement?.tagName)){region=node;break;}
-        const ownerPath=sourcePath(region||placement.owner.closest('section')||document.documentElement);
-        // Shared bands can be used by several sections at different widths. Every occurrence must fit.
-        const spaces=models.flatMap(model=>model.imageSpaces||[]).filter(space=>space.path===ownerPath);
-        if(!spaces.length)throw new Error('当前位置还没有可用版式，请先加载对应数据并生成预览后粘贴图片。');
-        for(let node=placement.anchor;node;node=node.parentElement){
-            if(['cell','item','box'].includes(node.tagName)||node.tagName==='columns'&&!['table','rows'].includes(node.parentElement?.tagName))constrained=true;
-            const path=sourcePath(node),hits=model?.hits.filter(hit=>hit.path===path)||[];
-            for(const hit of hits)if(Number.isFinite(hit.width)&&hit.width>0)widths.push(hit.width);
-        }
-        if(constrained&&!widths.length)throw new Error('当前容器还没有可用版式，请先加载对应数据并生成预览后粘贴图片。');
-        const width=Math.min(...spaces.map(space=>space.width),...widths)-4,height=Math.min(...spaces.map(space=>space.height))-4;
+    function checkedImageBounds(width,height){
         if(!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<14)throw new Error('当前容器没有足够的图片空间，原文和资源未修改。请先增大页区或调整已有内容。');
         return {width,height};
     }
-    async function pasteImage(file,page,x,y,path){
+    async function pasteImage(file,page,x,y,path,checkContext=()=>{}){
         let cancelled=false;
-        const cancel=()=>{cancelled=true;},check=()=>{if(cancelled)throw new Error('已取消图片粘贴，原文和资源未修改。');};
+        const cancel=()=>{cancelled=true;},check=()=>{checkContext();if(cancelled)throw new Error('已取消图片粘贴，原文和资源未修改。');};
         $('cancel').addEventListener('click',cancel);
         try{
             await drafts();
             if(DesignerStudioBridge.snapshot().layoutState!=='synced')await preview();
             check();
-            const document=parse(state.source),placement=imagePlacement(document,path),bounds=imageBounds(document,placement,page);
-            const size=await createImageBitmap(file);let width,height;
-            try{const factor=Math.min(1,bounds.width/(size.width*72/96),bounds.height/(size.height*72/96));width=Math.floor(size.width*72/96*factor*1e6)/1e6;height=Math.floor(size.height*72/96*factor*1e6)/1e6;}
-            finally{size.close();}
+            const document=parse(state.source),placement=imagePlacement(document,path);
             const name='pasted_'+crypto.randomUUID().replaceAll('-',''),id='image-'+crypto.randomUUID();
-            const paragraph=document.createElement('p');paragraph.setAttribute('id',id);paragraph.setAttribute('line-height',String(Math.max(18,height+4)));
+            const paragraph=document.createElement('p');paragraph.setAttribute('id',id);paragraph.setAttribute('line-height','18');
             for(const [key,value] of Object.entries({size:12,'space-before':0,'space-after':0}))paragraph.setAttribute(key,String(value));
-            const image=document.createElement('image');for(const [key,value] of Object.entries({ref:name,width,height,alt:file.name||'粘贴的图片'}))image.setAttribute(key,String(value));paragraph.append(image);
             if(placement.convertCell){
                 const previous=document.createElement('p');
                 for(const attribute of ['size','line-height','role','color','align','line-break'])if(placement.owner.hasAttribute(attribute))previous.setAttribute(attribute,placement.owner.getAttribute(attribute));
@@ -214,6 +231,13 @@ const DesignerStudioBridge = (() => {
             }
             if(placement.after)placement.after.after(paragraph);else placement.owner.append(paragraph);
             if(placement.owner.tagName==='box')placement.owner.setAttribute('height-mode','AUTO');
+            const space=await request('image-space',{source:new XMLSerializer().serializeToString(document),data:state.data,marker:id});check();
+            const bounds=checkedImageBounds(space.width-4,space.height-4);
+            const size=await createImageBitmap(file);let width,height;
+            try{const factor=Math.min(1,bounds.width/(size.width*72/96),bounds.height/(size.height*72/96));width=Math.floor(size.width*72/96*factor*1e6)/1e6;height=Math.floor(size.height*72/96*factor*1e6)/1e6;}
+            finally{size.close();}
+            paragraph.setAttribute('line-height',String(Math.max(18,height+4)));
+            const image=document.createElement('image');for(const [key,value] of Object.entries({ref:name,width,height,alt:file.name||'粘贴的图片'}))image.setAttribute(key,String(value));paragraph.append(image);
             // Resource registration and its referencing source form one server history entry.
             const encoded=await bytes(file);check();let accepted;
             try{accepted=await request('resource',{kind:'image',name,bytes:encoded,source:new XMLSerializer().serializeToString(document),data:state.data,validateLayout:true});}
@@ -223,7 +247,7 @@ const DesignerStudioBridge = (() => {
         }finally{$('cancel').removeEventListener('click',cancel);}
     }
     return {
-        accepted,settled,
+        accepted,settled,pageOwner,
         previewing:value=>{if(sameIdentity(value,identity())){layoutPending=true;pendingIdentity=value;failedIdentity=undefined;DesignerStudio.sync();}},
         previewed:(source,value=identity())=>{if(!sameIdentity(value,identity()))return false;renderedSource=source;renderedIdentity=value;failedIdentity=undefined;syncFailureIdentity=undefined;mappedSource='';layoutPending=false;return true;},
         previewFailed:(value=identity())=>{if(!sameIdentity(value,identity()))return false;failedIdentity=value;layoutPending=false;DesignerStudio.sync();return true;},
@@ -234,7 +258,7 @@ const DesignerStudioBridge = (() => {
             }
             const current=identity(),pending=syncing||layoutPending&&sameIdentity(pendingIdentity,current);
             const hasDraft=!!state&&(!sameText(source,state.source)||!sameText($('data').value,state.data));
-            return {source,revision:state?.revision||0,layoutState:sameIdentity(syncFailureIdentity,current)||sameIdentity(failedIdentity,current)?'failed':pending?'pending':sameIdentity(renderedIdentity,current)?'synced':'stale',historyBoundary:cursor===0?historyBoundary:undefined,
+            return {source,data:$('data').value,resourceIdentity:state?.resourceIdentity,revision:state?.revision||0,layoutState:sameIdentity(syncFailureIdentity,current)||sameIdentity(failedIdentity,current)?'failed':pending?'pending':sameIdentity(renderedIdentity,current)?'synced':'stale',historyBoundary:cursor===0?historyBoundary:undefined,
             selectedPaths:[...selectedPaths],entries:source===state?.source?entries:projectedEntries,pages:remappedPages(source),currentPage,busy,formats:previewFormats,session,pending,
             canUndo:hasDraft||(localHistory?cursor>0:!!state?.canUndo),canRedo:!hasDraft&&(localHistory?cursor<history.length-1:!!state?.canRedo)};},
         choose:async(path,event,groupLists=false)=>{
@@ -245,7 +269,13 @@ const DesignerStudioBridge = (() => {
         select:navigate,
         draft:source=>{draftBase??=capture();propertyDirty=false;nodeXmlDirty=false;$('source').value=source;markDirty();if(DesignerStudio.shouldPreview())schedulePreview();else {$('preview-status').textContent='便捷编辑 · 完成后校验精确版式';clearTimeout(previewTimer);++previewGeneration;}DesignerStudio.sync();},
         apply,flush,history:historyStep,preview:()=>schedulePreview(),
-        paste:(file,page,x,y,path)=>perform(()=>pasteImage(file,page,x,y,path)),
+        paste:(file,page,x,y,path)=>{
+            const context=DesignerStudio.canvasContext(),check=()=>{
+                const current=DesignerStudioBridge.snapshot();
+                if(current.source!==context.source||current.data!==context.data||current.resourceIdentity!==context.resourceIdentity||current.session!==context.session)throw new Error('粘贴位置的内容已变化，请重新选择位置后重试。');
+            };
+            return perform(()=>{check();return pasteImage(file,page,x,y,path,check);});
+        },
         font:async name=>{const response=await fetch('/api/font?name='+encodeURIComponent(name),{headers:{'X-Designer-Token':token}});if(!response.ok)throw new Error('字体资源不可用：'+name);return response.arrayBuffer();},
         error:message=>{status(message,true);diagnostics({error:message});},
         context:(event,path)=>{const entry=entries.find(entry=>entry.path===path);if(entry)void DesignerActions.context(event,entry);}
