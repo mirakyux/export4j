@@ -69,6 +69,8 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java 编写与语义 DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告与数据绑定 |
+| `:examples:manuWeave` | `examples/build/manuweave/` | ManuWeave 全部 286 个学术模板配置，各自输出 PDF 与格式差异报告 |
+| `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | PDF／SVG 矢量数学排版与 Word 原生可编辑公式 |
 | `:examples:production` | `examples/build/production/` | 分页、分栏、表格与多格式输出 |
 | `:examples:documentConversion` | `examples/build/document-conversion/` | 导入、编辑、损失预检及导出 |
 | `:examples:staticForms` | `examples/build/static-forms/` | 密集静态表单 |
@@ -144,6 +146,10 @@ public class QuickStart {
 
 模板支持变量、条件、循环、表格、分节、页区和 include。XML 源码与资源可保存为普通 ZIP；受支持的 Java 模型也可保存为可编辑 XML。参阅 [XML 指南](docs/xml-template-api.md)、[模板资源包](docs/xml-template-bundle-api.md)、[模型保存](docs/xml-model-saving-api.md)和[完整 Java 示例](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java)。
 
+[可编辑正文分栏](docs/column-flow-api.md)支持 1～3 栏连续正文、宽度比例和中间通栏表格／图片。XML／ZIP 保留结构；DOCX／Web 转换当前须明确降级为顺序正文并报告布局损失。
+
+[可编辑栅格](docs/grid-layout-api.md)从可视化布局和空白内容格开始，支持把已有内容并排、拖分隔线调宽、拆分及合并；数值轨道设置收进高级选项。文字、表格和图片通过 XML／ZIP 保留原始结构；同一行整体分页，可放在连续分栏之间。
+
 [文档模型恢复](docs/model-recovery-api.md)为可选能力，可使用 XML／资源伴随包，或内嵌到受支持的输出。恢复信息会增加体积，外部编辑可能使其失效或被移除；绑定检查、兼容性及转换损失见该指南。
 
 ## HTML 与 Markdown 导出
@@ -175,6 +181,7 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 | SVG／PNG | 在各自支持子集内作为矢量／图像资源加载 | 静态页面及 PNG 页 ZIP |
 
 - 不同格式可保留的信息不同，不支持的内容按明确损失策略处理；不保证一般 Word 无损往返或 DOCX／PDF 同分页。
+- [Word 原生公式](docs/docx-math-api.md)使用有类型 OMML，保留可编辑结构；独立[数学示例](docs/examples.md#数学公式)将受限 TeX 排成 PDF／SVG 矢量，无需安装 TeX。
 - PDF 恢复根据文字、坐标和绘图推断可编辑结构，报告不确定性，支持显式表格网格，不执行 OCR。字体要求及整页图片降级见[恢复指南](docs/pdf-semantic-import-api.md)。
 - [PDF 脱敏](docs/pdf-redaction-api.md)提供光栅化和选择性重建两种模式。前者损失文字搜索与矢量，后者保留选区外受支持的内容；调用方须定位全部敏感区域。
 - 复杂文字、搜索及选择受已声明的字体、脚本和阅读器范围约束。PDF/A 和 PDF/UA 需使用对应输出通道并验证最终文件；签名需由调用方提供密钥和信任资料。
@@ -233,6 +240,7 @@ Export4j 复用了以下开源基础设施与显式提供的字体资源：
 | [LWJGL](https://www.lwjgl.org/)、[HarfBuzz](https://harfbuzz.github.io/) | 可选的原生 OpenType 塑形、轮廓及彩色字形绘制 |
 | [OpenJDK](https://openjdk.org/) | Java 运行时、Java2D／OpenType、ZIP 与 XML 基础设施 |
 | [Gradle](https://gradle.org/)、[JUnit](https://junit.org/) | 构建与 Java 测试 |
+| [ManuWeave](https://github.com/jiassia/manuweave/) | [286 个学术模板示例](examples/src/main/resources/templates/manuweave/README.md)的目录及排版事实来源；数据采用 MIT 许可，示例明确记录字体替代与排版限制 |
 | [pypdf](https://github.com/py-pdf/pypdf)、[pypdfium2](https://github.com/pypdfium2-team/pypdfium2)、[Pillow](https://python-pillow.org/)、[python-docx](https://github.com/python-openxml/python-docx)、[cryptography](https://cryptography.io/)、[Poppler](https://poppler.freedesktop.org/) | 独立格式、渲染与验收工具 |
 | [Liberation Fonts](https://github.com/liberationfonts/liberation-fonts)、[霞鹜文楷 TC](https://github.com/lxgw/LxgwWenkaiTC)、[站酷小薇](https://github.com/googlefonts/zcool-xiaowei) | 示例与测试显式字体 |
 | [Noto Fonts](https://github.com/notofonts/noto-fonts)、[Source Sans 3](https://github.com/adobe-fonts/source-sans) | 复杂脚本及 CFF 示例／测试字体 |

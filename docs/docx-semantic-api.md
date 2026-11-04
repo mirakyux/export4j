@@ -9,12 +9,15 @@
 | 读取通用模型 | `read(input, Policy)` | 专有结构按 `STRICT` 拒绝，或按 `ALLOW_LOSS` 返回实际诊断 |
 | 原生语义读取 | `readSemantic(input, Policy)` | 返回 `SemanticReadResult`，包含原生模型与未支持结构诊断 |
 | 原生语义新建／重建 | `writeSemantic(document, output)` | 从有类型模型生成新的标准 OOXML 包；验证全部成功后才写入调用方流 |
+| 原生数学读取／重建 | `readMath`／`writeMath` | 使用独立 `DocxMathDocument` 与数学类型树；单位、锚点、预算和诊断见[数学指南](docx-math-api.md) |
 | 原生导入、编辑、输出 | `semanticConversion(bytes)` | 导入、顺序编辑、编码一次，`prepare()` 后提供预览与可重复发布的编码 |
 | 进入通用转换 | `project(document, policy)` 或原生转换的 `project()` | 按实际损失策略投影，再接 `DocumentConversion` 的编辑与目标后端 |
 | 普通文件互转 | `conversion(bytes)` | 已接入原生读取和显式投影，未编辑对象也必须报告损失 |
 | 原包局部文字修改 | `editPackage(bytes)` | 保留未修改部分的包结构；其能力边界见[原包编辑](docx-editing-api.md) |
 
 读取流与输出流由调用方关闭。输入字节在转换入口处快照。`Prepared.writeTo(Path)` 在目标目录创建临时文件，完成后以原子移动发布；失败或取消会清理临时文件。普通流的最终 I/O 失败仍可能留下已经写入的部分数据。
+
+原生数学使用单独的 `readMath`／`writeMath`，没有扩展 `DocxSemanticDocument` 的既有构造器。普通 `read`、`readSemantic`、`semanticConversion` 和经它们导入的统一转换遇到 OMML 公式时，即使 `ALLOW_LOSS` 也要求改用数学入口；不会把公式丢弃或扁平化为 TeX。数学文档也没有进入上述通用投影的自动排版路径。
 
 普通导出和原生语义重建均在 `word/settings.xml` 显式声明 `compatibilityMode=15`（Word 2013 及后续版本的现代排版模式），并写入对应部件关系与内容类型。缺少该声明时，Word 会按旧版排版规则打开 DOCX，标题显示“兼容性模式”，另存时可能提示升级格式；它与文件损坏提示不同。`editPackage` 局部编辑保留源包的兼容设置，不自动升级已有文档。该声明不保证不同 Word 版本逐页一致。
 

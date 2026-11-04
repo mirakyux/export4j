@@ -43,8 +43,28 @@ final class SemanticFragments {
 
     static LayoutFragment map(LayoutFragment fragment, FontGroup fonts, Map<String, FontGroup> roles,
             Function<Text, ParagraphLayout> mapper) {
-        return new Traversal(ignored -> { }, ignored -> { }, mapper, Map.of())
+        return map(fragment, fonts, roles, Map.of(), mapper);
+    }
+
+    static LayoutFragment map(LayoutFragment fragment, FontGroup fonts, Map<String, FontGroup> roles,
+            Map<String, Double> rotations, Function<Text, ParagraphLayout> mapper) {
+        return new Traversal(ignored -> { }, ignored -> { }, mapper, rotations)
                 .visit(fragment, new Point(0, 0), fragment.blockIndex(), List.of(), fonts, roles, AffineTransform.IDENTITY, 0);
+    }
+
+    static Rect transformedBounds(Rect bounds, AffineTransform transform) {
+        if (transform.equals(AffineTransform.IDENTITY)) { return bounds; }
+        double left = Double.POSITIVE_INFINITY, top = Double.POSITIVE_INFINITY;
+        double right = Double.NEGATIVE_INFINITY, bottom = Double.NEGATIVE_INFINITY;
+        for (double x : new double[] {bounds.x(), bounds.x() + bounds.width()}) {
+            for (double y : new double[] {bounds.y(), bounds.y() + bounds.height()}) {
+                double px = transform.a() * x + transform.c() * y + transform.e();
+                double py = transform.b() * x + transform.d() * y + transform.f();
+                left = Math.min(left, px); right = Math.max(right, px);
+                top = Math.min(top, py); bottom = Math.max(bottom, py);
+            }
+        }
+        return new Rect(left, top, right - left, bottom - top);
     }
 
     private static List<CellLocation> append(List<CellLocation> path, CellLocation location) {
@@ -125,7 +145,8 @@ final class SemanticFragments {
                     var placements = mapper == null ? null : new ArrayList<SemanticPlacement>();
                     for (var located : ComponentSemantics.locate(component.layout(), origin)) {
                         var placed = located.placement();
-                        var resolved = (TableFragment) visit(placed.fragment(), located.translation(), rootBlockIndex, path,
+                        var placementTraversal = new Traversal(nodes, texts, mapper, ModelRotations.of(List.of(placed.source())));
+                        var resolved = (TableFragment) placementTraversal.visit(placed.fragment(), located.translation(), rootBlockIndex, path,
                                 placed.fonts(), placed.roles(), transform, depth + 1);
                         if (placements != null) {
                             placements.add(new SemanticPlacement(placed.commandIndex(), placed.source(), resolved, placed.fonts(), placed.roles(),

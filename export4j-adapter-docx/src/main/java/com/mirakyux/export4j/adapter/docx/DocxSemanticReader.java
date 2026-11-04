@@ -91,6 +91,7 @@ final class DocxSemanticReader {
     }
     private DocxAdapter.SemanticReadResult read(InputStream input) throws IOException {
         var parts = adapter.unzip(input); var roots = DocxPackageEditor.validateSemanticPackage(parts);
+        for (var entry : roots.entrySet()) { DocxMathXml.rejectNativeContent(entry.getValue(), entry.getKey()); }
         for (var entry : roots.entrySet()) {
             if (!entry.getKey().startsWith("word/") || entry.getKey().endsWith(".rels")) { continue; }
             selectCompatibleContent(entry.getValue()); parts.put(entry.getKey(), encode(entry.getValue(), limits.maxEntryBytes()));

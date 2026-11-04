@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">zh</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">cn-statistics-decision-word-confirmed</entry>
+  <entry key="name">统计与决策：官方投稿格式</entry>
+  <entry key="page.columns">1</entry>
+  <entry key="readme-name">统计与决策</entry>
+  <entry key="role.body.east_asia_font">宋体</entry>
+  <entry key="role.body.line_spacing">1.0</entry>
+  <entry key="role.body.size_pt">12.0</entry>
+  <entry key="role.figure_caption.east_asia_font">宋体</entry>
+  <entry key="role.figure_caption.size_pt">9.0</entry>
+  <entry key="role.names">["body","figure_caption","table_caption","table_body"]</entry>
+  <entry key="role.table_body.east_asia_font">宋体</entry>
+  <entry key="role.table_body.size_pt">9.0</entry>
+  <entry key="role.table_caption.east_asia_font">宋体</entry>
+  <entry key="role.table_caption.size_pt">9.0</entry>
+  <entry key="source">http://www.tjyjc.com/tougao/3.html</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">chinese-multidisciplinary</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">http://www.tjyjc.com/tougao/3.html</entry>
+  <entry key="template.source_version">2026-10-30/official-format-page-snapshot</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/chinese-multidisciplinary/profiles/cn-statistics-decision-word-confirmed.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">d01f392e11f92467bb8798d74837b2c2686f1eaf3f298bcd1047581ebd908116</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

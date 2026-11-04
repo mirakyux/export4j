@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="catalog_journal_id">ccf-2026-informs-journal-on-computing</entry>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="current_coverage">true</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">en</entry>
+  <entry key="extracted_format.mode">current_journal_review_submission_layout</entry>
+  <entry key="extracted_format.references.in_text_citation_scheme.source.file">ijoc-submission-guidelines.html</entry>
+  <entry key="extracted_format.references.in_text_citation_scheme.source.locator">Preparing Your Manuscript &gt; References</entry>
+  <entry key="extracted_format.references.in_text_citation_scheme.source.url">https://pubsonline.informs.org/page/ijoc/submission-guidelines</entry>
+  <entry key="extracted_format.references.in_text_citation_scheme.source.version">Preparing Your Manuscript &gt; Format; Length Policy (May 2025); observed 2026-10-30</entry>
+  <entry key="extracted_format.references.in_text_citation_scheme.unit">citation scheme</entry>
+  <entry key="extracted_format.references.in_text_citation_scheme.value">author_year</entry>
+  <entry key="extracted_format.references.ordering.source.file">ijoc-submission-guidelines.html</entry>
+  <entry key="extracted_format.references.ordering.source.locator">Preparing Your Manuscript &gt; References</entry>
+  <entry key="extracted_format.references.ordering.source.url">https://pubsonline.informs.org/page/ijoc/submission-guidelines</entry>
+  <entry key="extracted_format.references.ordering.source.version">Preparing Your Manuscript &gt; Format; Length Policy (May 2025); observed 2026-10-30</entry>
+  <entry key="extracted_format.references.ordering.unit">ordering</entry>
+  <entry key="extracted_format.references.ordering.value">alphabetical_by_author</entry>
+  <entry key="group">More journals</entry>
+  <entry key="id">comp-informs-ijoc-submission</entry>
+  <entry key="journal_title">INFORMS Journal on Computing</entry>
+  <entry key="manuscript_type">all_submissions</entry>
+  <entry key="name">INFORMS Journal on Computing review-submission layout</entry>
+  <entry key="page.columns">1</entry>
+  <entry key="page.margin_bottom_mm">25.4</entry>
+  <entry key="page.margin_left_mm">25.4</entry>
+  <entry key="page.margin_right_mm">25.4</entry>
+  <entry key="page.margin_top_mm">25.4</entry>
+  <entry key="readme-name">INFORMS Journal on Computing</entry>
+  <entry key="role.abstract.line_spacing">1.5</entry>
+  <entry key="role.abstract.size_pt">12</entry>
+  <entry key="role.body.line_spacing">1.5</entry>
+  <entry key="role.body.size_pt">12</entry>
+  <entry key="role.names">["body","abstract","reference"]</entry>
+  <entry key="role.reference.line_spacing">1.5</entry>
+  <entry key="role.reference.size_pt">12</entry>
+  <entry key="source">https://pubsonline.informs.org/page/ijoc/submission-guidelines</entry>
+  <entry key="stage">review_submission</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">partial</entry>
+  <entry key="template.family">computer-special</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">https://pubsonline.informs.org/page/ijoc/submission-guidelines</entry>
+  <entry key="template.source_version">Preparing Your Manuscript &gt; Format; Length Policy (May 2025); observed 2026-10-30</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/computer-special/profiles/comp-informs-ijoc-submission.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">e6af1bc0c48cb760a1aa85ab45b19649e24feb90b2473ebba0b2c3a737345733</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

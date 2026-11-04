@@ -2,6 +2,10 @@
 
 本文汇总已提供的文档生成、导入、编辑与转换入口。首次使用见[文档索引](README.md)和[可运行示例](examples.md)；各 API 指南说明准确的输入子集及调用契约。段落中引用的历史验收记录只证明当时批次，当前完成状态以[缺口表](capability-gaps.md)为准。
 
+[正文分栏](column-flow-api.md)提供可保存的 ColumnFlow／XML columns 和设计器组件，支持 1～3 栏、比例／栏距／平衡，以及多栏正文中间插入通栏表格／图片再从剩余页高恢复。真实段落／表格来源保留；DOCX／Web 仅支持明确 DEGRADE 后顺序展平并报告布局损失，尚无原生分栏映射。
+
+[可编辑栅格](grid-layout-api.md)提供 GridLayout／GridItem、XML grid／item 和设计器入口，支持 1～12 条等宽轨道、行号／起始轨／跨轨数、pt 间距及真实项边界。同行原子分页，可与连续分栏同页组合；DOCX／Web 显式 GRID_LAYOUT／DEGRADE 时保留顺序内容并报告布局损失，不支持互嵌、跨行项或任意 CSS Grid。
+
 [XML 模板源码编辑与资源 ZIP](xml-template-bundle-api.md)复用现有模板适配器：保留可编辑主源、片段、图片、显式字体及许可文本，普通 ZIP 保存／重开后继续使用 `XmlTemplate → DocumentTemplate`。不是任意已渲染文档的模型恢复入口。
 
 [语义模型保存为 XML](xml-model-saving-api.md)支持正文／分节、富文本／独立列表标记、表格／递归块格、四类字段和图片，保留现有格式与原文字面值，并接入统一转换。[页区保存](verification/phase-79-xml-region-saving.md)保留默认／首页／偶数页眉页脚、共享来源及有序图层位置。[阶段八十](verification/phase-80-xml-semantic-saving.md)进一步保留显式注释及标记、Caption 和标题／列表文字外链，`renderComplete(data)` 同时返回文档与注释，三轮控制、编辑、10 页 PDF 双渲染及 Web 损失对账通过。[阶段八十一](verification/phase-81-xml-cross-reference-saving.md)补齐独立 CrossReference 的完整 XML 保存／绑定，覆盖跨节 PAGE／NUMBER、多行引用、片段／循环目标与实际改写。未映射块默认拒绝，显式策略才报损继续；字体／许可由调用方明确提供。XML 保留范围不扩大 DOCX／Web 适配器能力。
@@ -13,6 +17,8 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 [列表标记](list-markers-api.md)独立保存完整 InlineStyle，标准 DOCX 使用所选 level 的运行属性；[XML 文字默认值](xml-text-defaults-api.md)按正文／标题／单元格独立配置角色和颜色，显式局部覆盖、命名完整样式及嵌套格范围保持。验收分别见[阶段三十八](verification/phase-38-component-text.md)、[三十九](verification/phase-39-list-markers.md)及[四十](verification/phase-40-xml-text-defaults.md)。整体试用边界见[就绪评估](readiness-assessment.md)。
 
 当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 19 个模块（16 个库、BOM、示例和可选设计器应用）。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
+
+[Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。PDF／SVG 的受限 TeX 矢量排版目前位于 [ManuWeave 示例](examples.md#数学公式)，通用模型尚未提供跨格式公式节点或自动 TeX↔OMML 转换。实现与实际 Word 应用动作见[专项验收](verification/manuweave-templates.md)。
 
 ## 已有 PDF 处理与语义恢复
 
@@ -104,7 +110,7 @@ XML 可用[主题与静态名称](xml-themes-api.md)复用完整正文、六级�
 | 节点 | 行为 |
 | --- | --- |
 | `ValueBlock(prototype)` | 替换段落、富文本、标题、列表和语义表格中的 `${customer.name}` 等变量 |
-| `When(path, yes, no)` | 路径必须是布尔值，只展开选中分支 |
+| `When(path, yes, no)` | 默认布尔 TRUE，只展开选中分支；重载 `When(path, operator, value, yes, no)` 支持有界标量比较，嵌套 else 链提供首个命中及 other 兜底，见[比较条件](xml-template-api.md#比较条件与多分支) |
 | `Each(path, variable, children)` | 遍历列表，变量具有嵌套作用域，块 ID 增加确定性循环后缀 |
 | `Rows(id, path, variable, columns, headers, row, format)` | 固定表头加集合驱动的正文行；空集合明确失败，可由 `When` 控制是否显示表格 |
 

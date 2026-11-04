@@ -2,6 +2,7 @@
 package com.mirakyux.export4j.components;
 
 import com.mirakyux.export4j.model.Block;
+import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
@@ -18,6 +19,7 @@ final class ModelRotations {
         SemanticTree.walk(blocks, visit -> {
             double angle = switch (visit.block()) {
                 case Paragraph paragraph -> paragraph.format().rotation();
+                case Heading heading -> heading.format().rotation();
                 case Table table -> table.format().rotation();
                 default -> 0;
             };

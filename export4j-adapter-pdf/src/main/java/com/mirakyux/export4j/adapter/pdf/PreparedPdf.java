@@ -66,12 +66,14 @@ public final class PreparedPdf {
         Path target = Objects.requireNonNull(output, "output").toAbsolutePath();
         Path temporary = Files.createTempFile(target.getParent(), ".export4j-pdf-edit-", ".tmp");
         try {
-            return ExecutionContext.execute(execution, () -> {
+            var published = ExecutionContext.execute(execution, () -> {
                 try (var stream = Files.newOutputStream(temporary)) { to(stream); }
                 ExecutionContext.checkpoint();
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
                 return result;
             });
+            // execute also checks on return; finish that check before committing the candidate.
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            return published;
         } catch (IOException | RuntimeException | Error failure) {
             try { Files.deleteIfExists(temporary); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
             throw failure;

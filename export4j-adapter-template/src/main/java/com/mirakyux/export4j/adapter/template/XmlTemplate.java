@@ -24,6 +24,7 @@ import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.CellStyleRule;
+import com.mirakyux.export4j.model.TemplateCondition;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.DocumentNavigation;
@@ -79,6 +80,8 @@ import com.mirakyux.export4j.adapter.template.TemplateException.Code;
  * Captions retain original kind/text; heading/list links remain text-only (no images or fields).
  * Numbered levels are static integers from 1 through 9, defaulting to 1; all branches are checked.
  * Parent-level completeness is validated after binding by component layout or DOCX export, not by this compiler.
+ * Body columns use static count (1–3), gap in points, balanced and optional relative weights. They contain
+ * paragraphs/tables, including conditions and iterations; nested columns and region/cell columns are rejected.
  * Compilation throws {@link TemplateException}; binding uses {@link DocumentTemplate.BindingException}
  * and final model/relationship validation may throw IllegalArgumentException.
  * Both operations observe the caller's synchronous ExecutionContext. No font or backend is retained.
@@ -92,7 +95,7 @@ public final class XmlTemplate {
     private static final Pattern PATH = Pattern.compile("[A-Za-z_][A-Za-z_0-9]*(\\.[A-Za-z_][A-Za-z_0-9]*)*");
     private static final Pattern LENGTH = Pattern.compile("([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(pt|mm|cm|in)?");
     private static final String LINK_REFERENCE_PREFIX = "https://export4j.invalid/.template-link/";
-    private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break", "table", "rows");
+    private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break", "table", "rows", "columns", "grid", "item");
     private static final Set<String> PARAGRAPH_ATTRIBUTES = Set.of("id", "size", "line-height", "align",
             "keep-together", "space-before", "space-after", "first-indent", "subsequent-indent", "line-break",
             "keep-with-next", "page-break-before", "min-lines-before", "min-lines-after", "rotation");
@@ -185,7 +188,8 @@ public final class XmlTemplate {
         if (source.length() + fragmentInputCharacters > limits.maxInputCharacters()) {
             throw failure(Code.BUDGET_EXCEEDED, 1, 1);
         }
-        return new Compiler().compile(new Expansion().expand(source));
+        var expanded = new Expansion().expand(source);
+        return validated(expanded, () -> new Compiler().compile(expanded));
     }
 
     /** Reads at most the UTF-16 input allowance remaining after all registered sources, plus one unit;
@@ -360,7 +364,7 @@ public final class XmlTemplate {
                         if (!blockList) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         content.addAll(include(child, depth + 1, namespace));
                     } else {
-                        boolean childList = blockList && Set.of("each", "list", "section", "header", "footer").contains(child.name())
+                        boolean childList = blockList && Set.of("each", "list", "section", "header", "footer", "columns", "grid", "item").contains(child.name())
                                 || conditional && (child.name().equals("then") || child.name().equals("else"));
                         boolean childConditional = blockList && child.name().equals("if");
                         content.add(element(child, depth + 1, childList, childConditional, namespace, localIds, include));
@@ -395,7 +399,7 @@ public final class XmlTemplate {
                     } else {
                         var child = (Element) part;
                         if (child.name().equals("include")) { result.addAll(include(child, depth, prefix)); }
-                        else { result.add(element(child, depth, child.name().equals("each"), child.name().equals("if"),
+                        else { result.add(element(child, depth, Set.of("each", "columns", "grid", "item").contains(child.name()), child.name().equals("if"),
                                 prefix, fragment.ids(), call)); }
                     }
                 }
@@ -455,7 +459,7 @@ public final class XmlTemplate {
                 for (int i = current.content().size() - 1; i >= 0; i--) {
                     if (current.content().get(i) instanceof Element child) {
                         if (child.name().equals("include") && !scan.blockList()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
-                        boolean childList = scan.blockList() && Set.of("each", "list", "section", "header", "footer").contains(child.name())
+                        boolean childList = scan.blockList() && Set.of("each", "list", "section", "header", "footer", "columns", "grid", "item").contains(child.name())
                                 || scan.conditional() && (child.name().equals("then") || child.name().equals("else"));
                         pending.push(new IdScan(child, childList, scan.blockList() && child.name().equals("if")));
                     }
@@ -828,6 +832,9 @@ public final class XmlTemplate {
                         yield new DocumentTemplate.Each(path(element, "items"), identifier(element, "as"), nodes(items));
                     }
                     case "table", "rows" -> table(element);
+                    case "columns" -> columns(element);
+                    case "grid" -> grid(element);
+                    case "item" -> gridItem(element);
                     default -> throw error(element, Code.UNSUPPORTED_ELEMENT);
                 };
             } catch (TemplateException failure) {
@@ -837,8 +844,46 @@ public final class XmlTemplate {
             }
         }
 
+        private DocumentTemplate.Columns columns(Element element) {
+            attributes(element, Set.of("id", "count", "gap", "balanced", "weights"));
+            String id = id(element);
+            int count = element.attributes().containsKey("count") ? integer(element, "count") : 2;
+            List<Double> weights = new ArrayList<>();
+            String values = value(element, "weights", "").strip();
+            if (!values.isEmpty()) {
+                for (String token : values.split("\\s+")) {
+                    ExecutionContext.checkpoint();
+                    try { weights.add(Double.parseDouble(token)); }
+                    catch (NumberFormatException invalid) { throw error(element, Code.INVALID_VALUE); }
+                }
+            }
+            var children = nodes(element);
+            if (children.isEmpty()) { throw error(element, Code.INVALID_STRUCTURE); }
+            return new DocumentTemplate.Columns(id, count, number(element, "gap", 18),
+                    flag(element, "balanced", true), weights, children);
+        }
+
+        private DocumentTemplate.Grid grid(Element element) {
+            attributes(element, Set.of("id", "tracks", "column-gap", "row-gap"));
+            String id = id(element);
+            int tracks = element.attributes().containsKey("tracks") ? integer(element, "tracks") : 12;
+            var content = nodes(element);
+            if (content.isEmpty()) { throw error(element, Code.INVALID_STRUCTURE); }
+            return new DocumentTemplate.Grid(id, tracks, number(element, "column-gap", 12),
+                    number(element, "row-gap", 12), content);
+        }
+
+        private DocumentTemplate.GridItem gridItem(Element element) {
+            attributes(element, Set.of("id", "row", "column-start", "column-span"));
+            String id = id(element);
+            var content = nodes(element);
+            if (content.isEmpty()) { throw error(element, Code.INVALID_STRUCTURE); }
+            return new DocumentTemplate.GridItem(id, integer(element, "row"), integer(element, "column-start"),
+                    integer(element, "column-span"), content);
+        }
+
         private DocumentTemplate.When conditional(Element element) {
-            attributes(element, Set.of("test"));
+            attributes(element, Set.of("test", "operator", "value"));
             String test = path(element, "test");
             var branches = children(element);
             if (branches.isEmpty() || branches.size() > 2) { throw error(element, Code.INVALID_STRUCTURE); }
@@ -849,7 +894,10 @@ public final class XmlTemplate {
             if (branches.size() == 2) {
                 var other = branches.getLast(); requireName(other, "else"); attributes(other, Set.of()); no = nodes(other);
             }
-            return new DocumentTemplate.When(test, yesNodes, no);
+            var alternative = no;
+            return validated(element, () -> new DocumentTemplate.When(test,
+                    TemplateCondition.Operator.valueOf(value(element, "operator", "TRUE")), value(element, "value", ""),
+                    yesNodes, alternative));
         }
 
         private Block block(Element element) {

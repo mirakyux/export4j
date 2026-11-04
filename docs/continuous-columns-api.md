@@ -1,5 +1,7 @@
 # 当前页连续分栏
 
+XML 模板、可保存语义模型和设计器的正文分栏使用 [ColumnFlow](column-flow-api.md)，支持中间通栏表格／图片后恢复分栏。本文说明 Java 组件 `ContinuousColumns` 的独立 API。
+
 `ContinuousColumns` 从当前页的剩余正文区域开始分栏，续页使用完整正文高度，先从上到下、再从左到右填充。默认等宽栏每次试排只塑形／换行一次；显式权重提供变宽文字栏，最低多行策略可触发有界重测。`FlowColumn` 混合流与等宽 `GridTable` 表格见[混合分栏 API](mixed-columns-api.md)。PDF、SVG 和 PNG 消费同一份绘制结果。
 
 ## 调用方式

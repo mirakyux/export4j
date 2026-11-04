@@ -1,0 +1,7 @@
+{
+  "title": "An editable twelve-track layout",
+  "introduction": "Continuous body columns can appear before a grid. This introduction flows through two columns; the following grid places separate items at explicit track positions.",
+  "notes": ["The retained XML includes each grid item, its coordinates and its child paragraphs.", "This line is data-bound and remains inside its original loop."],
+  "feature": "Use six plus six for peers, eight plus four for a feature and sidebar, or four plus four plus four for three independent regions. Change the track span in the inspector and inspect the engine's exact preview.",
+  "afterword": "Continuous text can resume after the grid in three columns. It remains one reading stream, while each grid item is an independent region. Save the template ZIP and reopen it to retain both structures. The dashed item boundaries belong to the editor and do not appear in the exported PDF."
+}

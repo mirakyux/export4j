@@ -1,0 +1,14 @@
+{
+  "title": "The workshop briefing",
+  "deck": "A fictional three-column newsletter. Open the document structure to edit the stories and inspect the column container to change the page flow.",
+  "storiesBefore": [
+    {"title": "A shared reading order", "text": "The workshop team has replaced separate positioned text boxes with a continuous content region. Each story appears once in the source. When one column fills, the next line continues in the next column, preserving the order chosen by the editor. Longer editions can continue onto the next page without copying or trimming the text."},
+    {"title": "Content remains reusable", "text": "Headlines and article text come from independent test data. The template keeps the loop and variable expressions when it is saved. A new edition can reuse the same layout with different stories. Editors can also place ordinary paragraphs before or after the repeated stories without changing the structure of the data."},
+    {"title": "Spacing can be inspected", "text": "The gap between columns is a page-layout measurement in points. It is distinct from paragraph spacing and from a table cell's padding. Increasing the gap reduces available line width and may increase the number of pages. The exact preview shows the resulting line breaks before a test export is downloaded."}
+  ],
+  "storiesAfter": [
+    {"title": "A balanced final page", "text": "Balancing uses the remaining content to bring the final columns to similar heights. Turning balancing off fills each column in order. Neither choice changes the order of the stories or duplicates their words. The full-width closing note continues after the tallest final column, so the next region can remain on the same page."},
+    {"title": "More room for a feature", "text": "An editor can change the three equal proportions to 1 2 1 to give the centre column additional width. The source keeps those proportions explicitly. If the number of columns changes, the editor restores equal widths first so an obsolete list of proportions cannot silently describe a different layout."},
+    {"title": "Save and reopen", "text": "The complete template bundle retains the XML and explicit resources. The data file remains separate, allowing the same design to produce multiple editions. Invalid edits keep the last valid preview and display the cause. The original source is not replaced with the bound output, so later changes remain practical and reviewable."}
+  ]
+}

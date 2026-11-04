@@ -4,14 +4,39 @@ package com.mirakyux.export4j.adapter.pdf;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PdfFormDataTest {
+    @TempDir Path directory;
+    @Test void cancellationAfterAtomicFormDataPublicationDoesNotReportFailure() throws Exception {
+        var adapter = new PdfAdapter(); var input = adapter.input(PdfExtendedFormsTest.source(), "");
+        var policy = ProcessingPolicy.builder().feature("FORM_DATA_APPEARANCE", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DISCARD).build();
+        for (var format : PdfFormData.Format.values()) {
+            var target = directory.resolve("published." + format.name().toLowerCase(java.util.Locale.ROOT));
+            byte[] old = {1, 2, 3}; Files.write(target, old);
+            var execution = ExecutionOptions.builder().cancelled(() -> {
+                try { return !Arrays.equals(old, Files.readAllBytes(target)); }
+                catch (IOException failure) { throw new UncheckedIOException(failure); }
+            }).build();
+            var prepared = adapter.formData(input).format(format).policy(policy).execution(execution).prepare();
+            assertDoesNotThrow(() -> prepared.to(target));
+            assertArrayEquals(prepared.bytes(), Files.readAllBytes(target));
+        }
+        try (var paths = Files.list(directory)) { assertEquals(2, paths.count()); }
+    }
     @Test void bothStandardFormatsPreserveExactUnicodeAndArrays()throws Exception{
         var fields=List.of(new PdfFormData.FieldValue("form.name",List.of("雪 & <text>\nline"),""),new PdfFormData.FieldValue("choice",List.of("A","C"),""));
         for(var format:PdfFormData.Format.values()){byte[] bytes=PdfFormData.encode(fields,format,PdfLimits.DEFAULT);var parsed=PdfFormData.parse(bytes,format);assertEquals(fields,parsed.fields());assertTrue(parsed.report().issues().isEmpty());}

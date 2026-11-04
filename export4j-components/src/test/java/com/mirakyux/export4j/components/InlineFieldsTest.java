@@ -13,6 +13,7 @@ import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.graphics.DrawCommand;
 import com.mirakyux.export4j.layout.ParagraphFragment;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
+import com.mirakyux.export4j.layout.core.ComponentBlock;
 import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
 import com.mirakyux.export4j.layout.core.DocumentLayouter;
@@ -20,6 +21,9 @@ import com.mirakyux.export4j.layout.core.DocumentPainter;
 import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.Caption;
+import com.mirakyux.export4j.model.ColumnFlow;
+import com.mirakyux.export4j.model.GridLayout;
+import com.mirakyux.export4j.model.GridItem;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.Heading;
@@ -36,6 +40,8 @@ import com.mirakyux.export4j.model.ParagraphAlignment;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
+import com.mirakyux.export4j.model.Table;
+import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.text.TextDiagnostic;
 import com.mirakyux.export4j.text.TextOutline;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -221,6 +227,111 @@ class InlineFieldsTest {
         var link = result.display().extras().externalLinks().getFirst();
         assertEquals(2, link.pageIndex());
         assertTrue(link.bounds().x() >= last.origin().x() + line.offsetX() + box.x() + box.field().width());
+    }
+
+    @Test
+    void semanticColumnChildrenRetainFinalPageFieldsAnchorsAndExternalLinkGeometry() {
+        var content = Paragraph.mixed("column-body", List.of(text("START"), field(InlineField.Kind.PAGE, "", 24),
+                text("\n" + "Line\n".repeat(12) + "END"), field(InlineField.Kind.PAGE, "", 24),
+                new InlineText("LINK", InlineStyle.of(12), "https://example.com/columns")), FORMAT);
+        var settings = new PageSettings(new PageSize(260, 120), PageMargins.uniform(10));
+        var columns = new ColumnFlow("columns", List.of(content), 2, 18, false);
+        var source = new Document(META, settings, List.of(columns));
+        var raw = new DocumentLayouter().layout(source, fonts);
+        var result = new ComponentDocumentRenderer().layout(source, PageTemplate.EMPTY, Navigation.EMPTY, fonts);
+        assertEquals(2, result.body().pages().size());
+        assertTrue(logical(result.body().pages().getFirst().fragments().getFirst()).startsWith("START1"));
+        assertTrue(result.body().pages().getLast().fragments().stream().map(InlineFieldsTest::logical)
+                .collect(java.util.stream.Collectors.joining()).contains("END2LINK"));
+        var finalFragments = result.body().pages().stream().flatMap(p -> p.fragments().stream()).toList();
+        assertTrue(finalFragments.stream().allMatch(p -> p.blockId().equals("column-body") && p.blockIndex() == 0));
+        assertTrue(finalFragments.stream().flatMap(p -> p.layout().lines().stream()).allMatch(line -> line.fields().isEmpty()));
+        var unresolved = raw.pages().getLast().fragments().getLast();
+        var line = unresolved.layout().lines().getLast();
+        var slot = line.fields().getFirst();
+        var link = result.display().extras().externalLinks().getFirst();
+        assertEquals(1, link.pageIndex());
+        assertTrue(link.bounds().x() >= unresolved.origin().x() + line.offsetX() + slot.x() + slot.field().width());
+        assertEquals(raw.pages().stream().flatMap(p -> p.fragments().stream()).map(p -> p.layout().lines().getFirst().sourceStart()).toList(),
+                finalFragments.stream().map(p -> p.layout().lines().getFirst().sourceStart()).toList());
+    }
+
+    @Test
+    void semanticGridItemsRetainFinalFieldsReferencesAndTextAndImageLinks() throws IOException {
+        var content = Paragraph.mixed("grid-body", List.of(text("P"), field(InlineField.Kind.PAGE, "", 18),
+                text("T"), field(InlineField.Kind.PAGES, "", 18), text("\nR"),
+                field(InlineField.Kind.REFERENCE_PAGE, "target", 18),
+                new InlineText("LINK", InlineStyle.of(12), "https://example.com/grid-text")), FORMAT);
+        var bytes = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", bytes);
+        var picture = Paragraph.mixed("target", List.of(new com.mirakyux.export4j.model.InlineImage(
+                com.mirakyux.export4j.model.ImageResource.load(bytes.toByteArray()), 20, 10, 0,
+                "Grid image", "https://example.com/grid-image")), FORMAT);
+        var grid = new GridLayout("grid", 12, 0, 10, List.of(new GridItem("left", 1, 1, 6, List.of(content)),
+                new GridItem("right", 1, 7, 6, List.of(picture))));
+        var settings = new PageSettings(new PageSize(260, 120), PageMargins.uniform(10));
+        var source = new Document(META, settings, List.of(new Paragraph("before", "A\nB\nC", FORMAT), grid));
+        var raw = new DocumentLayouter().layout(source, fonts);
+        var result = new ComponentDocumentRenderer().layout(source, PageTemplate.EMPTY, Navigation.EMPTY, fonts);
+        assertEquals(2, result.body().pages().size());
+        var page = result.body().pages().getLast();
+        var resolved = page.fragments().stream().filter(p -> p.blockId().equals("grid-body")).findFirst().orElseThrow();
+        assertTrue(logical(resolved).contains("P2T2"));
+        assertTrue(logical(resolved).contains("R2LINK"));
+        assertEquals(1, resolved.blockIndex());
+        assertTrue(resolved.layout().lines().stream().allMatch(line -> line.fields().isEmpty()));
+        var original = raw.pages().getLast().fragments().stream().filter(p -> p.blockId().equals("grid-body")).findFirst().orElseThrow();
+        assertEquals(original.layout().lines().stream().map(line -> List.of(line.sourceStart(), line.sourceEnd())).toList(),
+                resolved.layout().lines().stream().map(line -> List.of(line.sourceStart(), line.sourceEnd())).toList());
+        assertEquals(2, result.display().extras().externalLinks().size());
+        for (var link : result.display().extras().externalLinks()) {
+            assertEquals(1, link.pageIndex());
+            if (link.destination().uri().equals("https://example.com/grid-text")) {
+                assertTrue(link.bounds().x() >= 10 && link.bounds().x() + link.bounds().width() <= 130);
+            } else {
+                assertEquals("https://example.com/grid-image", link.destination().uri());
+                assertEquals(130, link.bounds().x()); assertEquals(20, link.bounds().width());
+            }
+        }
+        var referenceLink = result.display().extras().links().getFirst();
+        assertEquals(1, referenceLink.targetPageIndex());
+    }
+
+    @Test
+    void referenceLinksFollowParagraphAndNestedTableRotationsIncludingSemanticComponents() {
+        var settings = new PageSettings(new PageSize(200, 150), PageMargins.uniform(20));
+        var format = ParagraphFormat.builder().fontSize(10).lineHeight(20).spaceAfter(0).build();
+        for (var mode : List.of("paragraph", "table", "component")) {
+            for (int parentAngle : mode.equals("paragraph") ? List.of(0) : List.of(0, 180)) {
+                for (int angle : List.of(0, 180)) {
+                    var reference = Paragraph.mixed("reference", List.of(
+                            new InlineField(InlineField.Kind.REFERENCE_PAGE, "target", 22, InlineStyle.of(10)),
+                            new InlineField(InlineField.Kind.REFERENCE_NUMBER, "target", 70, InlineStyle.of(10))),
+                            format.toBuilder().rotation(angle).build());
+                    var table = Table.builder("table").format(value -> value.padding(0).spaceAfter(0).rotation(parentAngle))
+                            .row(TableCell.builder().blocks(List.of(reference)).build()).build();
+                    Block block = switch (mode) {
+                        case "paragraph" -> reference;
+                        case "table" -> table;
+                        default -> new ComponentBlock("component", new SemanticTable(table));
+                    };
+                    var document = new Document(META, settings, List.of(block, new Caption("target", "Figure", "Destination", format)));
+                    var result = new ComponentDocumentRenderer().layout(document, PageTemplate.EMPTY, Navigation.EMPTY, fonts);
+                    var links = result.display().extras().links();
+                    assertEquals(2, links.size());
+                    boolean reversed = (parentAngle + angle) % 360 != 0;
+                    // The 160 x 20 pt flow box is unchanged; a half turn moves its leftmost slots to the right.
+                    for (int index = 0; index < links.size(); index++) {
+                        var link = links.get(index);
+                        assertEquals(0, link.pageIndex()); assertEquals(0, link.targetPageIndex());
+                        assertEquals(index == 0 ? (reversed ? 158 : 20) : (reversed ? 88 : 42), link.bounds().x(), 1e-8);
+                        assertEquals(20, link.bounds().y(), 1e-8);
+                        assertEquals(index == 0 ? 22 : 70, link.bounds().width(), 1e-8);
+                        assertEquals(20, link.bounds().height(), 1e-8);
+                    }
+                }
+            }
+        }
     }
 
     private static SectionedDocument one(Paragraph p) { return new SectionedDocument(META, List.of(new Section("s", SETTINGS, List.<Block>of(p), 0))); }

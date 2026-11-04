@@ -10,6 +10,7 @@ import {chromium} from 'playwright';
 const repository=fileURLToPath(new URL('../../../',import.meta.url));
 const output=path.resolve(repository,process.env.EXPORT4J_STUDIO_OUTPUT||'build/verification/designer-studio/browser');
 const suppliedOrigin=process.env.EXPORT4J_STUDIO_URL;
+const distribution=process.env.EXPORT4J_DESIGNER_DIST?path.resolve(process.env.EXPORT4J_DESIGNER_DIST):path.join(repository,'export4j-designer/build/install/export4j-designer');
 const scenarioFilter=process.env.EXPORT4J_STUDIO_SCENARIOS?new RegExp(process.env.EXPORT4J_STUDIO_SCENARIOS):undefined;
 const source=`<document version="1"><page width="420" height="600" margin="30"/>
 <header height="24"><p id="header">Header</p></header><footer height="24"><p id="footer">Footer</p></footer>
@@ -21,7 +22,7 @@ const source=`<document version="1"><page width="420" height="600" margin="30"/>
 test('canvas editing keeps template semantics and engine output', {timeout:360000}, async t=>{
     await mkdir(output,{recursive:true});
     const java=process.env.JAVA_HOME?path.join(process.env.JAVA_HOME,'bin',process.platform==='win32'?'java.exe':'java'):'java';
-    const child=suppliedOrigin?undefined:spawn(java,['-Djava.awt.headless=true','-cp',path.join(repository,'export4j-designer/build/install/export4j-designer/lib/*'),
+    const child=suppliedOrigin?undefined:spawn(java,['-Djava.awt.headless=true','-cp',path.join(distribution,'lib/*'),
         'com.mirakyux.export4j.designer.DesignerApp','--port=0'],{windowsHide:true});
     let logs='',browser;
     try {
@@ -37,12 +38,22 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
         const errors=[],executed=[];page.on('pageerror',error=>errors.push(error.message));
         const check=async(name,work)=>{if(scenarioFilter&&!scenarioFilter.test(name))return;executed.push(name);return t.test(name,async()=>{try{await work();}catch(error){const details=await page.evaluate(()=>{const editor=document.querySelector('.ProseMirror'),view=editor?.pmViewDesc?.view,selection=document.getSelection(),toolbar=document.querySelector('[aria-label="画布文字格式"]');let coords;try{coords=view?{from:view.coordsAtPos(view.state.selection.from),to:view.coordsAtPos(view.state.selection.to)}:null;}catch(error){coords=String(error);}return {status:$('status').textContent,busy,selection:selectedPaths,images:state.images,active:document.activeElement?.outerHTML,domSelection:selection?.toString(),pmSelection:view?.state.selection.toJSON(),editor:editor?.getBoundingClientRect().toJSON(),coords,toolbar:toolbar?.getBoundingClientRect().toJSON(),toolbarStyle:toolbar?.getAttribute('style'),canvasScroll:document.querySelector('.canvas-scroll')?.scrollTop};});await writeFile(path.join(output,'failure-state-'+name.slice(0,24).replaceAll(' ','-')+'.json'),JSON.stringify(details,null,2));console.error(name,error,details);await page.screenshot({path:path.join(output,'failure-'+name.slice(0,14).replaceAll(' ','-')+'.png')});throw error;}});};
         await page.goto(origin);await page.waitForFunction(()=>typeof state!=='undefined'&&state&&!busy&&pages.length>0);
-        const idle=async()=>{await page.waitForFunction(()=>!busy&&!DesignerStudioBridge.snapshot().pending&&pages.length>0&&document.querySelector('.page-image')?.dataset.preview===previewId);};
+        const idle=async()=>{await page.waitForFunction(()=>!busy&&!DesignerStudioBridge.snapshot().pending&&(document.querySelector('#container-template-state')||pages.length>0&&document.querySelector('.page-image')?.dataset.preview===previewId));};
         const load=async(xml=source,data={name:'Ada'})=>{await page.mouse.up();await page.keyboard.press('Escape');await page.evaluate(async ({xml,data})=>{$('data').value=JSON.stringify(data);await DesignerStudioBridge.apply(xml);await DesignerStudioBridge.flush();await DesignerStudioBridge.select([]);},{xml,data});await idle();await page.locator('.canvas-scroll').evaluate(node=>node.scrollTop=0);};
         const xml=()=>page.evaluate(()=>state.source);
         const object=async id=>{const item=await page.evaluate(id=>entries.find(entry=>entry.id===id),id);assert.ok(item,id);return page.locator(`.studio-object[data-studio-path="${item.path}"]`).first();};
         const edit=async id=>{await (await object(id)).dblclick();await page.locator('.ProseMirror').waitFor();};
         const finish=async()=>{await page.getByRole('button',{name:'完成',exact:true}).click();await idle();};
+        const inspectorChild=async path=>{
+            const route=await page.evaluate(path=>{const from=selected.path;return entries.filter(entry=>entry.path!==from&&entry.path.startsWith(from+'/')&&(entry.path===path||path.startsWith(entry.path+'/'))).map(entry=>entry.path);},path);
+            assert.ok(route.length,'target must be inside the selected container: '+path);
+            for(const step of route){await page.locator(`#inspector-panel [data-content-navigation] [data-content-path="${step}"]`).click();await idle();}
+        };
+        const inspectorAncestor=async tag=>{
+            const target=await page.evaluate(tag=>entries.filter(entry=>entry.tag===tag&&selected.path.startsWith(entry.path+'/')).at(-1)?.path,tag);
+            assert.notEqual(target,undefined,'missing inspector ancestor '+tag);
+            await page.locator(`#inspector-panel #selection-crumb [data-content-path="${target}"]`).click();await idle();
+        };
         const holdDrag=async(locator,dx,dy,kind='move')=>{
             const box=await locator.boundingBox();assert.ok(box);
             await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
@@ -60,6 +71,157 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
         };
         const bodyOrder=()=>page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').documentElement.children].filter(node=>node.id).map(node=>node.id));
         const fixSelection=async()=>{await page.getByLabel('块排版方式').selectOption('FIXED');await idle();};
+        await check('workflow v2 table column borders support drag cancel keyboard and exact sizing',async()=>{
+            await load('<document version="1"><page width="420" height="600" margin="30"/><table id="sizing" padding-left="9" padding-right="11"><columns><column weight="1"/><column weight="1"/></columns><header><cell>FIRST</cell><cell>SECOND</cell></header><row><cell>VALUE-A</cell><cell>VALUE-B</cell></row></table></document>',{});
+            await (await object('sizing')).click();const divider=page.getByRole('separator',{name:'调整表格第 1、2 列宽',exact:true});await divider.waitFor();
+            const before=await xml(),box=await divider.boundingBox();assert.ok(box);const initial=Number(await divider.getAttribute('aria-valuenow'));
+            await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+35,box.y+box.height/2,{steps:5});await page.keyboard.press('Escape');await page.mouse.up();assert.equal(await xml(),before,'Esc must cancel without changing column declarations');
+            const again=await divider.boundingBox();await page.mouse.move(again.x+again.width/2,again.y+again.height/2);await page.mouse.down();await page.mouse.move(again.x+again.width/2+35,again.y+again.height/2,{steps:5});await page.mouse.up();await idle();
+            assert.ok(Number(await divider.getAttribute('aria-valuenow'))>initial+15);assert.match(await xml(),/VALUE-A/);assert.match(await xml(),/VALUE-B/);assert.match(await xml(),/<column width=/);
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),before);await page.locator('#redo').click();await idle();
+            await divider.focus();const prior=Number(await divider.getAttribute('aria-valuenow'));await page.keyboard.press('ArrowLeft');await idle();assert.ok(Math.abs(Number(await divider.getAttribute('aria-valuenow'))-(prior-1))<.01);
+            await page.getByLabel('精确列宽',{exact:true}).click();await page.getByLabel('当前列宽（pt）',{exact:true}).fill('200');await page.getByRole('button',{name:'应用列宽',exact:true}).click();await idle();assert.ok(Math.abs(Number(await divider.getAttribute('aria-valuenow'))-200)<.01);
+            await page.screenshot({path:path.join(output,'workflow-v2-table-widths.png'),fullPage:true});
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'workflow-v2-table-widths.pdf'));await page.locator('#close-export').click();
+        });
+        await check('workflow v2 merged tables keep spans during direct row and column operations',async()=>{
+            const errorsBefore=errors.length;
+            await load('<document version="1"><page size="A4" margin="42"/><table id="merged-edit"><columns><column weight="1"/><column weight="1"/></columns><row><cell row-span="2">MERGED</cell><cell>RIGHT-A</cell></row><row><cell>RIGHT-B</cell></row><row><cell>LEFT-C</cell><cell>RIGHT-C</cell></row></table></document>',{});
+            await page.locator('.tree-item[data-path="/1/1/1"]').click();const actions=page.getByLabel('当前单元格的行列与合并',{exact:true});await actions.click();await page.getByRole('button',{name:'在下方插入行',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('table > row > cell').getAttribute('row-span')),'3');
+            await actions.click();await page.getByRole('button',{name:'在右侧插入列',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('table > columns > column').length),3);assert.match(await xml(),/RIGHT-A/);assert.match(await xml(),/RIGHT-B/);
+            await actions.click();await page.getByRole('button',{name:'选格与合并／拆分',exact:true}).click();await page.locator('#table-dialog').waitFor();assert.ok(await page.locator('#table-cell-grid button').count()>0);
+            await page.locator('#table-cell-grid button').first().click();assert.equal(await page.locator('#table-cell-grid button').first().getAttribute('aria-pressed'),'true');
+            await page.locator('#table-cell-grid button').nth(1).click({modifiers:['Control']});assert.match(await page.locator('#table-selection-count').textContent(),/已选 2 格/);
+            await page.locator('#close-table-dialog').click();assert.equal(await page.locator('#table-dialog').isVisible(),false);
+            assert.deepEqual(errors.slice(errorsBefore),[],'selecting cells and closing layout must also work while the inspector only exposes the owning-table shortcut');
+            await page.screenshot({path:path.join(output,'workflow-v2-merged-table.png'),fullPage:true});
+        });
+        await check('workflow v2 inner paragraph commands preserve the outer container',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><table id="inner-actions"><columns><column weight="1"/></columns><row><cell><p id="inner-first">INNER <span role="bold">BOLD</span></p><p id="inner-next">NEXT</p></cell></row></table></document>',{});
+            await edit('inner-first');await finish();await page.getByLabel('更多容器操作',{exact:true}).click();await page.getByRole('button',{name:'复制当前段落',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('table').length),1);assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('cell > p').length),3);
+            await page.getByLabel('更多容器操作',{exact:true}).click();await page.getByRole('button',{name:'删除当前段落',exact:true}).click();await idle();assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('cell > p').length),2);assert.match(await xml(),/INNER/);assert.match(await xml(),/NEXT/);
+            await page.locator('#undo').click();await idle();assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('cell > p').length),3);
+        });
+        await check('workflow v2 sample arrays preserve unrelated exact JSON values through both insert menus',async()=>{
+            for(const kind of ['list','rows']){
+                await load('<document version="1"><page size="A4" margin="42"/><p id="exact-anchor">EXACT DATA</p></document>',{});
+                const raw='{"invoiceId":9007199254740993,"amount":0.10000000000000000001,"exponent":1.2300e-40}';
+                await page.evaluate(async raw=>{$('data').value=raw;await DesignerStudioBridge.apply(state.source);await DesignerStudioBridge.flush();},raw);await idle();
+                await (await object('exact-anchor')).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="'+kind+'"]').click();
+                const dialog=page.getByRole('dialog',{name:'绑定数组数据',exact:true});await dialog.waitFor();await dialog.getByRole('button',{name:kind==='list'?'创建数据列表':'创建数据表格',exact:true}).click();await idle();
+                const actual=await page.evaluate(()=>state.data);for(const token of ['9007199254740993','0.10000000000000000001','1.2300e-40'])assert.ok(actual.includes(token),kind+': '+actual);assert.ok(actual.includes('示例项'));
+                await writeFile(path.join(output,'workflow-v2-exact-'+kind+'.json'),actual);
+            }
+        });
+        await check('workflow v2 mixed resource and text operations undo and redo in their actual order',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><p id="history-mixed">HISTORY</p></document>',{});
+            const png=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=8;canvas.height=6;canvas.getContext('2d').fillRect(0,0,8,6);return canvas.toDataURL('image/png').split(',')[1];});
+            await page.locator('#resources-tab').click();await page.evaluate(()=>{assetKind='image';$('asset-file').value='';});await page.locator('#asset-file').setInputFiles({name:'mixed-history.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});await page.locator('#question-answer').fill('mixed_history_asset');await page.locator('#question-ok').click();await idle();
+            await page.locator('#navigator-tab').click();await edit('history-mixed');await page.keyboard.press('Control+End');await page.keyboard.insertText('-EDIT');await finish();
+            const imageExists=()=>page.evaluate(()=>state.images.some(image=>image.name==='mixed_history_asset'));
+            await page.locator('#undo').click();await idle();assert.match(await xml(),/>HISTORY<\/p>/);assert.equal(await imageExists(),true);assert.equal(await page.locator('#undo').isEnabled(),true);
+            await page.locator('#undo').click();await idle();assert.equal(await imageExists(),false);await page.locator('#redo').click();await idle();assert.equal(await imageExists(),true);assert.match(await xml(),/>HISTORY<\/p>/);
+            await page.locator('#redo').click();await idle();assert.match(await xml(),/HISTORY-EDIT/);assert.equal(await imageExists(),true);
+        });
+        await check('workflow v2 HTML table paste preserves separators inside the current cell',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><table id="clipboard-table"><columns><column weight="1"/><column weight="1"/></columns><row><cell>A</cell><cell>B</cell></row><row><cell>C</cell><cell>D</cell></row></table></document>',{});
+            await page.locator('.studio-object[data-studio-path="/1/1/0"]').first().dblclick();await page.locator('.ProseMirror').waitFor();await page.locator('.ProseMirror').focus();await page.keyboard.press('Control+a');
+            await page.locator('.ProseMirror').evaluate(element=>{const transfer=new DataTransfer();transfer.setData('text/plain','ONE\tTWO\nTHREE\tFOUR');transfer.setData('text/html','<table><tr><td>ONE</td><td>TWO</td></tr><tr><td>THREE</td><td>FOUR</td></tr></table>');element.dispatchEvent(new ClipboardEvent('paste',{clipboardData:transfer,bubbles:true,cancelable:true}));});await finish();
+            assert.deepEqual(await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('cell')].map(cell=>cell.textContent)),['ONE\tTWO\nTHREE\tFOUR','B','C','D']);
+        });
+        await check('workflow v2 preview failures never show a synchronized success label',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><table id="status-current"><columns><column weight="1"/><column weight="1"/></columns><row><cell>VALID ${name}</cell><cell>UNCHANGED</cell></row></table></document>',{name:'PRESENT'});await page.getByRole('button',{name:'精确排版',exact:true}).click();await idle();
+            await (await object('status-current')).click();await page.locator('.studio-table-divider').waitFor();
+            await page.evaluate(async()=>{$('data').value='{}';await DesignerStudioBridge.apply(state.source);await DesignerStudioBridge.flush();});await page.waitForFunction(()=>!busy&&DesignerStudioBridge.snapshot().layoutState==='failed');
+            assert.match(await page.locator('#status').textContent(),/MISSING_VALUE/);assert.doesNotMatch(await page.locator('.studio-sync-state').textContent(),/版式已同步/);assert.match(await page.locator('#preview-status').textContent(),/保留上次预览/);assert.equal(await page.locator('.studio-table-divider').count(),0);
+            await page.screenshot({path:path.join(output,'workflow-v2-preview-failed.png'),fullPage:true});
+            await page.evaluate(async()=>{$('data').value='{"name":"RECOVERED"}';await DesignerStudioBridge.apply(state.source);await DesignerStudioBridge.flush();});await idle();await page.locator('.studio-table-divider').waitFor();
+        });
+        await check('image paste respects page margins in pt mm cm and in including edge and section overrides',async()=>{
+            const cases=['margin="72"','margin="72pt"','margin="25.4mm"','margin="2.54cm"','margin="1in"','margin="12" margin-left="1in" margin-right="25.4mm" margin-top="2.54cm" margin-bottom="72pt"'];
+            for(const attributes of cases){
+                await load('<document version="1"><page width="420" height="600" '+attributes+'/><p id="paste-unit">Content</p></document>',{});
+                await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=1000;canvas.getContext('2d').fillRect(0,0,1000,1000);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'units.png',{type:'image/png'}),0,0,0,'/1');});await idle();
+                const images=await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('image')].map(image=>({width:Number(image.getAttribute('width')),height:Number(image.getAttribute('height'))})));
+                assert.deepEqual(images,[{width:272,height:272}],attributes);
+            }
+            await load('<document version="1"><page width="420" height="600" margin="12"/><section id="paste-section"><page margin="1in"/><p id="paste-unit">Section content</p></section></document>',{});
+            await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=1000;canvas.getContext('2d').fillRect(0,0,1000,1000);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'section.png',{type:'image/png'}),0,0,0,'/1/1');});await idle();
+            assert.deepEqual(await page.evaluate(()=>{const image=new DOMParser().parseFromString(state.source,'application/xml').querySelector('section image');return {width:Number(image?.getAttribute('width')),height:Number(image?.getAttribute('height'))};}),{width:272,height:272});
+        });
+        await check('image paste uses measured body and remaining shared page region space',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            const cases=[
+                ['body','<document version="1"><page width="420" height="600" margin="30"/><header height="60"><p>HEADER</p></header><footer height="60"><p>FOOTER</p></footer><p id="image-anchor">BODY</p></document>','/3',100,1000,416],
+                ['header','<document version="1"><page width="420" height="600" margin="30"/><header height="60"><p id="image-anchor" line-height="18" space-after="6">HEADER</p></header><p>BODY</p></document>','/1/0',1000,1000,32],
+                ['footer','<document version="1"><page width="420" height="600" margin="30"/><footer height="60"><p id="image-anchor" line-height="18" space-after="6">FOOTER</p></footer><p>BODY</p></document>','/1/0',1000,1000,32],
+                ['shared','<document version="1"><page width="420" height="600" margin="30"/><header source-id="shared-image-header" height="100"><p id="image-anchor">One two three four five six seven eight nine ten eleven twelve.</p></header><section id="wide"><p>WIDE</p></section><section id="narrow"><page width="220" height="600"/><header source-ref="shared-image-header"/><p>NARROW</p></section></document>','/1/0',1000,1000,96],
+                ['cell','<document version="1"><page width="420" height="600" margin="30"/><table><columns><column width="80"/><column weight="1"/></columns><row><cell>CELL</cell><cell>OTHER</cell></row></table></document>','/1/1/0',1000,1000,64],
+                ['columns','<document version="1"><page width="420" height="600" margin="30"/><columns count="2"><p id="image-anchor">COLUMN</p></columns></document>','/1/0',100,1000,536],
+                ['overlay','<document version="1"><page width="420" height="600" margin="30" margin-top="260"/><foreground><box x="30" y="30" width="160" height="80"><p id="image-anchor" line-height="18" space-after="6">BOX</p></box></foreground><section id="one"><p>BODY ONE</p></section><section id="two"><page width="320" height="600"/><p>BODY TWO</p></section></document>','/1/0/0',1000,1000,156]
+            ];
+            for(const [name,source,placementPath,width,height,maximum] of cases){
+                await load(source,{});const before=await page.evaluate(()=>({source:state.source,resources:state.images.length,identity:state.resourceIdentity}));
+                await page.evaluate(async({placementPath,width,height})=>{const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;canvas.getContext('2d').fillRect(0,0,width,height);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'measured.png',{type:'image/png'}),0,0,0,placementPath);},{placementPath,width,height});await idle();
+                const actual=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),image=document.querySelector('image[ref^="pasted_"]:last-of-type');return {source:state.source,layout:DesignerStudioBridge.snapshot().layoutState,status:$('status').textContent,height:Number(image?.getAttribute('height')),resources:state.images.length};});
+                assert.equal(actual.layout,'synced',name+': '+actual.status);assert.ok(actual.height>0&&actual.height<=maximum+1e-6,name+': '+actual.height);assert.equal(actual.resources,before.resources+1,name);
+                await page.locator('#undo').click();await idle();assert.equal(await xml(),before.source,name);assert.equal(await page.evaluate(()=>state.resourceIdentity),before.identity,name);
+                await page.locator('#redo').click();await idle();assert.equal(await xml(),actual.source,name);assert.equal(await page.evaluate(()=>state.images.length),before.resources+1,name);
+                await writeFile(path.join(output,'image-paste-'+name+'.xml'),actual.source);
+                if(['body','header','footer','shared','overlay'].includes(name)){
+                    const [download]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);
+                    await download.saveAs(path.join(output,'image-paste-'+name+'.pdf'));await page.locator('#close-export').click();
+                }
+            }
+        });
+        await check('image paste rejects full regions and failed candidate layout without source or resource changes',async()=>{
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            await load('<document version="1"><page width="420" height="600" margin="30"/><header height="24"><p id="full-header">UNCHANGED HEADER</p></header><p>BODY</p></document>',{});
+            const before=await page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,resources:state.images.length,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+            await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await DesignerStudioBridge.paste(new File([blob],'full.png',{type:'image/png'}),0,0,0,'/1/0');});await idle();
+            assert.match(await page.locator('#status').textContent(),/没有足够.*原文和资源未修改/);
+            assert.deepEqual(await page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,resources:state.images.length,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo})),before);
+            const rejected=await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;const encoded=canvas.toDataURL('image/png').split(',')[1],xmlDoc=new DOMParser().parseFromString(state.source,'application/xml'),paragraph=xmlDoc.createElement('p');paragraph.setAttribute('line-height','1000');const image=xmlDoc.createElement('image');for(const [key,value] of Object.entries({ref:'preflight_rejected_image',width:32,height:32}))image.setAttribute(key,String(value));paragraph.append(image);xmlDoc.documentElement.append(paragraph);try{await request('resource',{kind:'image',name:'preflight_rejected_image',bytes:encoded,source:new XMLSerializer().serializeToString(xmlDoc),data:state.data,validateLayout:true});return {accepted:true};}catch(error){return {accepted:false,message:error.message};}});
+            assert.equal(rejected.accepted,false);assert.match(rejected.message,/exceeds|height|too tall/);
+            assert.deepEqual(await page.evaluate(async()=>{const current=await request('state');return {source:current.source,revision:current.revision,identity:current.resourceIdentity,resources:current.images.length};}),{source:before.source,revision:before.revision,identity:before.identity,resources:before.resources});
+        });
+        await check('image paste cancellation before registration preserves source resources and history',async()=>{
+            await load('<document version="1"><page width="420" height="600" margin="30"/><p id="cancel-image">UNCHANGED</p></document>',{});
+            const before=await page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo}));
+            try{
+                await page.evaluate(()=>{window.imagePasteBitmap=window.createImageBitmap;window.imagePasteReady=false;window.createImageBitmap=async(...args)=>{const bitmap=await window.imagePasteBitmap(...args);window.imagePasteReady=true;await new Promise(resolve=>window.imagePasteRelease=resolve);return bitmap;};const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;canvas.toBlob(blob=>{void DesignerStudioBridge.paste(new File([blob],'cancelled.png',{type:'image/png'}),0,0,0,'/1');},'image/png');});
+                await page.waitForFunction(()=>window.imagePasteReady);await Promise.all([page.waitForResponse(response=>response.url().endsWith('/api/cancel')),page.locator('#cancel').click()]);
+                await page.waitForFunction(()=>$('status').textContent.includes('已请求取消'));await page.evaluate(()=>window.imagePasteRelease());await idle();
+                assert.match(await page.locator('#status').textContent(),/已取消图片粘贴.*原文和资源未修改/);
+                assert.deepEqual(await page.evaluate(()=>({source:state.source,revision:state.revision,identity:state.resourceIdentity,canUndo:DesignerStudioBridge.snapshot().canUndo,canRedo:DesignerStudioBridge.snapshot().canRedo})),before);
+                assert.deepEqual(await page.evaluate(async()=>{const current=await request('state');return {source:current.source,revision:current.revision,identity:current.resourceIdentity};}),{source:before.source,revision:before.revision,identity:before.identity});
+            }finally{await page.evaluate(()=>{window.imagePasteRelease?.();if(window.imagePasteBitmap)window.createImageBitmap=window.imagePasteBitmap;delete window.imagePasteBitmap;delete window.imagePasteRelease;delete window.imagePasteReady;});}
+        });
+        await check('workflow v2 caret inserts full width content without manual paragraph assembly',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><columns id="caret-flow" count="2" gap="18"><p id="caret-text">LEFT <span role="bold">STRONG</span> RIGHT ${name}</p><p id="caret-next">AFTER</p></columns></document>',{name:'BOUND'});
+            const original=await xml();await edit('caret-text');await page.keyboard.press('Control+Home');for(let index=0;index<5;index++)await page.keyboard.press('ArrowRight');
+            await page.getByRole('button',{name:'光标处通栏图片',exact:true}).click();await page.locator('#image-picker').waitFor();await page.getByRole('button',{name:'关闭图片选择',exact:true}).click();assert.equal(await xml(),original);assert.equal(await page.locator('.ProseMirror').count(),1);
+            await page.locator('.ProseMirror').focus();await page.keyboard.press('Control+Home');for(let index=0;index<4;index++)await page.keyboard.press('ArrowRight');
+            const boundary=await page.evaluate(()=>{
+                const editor=document.querySelector('.ProseMirror'),text=editor.querySelector('p').firstChild,range=document.createRange();
+                range.setStart(text,5);range.collapse(true);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+                let command;document.addEventListener('designer-insert-full-width',event=>{command=event.detail.caret;},{capture:true,once:true});
+                const nativeOffset=selection.anchorOffset;
+                // A native caret can move before selectionchange reaches ProseMirror. Read it in this task.
+                [...document.querySelectorAll('button')].find(button=>button.textContent==='光标处通栏表格').click();
+                return {nativeOffset,command};
+            });
+            assert.equal(boundary.nativeOffset,5);assert.deepEqual(boundary.command,{offset:5,size:19,empty:true});
+            await page.waitForFunction(()=>!busy&&state.source.includes('<table'));await idle();
+            const parts=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),body=[...document.documentElement.children].filter(node=>node.tagName!=='page');return {tags:body.map(node=>node.tagName),text:body.filter(node=>node.tagName==='columns').map(node=>node.textContent),bold:document.querySelector('span[role="bold"]').textContent,variables:body.filter(node=>node.tagName==='columns')[1].textContent};});
+            assert.deepEqual(parts.tags,['columns','table','columns']);assert.equal(parts.text[0],'LEFT ');assert.match(parts.text[1],/STRONG RIGHT \$\{name\}AFTER/);assert.equal(parts.bold,'STRONG');assert.match(parts.variables,/\$\{name\}/);
+            await page.screenshot({path:path.join(output,'workflow-v2-caret-full-width.png'),fullPage:true});
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'workflow-v2-caret-full-width.pdf'));await page.locator('#close-export').click();
+            await page.locator('#undo').click();await idle();assert.equal(await xml(),original);await page.locator('#redo').click();await idle();assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('columns').length),3);
+        });
         await check('single click selects, double click edits and keyboard enters the same editor',async()=>{
             await load();const before=await xml();await (await object('second')).click();
             assert.equal(await page.locator('.ProseMirror').count(),0);assert.equal(await xml(),before);
@@ -70,6 +232,388 @@ test('canvas editing keeps template semantics and engine output', {timeout:36000
             await edit('second');await finish();assert.equal(await page.evaluate(()=>selected?.id),'second','finishing an unchanged continuous editor must retain the chosen component');
             await page.locator('.studio-surface').first().focus();await page.keyboard.press('F2');
             await page.locator('.ProseMirror').waitFor();assert.equal(await page.locator('.ProseMirror > p').last().textContent(),'Second paragraph');await finish();
+        });
+        await check('body columns expose flow settings and preserve editable children through save and reopen',async()=>{
+            await load('<document version="1"><page width="420" height="600" margin="30"/><heading id="title" level="1">Column editing</heading><columns id="flow" count="2" gap="18" balanced="true" weights="1 2"><p id="column-first">First editable paragraph.</p><p id="column-long">'+('Continuous content flows in reading order. '.repeat(50))+'</p></columns><p id="ending">Full width ending.</p></document>',{});
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            await page.getByRole('treeitem',{name:'正文分栏 flow',exact:true}).click();
+            assert.equal(await page.getByLabel('正文栏数',{exact:true}).inputValue(),'2');
+            await page.getByLabel('正文栏数',{exact:true}).selectOption('3');
+            await page.getByRole('treeitem',{name:'正文分栏 flow',exact:true}).click();
+            await page.waitForFunction(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#flow')?.getAttribute('count')==='3');await idle();
+            assert.equal(await page.getByLabel('栏宽比例',{exact:true}).inputValue(),'');
+            await page.getByLabel('栏距（pt）',{exact:true}).fill('12');
+            await page.getByLabel('栏宽比例',{exact:true}).fill('1 2 1');
+            await page.getByLabel('末页平衡',{exact:true}).selectOption('false');
+            await page.getByRole('treeitem',{name:'正文分栏 flow',exact:true}).click();
+            await page.waitForFunction(()=>{const node=new DOMParser().parseFromString(state.source,'application/xml').querySelector('#flow');return node?.getAttribute('gap')==='12'&&node.getAttribute('weights')==='1 2 1'&&node.getAttribute('balanced')==='false';});await idle();
+            assert.equal(await page.locator('#table-tools').isVisible(),false,'body flow settings must not expose table cell tools');
+            await page.getByRole('treeitem',{name:'段落 column-first',exact:true}).click();
+            assert.equal(await page.locator('[data-attribute="keep-with-next"] option[value="true"]').evaluate(option=>option.disabled),true);
+            assert.equal(await page.locator('[data-attribute="page-break-before"] option[value="true"]').evaluate(option=>option.disabled),true);
+            await page.getByRole('textbox',{name:'正文富文本',exact:true}).fill('Edited inside the column flow.');
+            await page.getByRole('treeitem',{name:'正文分栏 flow',exact:true}).click();await idle();
+            assert.match(await xml(),/Edited inside the column flow/);
+            await page.locator('[data-insert="p"]').evaluate(button=>button.click());
+            await page.waitForFunction(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#flow')?.children.length===3);await idle();
+            assert.equal(await page.evaluate(()=>selected.path.split('/').length),3,'inserting with the flow selected must add a child');
+            await page.locator('.studio-surface').first().focus();await page.keyboard.press('Alt+ArrowUp');await idle();
+            const order=await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelector('#flow').children].map(node=>node.id));
+            assert.equal(order[0],'column-first');assert.equal(order[2],'column-long');
+            await page.getByRole('treeitem',{name:'段落 column-first',exact:true}).click();
+            await page.locator('#studio-container-inspector').getByLabel('更多容器操作',{exact:true}).click();
+            await page.getByRole('button',{name:'插入通栏表格',exact:true}).click();await idle();
+            const wideId=await page.evaluate(()=>selected.id);assert.equal(await page.evaluate(()=>nodeAt(selected.path).parentElement.tagName),'document');
+            await page.getByRole('treeitem',{name:'段落 '+order[1],exact:true}).click();
+            await page.locator('#studio-container-inspector').getByLabel('更多容器操作',{exact:true}).click();
+            await page.getByRole('button',{name:'插入通栏图片',exact:true}).click();
+            await page.locator('#image-picker').getByRole('button',{name:'图片资源 mark',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>nodeAt(selected.path).parentElement.tagName),'document');
+            assert.equal(await page.evaluate(id=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#'+id)?.parentElement.tagName,wideId),'document');
+            const regions=await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('document > columns')].map(node=>Object.fromEntries(['count','gap','weights','balanced'].map(name=>[name,node.getAttribute(name)]))));
+            assert.ok(regions.length>=3);assert.ok(regions.every(value=>JSON.stringify(value)===JSON.stringify({count:'3',gap:'12',weights:'1 2 1',balanced:'false'})));
+            await page.getByRole('treeitem',{name:'正文分栏 flow',exact:true}).click();await idle();
+            await page.screenshot({path:path.join(output,'body-columns-three.png'),fullPage:true});
+            const retained=await xml();await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();
+            const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);
+            const saved=path.join(output,'body-columns-template.zip');await download.saveAs(saved);await page.locator('#close-template-export').click();
+            await page.locator('#open-file').setInputFiles(saved);await idle();assert.equal(await xml(),retained);
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);
+            await pdf.saveAs(path.join(output,'body-columns.pdf'));await page.locator('#close-export').click();
+        });
+        await check('built in body columns samples open with full width tables and pictures between regions',async()=>{
+            for(const [name,prefix,label] of [['双栏学术短文','article','two'],['三栏简报','briefing','three']]){
+                await page.locator('#new-sample').evaluate(button=>button.click());
+                await page.locator('#sample-list button').filter({hasText:name}).click();
+                await page.waitForFunction(prefix=>$('question-dialog').open||state.source.includes('id="'+prefix+'-wide-table"'),prefix);
+                if(await page.locator('#question-dialog').evaluate(dialog=>dialog.open))await page.locator('#question-ok').click();
+                await page.waitForFunction(prefix=>state.source.includes('id="'+prefix+'-wide-table"'),prefix);await idle();
+                await page.getByRole('treeitem',{name:'正文分栏 '+prefix+'-body',exact:true}).click();
+                assert.equal(await page.getByLabel('正文栏数',{exact:true}).inputValue(),label==='two'?'2':'3');
+                const evidence=await page.evaluate(prefix=>pages.flatMap((page,index)=>page.hits.filter(hit=>[prefix+'-wide-table',prefix+'-wide-figure',prefix+'-body-after'].includes(hit.id)).map(hit=>({...hit,page:index}))),prefix);
+                assert.equal(evidence.filter(hit=>hit.id===prefix+'-wide-table').length,1);
+                assert.equal(evidence.filter(hit=>hit.id===prefix+'-wide-figure').length,1);
+                assert.ok(evidence.some(hit=>hit.id===prefix+'-wide-table'&&hit.width>500));
+                await writeFile(path.join(output,'body-columns-sample-'+label+'-geometry.json'),JSON.stringify(evidence,null,2));
+                await page.screenshot({path:path.join(output,'body-columns-sample-'+label+'.png'),fullPage:true});
+                await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();
+                const [bundle]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);await bundle.saveAs(path.join(output,'body-columns-sample-'+label+'.zip'));await page.locator('#close-template-export').click();
+                await writeFile(path.join(output,'body-columns-sample-'+label+'-data.json'),await page.evaluate(()=>state.data));
+                const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);
+                await pdf.saveAs(path.join(output,'body-columns-sample-'+label+'.pdf'));await page.locator('#close-export').click();
+            }
+        });
+        await check('binding ux inserts variables into sidebar list items and table cells using their actual scopes',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><bullet id="plain-item">Patient: </bullet><list items="medicines" as="drug"><bullet id="med-item">Medicine: </bullet></list><rows id="med-table" items="medicines" as="record"><columns><column weight="1"/></columns><header><cell>Header</cell></header><row><cell>Row: </cell></row></rows></document>',{patient:{name:'Sample Patient'},medicines:[{name:'Drug Alpha',dose:'5 mg'},{name:'Drug Beta',dose:'10 mg'}]});
+            const variables=page.locator('#body-bindings'),chooseVariable=async path=>{await variables.locator(`[data-binding-path="${path}"]`).click();assert.equal(await variables.getByRole('textbox',{name:'变量路径',exact:true}).inputValue(),path);await variables.getByRole('button',{name:'插入到正文',exact:true}).click();assert.equal(await page.getByRole('dialog',{name:'插入变量',exact:true}).count(),0);};
+            await page.getByRole('treeitem',{name:'列表项 plain-item',exact:true}).click();await page.getByRole('textbox',{name:'正文富文本',exact:true}).click();await page.keyboard.press('Control+End');
+            await page.locator('#direct-body').getByRole('button',{name:'插入变量',exact:true}).click();await chooseVariable('patient.name');await page.getByRole('treeitem',{name:'列表项 plain-item',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#plain-item').textContent),'Patient: ${patient.name}');
+            await page.getByRole('treeitem',{name:'列表项 med-item',exact:true}).click();await page.getByRole('textbox',{name:'正文富文本',exact:true}).click();await page.keyboard.press('Control+End');await page.locator('#direct-body').getByRole('button',{name:'插入变量',exact:true}).click();
+            assert.match(await page.locator('[data-binding-help]').textContent(),/drug/);assert.equal(await variables.locator('[data-binding-path="record.name"]').count(),0);await chooseVariable('drug.name');await page.getByRole('treeitem',{name:'数据列表',exact:true}).click();await idle();
+            assert.match(await xml(),/\$\{drug\.name\}/);assert.equal(await page.getByLabel('数据路径',{exact:true}).inputValue(),'medicines');assert.equal(await page.locator('#inspector-panel').getByLabel('迭代变量',{exact:true}).inputValue(),'drug');
+            const cells=await page.evaluate(()=>entries.filter(entry=>entry.tag==='cell'&&entry.path.startsWith(entries.find(entry=>entry.id==='med-table').path+'/')).map(entry=>entry.path));assert.equal(cells.length,2);
+            await page.locator(`.tree-item[data-path="${cells[0]}"]`).click();const headerSource=await xml();await page.locator('#direct-body').getByRole('button',{name:'插入变量',exact:true}).click();assert.equal(await variables.locator('[data-binding-path="record.name"]').count(),0,'a rows header must not offer the body-row alias');assert.equal(await xml(),headerSource,'opening the inline picker without inserting must not change the header');
+            await page.locator(`.tree-item[data-path="${cells[1]}"]`).click();await page.getByRole('textbox',{name:'正文富文本',exact:true}).click();await page.keyboard.press('Control+End');await page.locator('#direct-body').getByRole('button',{name:'插入变量',exact:true}).click();await chooseVariable('record.name');await page.getByRole('treeitem',{name:'动态表格 med-table',exact:true}).click();await idle();assert.match(await xml(),/\$\{record\.name\}/);
+            await page.screenshot({path:path.join(output,'binding-ux-table.png'),fullPage:true});
+            const retained=await xml();await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();const [bundle]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);const saved=path.join(output,'binding-ux-template.zip');await bundle.saveAs(saved);await page.locator('#close-template-export').click();const dataFile=path.join(output,'binding-ux-data.json');await writeFile(dataFile,await page.evaluate(()=>state.data));await page.locator('#open-file').setInputFiles(saved);await page.waitForFunction(()=>!busy);assert.equal(await xml(),retained);await page.locator('#data-file').setInputFiles(dataFile);await idle();
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'binding-ux.pdf'));await page.locator('#close-export').click();
+        });
+        await check('binding ux canvas variable insertion retains the caret cancellation and undo',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><p id="variable-text">Before </p></document>',{patient:{name:'Sample Patient'}});await page.getByRole('button',{name:'精确排版',exact:true}).click();await edit('variable-text');await page.keyboard.press('End');await page.keyboard.insertText('typed ');
+            const editor=page.locator('.ProseMirror'),button=page.locator('.studio-rich').getByRole('button',{name:'插入变量',exact:true});await button.click();const picker=page.getByRole('dialog',{name:'插入变量',exact:true});await picker.waitFor();await page.screenshot({path:path.join(output,'binding-ux-variable-picker.png'),fullPage:true});await picker.getByRole('button',{name:'patient.name',exact:true}).click();await picker.getByRole('button',{name:'插入',exact:true}).click();
+            assert.equal(await editor.locator('[data-kind="variable"]').textContent(),'${patient.name}');await page.keyboard.press('Control+z');assert.equal(await editor.locator('[data-kind="variable"]').count(),0);assert.match(await editor.textContent(),/Before typed /,'undoing the variable must retain the preceding text');await page.keyboard.press('Control+Shift+z');assert.equal(await editor.locator('[data-kind="variable"]').textContent(),'${patient.name}');
+            const beforeCancel=await editor.textContent();await button.click();await picker.getByRole('textbox',{name:'变量路径',exact:true}).fill('patient.other');await picker.getByRole('button',{name:'取消',exact:true}).click();assert.equal(await editor.textContent(),beforeCancel);await finish();assert.match(await xml(),/Before typed \$\{patient\.name\}/);
+        });
+        await check('binding ux exposes grouped containers and explicit array settings from both insert menus',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><p id="binding-anchor">Anchor</p></document>',{medicines:[{name:'Drug Alpha',dose:'5 mg'},{name:'Drug Beta',dose:'10 mg'}]});await (await object('binding-anchor')).click();await page.locator('.insert-menu > summary').click();assert.equal(await page.locator('[data-insert="grid"]').textContent(),'独立图文栅格');assert.equal(await page.locator('[data-insert="grid"]').isVisible(),true);await page.screenshot({path:path.join(output,'binding-ux-container-menu.png'),fullPage:true});
+            await page.locator('[data-insert="list"]').click();let binding=page.getByRole('dialog',{name:'绑定数组数据',exact:true});await binding.waitFor();await binding.getByRole('textbox',{name:'数组路径',exact:true}).fill('medicines');await binding.getByRole('textbox',{name:'迭代变量',exact:true}).fill('drug');await binding.getByRole('button',{name:'创建数据列表',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('list').getAttribute('items')),'medicines');assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('list').getAttribute('as')),'drug');
+            await (await object('binding-anchor')).click();await page.getByRole('button',{name:'在后面插入',exact:true}).click();const menu=page.getByRole('menu',{name:'插入内容',exact:true});await menu.waitFor();assert.equal(await menu.getByRole('menuitem',{name:'独立图文栅格',exact:true}).isVisible(),true);await menu.getByRole('menuitem',{name:'数据表格',exact:true}).click();await binding.waitFor();await binding.getByRole('textbox',{name:'数组路径',exact:true}).fill('medicines');await binding.getByRole('textbox',{name:'迭代变量',exact:true}).fill('record');await binding.getByRole('button',{name:'创建数据表格',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('rows').getAttribute('items')),'medicines');assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('rows').getAttribute('as')),'record');
+            await (await object('binding-anchor')).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="rows"]').click();await binding.waitFor();const beforeCancel=await xml();await binding.getByRole('button',{name:'取消',exact:true}).click();assert.equal(await xml(),beforeCancel);await page.setViewportSize({width:980,height:820});await page.locator('.insert-menu > summary').click();await page.screenshot({path:path.join(output,'binding-ux-menu-narrow.png'),fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.keyboard.press('Escape');await page.setViewportSize({width:1440,height:1050});
+        });
+        await check('binding ux keeps insertion scope and refuses an empty object as default text',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><each items="groups" as="group"><p id="nested-anchor">Nested</p></each></document>',{groups:[{children:[{name:'Child'}]}]});
+            await page.getByRole('treeitem',{name:'段落 nested-anchor',exact:true}).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="list"]').click();
+            const dialog=page.getByRole('dialog',{name:'绑定数组数据',exact:true});await dialog.waitFor();assert.equal(await dialog.getByRole('button',{name:'group.children',exact:true}).isVisible(),true);await dialog.getByRole('button',{name:'group.children',exact:true}).click();assert.equal(await dialog.getByRole('textbox',{name:'重复内容字段',exact:true}).inputValue(),'item.name');await dialog.getByRole('button',{name:'取消',exact:true}).click();
+            await load('<document version="1"><p id="object-anchor">Objects</p></document>',{items:[{}]});await (await object('object-anchor')).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="rows"]').click();await dialog.waitFor();assert.equal(await dialog.getByRole('textbox',{name:'重复内容字段',exact:true}).inputValue(),'');const before=await xml();await dialog.getByRole('button',{name:'创建数据表格',exact:true}).click();assert.equal(await dialog.locator('#binding-error').isVisible(),true);assert.equal(await xml(),before);await dialog.getByRole('button',{name:'取消',exact:true}).click();
+            await load('<document version="1"><p id="empty-anchor">Empty</p></document>',{title:'Original'});await (await object('empty-anchor')).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="list"]').click();await dialog.waitFor();assert.equal(await dialog.locator('#binding-sample-hint').isVisible(),true);await dialog.getByRole('button',{name:'创建数据列表',exact:true}).click();await idle();assert.deepEqual(await page.evaluate(()=>JSON.parse(state.data)),{title:'Original',items:[{name:'示例项'}]});await page.locator('#undo').click();await idle();assert.deepEqual(await page.evaluate(()=>JSON.parse(state.data)),{title:'Original'});assert.equal(await page.evaluate(()=>!!new DOMParser().parseFromString(state.source,'application/xml').querySelector('list')),false);
+        });
+        await check('container ux inserted tables enter content and expose undoable row and column editing',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><p id="container-anchor">Anchor</p></document>',{});await (await object('container-anchor')).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="table"]').click();
+            await page.locator('.ProseMirror').waitFor();await page.locator('.ProseMirror').focus();await page.keyboard.press('Control+a');await page.keyboard.insertText('CONTAINER-HEADER');await inspectorAncestor('table');await page.locator('.ProseMirror').waitFor({state:'detached'});await idle();
+            const tableId=await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('table').id);
+            await page.getByRole('treeitem',{name:'表格 '+tableId,exact:true}).click();await page.locator('.studio-surface').first().focus();await page.keyboard.press('F2');await page.locator('.ProseMirror').waitFor();assert.equal(await page.locator('.ProseMirror').textContent(),'CONTAINER-HEADER');await finish();
+            await page.getByRole('treeitem',{name:'表格 '+tableId,exact:true}).click();const panel=page.locator('#studio-container-inspector'),tableAction=async name=>{await panel.getByLabel('当前单元格的行列与合并',{exact:true}).click();await panel.getByRole('button',{name,exact:true}).click();await idle();};await tableAction('在下方插入行');await tableAction('在右侧插入列');
+            assert.deepEqual(await page.evaluate(()=>{const table=new DOMParser().parseFromString(state.source,'application/xml').querySelector('table');return {rows:table.querySelectorAll(':scope > row').length,columns:table.querySelectorAll(':scope > columns > column').length,cells:[...table.querySelectorAll(':scope > header,:scope > row')].map(row=>row.children.length)};}),{rows:2,columns:3,cells:[3,3,3]});
+            await page.screenshot({path:path.join(output,'container-ux-table-controls.png'),fullPage:true});await tableAction('删除当前列');await tableAction('删除当前行');assert.match(await xml(),/CONTAINER-HEADER/);assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('table > row').length),1);await page.locator('#undo').click();await idle();assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('table > row').length),2);await page.locator('#redo').click();await idle();
+            await load('<document version="1"><page size="A4" margin="42"/><table id="last-cell-table"><columns><column weight="1"/></columns><row><cell><p id="last-cell-text">KEEP LAST CELL</p></cell></row></table></document>',{});
+            await page.getByRole('treeitem',{name:'表格 last-cell-table',exact:true}).click();
+            const lastCellButtons=async()=>{
+                const actions=panel.getByLabel('当前单元格的行列与合并',{exact:true});
+                if(!await actions.evaluate(node=>node.closest('details').open))await actions.click();
+                assert.equal(await panel.getByRole('button',{name:'删除当前行',exact:true}).isDisabled(),true,'the last body row must remain protected after legacy UI refreshes');
+                assert.equal(await panel.getByRole('button',{name:'删除当前列',exact:true}).isDisabled(),true,'the last column must remain protected after legacy UI refreshes');
+            };
+            await lastCellButtons();
+            const childPath=await page.evaluate(()=>entries.find(entry=>entry.id==='last-cell-text').path);
+            await inspectorChild(childPath);await inspectorAncestor('table');await lastCellButtons();
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();await idle();await lastCellButtons();
+            const spacing=page.locator('#structured-properties [data-group="间距与缩进"]');
+            if(!await spacing.evaluate(node=>node.open))await spacing.locator('summary').click();
+            await page.getByLabel('上内边距',{exact:true}).fill('7');
+            await inspectorChild(childPath);await inspectorAncestor('table');await lastCellButtons();
+            assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#last-cell-table').getAttribute('padding-top')),'7');
+            assert.match(await xml(),/KEEP LAST CELL/);
+        });
+        await check('container ux empty arrays keep list and row prototypes editable without adding fake data',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><p id="empty-title">Empty array prototypes</p><list items="records" as="item"><bullet id="empty-item">${item.name}</bullet></list><rows id="empty-rows" items="records" as="record"><columns><column weight="1"/></columns><header><cell>Record</cell></header><row><cell>${record.name}</cell></row></rows></document>',{records:[]});
+            await page.getByRole('treeitem',{name:'数据列表',exact:true}).click();await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).click();const body=page.getByRole('textbox',{name:'正文富文本',exact:true});await body.waitFor();await page.waitForFunction(()=>document.activeElement===document.querySelector('#body-content'));await body.fill('EMPTY-LIST ${item.name}');await page.getByRole('treeitem',{name:'动态表格 empty-rows',exact:true}).click();await idle();
+            const rowCell=await page.evaluate(()=>entries.find(entry=>entry.id==='empty-rows').path+'/2/0');await inspectorChild(rowCell);await body.focus();await page.waitForFunction(()=>document.activeElement===document.querySelector('#body-content'));await body.fill('EMPTY-ROW ${record.name}');await page.getByRole('treeitem',{name:'动态表格 empty-rows',exact:true}).click();await idle();assert.deepEqual(await page.evaluate(()=>JSON.parse(state.data)),{records:[]});assert.match(await xml(),/EMPTY-LIST \$\{item\.name\}/);assert.match(await xml(),/EMPTY-ROW \$\{record\.name\}/);
+            await page.screenshot({path:path.join(output,'container-ux-empty-array.png'),fullPage:true});await page.evaluate(async()=>{$('data').value=JSON.stringify({records:[{name:'CONTAINER-BOUND'}]});await DesignerStudioBridge.apply(state.source);await DesignerStudioBridge.flush();});await idle();
+            await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();const [bundle]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);await bundle.saveAs(path.join(output,'container-ux-template.zip'));await page.locator('#close-template-export').click();
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'container-ux.pdf'));await page.locator('#close-export').click();
+        });
+        await check('container ux appends inside grid and cells preserving existing mixed content',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><grid id="content-grid" tracks="2"><item id="content-item" row="1" column-start="1" column-span="2"><p id="inner-first">FIRST-CONTENT</p><p id="inner-second">SECOND-CONTENT</p></item></grid></document>',{});await page.getByRole('treeitem',{name:'栅格项 content-item',exact:true}).click();await page.locator('#studio-container-inspector').getByRole('button',{name:'添加内容',exact:true}).click();const dialog=page.getByRole('dialog',{name:'在容器内添加',exact:true});await dialog.waitFor();await dialog.getByRole('button',{name:'文字段落',exact:true}).click();await page.locator('.ProseMirror').waitFor();await page.locator('.ProseMirror > p').last().fill('THIRD-CONTENT');await finish();assert.deepEqual(await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('item > p')].map(node=>node.textContent)),['FIRST-CONTENT','SECOND-CONTENT','THIRD-CONTENT']);
+            await load('<document version="1"><page size="A4" margin="42"/><table id="block-container"><columns><column weight="1"/></columns><row><cell>KEPT <span role="bold">BOLD</span> ${name}</cell></row></table></document>',{name:'BOUND'});await page.getByRole('treeitem',{name:'表格 block-container',exact:true}).click();await page.locator('#studio-container-inspector').getByRole('button',{name:'添加内容',exact:true}).click();await dialog.getByRole('button',{name:'文字段落',exact:true}).click();await page.locator('.ProseMirror').waitFor();await page.locator('.ProseMirror > p').last().fill('CELL-APPEND');await finish();assert.deepEqual(await page.evaluate(()=>{const cell=new DOMParser().parseFromString(state.source,'application/xml').querySelector('cell');return {tags:[...cell.children].map(node=>node.tagName),content:[...cell.children].map(node=>node.textContent),bold:cell.querySelector('span')?.getAttribute('role')};}),{tags:['p','p'],content:['KEPT BOLD ${name}','CELL-APPEND'],bold:'bold'});await page.screenshot({path:path.join(output,'container-ux-cell-blocks.png'),fullPage:true});
+            await load('<document version="1"><page size="A4" margin="42"/><table id="second-block-table"><columns><column weight="1"/><column weight="1"/></columns><row><cell>FIRST-CELL</cell><cell><p id="chosen-cell-text">SECOND-CELL</p></cell></row></table></document>',{});
+            await page.getByRole('treeitem',{name:'表格 second-block-table',exact:true}).click();
+            const panel=page.locator('#studio-container-inspector'),cellPath=await page.evaluate(()=>entries.find(entry=>entry.id==='second-block-table').path+'/1/1');
+            await inspectorChild(cellPath);await panel.getByRole('button',{name:'编辑内部内容',exact:true}).click();
+            const editor=page.locator('.ProseMirror');await editor.waitFor();assert.equal(await editor.textContent(),'SECOND-CELL');
+            await editor.fill('SECOND-CELL-EDIT');await inspectorAncestor('table');
+            await page.waitForFunction(()=>selected?.id==='second-block-table'&&!document.querySelector('.ProseMirror'));await idle();
+            assert.deepEqual(await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('#second-block-table > row > cell')].map(cell=>cell.textContent)),['FIRST-CELL','SECOND-CELL-EDIT']);
+        });
+        await check('container ux adds images and editable tables inside the chosen grid item',async()=>{
+            await page.evaluate(async()=>{if(state.images.some(image=>image.name==='mark'))return;const canvas=document.createElement('canvas');canvas.width=40;canvas.height=24;const context=canvas.getContext('2d');context.fillStyle='#224488';context.fillRect(0,0,40,24);install(await request('resource',{kind:'image',name:'mark',bytes:canvas.toDataURL('image/png').split(',')[1]}));});
+            await load('<document version="1"><page size="A4" margin="42"/><grid id="media-grid" tracks="2"><item id="media-left" row="1" column-start="1" column-span="1"><p id="media-text">GRID-MEDIA</p></item><item id="media-right" row="1" column-start="2" column-span="1"><p id="media-other">UNCHANGED-SIDEBAR</p></item></grid></document>',{});await page.getByRole('treeitem',{name:'栅格项 media-left',exact:true}).click();const panel=page.locator('#studio-container-inspector'),dialog=page.getByRole('dialog',{name:'在容器内添加',exact:true});await panel.getByRole('button',{name:'添加内容',exact:true}).click();await dialog.getByRole('button',{name:'图片',exact:true}).click();await page.locator('#image-picker').getByRole('button',{name:'图片资源 mark',exact:true}).click();await idle();assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('image').closest('item').id),'media-left');
+            await page.locator('#studio-container-inspector').getByRole('button',{name:'添加内容',exact:true}).click();await dialog.getByRole('button',{name:'表格',exact:true}).click();await page.locator('.ProseMirror').waitFor();await page.locator('.ProseMirror').fill('GRID-TABLE');await finish();assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('table').closest('item').id),'media-left');assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#media-other').textContent),'UNCHANGED-SIDEBAR');await page.screenshot({path:path.join(output,'container-ux-grid-media.png'),fullPage:true});
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'container-ux-mixed.pdf'));await page.locator('#close-export').click();
+        });
+        await check('workflow opening XML and ZIP replaces preview content and identity immediately',async()=>{
+            await load();const previous=await page.evaluate(()=>previewId),opened='<document version="1"><page size="A4" margin="42"/><p id="workflow-opened">WORKFLOW-OPENED</p></document>';
+            const file=path.join(output,'workflow-open.xml');await writeFile(file,opened);await page.locator('#open-file').setInputFiles(file);await idle();
+            assert.notEqual(await page.evaluate(()=>previewId),previous);assert.deepEqual(await page.evaluate(()=>pages.flatMap(page=>page.hits.map(hit=>hit.id))),['workflow-opened']);
+            await page.locator('#save').click();const [bundle]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);const saved=path.join(output,'workflow-open.zip');await bundle.saveAs(saved);await page.locator('#close-template-export').click();
+            await load();await page.locator('#open-file').setInputFiles(saved);await idle();assert.deepEqual(await page.evaluate(()=>pages.flatMap(page=>page.hits.map(hit=>hit.id))),['workflow-opened']);
+            await page.screenshot({path:path.join(output,'workflow-opened.png'),fullPage:true});
+        });
+        await check('workflow clipboard images stay inside source containers and undo resource and content together',async()=>{
+            for(const [kind,body] of [
+                ['grid','<grid id="paste-grid" tracks="2"><item id="paste-owner" row="1" column-start="1" column-span="1"><p id="paste-text">GRID ${name}</p></item><item row="1" column-start="2" column-span="1"><p id="paste-neighbor">NEIGHBOR</p></item></grid>'],
+                ['columns','<columns id="paste-owner" count="2"><p id="paste-text">COLUMNS ${name}</p></columns>'],
+                ['cell','<table id="paste-table"><columns><column weight="1"/><column weight="1"/></columns><row><cell><p id="paste-text">CELL ${name}</p></cell><cell>NEIGHBOR</cell></row></table>']
+            ]){
+                await load('<document version="1"><page size="A4" margin="42"/>'+body+'<p id="paste-tail">UNCHANGED-TAIL</p></document>',{name:'BOUND'});
+                const images=await page.evaluate(()=>state.images.length);await edit('paste-text');await page.locator('.ProseMirror').focus();await page.keyboard.press('Control+End');await page.keyboard.insertText('-DRAFT');
+                await page.locator('.ProseMirror').evaluate(element=>{const canvas=document.createElement('canvas');canvas.width=48;canvas.height=24;canvas.getContext('2d').fillRect(0,0,48,24);const bytes=Uint8Array.from(atob(canvas.toDataURL('image/png').split(',')[1]),char=>char.charCodeAt(0)),data=new DataTransfer();data.items.add(new File([bytes],'workflow.png',{type:'image/png'}));element.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
+                await page.waitForFunction(()=>state.source.includes('ref="pasted_')&&!busy);await idle();
+                const content=await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml'),image=document.querySelector('image[ref^="pasted_"]'),owner=document.querySelector('#paste-text').closest('cell,item,columns');return {inside:owner.contains(image),draft:document.querySelector('#paste-text').textContent,tail:document.documentElement.lastElementChild.id,images:state.images.length};});
+                assert.equal(content.inside,true,kind);assert.match(content.draft,/\$\{name\}-DRAFT$/);assert.equal(content.tail,'paste-tail');assert.equal(content.images,images+1);
+                await page.locator('#undo').click();await idle();assert.equal(await page.evaluate(()=>state.source.includes('ref="pasted_')),false);assert.equal(await page.evaluate(()=>state.images.length),images);assert.match(await xml(),/\$\{name\}-DRAFT/);
+                await page.locator('#redo').click();await idle();
+                assert.equal(await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml');return document.querySelector('#paste-text').closest('cell,item,columns').contains(document.querySelector('image[ref^="pasted_"]'));}),true);assert.equal(await page.evaluate(()=>state.images.length),images+1);
+                await page.screenshot({path:path.join(output,'workflow-paste-'+kind+'.png'),fullPage:true});
+                await writeFile(path.join(output,'workflow-paste-'+kind+'.xml'),await xml());
+                const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'workflow-paste-'+kind+'.pdf'));await page.locator('#close-export').click();
+            }
+        });
+        await check('workflow table editing keeps the chosen cell and single clicks continue inside the same table',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><table id="workflow-table"><columns><column weight="1"/><column weight="1"/></columns><row><cell><p id="workflow-first">FIRST-CELL</p></cell><cell><p id="workflow-second">SECOND-CELL</p></cell></row></table><p id="workflow-outside">OUTSIDE</p></document>',{});
+            await page.getByRole('treeitem',{name:'段落 workflow-second',exact:true}).click();await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).click();await page.locator('.ProseMirror').waitFor();assert.equal(await page.locator('.ProseMirror').textContent(),'SECOND-CELL');
+            await (await object('workflow-first')).click();await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='FIRST-CELL');await page.locator('.ProseMirror').focus();await page.keyboard.press('Control+End');await page.keyboard.insertText('-KEPT');
+            await (await object('workflow-outside')).click();await page.locator('.ProseMirror').waitFor({state:'detached'});await idle();assert.match(await xml(),/FIRST-CELL-KEPT/);
+        });
+        await check('workflow block cells edit adjacent paragraphs and Tab navigates cells without crossing data scopes',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><table id="keyboard-table"><columns><column weight="1"/><column weight="1"/></columns><row><cell><p id="keyboard-one">ALPHA ${name}</p><p id="keyboard-two">BETA</p></cell><cell><p id="keyboard-next">GAMMA</p></cell></row></table></document>',{name:'BOUND'});
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();await idle();
+            await edit('keyboard-one');assert.equal(await page.locator('.ProseMirror > p').count(),2);await page.locator('.ProseMirror').focus();await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.insertText('DELTA');
+            assert.equal(await page.locator('.ProseMirror > p').count(),3);await page.keyboard.press('Home');await page.keyboard.press('Backspace');assert.equal(await page.locator('.ProseMirror > p').count(),2);assert.match(await page.locator('.ProseMirror').textContent(),/BETADELTA$/);await page.keyboard.press('Enter');assert.equal(await page.locator('.ProseMirror > p').count(),3);assert.match(await page.evaluate(()=>DesignerStudioBridge.snapshot().source),/DELTA/);
+            const composing=await page.locator('.ProseMirror').evaluate(element=>{const event=new KeyboardEvent('keydown',{key:'Tab',isComposing:true,bubbles:true,cancelable:true});element.dispatchEvent(event);return event.defaultPrevented;});assert.equal(composing,false);
+            await page.keyboard.press('Tab');await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='GAMMA');await page.keyboard.press('Shift+Tab');await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent?.includes('DELTA'));assert.equal(await page.locator('.ProseMirror > p').count(),3);await finish();
+            assert.deepEqual(await page.evaluate(()=>{const document=new DOMParser().parseFromString(state.source,'application/xml');return [...document.querySelector('cell').children].map(node=>node.textContent);}),['ALPHA ${name}','BETA','DELTA']);assert.match(await xml(),/id="keyboard-one"/);assert.match(await xml(),/id="keyboard-two"/);
+            await page.screenshot({path:path.join(output,'workflow-table-keyboard.png'),fullPage:true});
+        });
+        await check('workflow table navigation preserves untouched XML and visits merged and bound anchors once',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><table id="anchor-table"><columns><column weight="1"/><column weight="1"/><column weight="1"/></columns><row><cell column-span="2">MERGED ${name}</cell><cell row-span="2">SIDE</cell></row><row><cell>LOWER</cell><cell>LAST</cell></row></table></document>',{name:'BOUND'});
+            const untouched=await xml();await page.getByRole('treeitem',{name:'表格 anchor-table',exact:true}).click();await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).click();await page.locator('.ProseMirror').waitFor();
+            await page.locator('.ProseMirror [data-kind="variable"]').click();assert.equal(await page.locator('.ProseMirror [data-kind="variable"].ProseMirror-selectednode').count(),1);
+            for(const next of ['SIDE','LOWER','LAST']){await page.keyboard.press('Tab');await page.waitForFunction(value=>document.querySelector('.ProseMirror')?.textContent===value,next);assert.equal(await xml(),untouched);}
+            await page.keyboard.press('Tab');await page.locator('.ProseMirror').waitFor({state:'detached'});await idle();assert.equal(await xml(),untouched);assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('row').length),2);
+            await page.getByRole('treeitem',{name:'表格 anchor-table',exact:true}).click();await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).click();await page.locator('.ProseMirror').waitFor();await page.keyboard.press('Shift+Tab');await page.locator('.ProseMirror').waitFor({state:'detached'});await idle();assert.equal(await xml(),untouched);
+            const data={records:[{name:'Alpha',dose:'10 mg'},{name:'Beta',dose:'20 mg'}]};
+            await load('<document version="1"><page size="A4" margin="42"/><rows id="anchor-bound" items="records" as="record"><columns><column weight="1"/><column weight="1"/></columns><header><cell>NAME</cell><cell>DOSE</cell></header><row><cell>${record.name}</cell><cell>${record.dose}</cell></row></rows></document>',data);
+            const bound=await xml();await page.getByRole('treeitem',{name:'动态表格 anchor-bound',exact:true}).click();await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).click();await page.locator('.ProseMirror').waitFor();
+            for(const next of ['DOSE','${record.name}','${record.dose}']){await page.keyboard.press('Tab');await page.waitForFunction(value=>document.querySelector('.ProseMirror')?.textContent===value,next);assert.equal(await xml(),bound);}
+            await page.keyboard.press('Tab');await page.locator('.ProseMirror').waitFor({state:'detached'});await idle();assert.equal(await xml(),bound);assert.deepEqual(await page.evaluate(()=>JSON.parse(state.data)),data);
+        });
+        await check('workflow both table insertion entry points use the same semantic header',async()=>{
+            const blank='<document version="1"><page size="A4" margin="42"/><p id="factory-anchor">ANCHOR</p></document>',tables=[];
+            await load(blank,{});await (await object('factory-anchor')).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="table"]').click();await page.locator('.ProseMirror').waitFor();await finish();tables.push(await page.evaluate(()=>{const table=new DOMParser().parseFromString(state.source,'application/xml').querySelector('table');table.removeAttribute('id');return new XMLSerializer().serializeToString(table);}));
+            await load(blank,{});await (await object('factory-anchor')).click();await page.getByRole('button',{name:'在后面插入',exact:true}).click();await page.getByRole('menu',{name:'插入内容',exact:true}).getByRole('menuitem',{name:'表格',exact:true}).click();await page.locator('.ProseMirror').waitFor();await finish();tables.push(await page.evaluate(()=>{const table=new DOMParser().parseFromString(state.source,'application/xml').querySelector('table');table.removeAttribute('id');return new XMLSerializer().serializeToString(table);}));assert.equal(tables[0],tables[1]);assert.match(tables[0],/<header>/);
+        });
+        await check('workflow compact panels keep the canvas usable and Escape restores focus without changing desktop preferences',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><grid id="compact-grid" tracks="2"><item id="compact-item" row="1" column-start="1" column-span="2"><p id="compact-text">COMPACT-CONTENT</p></item></grid></document>',{});await page.getByRole('button',{name:'便捷编辑',exact:true}).click();await page.getByRole('treeitem',{name:'栅格项 compact-item',exact:true}).click();const source=await xml();
+            for(const width of [1024,980,768]){
+                await page.setViewportSize({width,height:900});await page.keyboard.press('Escape');
+                assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.ok(await page.locator('.canvas-scroll').evaluate(node=>node.clientWidth)>=width-70,'compact panels must not reserve most of the canvas');
+                await page.locator('.workspace-actions [data-toggle-panel="inspector"]').click();await page.locator('#inspector-panel').waitFor({state:'visible'});await page.locator('#panel-backdrop').waitFor({state:'visible'});await page.keyboard.press('Escape');await page.locator('#panel-backdrop').waitFor({state:'hidden'});
+                assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.workspace-actions [data-toggle-panel="inspector"]')),true);assert.equal(await xml(),source);
+                await page.waitForFunction(()=>{const paper=document.querySelector('.page'),text=document.querySelector('.studio-text-preview > p');return paper&&text&&Math.abs(parseFloat(getComputedStyle(text).fontSize)-12*paper.getBoundingClientRect().width/pages[0].width)<.25;});
+                await page.screenshot({path:path.join(output,'workflow-compact-'+width+'.png'),fullPage:true});
+            }
+            await page.setViewportSize({width:1440,height:1050});await page.locator('#navigator-panel').waitFor({state:'visible'});await page.locator('#inspector-panel').waitFor({state:'visible'});assert.equal(await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'编辑此格',exact:true}).count(),0);
+        });
+        await check('grid ux starts blank supports direct editing resize split merge swap and saved output',async()=>{
+            await page.locator('.file-menu > summary').filter({hasText:/^文件$/}).click();await page.locator('#new-blank').click();
+            await page.waitForFunction(()=>$('question-dialog').open||!new DOMParser().parseFromString(state.source,'application/xml').querySelector('p,grid'));
+            if(await page.locator('#question-dialog').evaluate(dialog=>dialog.open))await page.locator('#question-ok').click();
+            await idle();await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="grid"]').click();
+            const picker=page.getByRole('dialog',{name:'选择栅格布局',exact:true});await picker.waitFor();
+            await page.screenshot({path:path.join(output,'grid-ux-layout-picker.png'),fullPage:true});
+            await picker.getByRole('button',{name:'两等分',exact:true}).click();await idle();
+            const itemState=()=>page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelector('grid').children].filter(node=>node.tagName==='item').map(node=>({id:node.id,row:+node.getAttribute('row'),start:+node.getAttribute('column-start'),span:+node.getAttribute('column-span'),text:node.textContent})));
+            let items=await itemState();assert.equal(items.length,2);assert.ok(items.every(item=>!item.text.trim()),'new grid must contain empty editable content, not authored demo paragraphs');
+            const gridId=await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('grid').id),first=items[0].id,second=items[1].id;
+            assert.equal(await page.getByText('高级轨道设置',{exact:true}).evaluate(node=>node.closest('details').open),false);
+            await page.screenshot({path:path.join(output,'grid-ux-empty.png'),fullPage:true});
+            const doubleClickCell=async id=>{const cell=await (await object(id)).boundingBox();assert.ok(cell);await page.mouse.dblclick(cell.x+22,cell.y+cell.height/2);await page.locator('.ProseMirror').waitFor();};
+            await doubleClickCell(first);
+            await page.locator('.ProseMirror').evaluate(element=>{const data=new DataTransfer();data.setData('text/plain','UX-LEFT A paragraph typed into the first empty region.\n\nUX-CONTINUED A second paragraph belongs to the same region.');element.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});await finish();
+            assert.match(await xml(),/UX-LEFT/);assert.match(await xml(),/UX-CONTINUED/);
+            await doubleClickCell(second);await page.locator('.ProseMirror').fill('UX-RIGHT A separately authored sidebar.');await finish();
+            const chooseItem=async id=>{await page.getByRole('treeitem',{name:'栅格项 '+id,exact:true}).click();};
+            await chooseItem(first);
+            const gridTools=page.locator('#studio-container-inspector').getByRole('toolbar',{name:'栅格项操作',exact:true}),tools=await gridTools.boundingBox(),canvas=await page.locator('.canvas-scroll').boundingBox();assert.ok(tools&&canvas&&tools.x>=canvas.x+canvas.width-1,'grid commands must stay in the inspector without covering the document canvas');
+            assert.equal(await page.locator('#studio-toolbar').getByRole('toolbar',{name:'栅格项操作',exact:true}).count(),0);
+            const separator=page.getByRole('separator',{name:'调整两格宽度 '+first+' '+second,exact:true});await separator.waitFor();
+            const geometry=await page.evaluate(id=>pages.flatMap(page=>page.hits).find(hit=>hit.id===id),gridId);
+            const boundary=await separator.boundingBox();assert.ok(boundary);
+            const physicalScale=await page.evaluate(()=>document.querySelector('.page-image').getBoundingClientRect().width/pages[0].width),trackStep=(geometry.width+12)/12*physicalScale;
+            await page.mouse.move(boundary.x+boundary.width/2,boundary.y+boundary.height/2);await page.mouse.down();await page.mouse.move(boundary.x+boundary.width/2+2*trackStep,boundary.y+boundary.height/2,{steps:5});
+            await page.screenshot({path:path.join(output,'grid-ux-resize-preview.png'),fullPage:true});await page.mouse.up();await idle();
+            items=await itemState();assert.deepEqual(items.map(item=>[item.start,item.span]),[[1,8],[9,4]]);
+            await page.locator('#undo').click();await idle();assert.deepEqual((await itemState()).map(item=>item.span),[6,6],'one drag must be one undo step');
+            await page.locator('#redo').click();await idle();await chooseItem(first);
+            const beforeCancel=await xml(),handle=await separator.boundingBox();assert.ok(handle);await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();await page.mouse.move(handle.x+handle.width/2-trackStep,handle.y+handle.height/2,{steps:3});await page.keyboard.press('Escape');await page.mouse.up();assert.equal(await xml(),beforeCancel,'Escape must discard a pending grid resize');
+            await page.getByRole('toolbar',{name:'栅格项操作',exact:true}).getByRole('button',{name:'拆分',exact:true}).click();await idle();items=await itemState();assert.equal(items.length,3);assert.deepEqual(items.map(item=>item.span),[4,4,4]);assert.match(items[0].text,/UX-CONTINUED/);assert.equal(items[1].text.trim(),'');
+            await chooseItem(first);await page.getByRole('toolbar',{name:'栅格项操作',exact:true}).getByRole('button',{name:'与右格合并',exact:true}).click();await idle();assert.equal((await itemState()).length,2);assert.match((await itemState())[0].text,/UX-CONTINUED/);
+            await chooseItem(first);const drag=page.getByRole('button',{name:'拖动栅格项 '+first,exact:true}),dragBox=await drag.boundingBox(),target=await (await object(second)).boundingBox();assert.ok(dragBox&&target);
+            await page.mouse.move(dragBox.x+dragBox.width/2,dragBox.y+dragBox.height/2);await page.mouse.down();await page.mouse.move(target.x+target.width/2,target.y+target.height/2,{steps:8});await page.mouse.up();await idle();
+            items=await itemState();assert.deepEqual(items.map(item=>item.id),[second,first]);assert.match(items[0].text,/UX-RIGHT/);assert.match(items[1].text,/UX-LEFT/);
+            await page.locator('#undo').click();await idle();assert.deepEqual((await itemState()).map(item=>item.id),[first,second]);
+            assert.equal(await page.getByText('高级轨道设置',{exact:true}).evaluate(node=>node.closest('details').open),false,'routine interaction must not require numeric track settings');
+            await chooseItem(first);await page.screenshot({path:path.join(output,'grid-ux-canvas.png'),fullPage:true});
+            const retained=await xml();await writeFile(path.join(output,'grid-ux-geometry.json'),JSON.stringify(await page.evaluate(()=>pages),null,2));
+            await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();const [bundle]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);const saved=path.join(output,'grid-ux-template.zip');await bundle.saveAs(saved);await page.locator('#close-template-export').click();
+            await page.locator('#open-file').setInputFiles(saved);await idle();assert.equal(await xml(),retained);
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'grid-ux.pdf'));await page.locator('#close-export').click();
+        });
+        await check('grid ux places selected existing content side by side without copying or losing source',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><p id="existing-left">EXISTING-LEFT Keep the original paragraph.</p><p id="existing-right"><span color="#224488">EXISTING-RIGHT Keep this original style.</span></p></document>',{});
+            await (await object('existing-left')).click();await (await object('existing-right')).click({modifiers:['Control']});
+            await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="grid"]').click();const picker=page.getByRole('dialog',{name:'选择栅格布局',exact:true});await picker.waitFor();
+            await page.getByRole('checkbox',{name:'将所选内容并排',exact:true}).check();await picker.getByRole('button',{name:'两等分',exact:true}).click();await idle();
+            const retained=await page.evaluate(()=>{const d=new DOMParser().parseFromString(state.source,'application/xml');return {ids:[...d.querySelector('grid').children].map(item=>item.querySelector('p').id),left:d.querySelector('#existing-left').textContent,right:d.querySelector('#existing-right').textContent,color:d.querySelector('#existing-right span').getAttribute('color'),count:d.querySelectorAll('p').length};});
+            assert.deepEqual(retained,{ids:['existing-left','existing-right'],left:'EXISTING-LEFT Keep the original paragraph.',right:'EXISTING-RIGHT Keep this original style.',color:'#224488',count:2});
+            await page.locator('#undo').click();await idle();assert.equal(await page.evaluate(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('grid')),null);assert.match(await xml(),/EXISTING-LEFT/);
+        });
+        await check('grid ux supports keyboard alternatives row presets and cancellation without content loss',async()=>{
+            await load('<document version="1"><page size="A4" margin="42"/><grid id="ux-grid" tracks="12" column-gap="12" row-gap="12"><item id="ux-a" row="1" column-start="1" column-span="4"><p id="ux-p-a">Keep Alpha.</p></item><item id="ux-b" row="1" column-start="5" column-span="4"><p id="ux-p-b">Keep Beta.</p></item><item id="ux-c" row="1" column-start="9" column-span="4"><p id="ux-p-c">Keep Gamma.</p></item></grid></document>',{});
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            const select=async id=>page.getByRole('treeitem',{name:'栅格项 '+id,exact:true}).click();
+            const cells=()=>page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('grid > item')].map(node=>({id:node.id,row:+node.getAttribute('row'),span:+node.getAttribute('column-span'),text:node.textContent})));
+            await select('ux-a');const divider=page.getByRole('separator',{name:'调整两格宽度 ux-a ux-b',exact:true});
+            await divider.focus();await page.keyboard.press('ArrowRight');await idle();assert.deepEqual((await cells()).map(cell=>cell.span),[5,3,4]);
+            assert.equal(await page.evaluate(()=>selectedPaths.length),1,'resizing must retain one selected cell and its tools');
+            await page.locator('#undo').click();await idle();await select('ux-a');
+            const bar=page.getByRole('toolbar',{name:'栅格项操作',exact:true});await bar.getByRole('button',{name:'栅格宽度与顺序',exact:true}).click();await bar.getByRole('button',{name:'更宽',exact:true}).click();await idle();assert.deepEqual((await cells()).map(cell=>cell.span),[5,3,4]);
+            await page.locator('#undo').click();await idle();await select('ux-a');
+            await bar.getByRole('button',{name:'栅格宽度与顺序',exact:true}).click();await bar.getByRole('button',{name:'向后交换',exact:true}).click();await idle();assert.deepEqual((await cells()).map(cell=>cell.id),['ux-b','ux-a','ux-c']);
+            await page.locator('#undo').click();await idle();await select('ux-a');
+            const unchanged=await xml(),bounds=await divider.boundingBox();assert.ok(bounds);await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();await page.mouse.move(bounds.x+40,bounds.y+bounds.height/2,{steps:3});await divider.dispatchEvent('pointercancel',{pointerId:1,pointerType:'mouse'});await page.mouse.up();assert.equal(await xml(),unchanged,'pointer cancellation must discard a preview');
+            const grip=await page.getByRole('button',{name:'拖动栅格项 ux-a',exact:true}).boundingBox(),target=await (await object('ux-b')).boundingBox();assert.ok(grip&&target);await page.mouse.move(grip.x+grip.width/2,grip.y+grip.height/2);await page.mouse.down();await page.mouse.move(target.x+target.width/2,target.y+target.height/2,{steps:4});await page.keyboard.press('Escape');await page.mouse.up();assert.equal(await xml(),unchanged,'Escape must cancel a pending swap');
+            await (await object('ux-p-a')).click();await bar.getByRole('button',{name:'本行布局',exact:true}).click();await page.getByRole('dialog',{name:'选择栅格布局',exact:true}).getByRole('button',{name:'两等分',exact:true}).click();await idle();let actual=await cells();assert.deepEqual(actual.map(cell=>cell.span),[6,6]);assert.equal(actual[0].text,'Keep Alpha.');assert.equal(actual[1].text,'Keep Beta.Keep Gamma.');
+            await page.locator('#undo').click();await idle();assert.deepEqual((await cells()).map(cell=>cell.text),['Keep Alpha.','Keep Beta.','Keep Gamma.']);
+            await select('ux-a');await bar.getByRole('button',{name:'添加行',exact:true}).click();const picker=page.getByRole('dialog',{name:'选择栅格布局',exact:true});await picker.waitFor();await picker.getByRole('button',{name:'取消',exact:true}).click();assert.equal(await xml(),unchanged,'cancelled add-row must not write source or history');
+            await bar.getByRole('button',{name:'添加行',exact:true}).click();await picker.getByRole('button',{name:'三等分',exact:true}).click();await idle();actual=await cells();assert.deepEqual(actual.slice(3).map(cell=>[cell.row,cell.span,cell.text]),[[2,4,''],[2,4,''],[2,4,'']]);
+            await page.setViewportSize({width:980,height:820});await page.screenshot({path:path.join(output,'grid-ux-narrow.png'),fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'grid controls must fit a narrow workbench');await page.setViewportSize({width:1440,height:1050});
+        });
+        await check('grid editor creates tracked items and retains coordinates content undo and saved source',async()=>{
+            await load('<document version="1"><page width="595" height="842" margin="36"/><p id="grid-anchor" size="12" line-height="18">Grid editing from the insertion menu.</p></document>',{});
+            if(!await page.evaluate(()=>state.images.some(image=>image.name==='mark'))){
+                const bytes=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=40;canvas.height=24;const context=canvas.getContext('2d');context.fillStyle='#224488';context.fillRect(0,0,40,24);return canvas.toDataURL('image/png').split(',')[1];});
+                await page.locator('#resources-tab').click();await page.evaluate(()=>{assetKind='image';$('asset-file').value='';});await page.locator('#asset-file').setInputFiles({name:'mark.png',mimeType:'image/png',buffer:Buffer.from(bytes,'base64')});await page.locator('#question-answer').fill('mark');await page.locator('#question-ok').click();await idle();await page.locator('#navigator-tab').click();await page.locator('#canvas-tab').click();
+            }
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();
+            await (await object('grid-anchor')).click();await page.locator('.insert-menu > summary').click();await page.locator('[data-insert="grid"]').click();
+            await page.getByRole('dialog',{name:'选择栅格布局',exact:true}).getByRole('button',{name:'两等分',exact:true}).click();
+            await page.waitForFunction(()=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('grid'));await idle();
+            const created=await page.evaluate(()=>{const grid=new DOMParser().parseFromString(state.source,'application/xml').querySelector('grid');return {id:grid.id,items:[...grid.children].map(item=>({id:item.id,textId:item.querySelector('p').id}))};}),gridId=created.id,left=created.items[0].id,right=created.items[1].id;
+            const advanced=async()=>{const details=page.locator('details.grid-advanced');if(!await details.evaluate(node=>node.open))await details.locator('summary').click();};
+            await page.getByRole('treeitem',{name:'栅格 '+gridId,exact:true}).click();await advanced();
+            assert.equal(await page.getByLabel('栅格轨数',{exact:true}).inputValue(),'12');
+            await page.getByLabel('轨间距（pt）',{exact:true}).fill('8');await page.getByLabel('行间距（pt）',{exact:true}).fill('10');
+            await page.getByRole('treeitem',{name:'栅格 '+gridId,exact:true}).click();await idle();
+            await page.getByRole('treeitem',{name:'栅格项 '+left,exact:true}).click();
+            await advanced();
+            assert.equal(await page.evaluate(()=>selected.id),left);assert.match(await (await object(left)).getAttribute('class'),/studio-grid-item.*is-selected|is-selected.*studio-grid-item/);
+            assert.equal(await page.getByRole('button',{name:'拖动排序',exact:true}).count(),0,'explicit item coordinates must not offer an invalid source-only reorder');
+            assert.equal(await page.getByLabel('起始轨',{exact:true}).inputValue(),'1');assert.equal(await page.getByLabel('跨轨数',{exact:true}).inputValue(),'6');
+            const beforeInvalid=await xml();await page.getByLabel('跨轨数',{exact:true}).fill('8');
+            await page.waitForFunction(()=>$('status').textContent.includes('草稿无法预览'));
+            assert.equal(await xml(),beforeInvalid,'an overlapping item draft must retain the last saved source');
+            await page.getByLabel('跨轨数',{exact:true}).fill('4');await page.getByRole('treeitem',{name:'栅格项 '+left,exact:true}).click();await idle();
+            const narrow=await page.evaluate(id=>pages.flatMap(page=>page.hits).find(hit=>hit.id===id).width,left);
+            assert.ok(narrow<180&&narrow>150,'four tracks must change the actual engine item width');
+            await advanced();await page.getByLabel('栅格行号',{exact:true}).fill('2');await page.getByRole('treeitem',{name:'栅格项 '+left,exact:true}).click();await idle();
+            assert.deepEqual(await page.evaluate(id=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelector('#'+id).children].map(node=>node.id),gridId),[right,left]);
+            await page.locator('#undo').click();await idle();assert.equal(await page.evaluate(id=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#'+id).getAttribute('row'),left),'1');
+            await page.locator('#redo').click();await idle();assert.equal(await page.evaluate(id=>new DOMParser().parseFromString(state.source,'application/xml').querySelector('#'+id).getAttribute('row'),left),'2');
+            await page.getByRole('treeitem',{name:'段落 '+created.items[0].textId,exact:true}).click();
+            assert.equal(await page.locator('[data-attribute="rotation"]').isDisabled(),true);
+            assert.equal(await page.locator('[data-attribute="keep-with-next"] option[value="true"]').evaluate(option=>option.disabled),true);
+            await page.getByRole('textbox',{name:'正文富文本',exact:true}).fill('Edited text inside the grid item.');
+            await page.getByRole('treeitem',{name:'栅格项 '+left,exact:true}).click();await idle();assert.match(await xml(),/Edited text inside the grid item/);
+            await page.locator('#studio-container-inspector').getByRole('button',{name:'添加内容',exact:true}).click();await page.getByRole('dialog',{name:'在容器内添加',exact:true}).getByRole('button',{name:'表格',exact:true}).click();await idle();
+            const tableId=await page.evaluate(()=>nodeAt(selected.path).closest('table').id);assert.equal(await page.evaluate(()=>nodeAt(selected.path).closest('table').parentElement.tagName),'item');
+            const cell=await page.evaluate(id=>entries.find(entry=>entry.tag==='cell'&&entry.path.startsWith(entries.find(entry=>entry.id===id).path+'/')).path,tableId);
+            await page.evaluate(async path=>choose(entries.find(entry=>entry.path===path)),cell);
+            await page.getByRole('textbox',{name:'正文富文本',exact:true}).fill('Edited grid table cell');
+            await page.getByRole('treeitem',{name:'栅格项 '+right,exact:true}).click();await idle();assert.match(await xml(),/Edited grid table cell/);
+            await page.locator('#studio-container-inspector').getByRole('button',{name:'添加内容',exact:true}).click();await page.getByRole('dialog',{name:'在容器内添加',exact:true}).getByRole('button',{name:'图片',exact:true}).click();await page.locator('#image-picker').getByRole('button',{name:'图片资源 mark',exact:true}).click();await idle();
+            assert.equal(await page.evaluate(()=>nodeAt(selected.path).parentElement.tagName),'item');
+            for(const label of ['添加 6 + 6 行','添加 8 + 4 行','添加 4 + 4 + 4 行']){
+                await page.getByRole('treeitem',{name:'栅格 '+gridId,exact:true}).click();await advanced();await page.getByRole('button',{name:label,exact:true}).click();await idle();
+                const ids=await page.evaluate(()=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelectorAll('[id]')].map(node=>node.id));assert.equal(new Set(ids).size,ids.length,'each row preset must give every item and paragraph a unique ID');
+            }
+            const rows=await page.evaluate(id=>[...new DOMParser().parseFromString(state.source,'application/xml').querySelector('#'+id).children].map(node=>[+node.getAttribute('row'),+node.getAttribute('column-start'),+node.getAttribute('column-span')]),gridId);
+            assert.deepEqual(rows.slice(-7),[[3,1,6],[3,7,6],[4,1,8],[4,9,4],[5,1,4],[5,5,4],[5,9,4]]);
+            await page.getByRole('treeitem',{name:'栅格项 '+left,exact:true}).click();await idle();await page.screenshot({path:path.join(output,'grid-editor.png'),fullPage:true});
+            const retained=await xml();await writeFile(path.join(output,'grid-editor-geometry.json'),JSON.stringify(await page.evaluate(()=>pages),null,2));
+            await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();
+            const [bundle]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);const saved=path.join(output,'grid-editor-template.zip');await bundle.saveAs(saved);await page.locator('#close-template-export').click();
+            await page.locator('#open-file').setInputFiles(saved);await idle();assert.equal(await xml(),retained);
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'grid-editor.pdf'));await page.locator('#close-export').click();
+        });
+        await check('built in grid editor sample combines offsets spanning items and sibling column flows',async()=>{
+            await page.locator('#new-sample').evaluate(button=>button.click());await page.locator('#sample-list button').filter({hasText:'十二轨栅格编辑'}).click();
+            await page.waitForFunction(()=>$('question-dialog').open||state.source.includes('id="editor-grid"'));if(await page.locator('#question-dialog').evaluate(dialog=>dialog.open))await page.locator('#question-ok').click();
+            await page.waitForFunction(()=>state.source.includes('id="editor-grid"'));await idle();
+            await page.getByRole('button',{name:'精确排版',exact:true}).click();await page.getByRole('treeitem',{name:'栅格 editor-grid',exact:true}).click();assert.equal(await page.getByLabel('栅格轨数',{exact:true}).inputValue(),'12');
+            await page.setViewportSize({width:1440,height:1250});await page.getByLabel('缩放',{exact:true}).selectOption('0.75');await page.locator('.canvas-scroll').evaluate(node=>node.scrollTop=0);
+            await page.screenshot({path:path.join(output,'grid-editor-sample-settings.png'),fullPage:true});
+            await page.getByRole('treeitem',{name:'栅格项 grid-offset',exact:true}).click();assert.equal(await page.getByLabel('起始轨',{exact:true}).inputValue(),'3');assert.equal(await page.getByLabel('跨轨数',{exact:true}).inputValue(),'8');
+            const geometry=await page.evaluate(()=>pages);assert.ok(geometry.flatMap(page=>page.hits).some(hit=>hit.id==='grid-evidence'&&hit.width>500));assert.ok(geometry.flatMap(page=>page.hits).some(hit=>hit.id==='grid-figure'&&hit.images[0]?.width===320));
+            assert.ok(geometry.flatMap(page=>page.hits).some(hit=>hit.id==='grid-before'));assert.ok(geometry.flatMap(page=>page.hits).some(hit=>hit.id==='grid-after'));
+            await writeFile(path.join(output,'grid-editor-sample-geometry.json'),JSON.stringify(geometry,null,2));await writeFile(path.join(output,'grid-editor-sample-data.json'),await page.evaluate(()=>state.data));await page.screenshot({path:path.join(output,'grid-editor-sample.png'),fullPage:true});
+            await page.locator('#save').click();await page.locator('#template-export-dialog').waitFor();const [bundle]=await Promise.all([page.waitForEvent('download'),page.locator('#download-template').click()]);await bundle.saveAs(path.join(output,'grid-editor-sample.zip'));await page.locator('#close-template-export').click();
+            const [pdf]=await Promise.all([page.waitForEvent('download'),(async()=>{await page.locator('#export').click();await page.locator('#format').selectOption('PDF');await page.locator('#download-export').click();})()]);await pdf.saveAs(path.join(output,'grid-editor-sample.pdf'));await page.locator('#close-export').click();
+            await page.getByLabel('缩放',{exact:true}).selectOption('fit');await page.setViewportSize({width:1440,height:1050});
         });
         await check('quick movement and cancelled long press never change geometry',async()=>{
             await load();const before=await xml(),box=await (await object('second')).boundingBox();

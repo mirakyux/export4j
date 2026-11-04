@@ -47,9 +47,16 @@ final class DesignerService {
         Format(String extension) { this.extension = extension; }
     }
     record ImageBounds(double x, double y, double width, double height) { }
-    record Hit(int page, String id, String path, double x, double y, double width, double height, List<ImageBounds> images) { }
+    record TableCellBounds(double x, double y, double width, double height, int column, int columnSpan) { }
+    record Hit(int page, String id, String path, double x, double y, double width, double height, List<ImageBounds> images, TableCellBounds tableCell) {
+        Hit(int page, String id, String path, double x, double y, double width, double height, List<ImageBounds> images) {
+            this(page, id, path, x, y, width, height, images, null);
+        }
+    }
     record Break(int page, String id, String path, double y) { }
-    record Preview(ComponentDocumentLayout layout, List<Hit> hits, List<Break> breaks, Map<String, Map<String, String>> formats) {
+    record ImageSpace(int page, String path, double width, double height) { }
+    record Preview(ComponentDocumentLayout layout, List<Hit> hits, List<Break> breaks, Map<String, Map<String, String>> formats,
+            List<ImageSpace> imageSpaces) {
         BufferedImage image(int page) throws IOException {
             var bytes = new ByteArrayOutputStream();
             new RasterBackend(96).writePage(layout.display().pages().get(page), bytes);
@@ -62,6 +69,10 @@ final class DesignerService {
             return ProcessingPolicy.builder().defaultRule(action, ProcessingPolicy.Treatment.valueOf(treatment)).build();
         }
         var rules = ProcessingPolicy.builder().defaultRule(action, ProcessingPolicy.Treatment.DEGRADE);
+        if (format == Format.DOCX || format == Format.HTML || format == Format.MARKDOWN) {
+            rules.feature("COLUMN_FLOW", action, ProcessingPolicy.Treatment.DEGRADE);
+            rules.feature("GRID_LAYOUT", action, ProcessingPolicy.Treatment.DEGRADE);
+        }
         if (format == Format.HTML || format == Format.MARKDOWN) {
             for (String feature : List.of("CUSTOM_BLOCK", "METADATA", "PAGE_NUMBERING", "NAVIGATION", "NOTES")) {
                 rules.feature(feature, action, ProcessingPolicy.Treatment.DISCARD);
@@ -151,12 +162,19 @@ final class DesignerService {
             // Local region probes exclude main-body notes, while sharing one engine per preview.
             var regionRenderer = bound.notes().isEmpty() ? renderer : engine(project.bundle());
             var measuredRegions = new HashMap<RegionMeasure, com.mirakyux.export4j.layout.DocumentLayout>();
+            var remainingRegions = new HashMap<RegionMeasure, Double>();
+            var imageSpaces = new ArrayList<ImageSpace>();
             if (layout.display().pages().size() > 80) { throw new IOException("designer preview exceeds 80 pages; use the library streaming API for large workloads"); }
             var hits = new ArrayList<Hit>();
             Element sourceTree;
             try { sourceTree = DesignerXml.parse(source.source()).getDocumentElement(); }
             catch (Exception ex) { throw new IOException("cannot map designer page regions", ex); }
             for (var page : layout.body().pages()) {
+                if (!page.elements().isEmpty()) {
+                    String path = source.paths().getOrDefault(page.elements().getFirst().blockId().split("@", 2)[0], "");
+                    imageSpaces.add(new ImageSpace(page.pageIndex() + layout.bodyPageOffset(), sectionPath(sourceTree, path),
+                            page.contentBounds().width(), page.contentBounds().height()));
+                }
                 for (var fragment : page.elements()) {
                     double width = page.contentBounds().width(); double height = 12;
                     var images = new ArrayList<ImageBounds>();
@@ -171,6 +189,7 @@ final class DesignerService {
                         }
                     }
                     if (fragment instanceof com.mirakyux.export4j.layout.TableFragment table) { width = table.width(); height = table.height(); }
+                    if (fragment instanceof com.mirakyux.export4j.layout.ComponentFragment component) { width = component.layout().width(); height = component.layout().height(); }
                     String path = source.paths().getOrDefault(fragment.blockId().split("@", 2)[0], "");
                     double x = fragment.origin().x(), y = fragment.origin().y();
                     if (!path.isEmpty() && images.size() == 1) {
@@ -249,6 +268,15 @@ final class DesignerService {
                 }
                 var node = DesignerXml.at(sourceTree.getOwnerDocument(), path);
                 var box = placed.viewport();
+                // Pasting into a fixed box switches it to AUTO height; its physical bottom stays bounded.
+                double availableHeight = overlay ? layout.display().pages().get(placed.pageIndex()).size().height() - box.y() : box.height();
+                var measure = new RegionMeasure(content, box.width(), availableHeight);
+                Double remaining = remainingRegions.get(measure);
+                if (remaining == null) {
+                    remaining = imageAppendHeight(content, box.width(), availableHeight, regionRenderer);
+                    remainingRegions.put(measure, remaining);
+                }
+                imageSpaces.add(new ImageSpace(placed.pageIndex(), regionRoot, box.width(), remaining));
                 if (node.getTagName().equals("p") && node.getTextContent().isBlank() && DesignerXml.children(node).size() == 1
                         && DesignerXml.children(node).getFirst().getTagName().equals("image") && !node.hasAttribute("rotation")) {
                     var image = placed.layout().commands().stream().filter(com.mirakyux.export4j.graphics.DrawCommand.Image.class::isInstance)
@@ -278,7 +306,7 @@ final class DesignerService {
                     }
                 }
             }
-            return new Preview(layout, List.copyOf(hits), List.copyOf(breaks), paragraphDefaults(project, source, sourceTree));
+            return new Preview(layout, List.copyOf(hits), List.copyOf(breaks), paragraphDefaults(project, source, sourceTree), List.copyOf(imageSpaces));
         });
     }
     /** Compile a reduced, unbound source to read paragraph defaults without guessing theme inheritance.
@@ -302,6 +330,9 @@ final class DesignerService {
             Map<String, Map<String, String>> result) {
         for (var node : nodes) {
             if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.ValueBlock value) { blockDefaults(List.of(value.prototype()), paths, result); }
+            else if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.Columns columns) { collectDefaults(columns.children(), paths, result); }
+            else if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.Grid grid) { collectDefaults(grid.children(), paths, result); }
+            else if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.GridItem item) { collectDefaults(item.children(), paths, result); }
             else if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.Each each) { collectDefaults(each.children(), paths, result); }
             else if (node instanceof com.mirakyux.export4j.model.DocumentTemplate.When when) { collectDefaults(when.yes(), paths, result); collectDefaults(when.no(), paths, result); }
         }
@@ -328,6 +359,31 @@ final class DesignerService {
         });
     }
     private record RegionMeasure(com.mirakyux.export4j.model.PageRegion region, double width, double height) { }
+
+    /** Measure the actual next line origin, including the preceding block's spacing and pagination.
+     * The marker is private to this layout and never enters the retained source or resource history. */
+    private static double imageAppendHeight(com.mirakyux.export4j.model.PageRegion region, double width, double height,
+            DocumentEngine renderer) throws IOException {
+        if (height < 18) { return 0; }
+        String marker = "e4j-image-space-" + java.util.UUID.randomUUID();
+        var blocks = new ArrayList<com.mirakyux.export4j.model.Block>(region.blocks());
+        blocks.add(new com.mirakyux.export4j.model.Paragraph(marker, "", com.mirakyux.export4j.model.ParagraphFormat.builder()
+                .fontSize(12).lineHeight(18).spaceBefore(0).spaceAfter(0).build()));
+        var settings = com.mirakyux.export4j.model.PageSettings.builder().size(width, height).margins(0).build();
+        try {
+            var measured = renderer.layout(new com.mirakyux.export4j.model.Document(
+                    com.mirakyux.export4j.model.DocumentMetadata.EMPTY, settings, blocks)).body();
+            for (var page : measured.pages()) {
+                for (var fragment : page.elements()) {
+                    if (fragment.blockId().equals(marker)) { return page.pageIndex() == 0 ? Math.max(0, height - fragment.origin().y()) : 0; }
+                }
+            }
+            throw new IOException("cannot measure image insertion space");
+        } catch (com.mirakyux.export4j.layout.core.DocumentLayoutException ex) {
+            if (ex.code() == com.mirakyux.export4j.layout.core.DocumentLayoutException.Code.CONTENT_TOO_TALL) { return 0; }
+            throw ex;
+        }
+    }
 
     /** The composition trace contains final drawing commands. Reuse the same engine and concrete bound
      * model to recover local cell geometry for editing; this never changes final pagination or drawing. */
@@ -399,11 +455,16 @@ final class DesignerService {
             for (var cell : row.cells()) {
                 String cellPath = paths.get(sourceRow + ":" + cell.columnIndex()); if (cellPath == null) { continue; }
                 double x = parentX + table.origin().x(), y = parentY + table.origin().y();
+                var sourceCell = DesignerXml.at(sourceTree.getOwnerDocument(), cellPath);
+                int columnSpan = sourceCell.hasAttribute("column-span") ? Integer.parseInt(sourceCell.getAttribute("column-span")) : 1;
+                var bounds = new TableCellBounds(x + cell.bounds().x(), y + cell.bounds().y(), cell.bounds().width(), cell.bounds().height(), cell.columnIndex(), columnSpan);
                 if (!cell.hasBlocks()) {
                     hits.add(new Hit(page, table.blockId() + "#" + row.rowIndex() + ":" + cell.columnIndex(), cellPath,
                             x + cell.textOrigin().x(), y + cell.textOrigin().y(), cell.layout().width(),
-                            Math.max(cell.layout().height(), 12), List.of()));
+                            Math.max(cell.layout().height(), 12), List.of(), bounds));
                 } else {
+                    hits.add(new Hit(page, table.blockId() + "#" + row.rowIndex() + ":" + cell.columnIndex(), cellPath,
+                            bounds.x(), bounds.y(), bounds.width(), bounds.height(), List.of(), bounds));
                     var children = DesignerXml.children(DesignerXml.at(sourceTree.getOwnerDocument(), cellPath));
                     for (int index = 0; index < cell.blocks().size(); index++) {
                         var fragment = cell.blocks().get(index); int ordinal = cell.sourceBlockIndices().get(index);

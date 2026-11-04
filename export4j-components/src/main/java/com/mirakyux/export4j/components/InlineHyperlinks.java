@@ -137,17 +137,6 @@ final class InlineHyperlinks {
     static DocumentExtras.ExternalLink transformed(DocumentExtras.ExternalLink link,
             com.mirakyux.export4j.graphics.AffineTransform transform) {
         if (transform.equals(com.mirakyux.export4j.graphics.AffineTransform.IDENTITY)) { return link; }
-        var bounds = link.bounds();
-        double left = Double.POSITIVE_INFINITY, top = Double.POSITIVE_INFINITY;
-        double right = Double.NEGATIVE_INFINITY, bottom = Double.NEGATIVE_INFINITY;
-        for (double x : new double[] {bounds.x(), bounds.x() + bounds.width()}) {
-            for (double y : new double[] {bounds.y(), bounds.y() + bounds.height()}) {
-                double px = transform.a() * x + transform.c() * y + transform.e();
-                double py = transform.b() * x + transform.d() * y + transform.f();
-                left = Math.min(left, px); right = Math.max(right, px);
-                top = Math.min(top, py); bottom = Math.max(bottom, py);
-            }
-        }
-        return new DocumentExtras.ExternalLink(link.pageIndex(), new Rect(left, top, right - left, bottom - top), link.destination());
+        return new DocumentExtras.ExternalLink(link.pageIndex(), SemanticFragments.transformedBounds(link.bounds(), transform), link.destination());
     }
 }

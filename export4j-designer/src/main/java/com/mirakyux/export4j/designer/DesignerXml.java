@@ -75,12 +75,16 @@ final class DesignerXml {
         return new PreviewSource(serialize(document), Map.copyOf(paths));
     }
     private static void previewIds(Element node, String path, String prefix, Map<String, String> paths) {
-        if (List.of("p", "heading", "bullet", "numbered", "table", "rows", "caption", "cross-reference", "page-break").contains(node.getTagName())) {
+        if (bodyColumns(node) || List.of("grid", "item", "p", "heading", "bullet", "numbered", "table", "rows", "caption", "cross-reference", "page-break").contains(node.getTagName())) {
             if (!node.hasAttribute("id")) { node.setAttribute("id", prefix + path.substring(1).replace('/', '-')); }
             paths.put(node.getAttribute("id"), path);
         }
         var nested = children(node);
         for (int n = 0; n < nested.size(); n++) { previewIds(nested.get(n), path + "/" + n, prefix, paths); }
+    }
+    static boolean bodyColumns(Element node) {
+        return node.getTagName().equals("columns") && node.getParentNode() instanceof Element parent
+                && !List.of("table", "rows").contains(parent.getTagName());
     }
     static Element at(Document document, String path) {
         Element node = document.getDocumentElement();
@@ -110,6 +114,7 @@ final class DesignerXml {
             if (!children(element).isEmpty()) { throw new IllegalArgumentException("mixed content must be edited in the node XML tab"); }
             element.setTextContent(text);
         }
+        if (element.getTagName().equals("item")) { sortGridItems(document); }
         return serialize(document);
     }
     static String patchProperties(String source, List<String> paths, Map<String, String> changes) throws Exception {
@@ -124,7 +129,38 @@ final class DesignerXml {
                 else { element.setAttribute(change.getKey(), change.getValue()); }
             }
         }
+        if (changes.keySet().stream().anyMatch(List.of("row", "column-start", "column-span")::contains)) { sortGridItems(document); }
         return serialize(document);
+    }
+    /** Sorts adjacent static items inside their existing dynamic scope; never moves an item past a control node. */
+    private static void sortGridItems(Document document) {
+        var grids = document.getElementsByTagName("grid");
+        for (int index = 0; index < grids.getLength(); index++) { sortGridScope((Element) grids.item(index)); }
+    }
+    private static void sortGridScope(Element scope) {
+        var elements = children(scope);
+        for (int offset = 0; offset < elements.size();) {
+            if (!elements.get(offset).getTagName().equals("item")) {
+                var child = elements.get(offset++);
+                if (List.of("each", "if", "then", "else").contains(child.getTagName())) { sortGridScope(child); }
+                continue;
+            }
+            int end = offset;
+            while (end < elements.size() && elements.get(end).getTagName().equals("item")) { end++; }
+            var items = elements.subList(offset, end);
+            if (items.stream().allMatch(item -> List.of("row", "column-start").stream()
+                    .allMatch(name -> item.getAttribute(name).matches("[1-9][0-9]{0,9}")))) {
+                var ordered = items.stream().sorted(java.util.Comparator.comparingLong((Element item) -> Long.parseLong(item.getAttribute("row")))
+                        .thenComparingLong(item -> Long.parseLong(item.getAttribute("column-start")))).toList();
+                var slots = new ArrayList<Node>();
+                for (var item : items) {
+                    var slot = scope.getOwnerDocument().createComment("grid item slot");
+                    scope.replaceChild(slot, item); slots.add(slot);
+                }
+                for (int index = 0; index < ordered.size(); index++) { scope.replaceChild(ordered.get(index), slots.get(index)); }
+            }
+            offset = end;
+        }
     }
     static String removeMany(String source, List<String> paths) throws Exception {
         var document = parse(source);
@@ -135,6 +171,7 @@ final class DesignerXml {
     static String relocateMany(String source, List<String> paths, String target, boolean after) throws Exception {
         var document = parse(source);
         var nodes = selectedSiblings(document, paths);
+        if (nodes.stream().anyMatch(node -> node.getTagName().equals("item"))) { throw new IllegalArgumentException("grid item placement is edited with row and column coordinates"); }
         if (!target.contains("/") || !target.substring(0, target.lastIndexOf('/')).equals(paths.getFirst().substring(0, paths.getFirst().lastIndexOf('/')))) {
             throw new IllegalArgumentException("drop target must be a sibling in the same container");
         }
@@ -167,7 +204,7 @@ final class DesignerXml {
     static String insert(String source, String path, String fragment) throws Exception {
         var document = parse(source); var selected = at(document, path);
         var fresh = document.importNode(parse(fragment).getDocumentElement(), true);
-        if (List.of("document", "section", "then", "else", "each", "cell").contains(selected.getTagName())) {
+        if (bodyColumns(selected) || List.of("document", "section", "then", "else", "each", "cell", "item").contains(selected.getTagName())) {
             selected.appendChild(fresh);
         } else { selected.getParentNode().insertBefore(fresh, selected.getNextSibling()); }
         return serialize(document);
@@ -177,6 +214,36 @@ final class DesignerXml {
         if (!(selected.getParentNode() instanceof Element parent)) { throw new IllegalArgumentException("insertion needs a body element target"); }
         var fresh = document.importNode(parse(fragment).getDocumentElement(), true);
         parent.insertBefore(fresh, after ? selected.getNextSibling() : selected);
+        return serialize(document);
+    }
+    /** Splits only at a direct column child, keeping dynamic scopes and every source node intact. */
+    static String insertFullWidth(String source, String path, String fragment, boolean after) throws Exception {
+        var document = parse(source); var selected = at(document, path);
+        if (!(selected.getParentNode() instanceof Element columns) || !bodyColumns(columns)) {
+            throw new IllegalArgumentException("select a direct child of a body column region; cannot split inside a loop or condition");
+        }
+        var inserted = parse(fragment).getDocumentElement();
+        boolean imageParagraph = inserted.getTagName().equals("p") && inserted.getTextContent().isBlank()
+                && children(inserted).size() == 1 && children(inserted).getFirst().getTagName().equals("image");
+        if (!inserted.getTagName().equals("table") && !imageParagraph) {
+            throw new IllegalArgumentException("full-width insertion requires a table or a paragraph containing one image");
+        }
+        var tail = (Element) columns.cloneNode(false);
+        for (Node node = after ? selected.getNextSibling() : selected; node != null;) {
+            Node next = node.getNextSibling(); tail.appendChild(node); node = next;
+        }
+        var owner = columns.getParentNode(); Node anchor = columns.getNextSibling();
+        owner.insertBefore(document.importNode(inserted, true), anchor);
+        boolean emptyHead = children(columns).isEmpty(), emptyTail = children(tail).isEmpty();
+        if (emptyTail) {
+            while (tail.hasChildNodes()) { columns.appendChild(tail.getFirstChild()); }
+        } else {
+            if (emptyHead) {
+                while (columns.hasChildNodes()) { tail.insertBefore(columns.getLastChild(), tail.getFirstChild()); }
+            } else { tail.setAttribute("id", nextId(source + fragment)); }
+            owner.insertBefore(tail, anchor);
+        }
+        if (emptyHead) { owner.removeChild(columns); }
         return serialize(document);
     }
     static String startSection(String source, String path, String id, String initialId) throws Exception {
@@ -230,6 +297,7 @@ final class DesignerXml {
     }
     static String move(String source, String path, int direction) throws Exception {
         var document = parse(source); var selected = at(document, path);
+        if (selected.getTagName().equals("item")) { throw new IllegalArgumentException("grid item placement is edited with row and column coordinates"); }
         if (!(selected.getParentNode() instanceof Element parent)) { throw new IllegalArgumentException("cannot move document root"); }
         var siblings = children(parent); int current = siblings.indexOf(selected); int target = current + direction;
         if (target < 0 || target >= siblings.size()) { throw new IllegalArgumentException("already at the container boundary"); }
@@ -247,6 +315,7 @@ final class DesignerXml {
     }
     static String relocate(String source, String path, String target, boolean after) throws Exception {
         var document = parse(source); var node = at(document, path); var destination = at(document, target);
+        if (node.getTagName().equals("item")) { throw new IllegalArgumentException("grid item placement is edited with row and column coordinates"); }
         if (!(node.getParentNode() instanceof Element parent) || parent != destination.getParentNode()) {
             throw new IllegalArgumentException("drag sorting requires two siblings in the same container");
         }

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">zh</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">cn-foodindustry-word-confirmed</entry>
+  <entry key="name">食品工业科技：官方投稿模板明确格式</entry>
+  <entry key="page.columns">1</entry>
+  <entry key="readme-name">食品工业科技</entry>
+  <entry key="role.abstract.east_asia_font">宋体</entry>
+  <entry key="role.abstract.font">Times New Roman</entry>
+  <entry key="role.abstract_heading.east_asia_font">宋体</entry>
+  <entry key="role.abstract_heading.font">Times New Roman</entry>
+  <entry key="role.body.east_asia_font">宋体</entry>
+  <entry key="role.body.font">Times New Roman</entry>
+  <entry key="role.figure_caption.east_asia_font">宋体</entry>
+  <entry key="role.figure_caption.font">Times New Roman</entry>
+  <entry key="role.heading1.east_asia_font">宋体</entry>
+  <entry key="role.heading1.font">Times New Roman</entry>
+  <entry key="role.heading2.east_asia_font">宋体</entry>
+  <entry key="role.heading2.font">Times New Roman</entry>
+  <entry key="role.heading3.east_asia_font">宋体</entry>
+  <entry key="role.heading3.font">Times New Roman</entry>
+  <entry key="role.heading4.east_asia_font">宋体</entry>
+  <entry key="role.heading4.font">Times New Roman</entry>
+  <entry key="role.keywords.east_asia_font">宋体</entry>
+  <entry key="role.keywords.font">Times New Roman</entry>
+  <entry key="role.names">["title","abstract_heading","abstract","keywords","heading1","heading2","heading3","heading4","body","table_body","figure_caption","table_caption","references_heading","reference"]</entry>
+  <entry key="role.reference.east_asia_font">宋体</entry>
+  <entry key="role.reference.font">Times New Roman</entry>
+  <entry key="role.references_heading.east_asia_font">宋体</entry>
+  <entry key="role.references_heading.font">Times New Roman</entry>
+  <entry key="role.table_body.east_asia_font">宋体</entry>
+  <entry key="role.table_body.font">Times New Roman</entry>
+  <entry key="role.table_caption.east_asia_font">宋体</entry>
+  <entry key="role.table_caption.font">Times New Roman</entry>
+  <entry key="role.title.east_asia_font">宋体</entry>
+  <entry key="role.title.font">Times New Roman</entry>
+  <entry key="source">https://www.spgykj.com/supplement/preview/a2c39452-a4d8-4f78-b329-28f9aa7d1c05</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">chinese-multidisciplinary</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">https://www.spgykj.com/supplement/preview/a2c39452-a4d8-4f78-b329-28f9aa7d1c05</entry>
+  <entry key="template.source_version">2026-10-30/official-template-PDF-snapshot</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/chinese-multidisciplinary/profiles/cn-foodindustry-word-confirmed.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">3d1c50f377caa9e4a571b9b364627e769f5c5cbd0d5130f424736b20c4a89504</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

@@ -166,6 +166,9 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(pageSettings, "pageSettings");
         blocks = List.copyOf(blocks);
+        if (blocks.stream().anyMatch(GridItem.class::isInstance)) {
+            throw new IllegalArgumentException("grid items belong inside a grid layout");
+        }
         SemanticTree.validateUniqueIds(blocks);
     }
 

@@ -5,7 +5,8 @@ package com.mirakyux.export4j.layout.core;
  * Positive structural budgets, additional to text-layer limits. maxParagraphs counts all semantic tree nodes
  * plus distinct component semantic source trees; static component children do not add semantic blocks.
  * Row/column caps apply per table; cells/code points/lines/pages are shared by the document.
- * maxCells counts covered grid slots, including slots owned by a merged cell; source text counts each anchor once.
+ * maxCells counts table grid slots, including slots owned by a merged cell, and tracks in occupied
+ * GridLayout rows (skipped row numbers add no slots); source text counts each anchor once.
  * maxLines includes repeated header output; source code points are counted once.
  * Components add emitted text code points and reported lines after measurement; custom SPI execution is trusted.
  */

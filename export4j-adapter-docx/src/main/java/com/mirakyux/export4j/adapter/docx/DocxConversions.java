@@ -5,6 +5,9 @@ import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CellLocation;
+import com.mirakyux.export4j.model.ColumnFlow;
+import com.mirakyux.export4j.model.GridLayout;
+import com.mirakyux.export4j.model.GridItem;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineContent;
@@ -18,6 +21,7 @@ import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
+import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableRow;
@@ -28,7 +32,9 @@ import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -51,7 +57,7 @@ final class DocxConversions {
                         new ProcessingIssue.Location("", "BODY", note.paragraphId(), List.of(), -1, -1),
                         "DOCX note text has no export mapping", "NOTE_TEXT_REMOVED", ProcessingPolicy.Treatment.DISCARD);
             }
-            var mapper = new Styles(policy, issues); var sections = new ArrayList<Section>();
+            var mapper = new Styles(source, policy, issues); var sections = new ArrayList<Section>();
             for (var section : source.sections()) {
                 var supported = section.pageRegions();
                 for (var layer : List.of("BACKGROUND", "FOREGROUND")) {
@@ -72,15 +78,39 @@ final class DocxConversions {
         });
     }
     private static final class Styles {
+        private record ContainerTarget(String blockId, String feature) { }
         private final ProcessingPolicy policy;
         private final List<ProcessingIssue> issues;
-        Styles(ProcessingPolicy policy, List<ProcessingIssue> issues) { this.policy = policy; this.issues = issues; }
+        private final Map<String, ContainerTarget> containerTargets = new HashMap<>();
+        Styles(SectionedDocument source, ProcessingPolicy policy, List<ProcessingIssue> issues) {
+            this.policy = policy; this.issues = issues;
+            // Collect before mapping any paragraph so forward, backward and cell references agree.
+            for (var section : source.sections()) {
+                SemanticTree.walk(section.blocks(), visit -> {
+                    if (visit.block() instanceof ColumnFlow columns) {
+                        containerTargets.put(columns.id(), new ContainerTarget(columns.blocks().getFirst().id(), "COLUMN_FLOW"));
+                    } else if (visit.block() instanceof GridLayout grid) {
+                        containerTargets.put(grid.id(), new ContainerTarget(grid.items().getFirst().blocks().getFirst().id(), "GRID_LAYOUT"));
+                    } else if (visit.block() instanceof GridItem item) {
+                        containerTargets.put(item.id(), new ContainerTarget(item.blocks().getFirst().id(), "GRID_LAYOUT"));
+                    }
+                });
+            }
+        }
         List<Block> blocks(List<Block> source, String section, String region, List<CellLocation> path) {
             var result = new ArrayList<Block>();
             for (var block : source) {
                 com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                 var at = new ProcessingIssue.Location(section, region, block.id(), path, -1, -1);
-                if (block instanceof Paragraph paragraph) { result.add(paragraph(paragraph, at)); }
+                if (block instanceof GridLayout grid) {
+                    add(issues, policy, "EXPORT", "MODEL", "DOCX", "GRID_LAYOUT", at,
+                            "track grids have no native DOCX export mapping", "LAYOUT_REMOVED_CONTENT_RETAINED", ProcessingPolicy.Treatment.DEGRADE);
+                    for (var item : grid.items()) { result.addAll(blocks(item.blocks(), section, region, path)); }
+                } else if (block instanceof ColumnFlow columns) {
+                    add(issues, policy, "EXPORT", "MODEL", "DOCX", "COLUMN_FLOW", at,
+                            "continuous columns have no native DOCX export mapping", "LAYOUT_REMOVED_CONTENT_RETAINED", ProcessingPolicy.Treatment.DEGRADE);
+                    result.addAll(blocks(columns.blocks(), section, region, path));
+                } else if (block instanceof Paragraph paragraph) { result.add(paragraph(paragraph, at)); }
                 else if (block instanceof Heading heading) {
                     var mapped = paragraph(heading.paragraph(), at);
                     result.add(Heading.rich(heading.id(), mapped.inlines(), heading.level(), mapped.format()));
@@ -140,6 +170,12 @@ final class DocxConversions {
                     add(issues, policy, "EXPORT", "MODEL", "DOCX", "NOTES", at.range(offset, offset + 1),
                             "inline note marker has no DOCX export mapping", "NOTE_MARKER_REMOVED", ProcessingPolicy.Treatment.DISCARD);
                     offset++;
+                } else if (value instanceof InlineField field && field.kind() == InlineField.Kind.REFERENCE_PAGE
+                        && containerTargets.containsKey(field.targetId())) {
+                    var target = containerTargets.get(field.targetId());
+                    add(issues, policy, "EXPORT", "MODEL", "DOCX", target.feature(), at.range(offset, offset + 1),
+                            "flattened container page reference uses its first retained block", "PAGE_REFERENCE_TARGET_REPLACED_WITH_FIRST_RETAINED_BLOCK", ProcessingPolicy.Treatment.DEGRADE);
+                    content.add(field.toBuilder().targetId(target.blockId()).build()); offset++;
                 } else if (value instanceof InlineImage image && image.rotation() != 0) {
                     rotation(at.range(offset, offset + 1), "Inline image rotation has no portable DOCX image mapping");
                     content.add(image.toBuilder().rotation(0).build()); offset++;

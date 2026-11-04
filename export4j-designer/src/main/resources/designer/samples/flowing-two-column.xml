@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<document version="1" title="${title}">
+  <page size="A4" margin="42"/>
+  <heading id="article-title" level="1" size="24" line-height="32" space-after="12">${title}</heading>
+  <p id="article-abstract" size="11" line-height="17" space-after="18"><span role="bold">Abstract. </span>${abstract}</p>
+  <columns id="article-body" count="2" gap="22" balanced="true">
+    <p id="article-introduction" role="bold" size="14" line-height="21" space-after="6">1. Introduction</p>
+    <p id="article-editable" size="11" line-height="17" space-after="10">This paragraph is editable on its own. Select it in the document structure to change the source text, then inspect the exact engine preview. The body is one continuous reading stream: it moves down the first column and continues at the top of the next.</p>
+    <each items="paragraphsBefore" as="paragraph">
+      <p id="article-paragraph" size="11" line-height="17" space-after="10">${paragraph}</p>
+    </each>
+  </columns>
+  <table id="article-wide-table" space-before="12" space-after="12" padding-top="5" padding-bottom="5">
+    <columns><column weight="1"/><column weight="2"/><column weight="1"/></columns>
+    <header><cell>Measure</cell><cell>Fictional observation</cell><cell>State</cell></header>
+    <row><cell>Reading order</cell><cell>Body, full-width evidence, then continued body</cell><cell>Retained</cell></row>
+    <row><cell>Source editing</cell><cell>Column settings and child nodes remain editable</cell><cell>Retained</cell></row>
+  </table>
+  <p id="article-wide-figure" line-height="106" align="CENTER" space-after="10"><image ref="flow_diagram" width="400" height="100" alt="Columns interrupted by one full-width region"/></p>
+  <columns id="article-body-after" count="2" gap="22" balanced="true">
+    <each items="paragraphsAfter" as="paragraph">
+      <p id="article-following-paragraph" size="11" line-height="17" space-after="10">${paragraph}</p>
+    </each>
+    <p id="article-conclusion" role="bold" size="14" line-height="21" space-after="6">2. Conclusion</p>
+    <p id="article-ending" size="11" line-height="17">${conclusion}</p>
+  </columns>
+  <p id="article-after" size="10" line-height="15" space-before="16">Full-width note after the columns. This fictional article demonstrates template editing and does not report a scientific study.</p>
+</document>

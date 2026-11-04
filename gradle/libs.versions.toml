@@ -6,6 +6,7 @@ commonmark = "0.24.0"
 jsoup = "1.23.2"
 bouncycastle = "1.86"
 lwjgl = "3.4.3"
+jlatexmath = "1.0.7"
 
 [libraries]
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
@@ -21,3 +22,4 @@ jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 lwjgl = { module = "org.lwjgl:lwjgl", version.ref = "lwjgl" }
 lwjgl-harfbuzz = { module = "org.lwjgl:lwjgl-harfbuzz", version.ref = "lwjgl" }
+jlatexmath = { module = "org.scilab.forge:jlatexmath", version.ref = "jlatexmath" }

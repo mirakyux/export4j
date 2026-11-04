@@ -87,7 +87,7 @@ public final class DesignerApp {
         }
         private void asset(HttpExchange exchange, String path) throws IOException {
             method(exchange, "GET");
-            String name = switch (path) { case "/" -> "index.html"; case "/studio.js" -> "studio.js"; case "/studio-bridge.js" -> "studio-bridge.js"; case "/THIRD-PARTY-NOTICES.txt" -> "THIRD-PARTY-NOTICES.txt"; case "/app.js" -> "app.js"; case "/editing.js" -> "editing.js"; case "/tables.js" -> "tables.js"; case "/canvas.js" -> "canvas.js"; case "/interactions.js" -> "interactions.js"; case "/workspace.js" -> "workspace.js"; case "/style.css" -> "style.css"; default -> throw new Rejected(404, "not found"); };
+            String name = switch (path) { case "/" -> "index.html"; case "/studio.js" -> "studio.js"; case "/studio-bridge.js" -> "studio-bridge.js"; case "/THIRD-PARTY-NOTICES.txt" -> "THIRD-PARTY-NOTICES.txt"; case "/bindings.js" -> "bindings.js"; case "/app.js" -> "app.js"; case "/editing.js" -> "editing.js"; case "/tables.js" -> "tables.js"; case "/canvas.js" -> "canvas.js"; case "/interactions.js" -> "interactions.js"; case "/workspace.js" -> "workspace.js"; case "/style.css" -> "style.css"; default -> throw new Rejected(404, "not found"); };
             try (var input = DesignerApp.class.getResourceAsStream("/designer/web/" + name)) {
                 if (input == null) { throw new IOException("designer web resource missing"); }
                 byte[] bytes = input.readAllBytes();
@@ -140,9 +140,10 @@ public final class DesignerApp {
                 send(exchange, "image/png", encoded); return;
             }
             method(exchange, "POST");
+            // Start the operation before reading its body so cancellation during an upload is retained.
+            cancelled.set(false);
             var request = BindingJson.parse(utf8(read(exchange, 24 * 1024 * 1024)), 24 * 1024 * 1024);
             if (integer(request, "revision") != revision) { throw new Rejected(409, "workspace changed in another tab; reload before editing"); }
-            cancelled.set(false);
             switch (path) {
                 case "/api/format" -> {
                     String formatted = switch (text(request, "kind")) {
@@ -153,6 +154,7 @@ public final class DesignerApp {
                     json(exchange, Map.of("formatted", formatted)); return;
                 }
                 case "/api/apply" -> change(history.current().source(text(request, "source"), text(request, "data")));
+                case "/api/restore" -> restore(request);
                 case "/api/new" -> {
                     var project = switch (request.containsKey("kind") ? text(request, "kind") : "sample") {
                         case "blank" -> DesignerSamples.blank();
@@ -187,9 +189,18 @@ public final class DesignerApp {
                     for (int index = 0; index < candidate.layout().display().pages().size(); index++) {
                         var page = candidate.layout().display().pages().get(index); int number = index;
                         pages.add(BindingJson.object("width", page.size().width(), "height", page.size().height(), "hits", candidate.hits().stream().filter(hit -> hit.page() == number)
-                                .map(hit -> BindingJson.object("id", hit.id(), "path", hit.path(), "x", hit.x(), "y", hit.y(), "width", hit.width(), "height", hit.height(),
-                                        "images", hit.images().stream().map(image -> BindingJson.object("x", image.x(), "y", image.y(), "width", image.width(), "height", image.height())).toList())).toList(),
-                                "breaks", candidate.breaks().stream().filter(item -> item.page() == number).map(item -> BindingJson.object("id", item.id(), "path", item.path(), "y", item.y())).toList()));
+                                .map(hit -> {
+                                    var value = BindingJson.object("id", hit.id(), "path", hit.path(), "x", hit.x(), "y", hit.y(), "width", hit.width(), "height", hit.height(),
+                                            "images", hit.images().stream().map(image -> BindingJson.object("x", image.x(), "y", image.y(), "width", image.width(), "height", image.height())).toList());
+                                    if (hit.tableCell() != null) {
+                                        value.put("tableCell", BindingJson.object("x", hit.tableCell().x(), "y", hit.tableCell().y(), "width", hit.tableCell().width(), "height", hit.tableCell().height(),
+                                                "column", hit.tableCell().column(), "columnSpan", hit.tableCell().columnSpan()));
+                                    }
+                                    return value;
+                                }).toList(),
+                                "breaks", candidate.breaks().stream().filter(item -> item.page() == number).map(item -> BindingJson.object("id", item.id(), "path", item.path(), "y", item.y())).toList(),
+                                "imageSpaces", candidate.imageSpaces().stream().filter(item -> item.page() == number)
+                                        .map(item -> BindingJson.object("path", item.path(), "width", item.width(), "height", item.height())).toList()));
                     }
                     json(exchange, BindingJson.object("revision", revision, "previewId", previewId, "pages", pages, "formats", candidate.formats(), "milliseconds", (System.nanoTime() - start) / 1_000_000,
                             "diagnostics", candidate.layout().contextualDiagnostics().stream().map(Object::toString).toList())); return;
@@ -218,6 +229,7 @@ public final class DesignerApp {
                 case "split-cell" -> DesignerTableEdits.split(source, path, text(request, "cell"));
                 case "insert" -> DesignerXml.insert(source, path, text(request, "xml"));
                 case "insert-beside" -> DesignerXml.insertBeside(source, path, text(request, "xml"), Boolean.TRUE.equals(request.get("after")));
+                case "insert-full-width" -> DesignerXml.insertFullWidth(source, path, text(request, "xml"), Boolean.TRUE.equals(request.get("after")));
                 case "start-section" -> DesignerXml.startSection(source, path, text(request, "id"), text(request, "initialId"));
                 case "replace" -> DesignerXml.replace(source, path, text(request, "xml"));
                 case "move" -> {
@@ -277,9 +289,29 @@ public final class DesignerApp {
                 }
                 default -> throw new IllegalArgumentException("unknown resource kind");
             }
-            var candidate = new DesignerProject(builder.build(), history.current().data()); candidate.bundle().compile(); change(candidate);
+            String data = request.containsKey("data") ? text(request, "data") : history.current().data();
+            var candidate = new DesignerProject(builder.build(), data);
+            String source = request.containsKey("source") ? text(request, "source") : candidate.bundle().source();
+            candidate = candidate.source(source, data);
+            if (Boolean.TRUE.equals(request.get("validateLayout"))) {
+                DesignerService.preview(candidate, DesignerService.execution(cancelled::get));
+            }
+            change(candidate);
         }
         private void change(DesignerProject candidate) { history.change(candidate); changed(); }
+        private void restore(Map<String, Object> request) throws Exception {
+            String identity = text(request, "resourceIdentity"), source = text(request, "source"), data = text(request, "data");
+            DesignerProject resources = null, exact = null;
+            for (var project : history.retained()) {
+                if (!resourceIdentity(project.bundle()).equals(identity)) { continue; }
+                resources = project;
+                if (project.bundle().source().equals(source) && project.data().equals(data)) { exact = project; break; }
+            }
+            if (resources == null) { throw new Rejected(409, "资源撤销历史已超出保留范围，请从最近可用的位置继续编辑。"); }
+            // Validate the complete candidate before moving either history stack or the current project.
+            var candidate = exact != null ? exact : resources.source(source, data);
+            history.restore(candidate); changed();
+        }
         private void changed() { revision++; preview = null; previewId = ""; prepared = null; preparedId = ""; }
         private Map<String, Object> state() throws Exception {
             var project = history.current(); var fonts = new ArrayList<Object>();
@@ -288,7 +320,13 @@ public final class DesignerApp {
             return BindingJson.object("revision", revision, "source", project.bundle().source(), "data", project.data(), "outline", entry(DesignerXml.outline(DesignerXml.parse(project.bundle().source()).getDocumentElement(), "")),
                     "fonts", fonts, "images", images, "fragments", project.bundle().fragments(), "licenses", project.bundle().licenses().keySet().stream().sorted().toList(),
                     "resourceIdentity", resourceIdentity(project.bundle()),
+                    "historyResources", historyResourceIdentities(),
                     "canUndo", history.canUndo(), "canRedo", history.canRedo(), "samples", DesignerSamples.catalog());
+        }
+        private List<String> historyResourceIdentities() throws Exception {
+            var identities = new java.util.LinkedHashSet<String>();
+            for (var project : history.retained()) { identities.add(resourceIdentity(project.bundle())); }
+            return List.copyOf(identities);
         }
         private static String resourceIdentity(com.mirakyux.export4j.adapter.template.XmlTemplateBundle bundle) throws Exception {
             var resources = new java.util.TreeMap<String, String>();

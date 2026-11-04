@@ -2,17 +2,17 @@
 'use strict';
 // Workspace presentation owns navigation and disclosure, never the template or layout model.
 const DesignerWorkspace = (() => {
-    const names = {document:'文档',page:'页面',section:'分节',p:'段落',heading:'标题',bullet:'列表项',numbered:'编号项',list:'数据列表',each:'数据循环',table:'表格',rows:'动态表格',row:'行',cell:'单元格',columns:'列设置',column:'列',header:'页眉',footer:'页脚',image:'图片',span:'格式文字',link:'链接',caption:'题注','cross-reference':'交叉引用','page-break':'分页符',box:'定位框',if:'条件',then:'满足条件',else:'其他情况','page-number':'当前页码','page-count':'总页数'};
+    const names = {document:'文档',page:'页面',section:'分节',grid:'栅格',item:'栅格项',p:'段落',heading:'标题',bullet:'列表项',numbered:'编号项',list:'数据列表',each:'数据循环',table:'表格',rows:'动态表格',row:'行',cell:'单元格',columns:'列设置',column:'列',header:'页眉',footer:'页脚',image:'图片',span:'格式文字',link:'链接',caption:'题注','cross-reference':'交叉引用','page-break':'分页符',box:'定位框',if:'条件',then:'满足条件',else:'其他情况',include:'复用片段','style-if':'条件样式',navigation:'导航',bookmark:'书签',contents:'目录',typography:'目录文字样式',color:'目录颜色',notes:'注释集合',note:'注释','page-number':'当前页码','page-count':'总页数'};
     const paths = {
         search:'m21 21-4.5-4.5M19 10.5a8.5 8.5 0 1 1-17 0 8.5 8.5 0 0 1 17 0',
         play:'m8 4 12 8-12 8Z',
         export:'M12 3v12m-5-5 5 5 5-5M5 15v6h14v-6',undo:'M3 10h11a6 6 0 0 1 0 12M3 10l6-6M3 10l6 6',redo:'M21 10H10a6 6 0 0 0 0 12M21 10l-6-6M21 10l-6 6',
         plus:'M12 5v14M5 12h14',chevron:'m9 5 7 7-7 7',focus:'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5',help:'M9 9a3 3 0 1 1 5 2c-1 1-2 1-2 3m0 3h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
         collapse:'m8 8 4 4 4-4m-8 9 4-4 4 4M4 3h16M4 22h16',up:'m5 14 7-7 7 7',down:'m5 10 7 7 7-7',trash:'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',
-        canvas:'M4 3h16v18H4ZM8 7h8M8 11h8M8 15h5',code:'m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18',data:'M20 5c0 2-16 2-16 0s16-2 16 0ZM4 5v14c0 3 16 3 16 0V5M4 12c0 3 16 3 16 0',alert:'M12 3 1 21h22ZM12 9v5m0 3h.01',
-        minimize:'M5 16h14',expand:'m6 14 6-6 6 6',
+        canvas:'M4 3h16v18H4ZM8 7h8M8 11h8M8 15h5',columns:'M3 4h7v16H3ZM14 4h7v16h-7',code:'m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18',data:'M20 5c0 2-16 2-16 0s16-2 16 0ZM4 5v14c0 3 16 3 16 0V5M4 12c0 3 16 3 16 0',alert:'M12 3 1 21h22ZM12 9v5m0 3h.01',
+        minimize:'M5 16h14',expand:'m6 14 6-6 6 6',branches:'M6 5v10a4 4 0 0 0 4 4h6M6 9h6a4 4 0 0 0 4-4M4 3h4v4H4Zm10 0h4v4h-4Zm0 14h4v4h-4Z',
         'sidebar-left':'M3 4h18v16H3ZM9 4v16','sidebar-right':'M3 4h18v16H3ZM15 4v16',structure:'M4 3h6v6H4ZM14 15h6v6h-6ZM7 9v9h7M14 3h6v6h-6ZM10 6h4',
-        text:'M4 5h16M12 5v16M8 21h8',table:'M3 3h18v18H3ZM3 9h18M9 3v18M3 15h18',image:'M3 3h18v18H3Zm0 14 6-6 7 10m-2-4 3-3 4 4M16 7h.01',list:'M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01',folder:'M3 5h6l2 3h10v13H3Z',break:'M4 3v5h16V3M4 21v-5h16v5M2 12h3m3 0h3m3 0h3m3 0h2'
+        grid:'M3 3h7v7H3ZM14 3h7v7h-7ZM3 14h7v7H3ZM14 14h7v7h-7',text:'M4 5h16M12 5v16M8 21h8',table:'M3 3h18v18H3ZM3 9h18M9 3v18M3 15h18',image:'M3 3h18v18H3Zm0 14 6-6 7 10m-2-4 3-3 4 4M16 7h.01',list:'M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01',folder:'M3 5h6l2 3h10v13H3Z',break:'M4 3v5h16V3M4 21v-5h16v5M2 12h3m3 0h3m3 0h3m3 0h2'
     };
     const collapsed = new Set(), groupOpen = new Map();
     let initialized = false, commands = [], commandIndex = 0;
@@ -22,9 +22,10 @@ const DesignerWorkspace = (() => {
         const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',paths[name]||paths.text);svg.append(path);return svg;
     }
     function hydrateIcons(host=document){host.querySelectorAll('[data-icon]').forEach(node=>node.replaceChildren(icon(node.dataset.icon)));}
-    function nodeName(entry){return entry.tag==='header'&&entries.find(item=>item.path===parent(entry.path))?.tag==='table'?'表头':names[entry.tag]||entry.tag;}
+    function bodyColumns(entry){return entry.tag==='columns'&&!['table','rows'].includes(entries.find(item=>item.path===parent(entry.path))?.tag);}
+    function nodeName(entry){return bodyColumns(entry)?'正文分栏':entry.tag==='header'&&entries.find(item=>item.path===parent(entry.path))?.tag==='table'?'表头':names[entry.tag]||entry.tag;}
     function parent(path){return path.slice(0,path.lastIndexOf('/'));}
-    function nodeIcon(entry){return ['table','rows','row','cell','column','columns'].includes(entry.tag)?'table':entry.tag==='image'?'image':['list','bullet','numbered','each'].includes(entry.tag)?'list':entry.tag==='page-break'?'break':entry.tag==='document'?'canvas':entry.tag==='section'?'folder':'text';}
+    function nodeIcon(entry){return ['grid','item'].includes(entry.tag)?'grid':bodyColumns(entry)?'columns':['table','rows','row','cell','column','columns'].includes(entry.tag)?'table':entry.tag==='image'?'image':['list','bullet','numbered','each'].includes(entry.tag)?'list':entry.tag==='page-break'?'break':entry.tag==='document'?'canvas':entry.tag==='section'?'folder':'text';}
     function updateTree() {
         const query=$('tree-search').value.trim().toLowerCase(),matches=new Set();
         if(query)entries.filter(entry=>(entry.label+' '+nodeName(entry)).toLowerCase().includes(query)).forEach(entry=>{matches.add(entry.path);let path=entry.path;while(path){path=parent(path);matches.add(path);}});
@@ -41,7 +42,7 @@ const DesignerWorkspace = (() => {
         const first=document.querySelector('.tree-item:not([hidden])');if(first&&!document.querySelector('.tree-item[tabindex="0"]:not([hidden])'))first.tabIndex=0;
     }
     function decorateTree() {
-        if(!initialized){entries.filter(entry=>['table','rows','columns','row'].includes(entry.tag)||entry.tag==='header'&&entries.find(item=>item.path===parent(entry.path))?.tag==='table').forEach(entry=>collapsed.add(entry.path));initialized=true;}
+        if(!initialized){entries.filter(entry=>['table','rows','columns','row'].includes(entry.tag)&&!bodyColumns(entry)||entry.tag==='header'&&entries.find(item=>item.path===parent(entry.path))?.tag==='table').forEach(entry=>collapsed.add(entry.path));initialized=true;}
         document.querySelectorAll('.tree-item').forEach((item,index)=>{
             const entry=entries[index],children=entries.some(child=>parent(child.path)===entry.path&&child.path!==entry.path);
             item.replaceChildren();item.setAttribute('aria-level',String(entry.depth+1));item.setAttribute('aria-label',nodeName(entry)+(entry.id?' '+entry.id:''));
@@ -58,14 +59,24 @@ const DesignerWorkspace = (() => {
         if(!selected)return;
         let path=selected.path;while(path){path=parent(path);collapsed.delete(path);}updateTree();
         $('inspector-title').textContent=selectedPaths.length>1?'多选属性':nodeName(selected);
-        $('inspector-subtitle').textContent=selectedPaths.length>1?`已选 ${selectedPaths.length} 个元素 · 调整共同属性`:selected.id?'#'+selected.id:selected.label.replace(selected.tag,'').trim()||'设置当前'+nodeName(selected);
+        const subtitle=selectedPaths.length>1?`已选 ${selectedPaths.length} 个元素 · 调整共同属性`:selected.id?'#'+selected.id:'';
+        $('inspector-subtitle').textContent=subtitle;$('inspector-subtitle').hidden=!subtitle;
         const lineage=entries.filter(entry=>entry.path===selected.path||selected.path.startsWith(entry.path+'/')||entry.path==='');
         const crumb=$('selection-crumb');crumb.replaceChildren();
         lineage.forEach((entry,index)=>{
             if(index)crumb.append(icon('chevron'));
             const button=document.createElement('button');button.type='button';button.textContent=nodeName(entry)+(entry.id?' #'+entry.id:'');button.title=entry.label;
             if(entry.path===selected.path)button.setAttribute('aria-current','location');
-            button.addEventListener('click',()=>run(async()=>{await choose(entry);if(selected?.path===entry.path&&mainView==='canvas-view')DesignerCanvas.reveal(entry);}));crumb.append(button);
+            button.dataset.contentPath=entry.path;
+            button.addEventListener('click',()=>run(async()=>{
+                await drafts();
+                const target=entries.find(item=>entry.id?item.id===entry.id:item.path===entry.path);
+                if(!target)return;
+                await choose(target);
+                if(selected?.path!==target.path)return;
+                document.querySelector('[data-inspect="properties"]').click();
+                crumb.querySelector('[aria-current="location"]')?.focus({preventScroll:true});
+            }));crumb.append(button);
         });
         crumb.lastElementChild?.scrollIntoView({block:'nearest',inline:'nearest'});
         groupProperties();
@@ -74,7 +85,7 @@ const DesignerWorkspace = (() => {
         const label=/\.xml$/i.test(name)?name:name==='未命名模板'?'template.xml':name.replace(/\.zip$/i,'')+'.xml';
         for(const id of ['document-filename','navigator-filename'])$(id).textContent=label;
         $('document-dirty').hidden=!changed;
-        $('document-filename').parentElement.title=name+(changed?' · 模板或测试数据有未保存修改':' · 已保存');
+        $('document-filename').parentElement.title=name+(changed?' · 当前会话有未下载的修改':' · 当前会话没有新修改；请以浏览器实际下载的文件为准');
     }
     function editorStatus(area){
         if(!area){
@@ -115,6 +126,15 @@ const DesignerWorkspace = (() => {
         const identity=$('component-identity'),id=host.querySelector('[data-group="标识"]');
         if(identity){identity.replaceChildren();if(id)identity.append(id);}
         const body=$('body-section');if(body)host.prepend(body);
+        const navigation=$('properties').querySelector('[data-content-navigation]');
+        if(navigation){
+            const reference=host.querySelector('[data-group="数据与引用"]');
+            const condition=host.querySelector('[data-condition-editor]');
+            if(condition)condition.after(navigation);
+            else if(reference&&['if','each','list','rows','include'].includes(selected.tag))reference.after(navigation);
+            else if(body&&!body.hidden)body.after(navigation);
+            else host.prepend(navigation);
+        }
         const resources=$('used-resources');if(resources)$('properties').append(resources);
     }
     function reportItem(item, exporting) {
@@ -234,7 +254,7 @@ const DesignerWorkspace = (() => {
     const toolNames={'navigator-view':'文档结构','resources-view':'项目资源','data-view':'测试数据','diagnostics-view':'诊断'};
     const dock={panel:'navigator-view',position:'left'};
     let mainView='canvas-view',viewPending=false,requestedOpen;
-    function toolVisible(){return shell.navigator&&!document.body.classList.contains('focus-mode');}
+    function toolVisible(){return (compactLayout()?overlayPanel==='navigator':shell.navigator)&&!document.body.classList.contains('focus-mode');}
     function saveDock(){try{localStorage.setItem(dockKey,JSON.stringify(dock));}catch{}}
     function viewUrl(){
         const params=new URLSearchParams(location.search);params.set('view',mainView.replace('-view',''));
@@ -288,25 +308,47 @@ const DesignerWorkspace = (() => {
     const shellKey='export4j.designer.workbench.v2';
     const shellDefaults={navigator:true,inspector:true,navWidth:280,inspectorWidth:288};
     const shell={...shellDefaults};
-    let mobileInspectorOpen=false;
-    const narrow=()=>matchMedia('(max-width:700px)').matches;
+    let overlayPanel=null,overlayReturnFocus=null,lastCompact;
+    const compactLayout=()=>matchMedia('(max-width:1100px)').matches;
+    const inspectorVisible=()=> (compactLayout()?overlayPanel==='inspector':shell.inspector)&&!document.body.classList.contains('focus-mode');
+    function restorePanelFocus(name){
+        const saved=overlayReturnFocus;overlayReturnFocus=null;
+        const fallback=name==='navigator'?document.querySelector(`[data-tool][data-view="${dock.panel}"]`):document.querySelector('.workspace-actions [data-toggle-panel="inspector"]');
+        const target=saved?.isConnected&&saved.getClientRects().length&&!saved.closest('#navigator-panel,#inspector-panel')?saved:fallback;
+        target?.focus({preventScroll:true});
+    }
+    function closeOverlay(restore=true){
+        const previous=overlayPanel;if(!previous)return;
+        overlayPanel=null;layoutShell();viewUrl();editorStatus();
+        if(restore)restorePanelFocus(previous);else overlayReturnFocus=null;
+    }
     function saveShell(){try{localStorage.setItem(shellKey,JSON.stringify(shell));}catch{}}
     function sideBounds(name){
         const workspace=document.querySelector('.workspace'),other=name==='navWidth'?'inspector':'navigator';
         const otherSize=shell[other]&&!document.body.classList.contains('focus-mode')?document.querySelector(other==='navigator'?'.structure':'.inspector').getBoundingClientRect().width:0;
-        const max=Math.max(0,Math.min(name==='navWidth'?420:480,workspace.clientWidth-44-8-240-otherSize));
+        const max=Math.max(0,Math.min(name==='navWidth'?420:480,workspace.clientWidth-44-8-480-otherSize));
         return {min:Math.min(name==='navWidth'?220:240,max),max};
     }
     function layoutShell(){
-        const workspace=document.querySelector('.workspace'),focused=document.body.classList.contains('focus-mode');
-        workspace.classList.toggle('navigator-hidden',!shell.navigator);workspace.classList.toggle('inspector-hidden',!shell.inspector);workspace.classList.toggle('mobile-inspector-open',mobileInspectorOpen);
+        const workspace=document.querySelector('.workspace'),focused=document.body.classList.contains('focus-mode'),compact=compactLayout();
+        if(lastCompact!==compact){overlayPanel=null;overlayReturnFocus=null;lastCompact=compact;}
+        const navVisible=toolVisible(),inspectVisible=inspectorVisible(),overlayOpen=compact&&!focused&&!!overlayPanel;
+        workspace.classList.toggle('compact-layout',compact);workspace.classList.toggle('panel-overlay-open',overlayOpen);
+        workspace.classList.toggle('navigator-hidden',!navVisible);workspace.classList.toggle('inspector-hidden',!inspectVisible);
+        $('panel-backdrop').hidden=!overlayOpen;$('editor-space').inert=overlayOpen;
+        for(const [name,id,visible] of [['navigator','navigator-panel',navVisible],['inspector','inspector-panel',inspectVisible]]){
+            const panel=$(id),modal=overlayOpen&&overlayPanel===name;
+            if(modal){panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.tabIndex=-1;}
+            else{panel.removeAttribute('role');panel.removeAttribute('aria-modal');panel.removeAttribute('tabindex');}
+            if(!visible&&panel.contains(document.activeElement))document.querySelector(`.workspace-actions [data-toggle-panel="${name}"]`)?.focus({preventScroll:true});
+        }
         let nav=Math.max(220,Math.min(420,shell.navWidth)),inspector=Math.max(240,Math.min(480,shell.inspectorWidth));
-        const budget=workspace.clientWidth-44-(shell.navigator?4:0)-(shell.inspector?4:0)-240;
-        if(shell.navigator&&shell.inspector&&nav+inspector>budget){
+        const budget=workspace.clientWidth-44-(navVisible?4:0)-(inspectVisible?4:0)-480;
+        if(!compact&&navVisible&&inspectVisible&&nav+inspector>budget){
             const reduceNav=Math.min(nav-220,nav+inspector-budget);nav-=Math.max(0,reduceNav);
             inspector=Math.max(240,Math.min(inspector,budget-nav));
-        }else if(shell.navigator&&!shell.inspector)nav=Math.min(nav,budget);
-        else if(shell.inspector&&!shell.navigator)inspector=Math.min(inspector,budget);
+        }else if(!compact&&navVisible&&!inspectVisible)nav=Math.min(nav,budget);
+        else if(!compact&&inspectVisible&&!navVisible)inspector=Math.min(inspector,budget);
         workspace.style.setProperty('--nav-width',nav+'px');workspace.style.setProperty('--inspector-width',inspector+'px');
         for(const [name,id] of [['navWidth','navigator-resizer'],['inspectorWidth','inspector-resizer']]){
             const bounds=sideBounds(name),element=$(id);
@@ -314,18 +356,27 @@ const DesignerWorkspace = (() => {
             element.setAttribute('aria-valuenow',String(Math.round(name==='navWidth'?nav:inspector)));
         }
         document.querySelectorAll('[data-toggle-panel]').forEach(button=>{
-            const active=shell[button.dataset.togglePanel]&&!focused&&(button.dataset.togglePanel!=='inspector'||!narrow()||mobileInspectorOpen);
+            const active=button.dataset.togglePanel==='navigator'?navVisible:inspectVisible;
             button.setAttribute('aria-pressed',String(active));button.setAttribute('aria-controls',button.dataset.togglePanel==='navigator'?'navigator-panel':'inspector-panel');
         });
         layoutDock();
     }
-    function togglePanel(name,force){
-        const active=(name==='inspector'&&narrow()?mobileInspectorOpen:shell[name])&&!document.body.classList.contains('focus-mode'),open=force??!active;
-        if(name==='inspector'&&narrow())mobileInspectorOpen=open;
+    function togglePanel(name,force,{focus=true}={}){
+        const compact=compactLayout(),active=(compact?overlayPanel===name:shell[name])&&!document.body.classList.contains('focus-mode'),open=force??!active;
         const panel=$(name==='navigator'?'navigator-panel':'inspector-panel');
-        if(!open&&panel.contains(document.activeElement)){if(name==='navigator')document.querySelector(`[data-tool][data-view="${dock.panel}"]`).focus();else document.querySelector('.workspace-actions [data-toggle-panel="inspector"]').focus();}
-        shell[name]=open;document.body.classList.remove('focus-mode');$('focus-mode').setAttribute('aria-pressed','false');layoutShell();saveShell();viewUrl();editorStatus();
+        if(compact){
+            if(!open){closeOverlay();return;}
+            if(overlayPanel!==name)overlayReturnFocus=document.activeElement;
+            overlayPanel=name;
+        }else{
+            if(!open&&panel.contains(document.activeElement)){if(name==='navigator')document.querySelector(`[data-tool][data-view="${dock.panel}"]`).focus();else document.querySelector('.workspace-actions [data-toggle-panel="inspector"]').focus();}
+            shell[name]=open;saveShell();
+        }
+        document.body.classList.remove('focus-mode');$('focus-mode').setAttribute('aria-pressed','false');layoutShell();viewUrl();editorStatus();
+        if(compact&&open&&focus)panel.focus({preventScroll:true});
     }
+    function openInspector({focus=false}={}){togglePanel('inspector',true,{focus});}
+    async function returnToCanvas(){await openView('canvas-view');closeOverlay(false);}
     function bindResize(id,key,vertical,reverse,bounds){
         const separator=$(id);let gesture;const reversed=()=>typeof reverse==='function'?reverse():reverse;
         separator.title='拖动调整；方向键微调，Shift 加快，Home 最小，End 最大';
@@ -364,12 +415,24 @@ const DesignerWorkspace = (() => {
         document.querySelectorAll('[data-open-view]').forEach(button=>button.addEventListener('click',()=>openView(button.dataset.openView)));
         document.querySelectorAll('[data-command]').forEach(button=>button.addEventListener('click',()=>$(button.dataset.command).click()));
         $('reset-layout').addEventListener('click',()=>{
-            Object.assign(shell,shellDefaults);mobileInspectorOpen=false;document.body.classList.remove('focus-mode');$('focus-mode').setAttribute('aria-pressed','false');
+            Object.assign(shell,shellDefaults);overlayPanel=null;overlayReturnFocus=null;document.body.classList.remove('focus-mode');$('focus-mode').setAttribute('aria-pressed','false');
             Object.assign(dock,{position:'left',panel:'navigator-view'});layoutShell();saveShell();saveDock();viewUrl();editorStatus();
         });
         bindResize('navigator-resizer','navWidth',false,()=>dock.position==='right',()=>sideBounds('navWidth'));
         bindResize('inspector-resizer','inspectorWidth',false,true,()=>sideBounds('inspectorWidth'));
-        layoutShell();openView(mainView);new ResizeObserver(layoutShell).observe(document.querySelector('.workspace'));
+        $('panel-backdrop').addEventListener('click',()=>closeOverlay());
+        document.addEventListener('keydown',event=>{
+            if(!compactLayout()||!overlayPanel||document.querySelector('dialog[open]'))return;
+            if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();closeOverlay();return;}
+            if(event.key!=='Tab')return;
+            const panel=$(overlayPanel==='navigator'?'navigator-panel':'inspector-panel'),items=[...panel.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),summary,[tabindex="0"],[contenteditable="true"]')].filter(node=>node.getClientRects().length&&!node.closest('[hidden]'));
+            const first=items[0],last=items.at(-1),current=document.activeElement;
+            if(!first){event.preventDefault();panel.focus();}
+            else if(event.shiftKey&&(current===first||!panel.contains(current)||current===panel)){event.preventDefault();last.focus();}
+            else if(!event.shiftKey&&(current===last||!panel.contains(current)||current===panel)){event.preventDefault();first.focus();}
+        },true);
+        layoutShell();if(requestedOpen===true&&compactLayout())togglePanel('navigator',true);
+        openView(mainView);new ResizeObserver(layoutShell).observe(document.querySelector('.workspace'));
     }
     function start(){
         hydrateIcons();$('save-menu').addEventListener('click',()=>$('save').click());
@@ -410,5 +473,5 @@ const DesignerWorkspace = (() => {
         startDock();
         startShell();
     }
-    return {start,decorateTree,selection,report,openView,documentState,editorStatus,names};
+    return {start,decorateTree,selection,report,openView,documentState,editorStatus,openInspector,returnToCanvas,names};
 })();

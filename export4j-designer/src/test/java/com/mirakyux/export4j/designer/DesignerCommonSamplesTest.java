@@ -34,7 +34,7 @@ class DesignerCommonSamplesTest {
         var catalog = DesignerSamples.catalog();
         assertEquals(List.of("巡检报告", "密集静态表单", "分页长表", "目录与交叉引用", "药品不良反应报告表"),
                 catalog.subList(0, 5).stream().map(value -> value.get("name")).toList());
-        assertEquals(11, catalog.size());
+        assertEquals(14, catalog.size());
         for (var fixture : FIXTURES) {
             var entry = catalog.get(fixture.index());
             assertEquals(fixture.index(), entry.get("index"));

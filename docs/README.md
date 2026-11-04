@@ -8,14 +8,14 @@ Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导�
 | --- | --- |
 | 编写报告与表单 | [常用编写](authoring-api.md) · [链式 API](fluent-api.md) · [组件](components-api.md) · [静态表单](static-forms-api.md) |
 | 配置字体和样式 | [字体／文字](text-api.md) · [主题](themes-api.md) · [原生 OpenType](native-opentype-api.md) · [字体来源与许可](../assets/fonts/README.md) |
-| 调整布局与页区 | [布局](layout-api.md) · [连续分栏](continuous-columns-api.md) · [轮廓浮动](contour-floats-api.md) · [页区变体](page-variants-api.md) · [背景／前景](page-overlays-api.md) |
+| 调整布局与页区 | [布局](layout-api.md) · [可编辑栅格](grid-layout-api.md) · [正文分栏与通栏图表](column-flow-api.md) · [连续分栏组件](continuous-columns-api.md) · [轮廓浮动](contour-floats-api.md) · [页区变体](page-variants-api.md) · [背景／前景](page-overlays-api.md) |
 | 编写表格和长表 | [语义表格](table-api.md) · [合并列](column-spans-api.md) · [合并行](row-spans-api.md) · [块格与内表](block-cells-api.md) · [单向长表](streaming-table-api.md) · [重放与磁盘索引 PDF](streaming-replay-api.md) |
 | 添加导航和字段 | [行内字段](inline-fields-api.md) · [可编辑表单](form-styles-api.md) · [可保存导航](portable-navigation-api.md) |
-| 使用可视化模板设计器 | [HTML 设计器](designer.md) · [业务样例及验收](verification/phase-108-designer-and-business-scenarios.md) · [连续画布与交互验收](verification/phase-110-designer-canvas-and-interactions.md) · [表格样式与合并验收](verification/phase-111-designer-table-styles.md) |
+| 使用可视化模板设计器 | [HTML 设计器](designer.md) · [容器内部编辑](designer.md#容器内部编辑) · [变量与数组绑定](designer.md#变量与数组绑定) · [业务样例及验收](verification/phase-108-designer-and-business-scenarios.md) · [连续画布与交互验收](verification/phase-110-designer-canvas-and-interactions.md) · [表格样式与合并验收](verification/phase-111-designer-table-styles.md) · [栅格创作与交互验收](verification/designer-grid-ux.md) · [变量和数组绑定验收](verification/designer-bindings-ux.md) · [容器编辑交互验收](verification/designer-container-ux.md) · [编辑流程补齐验收](verification/designer-workflow-closure.md) · [表格、容器与分栏编辑验收](verification/designer-workflow-v2.md) |
 | 使用 XML／Markdown 模板 | [XML](xml-template-api.md) · [模板主题](xml-themes-api.md) · [页区](xml-page-regions-api.md) · [分节](xml-sections-api.md) · [严格 Markdown 模板](markdown-template-api.md) |
 | 保存模板和恢复文档 | [模板资源 ZIP](xml-template-bundle-api.md) · [语义模型保存为 XML](xml-model-saving-api.md) · [可选文档模型恢复](model-recovery-api.md) |
 | 导入、编辑与互转 | [统一转换](document-conversion-api.md) · [语义编辑及损失报告](semantic-editing-api.md) · [通用 Markdown 导入](markdown-import-api.md) · [HTML/CSS 导入](html-import-api.md) · [HTML／Markdown 导出](web-export-api.md) |
-| 处理 DOCX | [原生语义与编辑](docx-semantic-api.md) · [原包文字编辑](docx-editing-api.md) · [页区](docx-page-regions-api.md) · [字段](docx-fields-api.md) · [样式导入](docx-style-import-api.md) |
+| 处理 DOCX | [原生语义与编辑](docx-semantic-api.md) · [原生数学公式](docx-math-api.md) · [原包文字编辑](docx-editing-api.md) · [页区](docx-page-regions-api.md) · [字段](docx-fields-api.md) · [样式导入](docx-style-import-api.md) |
 | 处理已有 PDF | [入口与边界](pdf-adapter-api.md) · [页面](pdf-page-editing-api.md) · [对象](pdf-object-editing-api.md) · [组合](pdf-object-composition-api.md) · [渲染／图片](pdf-raster-api.md) · [优化](pdf-optimization-api.md) |
 | 修改和恢复 PDF 内容 | [文字替换](pdf-text-editing-api.md) · [图片替换](pdf-image-editing-api.md) · [两种脱敏模式](pdf-redaction-api.md) · [语义恢复](pdf-semantic-import-api.md) · [源字体兼容](pdf-font-compatibility-api.md) · [被动结构兼容](pdf-passive-structures-api.md) |
 | 使用 PDF 标准与签名 | [PDF/A／PDF/UA／PAdES](pdf-standards-api.md) · [认证与 DocMDP](pdf-certification-api.md) · [已有签名校验](pdf-signature-verification-api.md) · [表单数据](pdf-form-data-api.md) |

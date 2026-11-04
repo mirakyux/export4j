@@ -4,6 +4,7 @@ package com.mirakyux.export4j.adapter.template;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.ColumnFlow;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
@@ -63,6 +64,26 @@ class XmlTemplateWriterTest {
             .pagination(PaginationPolicy.BALANCED).build();
     private static final InlineStyle STYLE = new InlineStyle("accent", 10, 0x224488, -2, true, true);
 
+    @Test void renamedListIdsDoNotMergeIndependentListsAcrossSections() throws IOException {
+        var source = new SectionedDocument(DocumentMetadata.EMPTY, List.of(
+                new Section("first", PAGE, List.of(new NumberedItem("n1", "list@x", "First list", 0, FORMAT)), 1),
+                new Section("second", PAGE, List.of(new NumberedItem("n2", "saved-1", "Independent list", 0, FORMAT),
+                        new NumberedItem("n3", "list@x", "First list continued", 0, FORMAT)), 0)));
+        for (var action : List.of(ProcessingPolicy.Action.WARN, ProcessingPolicy.Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().feature("IDENTIFIER", action, ProcessingPolicy.Treatment.DEGRADE).build();
+            var prepared = XmlTemplateWriter.from(source).policy(policy).prepare();
+            var restored = prepared.bundle().compile().renderSections(Map.of());
+            var first = assertInstanceOf(NumberedItem.class, restored.sections().getFirst().blocks().getFirst());
+            var independent = assertInstanceOf(NumberedItem.class, restored.sections().getLast().blocks().getFirst());
+            var continued = assertInstanceOf(NumberedItem.class, restored.sections().getLast().blocks().getLast());
+            assertFalse(first.listId().equals(independent.listId()));
+            assertEquals("saved-1", independent.listId());
+            assertEquals(first.listId(), continued.listId());
+            assertEquals(1, prepared.preview().losses().size());
+            assertEquals(restored, XmlTemplateWriter.from(restored).prepare().bundle().compile().renderSections(Map.of()));
+        }
+    }
+
     @Test void richSemanticValuesSurviveZipReopenAndRepeatedXmlSaving() throws IOException {
         var source = rich();
         var prepared = XmlTemplateWriter.from(source).font("Regular.ttf", new byte[]{1, 2, 3}).license("Font.txt", "Original\r\n").prepare();
@@ -75,6 +96,42 @@ class XmlTemplateWriterTest {
         var again = XmlTemplateWriter.from(reopened.compile().render(Map.of())).prepare();
         assertEquals(prepared.bundle().source(), again.bundle().source());
         assertEquals(source, XmlTemplateBundle.read(again.bundle().encode()).compile().render(Map.of()));
+    }
+
+    @Test void continuousColumnsSurviveRepeatedZipSavingWithRichContentAndSharedBudgets() throws IOException {
+        var rich = rich();
+        for (var weights : List.of(List.<Double>of(), List.of(1.0, 2.0, 1.0))) {
+            var flow = new ColumnFlow("article", List.of(rich.blocks().get(1), rich.blocks().get(4)), 3, 17.25, false, weights);
+            var source = new Document(rich.metadata(), PAGE, List.of(rich.blocks().getFirst(), rich.blocks().get(3), flow,
+                    rich.blocks().getLast()));
+            var prepared = XmlTemplateWriter.from(source).prepare();
+            assertTrue(prepared.preview().issues().isEmpty());
+            assertTrue(prepared.bundle().source().contains("<columns id=\"article\" count=\"3\" gap=\"17.25\" balanced=\"false\""));
+            var reopened = XmlTemplateBundle.read(prepared.bundle().encode()).compile().render(Map.of());
+            assertEquals(source, reopened);
+            var again = XmlTemplateWriter.from(reopened).prepare();
+            assertEquals(prepared.bundle().source(), again.bundle().source());
+            assertEquals(source, XmlTemplateBundle.read(again.bundle().encode()).compile().render(Map.of()));
+            assertThrows(IllegalArgumentException.class, () -> XmlTemplateWriter.from(source)
+                    .limits(new XmlTemplateWriter.Limits(3, 100, 100)).prepare());
+        }
+    }
+
+    @Test void fullWidthTableAndImageBetweenColumnFlowsRetainTheirBodyBoundaries() throws IOException {
+        var source = new Document(DocumentMetadata.EMPTY, PAGE, List.of(
+                new ColumnFlow("before", List.of(paragraph("lead", "First columns")), 2, 18, true),
+                rich().blocks().get(4),
+                Paragraph.mixed("wide-image", List.of(new InlineImage(image(), 300, 90, 0, "Full width", "https://example.com/image")), FORMAT),
+                new ColumnFlow("after", List.of(paragraph("tail", "Resumed columns")), 3, 12, false, List.of(1.0, 2.0, 1.0))));
+        var bundle = XmlTemplateWriter.from(source).prepare().bundle();
+        var restored = XmlTemplateBundle.read(bundle.encode()).compile().render(Map.of());
+        assertEquals(source, restored);
+        assertEquals(List.of("before", "table", "wide-image", "after"), restored.blocks().stream().map(Block::id).toList());
+        assertInstanceOf(ColumnFlow.class, restored.blocks().getFirst());
+        assertInstanceOf(Table.class, restored.blocks().get(1));
+        assertEquals(300, assertInstanceOf(Paragraph.class, restored.blocks().get(2)).images().getFirst().image().width());
+        assertInstanceOf(ColumnFlow.class, restored.blocks().getLast());
+        assertEquals(source, XmlTemplateWriter.from(restored).prepare().bundle().compile().render(Map.of()));
     }
 
     @Test void borderlessTableDeclarationSurvivesBundleAndNestedTemplateExpansion() throws IOException {

@@ -8,6 +8,13 @@ let assetKind, pendingFont, dragging, nodeXmlDirty=false, nodeTextDirty=false;
 let previewId = '', previewGeneration = 0, previewTimer, previewQueue = Promise.resolve(), previewFormats = {};
 const changedAttributes = new Set();
 const extensions = {PDF:'pdf', DOCX:'docx', HTML:'html', MARKDOWN:'md', SVG:'svg.zip', PNG:'png.zip'};
+const gridLayouts = [
+    {id:'full',label:'通栏',spans:[12]},
+    {id:'halves',label:'两等分',spans:[6,6]},
+    {id:'thirds',label:'三等分',spans:[4,4,4]},
+    {id:'wide-left',label:'左宽右窄',spans:[8,4]},
+    {id:'wide-right',label:'左窄右宽',spans:[4,8]}
+];
 
 async function request(path, payload, blob = false) {
     const response = await fetch('/api/' + path, {
@@ -30,7 +37,9 @@ function status(text, error = false) {
 async function run(work) {
     if (busy) return;
     busy = true; document.body.classList.add('busy');$('cancel').hidden=false;BodyEditor.lock(true);
-    document.querySelectorAll('button,select,textarea,input:not([type=file])').forEach(control => control.disabled = control.id !== 'cancel');
+    document.querySelectorAll('button,select,textarea,input:not([type=file])').forEach(control => {
+        if(!control.closest('#studio-container-inspector'))control.disabled = control.id !== 'cancel';
+    });
     try { DesignerStudio.sync(); await DesignerStudioBridge.settled(); await work(); }
     catch (error) {
         const report={...(error.report||($('export-dialog').open?exportReport:undefined)),error:error.message};
@@ -46,7 +55,9 @@ async function run(work) {
         } else diagnostics(report);
     } finally {
         busy = false; document.body.classList.remove('busy');$('cancel').hidden=true;
-        document.querySelectorAll('button,select,textarea,input').forEach(control => control.disabled = false);
+        document.querySelectorAll('button,select,textarea,input').forEach(control => {
+            if(!control.closest('#studio-container-inspector'))control.disabled = false;
+        });
         $('cancel').disabled = true; refreshButtons();
         document.dispatchEvent(new Event('designer-idle'));DesignerStudio.sync();
     }
@@ -58,12 +69,36 @@ function refreshButtons() {
     $('download-loss-report').disabled = busy || !exportReport;
     $('previous').disabled = busy || currentPage <= 0;
     $('next').disabled = busy || currentPage >= pages.length - 1;
+    const owner = selected && insertionOwner(nodeAt(selected.path));
+    for(const id of ['up','down'])$(id).disabled=busy||selectedPaths.some(path=>entries.find(entry=>entry.path===path)?.tag==='item');
+    document.querySelectorAll('[data-insert]').forEach(button=>{const allowed=canInsertAt(button.dataset.insert,owner);button.disabled=busy||!allowed;button.title=allowed?(button.dataset.insert==='grid'?'并排放置独立图文，各格内容不串流。':'点击插入到当前选择的位置。'):'当前位置不支持此容器；请选择文档或分节正文中的组件。';});
     if ($('apply-rich')) $('apply-rich').disabled = busy || !selected || !['p','heading','bullet','numbered','cell','link'].includes(selected.tag);
-    document.querySelectorAll('#properties input,#properties select,#properties textarea,#properties button').forEach(control=>control.disabled=busy);
+    // React owns availability inside its container inspector, including busy and pending states.
+    document.querySelectorAll('#properties input,#properties select,#properties textarea,#properties button').forEach(control=>{
+        if(!control.closest('#studio-container-inspector'))control.disabled=busy||control.dataset.inlineUnavailable==='true'||control.dataset.requiresColumnChild==='true'||control.dataset.requiresGridTracks==='true'||control.dataset.requiresGridRotation==='true'||control.dataset.gridDisabled==='true'||control.dataset.containerDisabled==='true'||control.dataset.conditionProtected==='true';
+    });
     document.querySelectorAll('#node-source textarea,#node-source button').forEach(control=>control.disabled=busy||Editor.richDirty);
     for (const id of ['source','data']) $(id).disabled=busy||propertyDirty;
     document.querySelectorAll('[data-command]').forEach(button=>button.disabled=$(button.dataset.command).disabled);
     BodyEditor.lock(busy||nodeXmlDirty);
+}
+function inBodyColumns(node) {
+    for(let current=node;current;current=current.parentElement){if(current.tagName==='columns'&&!['table','rows'].includes(current.parentElement?.tagName||''))return true;}
+    return false;
+}
+function insertionOwner(target, placement) {
+    if(placement&&!placement.container)return target.parentElement;
+    const container=['document','section','then','else','each','cell','grid','item'].includes(target.tagName)||target.tagName==='columns'&&!['table','rows'].includes(target.parentElement?.tagName||'');
+    return container?target:target.parentElement;
+}
+function canInsertColumns(owner) {
+    return !!owner&&['document','section','then','else','each'].includes(owner.tagName)&&!owner.closest('header,footer,cell,table,rows,columns,grid,item,box');
+}
+function canInsertAt(tag,owner){
+    if(!owner)return true;
+    if(owner.closest('grid')&&!owner.closest('item'))return false;
+    if((inBodyColumns(owner)||owner.closest('item')||owner.closest('cell'))&&!['p','table','image'].includes(tag))return false;
+    return !['columns','grid'].includes(tag)||canInsertColumns(owner);
 }
 function diagnostics(report) {
     lastReport = report;
@@ -87,6 +122,7 @@ function flatten(entry, depth = 0) {
     entries.push({...entry, depth}); entry.children.forEach(child => flatten(child, depth + 1));
 }
 function install(value, changed = true, options = {}) {
+    if(options.session){clearPreview();selected=undefined;selectedPaths=[];}
     DesignerStudioBridge.accepted(value,options);
     const oldId = selected?.id, oldPath = selected?.path, oldSelections = selectedPaths.map(path => entries.find(entry => entry.path === path)).filter(Boolean);
     state = value; $('source').value = value.source; $('data').value = value.data;
@@ -112,7 +148,9 @@ function install(value, changed = true, options = {}) {
     DesignerAssets.install(value.images);
     list('fragments-list', Object.keys(value.fragments)); list('licenses-list', value.licenses);
     inspect(); invalidate(); markDirty(); refreshButtons();
-    if (busy) document.querySelectorAll('button,select,textarea,input:not([type=file])').forEach(control=>control.disabled=control.id!=='cancel');
+    if (busy) document.querySelectorAll('button,select,textarea,input:not([type=file])').forEach(control=>{
+        if(!control.closest('#studio-container-inspector'))control.disabled=control.id!=='cancel';
+    });
 }
 function list(id, values) {
     $(id).replaceChildren();
@@ -165,7 +203,9 @@ function inspect() {
 function attributeRow(name = '', value = '', mixed = false) {
     const row = document.createElement('div'); row.className = 'attribute-row';
     const key = document.createElement('input'); key.value = name; key.placeholder = '属性名'; key.setAttribute('aria-label','属性名');
-    const input = document.createElement('input'); input.value = value; input.placeholder = mixed ? '多个值' : '属性值'; input.setAttribute('aria-label', name ? name + ' 属性值' : '属性值');
+    const input = document.createElement(name === 'value' && selected?.tag === 'if' ? 'textarea' : 'input');
+    if(input.tagName==='TEXTAREA')input.rows=2;
+    input.value = value; input.placeholder = mixed ? '多个值' : '属性值'; input.setAttribute('aria-label', name ? name + ' 属性值' : '属性值');
     const remove = document.createElement('button'); remove.textContent = '×'; remove.title = '移除此属性';
     remove.addEventListener('click', () => { row.remove(); changedAttributes.add(name); propertyDirty = true; nodeDirtyLabel(); schedulePreview(); });
     for (const field of [key,input]) field.addEventListener('input', () => { changedAttributes.add(name); changedAttributes.add(key.value.trim()); propertyDirty = true; nodeDirtyLabel(); schedulePreview(); });
@@ -197,14 +237,36 @@ async function edit(operation, render = true) {
         if (moved) { await choose(moved); DesignerCanvas.reveal(moved); }
     }
 }
+function clearPreview(){
+    clearTimeout(previewTimer);++previewGeneration;
+    pages=[];previewId='';previewFormats={};currentPage=0;
+    DesignerCanvas.clear();$('container-template-state')?.remove();$('pages').hidden=false;
+    $('page-jump').replaceChildren();$('page-number').textContent='— / —';
+    $('empty-preview').hidden=false;$('empty-preview').querySelector('p').textContent='正在等待当前模板的引擎预览。';
+}
 async function preview(generation=++previewGeneration) {
     clearTimeout(previewTimer);
-    const payload={source:Editor.pageDraftSource(draftSource()),data:$('data').value};
+    const source=draftSource(),session=DesignerStudioBridge.snapshot().session;
+    const payload={source:Editor.pageDraftSource(source),data:$('data').value};
+    const identity={...payload,resourceIdentity:state.resourceIdentity};
+    DesignerStudioBridge.previewing(identity);
     status('正在排版文档…');
     let result;
-    try{result=await request('preview',payload);}catch(error){if(generation===previewGeneration)DesignerStudioBridge.previewFailed();throw error;}
-    if(generation!==previewGeneration)return;
-    DesignerStudioBridge.previewed(draftSource());
+    try{result=await request('preview',payload);}catch(error){
+        if(generation!==previewGeneration||session!==DesignerStudioBridge.snapshot().session)return;
+        if(generation===previewGeneration){
+            if(!DesignerStudioBridge.previewFailed(identity))return;
+            if(/\bEMPTY_TABLE\b/.test(error.message)){
+                showContainerTemplateState();$('preview-status').textContent='当前数据未生成表格行 · 可继续编辑模板';
+                status('当前数据未生成表格正文行。可以编辑行模板，加载记录后再检查分页。');return;
+            }
+            if(!pages.length){$('empty-preview').hidden=false;$('empty-preview').querySelector('p').textContent='当前模板未生成预览：'+error.message;$('preview-status').textContent='当前模板预览未生成';}
+        }
+        throw error;
+    }
+    if(generation!==previewGeneration||session!==DesignerStudioBridge.snapshot().session)return;
+    $('container-template-state')?.remove();$('pages').hidden=false;
+    if(!DesignerStudioBridge.previewed(source,identity))return;
     pages = result.pages; previewId=result.previewId; previewFormats=result.formats||{};
     diagnostics({milliseconds:result.milliseconds, pages:pages.length, diagnostics:result.diagnostics});
     DesignerCanvas.render(); $('preview-status').textContent = result.milliseconds + ' ms · ' + pages.length + ' 页'; status('预览完成 · ' + pages.length + ' 页');
@@ -222,7 +284,7 @@ function schedulePreview() {
 }
 function attributeValues(){
     const values={};
-    document.querySelectorAll('.attribute-row').forEach(row=>{const fields=row.querySelectorAll('input'),name=fields[0].value.trim();if(name){if(Object.hasOwn(values,name))throw new Error('属性名不能重复。');values[name]=fields[1].value;}});
+    document.querySelectorAll('.attribute-row').forEach(row=>{const fields=row.querySelectorAll('input,textarea'),name=fields[0].value.trim();if(name){if(Object.hasOwn(values,name))throw new Error('属性名不能重复。');values[name]=fields[1].value;}});
     return values;
 }
 function draftNode(document,path) {
@@ -261,6 +323,7 @@ function draftSource(){
             if(selectedPaths.length===1&&nodeTextDirty&&!$('node-text').readOnly)node.textContent=$('node-text').value;
         });
     }
+    if([...changedAttributes].some(name=>['row','column-start','column-span'].includes(name)))DesignerStudio.sortGridItems(document);
     return new XMLSerializer().serializeToString(document);
 }
 function nodeForPath(document,path){let node=document.documentElement;if(path)path.slice(1).split('/').forEach(index=>node=node.children[Number(index)]);return node;}
@@ -297,23 +360,143 @@ async function bytes(file) {
 function textFile(file) { if (file.size > 4_000_000) throw new Error('文本文件超过 4,000,000 字节。'); return file.arrayBuffer().then(buffer => new TextDecoder('utf-8',{fatal:true}).decode(buffer)); }
 function nextId() { let n = 1; while (state.source.includes('design-' + n)) n++; return 'design-' + n; }
 function listBinding() {
-    const data = JSON.parse(state.data), identifier = /^[A-Za-z_][A-Za-z_0-9]*$/;
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('测试数据必须是 JSON 对象。');
-    const arrays = Object.entries(data).filter(([name,value]) => identifier.test(name) && Array.isArray(value));
-    const selected = arrays.find(([name]) => name === 'items') ?? arrays[0];
-    if (!selected) {
-        let name = 'items', suffix = 1;
-        while (Object.hasOwn(data,name)) name = 'items' + ++suffix;
-        data[name] = [{name:'示例项'}];
-        return {path:name, expression:'item.name', data:JSON.stringify(data,null,2)};
-    }
-    const [path,items] = selected, sample = items.find(item => item !== null);
-    const field = sample && typeof sample === 'object' && !Array.isArray(sample)
-        ? (Object.keys(sample).find(key => key === 'name') ?? Object.keys(sample).find(key => identifier.test(key))) : undefined;
-    return {path, expression:field ? 'item.' + field : 'item'};
+    return DesignerBindings.listFallback(state.data);
 }
+function bindingNodePath(node){const parts=[];while(node?.parentElement){parts.unshift([...node.parentElement.children].indexOf(node));node=node.parentElement;}return parts.length?'/'+parts.join('/'):'';}
+function gridLayoutPreview(spans) {
+    const preview=document.createElement('span');preview.className='grid-layout-preview';preview.setAttribute('aria-hidden','true');
+    for(const span of spans){const part=document.createElement('span');part.style.flex=String(span);preview.append(part);}
+    return preview;
+}
+function pickGridLayout({allowSelection=false}={}) {
+    return new Promise(resolve=>{
+        const dialog=$('grid-layout-dialog'),choices=$('grid-layout-choices');choices.replaceChildren();
+        const offering=allowSelection&&selectedPaths.length>1,selection=$('grid-selection-toggle');$('grid-selection-option').hidden=!offering;
+        const reason=offering?DesignerStudio.gridSelectionReason(DesignerStudioBridge.snapshot()):null;
+        selection.checked=offering&&!reason;selection.disabled=!!reason;
+        $('grid-selection-description').textContent=reason||'保留原内容，按阅读顺序放入各格。';
+        const finish=value=>{dialog.close();resolve(value);};
+        for(const layout of gridLayouts){
+            const button=document.createElement('button');button.type='button';button.dataset.gridLayout=layout.id;
+            const label=document.createElement('span');label.textContent=layout.label;button.append(gridLayoutPreview(layout.spans),label);
+            button.onclick=()=>finish({layout:layout.id,fromSelection:offering&&selection.checked&&!selection.disabled});choices.append(button);
+        }
+        $('cancel-grid-layout').disabled=false;$('close-grid-layout').disabled=false;
+        $('cancel-grid-layout').onclick=()=>finish(null);$('close-grid-layout').onclick=()=>finish(null);
+        dialog.oncancel=event=>{event.preventDefault();finish(null);};dialog.showModal();choices.querySelector('button').focus();
+    });
+}
+async function focusGridContent(itemId) {
+    const item=entries.find(entry=>entry.id===itemId);if(!item)return;
+    await choose(item);DesignerCanvas.reveal(item);
+}
+async function editGridContent(path=selected?.path) {
+    await drafts();
+    const context=DesignerStudio.gridContext(state.source,path),itemPath=context?.itemPath;
+    const content=itemPath&&entries.find(entry=>['p','table'].includes(entry.tag)&&entry.path.startsWith(itemPath+'/'));
+    if(!content)throw new Error('此格暂未包含可编辑的段落或表格。');
+    await choose(content);DesignerCanvas.reveal(content);
+    if(content.tag==='p'){
+        const focus=()=>{if(selected?.path===content.path)DesignerStudio.focusText(content.path);};
+        if(busy)document.addEventListener('designer-idle',focus,{once:true});else focus();
+    }
+}
+async function applyGridOperation(operation,path=selected?.path) {
+    await drafts();
+    const context=DesignerStudio.gridContext(state.source,path);
+    if(!context)throw new Error('请选择独立图文栅格或其中的内容。');
+    if(!context.editable)throw new Error(context.reason||'此动态栅格暂不支持可视化布局调整，请编辑 XML。');
+    const selectedItemId=context.itemPath?nodeAt(context.itemPath).getAttribute('id'):null;
+    const result=DesignerStudio.gridEdit(DesignerStudioBridge.snapshot(),path,operation);
+    const selectionIds=operation.type==='add-row'?result.ids.slice(0,1):selectedItemId?[selectedItemId]:[];
+    const selectionPaths=operation.type==='boundary'&&context.itemPath?[context.itemPath]:result.paths.slice(0,1);
+    await DesignerStudioBridge.apply(result.source,selectionIds,selectionPaths);
+    if(operation.type==='add-row'){
+        await DesignerStudioBridge.flush();await focusGridContent(result.ids[0]);
+        status('已添加空白栅格行，可以直接编写内容。');
+    }else if(operation.type==='layout-row'){
+        const layout=gridLayouts.find(layout=>layout.id===operation.layout),merged=context.items.length>(layout?.spans.length||context.items.length);
+        status('本行已调整为'+(layout?.label||'所选布局')+(merged?'；原有内容已按顺序并入末格，可撤销。':'；支持撤销。'));
+    }else status('栅格布局已调整，支持撤销。');
+    return result;
+}
+async function addVisualGridRow(path=selected?.path) {
+    const choice=await pickGridLayout();if(choice)await applyGridOperation({type:'add-row',layout:choice.layout},path);
+}
+async function focusContainerText(path){
+    const entry=entries.find(entry=>entry.path===path);if(!entry)return;
+    await DesignerStudioBridge.choose(path);DesignerCanvas.reveal(entry);
+    const focus=()=>{if(selected?.path===path)DesignerStudio.focusText(path);};
+    if(busy)document.addEventListener('designer-idle',focus,{once:true});else focus();
+}
+function showContainerTemplateState(){
+    $('container-template-state')?.remove();$('pages').hidden=true;$('empty-preview').hidden=true;
+    const panel=document.createElement('section');panel.id='container-template-state';panel.className='container-template-state';
+    const heading=document.createElement('h2');heading.textContent='编辑内容模板';
+    const hint=document.createElement('p');hint.textContent='当前数据没有生成表格正文行。这里仍可编辑项目和行模板；加载记录后显示实际分页。';panel.append(heading,hint);
+    for(const entry of entries.filter(entry=>['list','rows'].includes(entry.tag))){
+        const context=DesignerStudio.containerContext(DesignerStudioBridge.snapshot(),entry.path),card=document.createElement('div'),label=document.createElement('strong');
+        label.textContent=context.label+(entry.id?' · '+entry.id:'');card.append(label);
+        for(const path of context.textPaths){
+            const source=nodeAt(path),button=document.createElement('button');button.type='button';button.textContent=source.textContent.trim()||'编辑空白内容';
+            button.onclick=()=>{void run(()=>editContainerContent(path));};card.append(button);
+        }
+        panel.append(card);
+    }
+    $('pages').before(panel);
+}
+async function editContainerContent(path=selected?.path){
+    await drafts();
+    if(typeof path!=='string')throw new Error('请先选择要编辑的内部内容。');
+    // Resolve within the selected subtree, including block cells, instead of its enclosing table.
+    await focusContainerText(path);
+}
+function pickContainerContent(){
+    return new Promise(resolve=>{
+        const dialog=$('container-content-dialog'),finish=value=>{dialog.close();resolve(value);};
+        for(const button of dialog.querySelectorAll('[data-container-kind]')){button.disabled=false;button.onclick=()=>finish(button.dataset.containerKind);}
+        $('container-content-cancel').disabled=false;$('container-content-cancel').onclick=()=>finish(null);
+        dialog.oncancel=event=>{event.preventDefault();finish(null);};dialog.showModal();dialog.querySelector('[data-container-kind]').focus();
+    });
+}
+async function addContainerContent(path=selected?.path){
+    await drafts();
+    const context=DesignerStudio.containerContext(DesignerStudioBridge.snapshot(),path);if(!context)throw new Error('请先选择一个容器或内部内容。');
+    if(context.kind==='if'){throw new Error('请先选择满足条件或不满足条件分支，再添加内容。');}
+    if(context.kind==='list'){await editContainerContent(path);status('正在编辑每一项的内容模板；项目数量由数组决定。');return;}
+    let owner=nodeAt(context.path),ownerPath=context.path;
+    if(['table','rows'].includes(context.kind))ownerPath=context.table?.cellPath||context.children[0]?.path;
+    else if(context.kind==='grid')ownerPath=context.children.find(child=>child.tag==='item')?.path;
+    if(!ownerPath)throw new Error('请先选择要添加内容的单元格或栅格项。');
+    owner=nodeAt(ownerPath);
+    if(!['cell','item','columns','each','then','else'].includes(owner.tagName))throw new Error('请选择单元格、栅格项、条件分支、数据循环或正文分栏。');
+    const kind=await pickContainerContent();if(kind)await insert(kind,{path:ownerPath,container:true});
+}
+async function containerAction(path,action){
+    if(action==='edit-source'){BodyEditor.focus();return;}
+    if(action==='edit-content'){await editContainerContent(path);return;}
+    if(action==='add-content'){await addContainerContent(path);return;}
+    await drafts();
+    const result=DesignerStudio.containerEdit(DesignerStudioBridge.snapshot(),path,{type:action});
+    await DesignerStudioBridge.apply(result.source,result.ids,result.paths);await DesignerStudioBridge.flush();
+    status('容器内容已调整，可以继续编辑；支持撤销。');
+}
+document.addEventListener('designer-container-action',event=>{
+    const {path,action}=event.detail||{};
+    if(action==='edit-source'){BodyEditor.focus();return;}
+    if(typeof path==='string'&&['edit-content','add-content','add-row','remove-row','add-column','remove-column'].includes(action))void run(()=>containerAction(path,action));
+});
+document.addEventListener('designer-template-select',event=>{
+    const path=event.detail?.path;if(typeof path!=='string')return;
+    void run(async()=>{await drafts();const entry=entries.find(item=>item.path===path);if(!entry)throw new Error('模板位置已变化，请重新选择。');await choose(entry);DesignerWorkspace.openInspector({focus:true});document.querySelector('[data-inspect="properties"]').click();});
+});
+document.addEventListener('designer-template-insert',event=>{
+    const kind=event.detail?.kind;if(['if','each'].includes(kind))void run(()=>insert(kind));
+});
 async function insert(tag, placement, imageName) {
     await drafts();
+    const target=nodeAt(placement?.path??selected?.path??''),owner=insertionOwner(target,placement);
+    if(!canInsertAt(tag,owner))throw new Error('此处不能插入该元素。栅格内请先选择栅格项添加段落、表格或图片；栅格和正文分栏用于独立正文区域，不支持互相嵌套。');
     if (tag === 'section') {
         const path = placement?.path ?? selected?.path;
         const id = nextId();
@@ -326,13 +509,35 @@ async function insert(tag, placement, imageName) {
     switch (tag) {
         case 'heading': xml = `<heading id="${id}" level="2" size="18" line-height="27">新标题</heading>`; break;
         case 'bullet': xml = `<bullet id="${id}">列表项</bullet>`; break;
-        case 'list': {
-            const binding = listBinding(); data = binding.data;
-            xml = `<list items="${binding.path}" as="item"><bullet id="${id}">${'${'+binding.expression+'}'}</bullet></list>`;
+        case 'if': {
+            const path=await DesignerBindings.pickCondition(bindingNodePath(owner));if(path===null)return;
+            xml=`<if test="${path}"><then><p id="${id}">满足条件时显示的内容</p></then><else><p id="${id}-else">不满足条件时显示的内容</p></else></if>`;break;
+        }
+        case 'each':
+        case 'list':
+        case 'rows': {
+            const binding=await DesignerBindings.pickSource(tag,bindingNodePath(owner),{fallback:listBinding()});if(!binding)return;
+            data=binding.data;
+            const variable='${'+binding.expression+'}';
+            xml=tag==='each'?`<each items="${binding.items}" as="${binding.as}"><p id="${id}">${variable}</p></each>`:tag==='list'?`<list items="${binding.items}" as="${binding.as}"><bullet id="${id}-item">${variable}</bullet></list>`
+                :`<rows id="${id}" items="${binding.items}" as="${binding.as}"><columns><column weight="1"/></columns><header><cell>内容</cell></header><row><cell>${variable}</cell></row></rows>`;
             break;
         }
         case 'numbered': xml = `<numbered id="${id}" list-id="list-${id}">编号项</numbered>`; break;
-        case 'table': xml = `<table id="${id}"><columns><column weight="1"/><column weight="1"/></columns><header><cell>列一</cell><cell>列二</cell></header><row><cell>内容一</cell><cell>内容二</cell></row></table>`; break;
+        case 'table': xml = DesignerStudio.tableMarkup(id); break;
+        case 'columns': xml = `<columns id="${id}" count="2" gap="18" balanced="true"><p id="${id}-body">在这里编写正文。内容按阅读顺序流经各栏，填满后自动续页。可在结构树中添加、编辑和调整段落顺序。</p></columns>`; break;
+        case 'grid': {
+            const choice=await pickGridLayout({allowSelection:true});if(!choice)return;
+            if(choice.fromSelection){
+                const result=DesignerStudio.gridFromSelection(DesignerStudioBridge.snapshot(),choice.layout);
+                await DesignerStudioBridge.apply(result.source,result.ids,result.paths);await DesignerStudioBridge.flush();
+                const grid=entries.find(entry=>entry.id===result.ids[0]),item=grid&&entries.find(entry=>entry.tag==='item'&&entry.path.startsWith(grid.path+'/'));
+                if(item)await focusGridContent(item.id);status('所选内容已并排放入栅格；内容和顺序保留，支持撤销。');return;
+            }
+            const layout=gridLayouts.find(layout=>layout.id===choice.layout);let start=1;
+            const items=layout.spans.map((span,index)=>{const item=`<item id="${id}-item-${index+1}" row="1" column-start="${start}" column-span="${span}"><p id="${id}-item-${index+1}-text"/></item>`;start+=span;return item;}).join('');
+            xml=`<grid id="${id}" tracks="12" column-gap="12" row-gap="12">${items}</grid>`;break;
+        }
         case 'image': {
             const name = imageName ?? await DesignerAssets.pick(); if (name === null) return;
             if (!/^[A-Za-z_][A-Za-z_0-9-]*$/.test(name)) throw new Error('图片名称必须是静态标识符。');
@@ -347,7 +552,56 @@ async function insert(tag, placement, imageName) {
         case 'page-break': xml = `<page-break id="${id}"/>`; break;
         default: xml = `<p id="${id}" size="12" line-height="20">新段落</p>`;
     }
-    await edit({operation:placement&&!placement.container?'insert-beside':'insert', xml,...placement,...(data === undefined ? {} : {data})}); const entry = entries.find(entry => entry.id === id); if (entry) { await choose(entry); DesignerCanvas.reveal(entry); }
+    if(owner.tagName==='cell'&&(!placement||placement.container)){
+        const document=new DOMParser().parseFromString(state.source,'application/xml'),cell=nodeForPath(document,bindingNodePath(owner));
+        const blocks=[...cell.children].some(child=>['p','table'].includes(child.tagName));
+        if(!blocks){
+            if(cell.querySelector('style-if'))throw new Error('此格包含条件样式，添加块内容前请先移除条件规则；原内容已保留。');
+            const previous=document.createElement('p');
+            for(const name of ['size','line-height','role','color','align','wrap','break'])if(cell.hasAttribute(name))previous.setAttribute(name,cell.getAttribute(name));
+            previous.append(...cell.childNodes);cell.append(previous);
+        }
+        cell.append(document.importNode(new DOMParser().parseFromString(xml,'application/xml').documentElement,true));
+        await DesignerStudioBridge.apply(new XMLSerializer().serializeToString(document),[id]);await DesignerStudioBridge.flush();
+    }else await edit({operation:placement&&!placement.container?'insert-beside':'insert', xml,...placement,...(data === undefined ? {} : {data})});
+    if(tag==='grid'){await focusGridContent(id+'-item-1');status('已插入独立图文栅格，可以直接编写第一格。');return;}
+    const inserted = entries.find(entry => entry.id === (tag==='list'?id+'-item':id));
+    const entry = tag==='list'&&inserted?entries.find(entry=>entry.path===inserted.path.slice(0,inserted.path.lastIndexOf('/'))):inserted;
+    if(['if','each'].includes(tag)&&inserted){const ownerPath=inserted.path.slice(0,inserted.path.lastIndexOf('/'));const logicPath=tag==='if'?ownerPath.slice(0,ownerPath.lastIndexOf('/')):ownerPath;const logic=entries.find(entry=>entry.path===logicPath);if(logic){await choose(logic);DesignerWorkspace.openInspector();document.querySelector('[data-inspect="properties"]').click();}return;}
+    if (entry) { await choose(entry); DesignerCanvas.reveal(entry); }
+    if((['table','rows','list','columns'].includes(tag)||placement?.container&&['p','heading'].includes(tag))&&entry)await editContainerContent(entry.path);
+}
+async function addGridRow(spans){
+    await drafts();
+    const context=DesignerStudio.gridContext(state.source,selected.path);if(!context)throw new Error('请选择栅格或其中的栅格项。');
+    const grid=nodeAt(context.gridPath),rows=[...grid.querySelectorAll('item')].map(item=>Number(item.getAttribute('row')));
+    const layout=spans?gridLayouts.find(layout=>layout.spans.join(',')===spans.join(','))?.id:'full';
+    if(!layout)throw new Error('未知的栅格行预设。');
+    await applyGridOperation({type:'add-row',layout,afterRow:Math.max(0,...rows)});
+}
+async function insertFullWidth(kind,placement={}) {
+    if(!['table','image'].includes(kind))throw new Error('请选择通栏表格或图片。');
+    const requested=DesignerStudioBridge.snapshot();
+    if(placement.source!==undefined&&(placement.source!==requested.source||placement.session!==requested.session))throw new Error('编辑内容已变化，请重新选择通栏插入位置。');
+    await drafts();
+    const source=DesignerStudioBridge.snapshot().source,path=placement.path??selected?.path;
+    if(typeof path!=='string')throw new Error('请先选择正文分栏中的段落。');
+    if(placement.source!==undefined&&source!==placement.source)throw new Error('编辑内容已变化，请重新选择通栏插入位置。');
+    const boundary=DesignerStudio.prepareColumnInsertion(source,path,placement.caret),context=DesignerStudio.columnInsertionTarget(source,path);
+    const id=nextId();let xml;
+    if(kind==='table')xml=DesignerStudio.tableMarkup(id);
+    else {
+        const name=await DesignerAssets.pick();if(name===null)return;
+        if(!/^[A-Za-z_][A-Za-z_0-9-]*$/.test(name))throw new Error('图片名称必须是静态标识符。');
+        const image=state.images.find(image=>image.name===name),hit=pages.flatMap(page=>page.hits).find(hit=>hit.path===context.columnsPath);
+        const ratio=(image?.height||1)/(image?.width||2),width=+Math.min(320,hit?.width||320,180/ratio).toFixed(2),height=+(width*ratio).toFixed(2);
+        xml=`<p id="${id}" line-height="${height+6}" align="CENTER"><image ref="${name}" width="${width}" height="${height}" alt="通栏图片"/></p>`;
+    }
+    const current=DesignerStudioBridge.snapshot();if(current.source!==source||current.session!==requested.session)throw new Error('编辑内容已变化，请重新选择通栏插入位置。');
+    const result=DesignerStudio.insertColumnFullWidth(boundary.source,boundary.path,xml,boundary.after);
+    await DesignerStudioBridge.apply(result.source,result.ids,result.paths);await DesignerStudioBridge.flush();await preview();
+    const inserted=entries.find(entry=>entry.id===id);if(inserted){await choose(inserted);DesignerCanvas.reveal(inserted);}
+    status('已插入通栏'+(kind==='table'?'表格':'图片')+'，后续正文继续分栏；支持撤销。');
 }
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () =>
     DesignerWorkspace.openView(button.dataset.view,{toggle:button.dataset.tool==='true'})));
@@ -356,6 +610,11 @@ document.querySelectorAll('[data-inspect]').forEach(button => button.addEventLis
     document.querySelectorAll('.inspect-view').forEach(view => view.classList.toggle('active', view.id === button.dataset.inspect));
 }));
 document.querySelectorAll('[data-insert]').forEach(button => button.addEventListener('click', () => run(() => insert(button.dataset.insert))));
+document.addEventListener('designer-insert-grid',event=>{void run(()=>insert('grid',event.detail));});
+document.addEventListener('designer-insert-bound',event=>{const {kind,...placement}=event.detail||{};if(['list','rows'].includes(kind))void run(()=>insert(kind,placement));});
+document.addEventListener('designer-insert-full-width',event=>{const {kind,...placement}=event.detail||{};if(['table','image'].includes(kind))void run(()=>insertFullWidth(kind,placement));});
+document.addEventListener('designer-add-grid-row',event=>{void run(()=>addVisualGridRow(event.detail.path));});
+document.addEventListener('designer-layout-grid-row',event=>{void run(async()=>{const choice=await pickGridLayout();if(choice)await applyGridOperation({type:'layout-row',layout:choice.layout},event.detail.path);});});
 function on(id, work) { $(id).addEventListener('click', () => run(work)); }
 on('refresh', preview); on('previous', () => page(currentPage - 1)); on('next', () => page(currentPage + 1)); $('zoom').addEventListener('change', zoom);
 on('up', () => selectedPaths.length>1 ? moveSelection(-1) : edit({operation:'move', direction:-1})); on('down', () => selectedPaths.length>1 ? moveSelection(1) : edit({operation:'move', direction:1}));
@@ -423,6 +682,7 @@ $('open-file').addEventListener('change', () => run(async () => {
     const type = file.name.toLowerCase().endsWith('.xml') ? 'xml' : 'zip';
     install(await request('open', {type,bytes:await bytes(file)}), false,{session:true}); bundleDirty = false; filename = file.name; savedData = '{}'; markDirty();
     status('模板已打开；动态模板请加载对应 JSON 数据。');
+    await preview();
 }));
 on('load-data', async () => { $('data-file').value = ''; $('data-file').click(); });
 $('data-file').addEventListener('change', () => run(async () => { const file = $('data-file').files[0]; if (file) { $('data').value = await textFile(file); await drafts(); savedData = state.data; markDirty(); await preview(); } }));
@@ -465,7 +725,7 @@ on('download-export', async () => {
         $('export-summary').textContent=message;status(message);
     } finally { $('download-export').textContent='下载文件'; }
 });
-$('cancel').addEventListener('click', () => request('cancel',{}).then(() => status('已请求取消，等待当前检查点…')).catch(error => status(error.message,true)));
+$('cancel').addEventListener('click', () => request('cancel',{}).then(() => {if(busy)status('已请求取消，等待当前检查点…');}).catch(error => status(error.message,true)));
 on('add-image', async () => { await drafts(); assetKind = 'image'; $('asset-file').accept = '.png,.jpg,.jpeg'; $('asset-file').value = ''; $('asset-file').click(); });
 on('add-fragment', async () => { await drafts(); assetKind = 'fragment'; $('asset-file').accept = '.xml'; $('asset-file').value = ''; $('asset-file').click(); });
 on('add-font', async () => { await drafts(); assetKind = 'font'; $('asset-file').accept = '.ttf'; $('asset-file').value = ''; $('asset-file').click(); });

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">en</entry>
+  <entry key="extracted_format.citations.initial_submission_any_consistent_style.source.file">SPE author guidelines</entry>
+  <entry key="extracted_format.citations.initial_submission_any_consistent_style.source.locator">Free format submission section</entry>
+  <entry key="extracted_format.citations.initial_submission_any_consistent_style.source.sha256">77d65831ec648803178498944b874822a067b8cb1c874f1a68a96430f951d4be</entry>
+  <entry key="extracted_format.citations.initial_submission_any_consistent_style.source.url">https://onlinelibrary.wiley.com/page/journal/1097024x/homepage/forauthors.html</entry>
+  <entry key="extracted_format.citations.initial_submission_any_consistent_style.unit">null</entry>
+  <entry key="extracted_format.citations.initial_submission_any_consistent_style.value">true</entry>
+  <entry key="extracted_format.citations.reference_style_after_free_format_stage.source.file">SPE author guidelines</entry>
+  <entry key="extracted_format.citations.reference_style_after_free_format_stage.source.locator">REFERENCE STYLE section</entry>
+  <entry key="extracted_format.citations.reference_style_after_free_format_stage.source.sha256">77d65831ec648803178498944b874822a067b8cb1c874f1a68a96430f951d4be</entry>
+  <entry key="extracted_format.citations.reference_style_after_free_format_stage.source.url">https://onlinelibrary.wiley.com/page/journal/1097024x/homepage/forauthors.html</entry>
+  <entry key="extracted_format.citations.reference_style_after_free_format_stage.unit">null</entry>
+  <entry key="extracted_format.citations.reference_style_after_free_format_stage.value">AMA</entry>
+  <entry key="extracted_format.mode">source_stated_preferred_manuscript_typography</entry>
+  <entry key="group">Wiley</entry>
+  <entry key="id">computer-wiley-spe-manuscript</entry>
+  <entry key="name">Software: Practice and Experience — source-stated manuscript typography</entry>
+  <entry key="page.columns">1</entry>
+  <entry key="readme-name">Software: Practice and Experience</entry>
+  <entry key="role.body.font">Times</entry>
+  <entry key="role.body.line_spacing">1</entry>
+  <entry key="role.body.size_pt">12</entry>
+  <entry key="role.names">["body"]</entry>
+  <entry key="source">https://onlinelibrary.wiley.com/page/journal/1097024x/homepage/forauthors.html</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">computer-wiley</entry>
+  <entry key="template.license">ManuWeave rule encoding is MIT; factual configuration only; no publisher source software redistributed</entry>
+  <entry key="template.source_url">https://onlinelibrary.wiley.com/page/journal/1097024x/homepage/forauthors.html</entry>
+  <entry key="template.source_version">2026-10-30 pinned source</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/computer-wiley/profiles/computer-wiley-spe-manuscript.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">fb0d34c3a6e207a12e2f2a661663c5109d2e0685ba577f51f05d1f3d52149397</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

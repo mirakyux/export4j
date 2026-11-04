@@ -16,12 +16,17 @@ import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.graphics.DisplayPage;
 import com.mirakyux.export4j.graphics.DrawCommand;
 import com.mirakyux.export4j.graphics.PageWriter;
+import com.mirakyux.export4j.graphics.PageNavigation;
 import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.InlineStyle;
+import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.Paragraph;
+import com.mirakyux.export4j.model.ParagraphFormat;
+import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
@@ -156,6 +161,45 @@ class StreamingRichTextExportTest {
                         assertEquals(ink.getX(), hit.x(), 1e-8); assertEquals(ink.getY(), hit.y(), 1e-8);
                         assertEquals(ink.getWidth(), hit.width(), 1e-8); assertEquals(ink.getHeight(), hit.height(), 1e-8);
                     }
+                }
+            }
+        }
+    }
+
+    @Test void replayReferenceLinksFollowNestedRotationsWithoutMovingDestinations() throws IOException {
+        var format = ParagraphFormat.builder().fontSize(10).lineHeight(20).spaceAfter(0).build();
+        var engine = DocumentEngine.builder(regular).build();
+        for (int parentAngle : List.of(0, 180)) {
+            for (int angle : List.of(0, 180)) {
+                var reference = Paragraph.mixed("reference", List.of(
+                        new InlineField(InlineField.Kind.REFERENCE_PAGE, "target", 22, PLAIN),
+                        new InlineField(InlineField.Kind.REFERENCE_NUMBER, "target", 70, PLAIN)),
+                        format.toBuilder().rotation(angle).build());
+                var nested = Table.builder("nested").format(value -> value.padding(0).spaceAfter(0).rotation(parentAngle))
+                        .row(TableCell.builder().blocks(List.of(reference)).build()).build();
+                var rows = List.of(new TableRow(List.of(TableCell.builder().blocks(List.of(nested)).build())), row(new InlineText("Destination", PLAIN)));
+                var spec = StreamingTable.builder("replay").columns(160).padding(0).semanticCells(true)
+                        .pageSettings(new PageSettings(new PageSize(200, 150), PageMargins.uniform(20))).build();
+                var navigation = new PageNavigation[1];
+                engine.exportReplay(spec, () -> new Source(2, index -> rows.get(index - 1), new ArrayList<>()))
+                        .plan(StreamingReplayPlan.builder().rowTarget("target", 1, "1").build())
+                        .backend((metadata, output) -> new PageWriter() {
+                            @Override public void configureNavigation(PageNavigation value) { navigation[0] = value; }
+                            @Override public void accept(DisplayPage page) { }
+                            @Override public void finish() { }
+                            @Override public void close() { }
+                        }).to(new ByteArrayOutputStream());
+                var links = navigation[0].links();
+                assertEquals(2, links.size());
+                boolean reversed = (parentAngle + angle) % 360 != 0;
+                for (int index = 0; index < links.size(); index++) {
+                    var link = links.get(index);
+                    assertEquals(0, link.pageIndex()); assertEquals(0, link.targetPageIndex());
+                    assertEquals(20, link.destination().x(), 1e-8); assertEquals(40, link.destination().y(), 1e-8);
+                    assertEquals(index == 0 ? (reversed ? 158 : 20) : (reversed ? 88 : 42), link.bounds().x(), 1e-8);
+                    assertEquals(20, link.bounds().y(), 1e-8);
+                    assertEquals(index == 0 ? 22 : 70, link.bounds().width(), 1e-8);
+                    assertEquals(20, link.bounds().height(), 1e-8);
                 }
             }
         }

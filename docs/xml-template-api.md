@@ -44,6 +44,8 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 | --- | --- |
 | `page` | 仅主根首个可选空节点；静态纸张／宽高／方向／边距，不生成正文块，详见页面指南 |
 | `p` | 普通文字、span、image、link、四类页码／编号字段及正文 note-marker；普通段落可自然跨页 |
+| `columns` | 正文连续分栏；count 1～3、pt gap、balanced、可选 weights；段落／表格及动态子节点，支持中间通栏图表，见[分栏指南](column-flow-api.md) |
+| `grid`／`item` | 1～12 轨正文栅格；显式行号／起始轨／跨轨数及 pt 行列间距，整行原子分页；见[栅格指南](grid-layout-api.md) |
 | `heading` | 必填 `level="1"`～`"6"`；文字、span、文字 link；禁止图片／字段 |
 | `bullet` | 1～9 级无序列表；可选 level（默认 1）、marker（默认 `•`）；文字、span、文字 link |
 | `numbered` | 1～9级十进制列表；必填静态 list-id，可选level（默认1）、restart；文字、span、文字 link |
@@ -51,20 +53,47 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 | `cross-reference` | 独立块；必填 kind="PAGE"／"NUMBER" 与 target，正文为纯文字前缀；最终页码／编号和链接由布局解析 |
 | `notes` | 主根页配置／页区后、正文或分节前至多一个；只包含 note，详见注释与题注 |
 | `page-break` | 空元素；显式换页 |
-| `if` | 必填 `test="flag"`；先且仅一个 then，随后可选一个 else；分支内为块 |
+| `if` | 必填 `test="flag"`；可选 `operator`／`value`，默认布尔 TRUE；先且仅一个 then，随后可选一个 else，分支可嵌套 if |
 | `each` | 必填 `items="items"`、`as="item"`；内部为块，可嵌套 |
 | `list` | 动态列表容器；必填 `items`、`as`，内部恰好一个 `bullet` 或 `numbered` 列表项模板，逐条展开；空数组不生成列表项 |
 | `include` | 必填静态 ref／prefix；主模板及片段合法块列表选择已登记片段，拒绝循环、行内和格内位置 |
 | `table` | columns、零至多个 header、一个以上 row，顺序固定 |
 | `rows` | 同 table，但恰好一个模板 row；必填 items、as；展开为空集合时失败 |
 
-`if` 的值须为布尔值；each／list／rows 的值须为 List。`list` 与 `each` 使用相同的词法变量、ID 后缀和预算；`rows` 的空数组仍明确失败。Map／List 仅作结构，不可直接插入文字。数据值仅接受非 null 字符串、布尔值、标准有限数值、Map 和 List。调用方自定义容器及 Reader 是可信代码，不受脚本沙箱保护。大数只接受精确 BigInteger／BigDecimal 类，拒绝子类。
+`if` 按运算符读取布尔、字符串或数值；each／list／rows 的值须为 List。`list` 与 `each` 使用相同的词法变量、ID 后缀和预算；`rows` 的空数组仍明确失败。Map／List 仅作结构，不可直接插入文字。数据值仅接受非 null 字符串、布尔值、标准有限数值、Map 和 List。调用方自定义容器及 Reader 是可信代码，不受脚本沙箱保护。大数只接受精确 BigInteger／BigDecimal 类，拒绝子类。
 
 `${customer.name}` 是唯一插值语法。路径使用 ASCII 标识符及点，最多 256 个 UTF-16 单元。条件／循环属性直接写路径，不加 `${}`。所有分支的语法都会编译检查，只有选中分支执行数据查找。数据中的 `<p>`、`${x}` 等内容作为普通文本插入，不再次解析为 XML 或表达式。
 
 根显式 `literal-text="true"` 时，标题／作者、正文、替代文字和外链按原文处理，`${...}` 及未闭合 `${` 不插值；默认 false 保持现有行为。if／each／rows 的控制数据路径继续读取所传数据。静态字段目标仍须满足 ID 语法，资源名称／样式属性仍静态校验；该模式不关闭安全、预算或类型检查。保存已有模型时 writer 自动启用它，编写动态模板时通常使用默认模式。
 
 p、heading、bullet、numbered、caption、cross-reference、table、rows、page-break 可选 id。显式 ID 匹配 `[A-Za-z_][A-Za-z_0-9-]{0,127}`，不能插值或含 `@`，在两分支和循环原型之间也须唯一；note 的必填 ID 也参与避让。省略时生成 `xml-N` 并避开全部显式 ID；循环渲染附加 `@0` 等索引。
+
+## 比较条件与多分支
+
+`if` 的 `operator` 默认为 `TRUE`，旧布尔模板保持原有行为。支持 `TRUE`／`FALSE`、`EQ`／`NE`、`GT`／`GE`／`LT`／`LE` 和 `CONTAINS`。布尔运算要求布尔数据及空比较值；大小比较要求数字，包含比较要求字符串。相等比较按实际数据类型解释字面的 `value`：字符串逐字比较，布尔值只接受 `true`／`false`，数字采用精确十进制比较。`value` 不使用 JSON 字符串引号，也不执行插值或代码；最多 256 个 UTF-16 单元，数值指数最多四位。
+
+下面将 `status` 的 1、2、3 分别映射到三个分支，其余值进入 other：
+
+```xml
+<if test="status" operator="EQ" value="1">
+  <then><p>分支 1</p></then>
+  <else>
+    <if test="status" operator="EQ" value="2">
+      <then><p>分支 2</p></then>
+      <else>
+        <if test="status" operator="EQ" value="3">
+          <then><p>分支 3</p></then>
+          <else><p>other</p></else>
+        </if>
+      </else>
+    </if>
+  </else>
+</if>
+```
+
+条件按声明顺序执行，首个命中后不再读取后续分支的数据路径；最后一个 `else` 为兜底。各分支可继续嵌套条件。缺失字段和不匹配的数据类型仍分别返回 `MISSING_VALUE`／`TYPE_MISMATCH`，不会自动当作 other。所有分支的结构、静态 ID 和表达式始终在编译时检查。条件链消耗既有 XML／绑定深度和工作预算，不提高默认上限。
+
+Java 使用 `DocumentTemplate.When(path, TemplateCondition.Operator.EQ, "1", yes, no)` 或 `Nodes`／`Builder.when(path, operator, value, yes, no)`。旧三参 `When` 和旧 `when(path, yes, no)` 保持布尔 TRUE 默认；绑定后得到普通语义文档，后端不执行条件。
 
 ## 样式、表格与图片
 

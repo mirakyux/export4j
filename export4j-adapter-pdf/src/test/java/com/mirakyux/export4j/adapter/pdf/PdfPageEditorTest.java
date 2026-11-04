@@ -11,6 +11,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -32,6 +33,7 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -40,6 +42,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PdfPageEditorTest {
     @TempDir Path directory;
     private static final ProcessingPolicy WARN = ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
+
+    @Test void cancellationAfterAtomicPublicationDoesNotReportAFailedEdit() throws Exception {
+        var target = directory.resolve("published.pdf");
+        byte[] old = {1, 2, 3}; Files.write(target, old);
+        var execution = ExecutionOptions.builder().cancelled(() -> {
+            try { return !Arrays.equals(old, Files.readAllBytes(target)); }
+            catch (IOException failure) { throw new UncheckedIOException(failure); }
+        }).build();
+        var adapter = new PdfAdapter();
+        var prepared = adapter.editPages(adapter.input(source(), "")).rotate(0, 90).execution(execution).prepare();
+        var result = assertDoesNotThrow(() -> prepared.to(target));
+        assertEquals(prepared.outputBytes(), result.outputBytes());
+        try (var published = Loader.loadPDF(Files.readAllBytes(target))) { assertEquals(90, published.getPage(0).getRotation()); }
+        try (var paths = Files.list(directory)) { assertEquals(1, paths.count()); }
+    }
 
     @Test void rotatesScalesAndCropsWithExplicitVisibilityLossAndPreservesMetadata() throws Exception {
         var adapter = new PdfAdapter(); var input = adapter.input(source(), "");

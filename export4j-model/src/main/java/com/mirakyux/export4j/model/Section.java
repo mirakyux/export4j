@@ -31,6 +31,9 @@ public record Section(String id, PageSettings pageSettings, List<Block> blocks, 
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(pageSettings, "pageSettings");
         blocks = List.copyOf(blocks);
+        if (blocks.stream().anyMatch(GridItem.class::isInstance)) {
+            throw new IllegalArgumentException("grid items belong inside a grid layout");
+        }
         Objects.requireNonNull(pageRegions, "pageRegions");
         pageRegions.requireContained(pageSettings.size());
         if (id.isBlank() || firstPageNumber < 0) {

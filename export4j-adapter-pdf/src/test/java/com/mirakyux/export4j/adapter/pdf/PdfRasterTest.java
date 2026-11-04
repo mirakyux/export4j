@@ -10,10 +10,12 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipInputStream;
 import javax.imageio.ImageIO;
@@ -31,6 +33,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -38,6 +41,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PdfRasterTest {
     @TempDir Path directory;
+    @Test void cancellationAfterAtomicImageOrZipPublicationDoesNotReportFailure() throws Exception {
+        var adapter = new PdfAdapter(); var input = adapter.input(blank(), "");
+        for (boolean zip : List.of(false, true)) {
+            var target = directory.resolve(zip ? "published.zip" : "published.png");
+            byte[] old = {1, 2, 3}; Files.write(target, old);
+            var execution = ExecutionOptions.builder().cancelled(() -> {
+                try { return !Arrays.equals(old, Files.readAllBytes(target)); }
+                catch (IOException failure) { throw new UncheckedIOException(failure); }
+            }).build();
+            var prepared = adapter.render(input.allPages()).dpi(72).execution(execution).prepare();
+            if (zip) {
+                assertDoesNotThrow(() -> prepared.toZip(target));
+                try (var archive = new ZipInputStream(Files.newInputStream(target))) {
+                    assertEquals("page-0001.png", archive.getNextEntry().getName());
+                    assertArrayEquals(prepared.images().getFirst().bytes(), archive.readAllBytes());
+                }
+            } else {
+                assertDoesNotThrow(() -> prepared.images().getFirst().to(target));
+                assertArrayEquals(prepared.images().getFirst().bytes(), Files.readAllBytes(target));
+            }
+        }
+        try (var paths = Files.list(directory)) { assertEquals(2, paths.count()); }
+    }
     @Test void rendersPhysicalCropRotationAndUserUnitWithExactImageSnapshot() throws Exception {
         var adapter = new PdfAdapter(); byte[] bytes;
         try (var pdf = new PDDocument()) {

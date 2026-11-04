@@ -3,7 +3,9 @@ package com.mirakyux.export4j.designer;
 
 import com.mirakyux.export4j.adapter.template.XmlTemplateBundle;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Objects;
 
 /** Immutable project snapshots; binding data remains a separate JSON document. */
@@ -33,5 +35,20 @@ record DesignerProject(XmlTemplateBundle bundle, String data) {
         boolean canRedo() { return !redo.isEmpty(); }
         void undo() { if (canUndo()) { redo.push(current); current = undo.pop(); } }
         void redo() { if (canRedo()) { undo.push(current); current = redo.pop(); } }
+        List<DesignerProject> retained() {
+            var projects = new ArrayList<DesignerProject>();
+            projects.add(current); projects.addAll(undo); projects.addAll(redo);
+            return List.copyOf(projects);
+        }
+        // Replaying local history must not append another user change or discard its redo resources.
+        void restore(DesignerProject candidate) {
+            if (undo.stream().anyMatch(project -> project == candidate)) {
+                while (current != candidate) { undo(); }
+            } else if (redo.stream().anyMatch(project -> project == candidate)) {
+                while (current != candidate) { redo(); }
+            } else {
+                current = candidate;
+            }
+        }
     }
 }

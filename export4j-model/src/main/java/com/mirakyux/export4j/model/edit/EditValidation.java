@@ -16,11 +16,22 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class EditValidation {
     private EditValidation() { }
     private record Reference(String target, boolean numbered) { }
     static void validate(SectionedDocument document, List<Note> notes, EditSupport.State state, boolean references) {
+        var bodyRoots = new HashSet<String>();
+        for (var section : document.sections()) {
+            for (var block : section.blocks()) {
+                state.work(1);
+                if (bodyRoots.size() >= state.limits.maxNodes()) {
+                    throw new IllegalArgumentException("editing body root budget exceeded");
+                }
+                bodyRoots.add(block.id());
+            }
+        }
         Map<String, Block> targets = new HashMap<>();
         Map<String, Block> noteParents = new HashMap<>();
         Map<String, int[]> lists = new HashMap<>();
@@ -35,18 +46,18 @@ final class EditValidation {
             state.work(1); EditSupport.unicode(bookmark.title(), state); EditSupport.unicode(bookmark.blockId(), state);
             count(counts, 1, (long) bookmark.title().length() + bookmark.blockId().length(), state);
         }
-        EditSupport.map(document, state, (block, location) -> {
+        EditSupport.validationMap(document, state, (block, location) -> {
             count(counts, 1, 0, state);
             if (!ids.add(block.id())) { throw new IllegalArgumentException("duplicate block ID in edited document"); }
             if (location.region().equals("BODY")) {
                 targets.put(block.id(), block);
-                if (location.cellPath().isEmpty() && (block instanceof Paragraph || block instanceof NumberedItem
+                if (bodyRoots.contains(block.id()) && location.cellPath().isEmpty() && (block instanceof Paragraph || block instanceof NumberedItem
                         || block instanceof com.mirakyux.export4j.model.BulletItem || block instanceof Caption)) {
                     noteParents.put(block.id(), block);
                 }
             }
             var paragraph = DocumentEditor.paragraph(block);
-            if (paragraph != null) { text(paragraph, location, counts, refs, markers, state); }
+            if (paragraph != null) { text(paragraph, location, counts, refs, markers, bodyRoots, state); }
             if (block instanceof CrossReference reference) {
                 EditSupport.unicode(reference.prefix(), state); count(counts, 0, reference.prefix().length(), state);
                 refs.add(new Reference(reference.targetId(), reference.kind() == CrossReference.Kind.NUMBER));
@@ -62,7 +73,7 @@ final class EditValidation {
             return List.of(block);
         }, (cell, location) -> {
             count(counts, 1, 0, state);
-            if (!cell.hasBlocks()) { text(DocumentEditor.inlineCell(cell), location, counts, refs, markers, state); }
+            if (!cell.hasBlocks()) { text(DocumentEditor.inlineCell(cell), location, counts, refs, markers, bodyRoots, state); }
             return cell;
         });
         var noteIds = new HashSet<String>();
@@ -83,7 +94,7 @@ final class EditValidation {
         }
     }
     private static void text(Paragraph paragraph, ProcessingIssue.Location location, long[] counts,
-            List<Reference> refs, Map<String, String> markers, EditSupport.State state) {
+            List<Reference> refs, Map<String, String> markers, Set<String> bodyRoots, EditSupport.State state) {
         EditSupport.unicode(paragraph.text(), state); count(counts, 0, paragraph.text().length(), state);
         for (var run : paragraph.inlines()) {
             state.work(1); EditSupport.unicode(run.text(), state);
@@ -91,7 +102,7 @@ final class EditValidation {
         for (var span : paragraph.fields()) {
             state.work(1); var field = span.field();
             if (field.kind() == InlineField.Kind.NOTE_MARKER) {
-                if (!location.region().equals("BODY") || !location.cellPath().isEmpty()
+                if (!location.region().equals("BODY") || !bodyRoots.contains(paragraph.id()) || !location.cellPath().isEmpty()
                         || markers.putIfAbsent(field.targetId(), paragraph.id()) != null) {
                     throw new IllegalArgumentException("invalid or duplicate note marker");
                 }

@@ -7,6 +7,14 @@ import java.io.IOException;
 import java.util.List;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
+import com.mirakyux.export4j.font.FontGroup;
+import com.mirakyux.export4j.font.TrueTypeFontLoader;
+import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.Heading;
+import com.mirakyux.export4j.model.PageSettings;
+import com.mirakyux.export4j.model.Paragraph;
+import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineField;
@@ -21,6 +29,31 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PositionedTableContractTest {
+    @Test void headingRotationTransformsInkAndHyperlinkBoundsWithoutChangingLayout() throws IOException {
+        FontGroup fonts;
+        try (var input = getClass().getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
+            fonts = FontGroup.strict(List.of(TrueTypeFontLoader.load(input, TrueTypeFontLoader.DEFAULT_MAX_BYTES)));
+        }
+        var engine = DocumentEngine.builder(fonts).build();
+        var runs = List.of(new InlineText("ROTATION-LINK", InlineStyle.of(12), "https://example.com/heading"));
+        var format = ParagraphFormat.of(12);
+        var settings = PageSettings.builder().size(240, 180).margins(24).build();
+        var before = engine.layout(new Document(DocumentMetadata.EMPTY, settings,
+                List.of(Heading.rich("heading", runs, 1, format))));
+        for (double angle : List.of(45.0, 90.0, 180.0)) {
+            var rotatedFormat = format.toBuilder().rotation(angle).build();
+            var heading = engine.layout(new Document(DocumentMetadata.EMPTY, settings,
+                    List.of(Heading.rich("heading", runs, 1, rotatedFormat))));
+            var paragraph = engine.layout(new Document(DocumentMetadata.EMPTY, settings,
+                    List.of(new Paragraph("heading", runs, rotatedFormat))));
+            assertEquals(before.body(), heading.body());
+            assertEquals(paragraph.display(), heading.display());
+            assertTrue(!before.display().pages().getFirst().commands().equals(heading.display().pages().getFirst().commands()));
+            assertEquals(1, heading.display().extras().externalLinks().size());
+            assertTrue(!before.display().extras().externalLinks().equals(heading.display().extras().externalLinks()));
+        }
+    }
+
     @Test void staticTableAndNestedParagraphRotationsReachTheDrawingState() throws IOException {
         com.mirakyux.export4j.font.FontGroup fonts;
         try (var input = getClass().getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {

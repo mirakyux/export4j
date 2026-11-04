@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">zh</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">cn-cgp-research-word-2023</entry>
+  <entry key="name">中国全科医学研究性论文，2023 官方格式规范</entry>
+  <entry key="page.margin_bottom_mm">12.7</entry>
+  <entry key="page.margin_left_mm">12.7</entry>
+  <entry key="page.margin_right_mm">12.7</entry>
+  <entry key="page.margin_top_mm">12.7</entry>
+  <entry key="readme-name">中国全科医学</entry>
+  <entry key="role.body.alignment">justify</entry>
+  <entry key="role.body.east_asia_font">宋体</entry>
+  <entry key="role.body.font">Times New Roman</entry>
+  <entry key="role.body.line_spacing_pt">15.0</entry>
+  <entry key="role.body.line_spacing_rule">exact</entry>
+  <entry key="role.body.size_pt">10.5</entry>
+  <entry key="role.heading1.bold">true</entry>
+  <entry key="role.names">["title","body","heading1","table_body"]</entry>
+  <entry key="role.table_body.alignment">center</entry>
+  <entry key="role.title.alignment">center</entry>
+  <entry key="role.title.bold">true</entry>
+  <entry key="role.title.east_asia_font">宋体</entry>
+  <entry key="role.title.font">Times New Roman</entry>
+  <entry key="role.title.size_pt">14.0</entry>
+  <entry key="source">https://www.chinagp.net/fileup/1007-9572/ITEM/20230921140946.docx</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">chinese-medical</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">https://www.chinagp.net/fileup/1007-9572/ITEM/20230921140946.docx</entry>
+  <entry key="template.source_version">2023-09-08/document;2023-09-21/official-index</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/chinese-medical/profiles/cn-cgp-research-word-2023.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">f2c956b51c434e5ff8fc8de08ff747719c6c18a0d422a387562ed33aa21debc9</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

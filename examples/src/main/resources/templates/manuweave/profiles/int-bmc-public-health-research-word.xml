@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">en</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">int-bmc-public-health-research-word</entry>
+  <entry key="name">BMC Public Health research article Word requirements</entry>
+  <entry key="readme-name">BMC Public Health</entry>
+  <entry key="role.abstract.line_spacing">2</entry>
+  <entry key="role.abstract_heading.line_spacing">2</entry>
+  <entry key="role.body.line_spacing">2</entry>
+  <entry key="role.caption.line_spacing">2</entry>
+  <entry key="role.equation.line_spacing">2</entry>
+  <entry key="role.figure_caption.line_spacing">2</entry>
+  <entry key="role.heading1.line_spacing">2</entry>
+  <entry key="role.heading2.line_spacing">2</entry>
+  <entry key="role.heading3.line_spacing">2</entry>
+  <entry key="role.keywords.line_spacing">2</entry>
+  <entry key="role.names">["title","body","abstract_heading","abstract","keywords","heading1","heading2","heading3","caption","figure_caption","table_caption","table_body","reference","references_heading","equation"]</entry>
+  <entry key="role.reference.line_spacing">2</entry>
+  <entry key="role.references_heading.line_spacing">2</entry>
+  <entry key="role.table_body.line_spacing">2</entry>
+  <entry key="role.table_caption.line_spacing">2</entry>
+  <entry key="role.title.line_spacing">2</entry>
+  <entry key="source">https://link.springer.com/journal/12889/submission-guidelines</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">international-journals</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">https://link.springer.com/journal/12889/submission-guidelines</entry>
+  <entry key="template.source_version">Official online author guidelines snapshot 2026-10-30; Research article</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/international-journals/profiles/int-bmc-public-health-research-word.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">f09a3336a928abe88ec05f7cc00ab33981aed2ddac0431339cc3a4a3700d7e98</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

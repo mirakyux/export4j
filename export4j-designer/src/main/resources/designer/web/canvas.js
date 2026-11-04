@@ -115,7 +115,9 @@ const DesignerCanvas = (() => {
                 node.oncontextmenu=event=>{if(entry)DesignerActions.context(event,entry);};
                 if(entry){
                     const movable=sortable(entry);node.dataset.path=entry.path;node.dataset.sortPath=movable.path;
-                    const handle=document.createElement('button');handle.className='canvas-grip';handle.textContent='⠿';handle.title=movable.path===entry.path?'拖动排序（随正文流排版）':'拖动整个循环／条件模板；循环内数据顺序由绑定数组决定。';handle.setAttribute('aria-label','拖动元素 '+hit.id);bindDrag(handle,movable);node.append(handle);
+                    if(entry.tag!=='item'){
+                        const handle=document.createElement('button');handle.className='canvas-grip';handle.textContent='⠿';handle.title=movable.path===entry.path?'拖动排序（随正文流排版）':'拖动整个循环／条件模板；循环内数据顺序由绑定数组决定。';handle.setAttribute('aria-label','拖动元素 '+hit.id);bindDrag(handle,movable);node.append(handle);
+                    }
                     const source=nodeAt(entry.path),images=source.querySelectorAll('image');
                     if(source.tagName==='p'&&source.children.length===1&&images.length===1&&!source.textContent.trim()){
                         const imageNode=images[0];

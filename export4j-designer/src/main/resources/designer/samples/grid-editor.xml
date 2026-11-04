@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<document version="1" title="${title}">
+  <page size="A4" margin="36"/>
+  <heading id="grid-title" level="1" size="23" line-height="30" space-after="10">${title}</heading>
+  <columns id="grid-before" count="2" gap="18" balanced="true">
+    <p id="grid-introduction" size="10" line-height="14">${introduction}</p>
+  </columns>
+  <p id="grid-separator" size="10" line-height="14" space-before="8" space-after="8">Independent items on twelve equal tracks</p>
+  <grid id="editor-grid" tracks="12" column-gap="12" row-gap="12">
+    <item id="grid-half-left" row="1" column-start="1" column-span="6">
+      <p id="grid-half-heading" role="bold" size="11" line-height="15">Six tracks: editable text</p>
+      <each items="notes" as="note"><p id="grid-bound-note" size="10" line-height="14">${note}</p></each>
+    </item>
+    <item id="grid-half-right" row="1" column-start="7" column-span="6">
+      <p id="grid-peer-heading" role="bold" size="11" line-height="15">Six tracks: independent content</p>
+      <p id="grid-peer-text" size="10" line-height="14">An item keeps its own paragraphs. Text does not continue into the item beside it. Select a dashed item boundary to edit its coordinates.</p>
+    </item>
+    <item id="grid-wide-eight" row="2" column-start="1" column-span="8">
+      <p id="grid-eight-heading" role="bold" size="11" line-height="15">Eight tracks for the main explanation</p>
+      <p id="grid-eight-text" size="10" line-height="14">${feature}</p>
+    </item>
+    <item id="grid-side-four" row="2" column-start="9" column-span="4">
+      <p id="grid-four-heading" role="bold" size="11" line-height="15">Four-track sidebar</p>
+      <p id="grid-four-text" size="10" line-height="14">Change row, start and span. Invalid overlaps stay visible as an explicit draft error.</p>
+    </item>
+    <item id="grid-third-one" row="3" column-start="1" column-span="4"><p id="grid-third-text-one" size="10" line-height="14">First third. Rows use the height of their tallest item and move to the next page as a whole.</p></item>
+    <item id="grid-third-two" row="3" column-start="5" column-span="4"><p id="grid-third-text-two" size="10" line-height="14">Second third. Horizontal and vertical gaps are separate measurements in points.</p></item>
+    <item id="grid-third-three" row="3" column-start="9" column-span="4"><p id="grid-third-text-three" size="10" line-height="14">Third third. Editing the source retains the grid and the independently editable items.</p></item>
+    <item id="grid-offset" row="5" column-start="3" column-span="8"><p id="grid-offset-text" size="10" line-height="14">Offset example: start at track 3 and span 8 tracks. Logical row 5 follows row 3 without an empty physical row.</p></item>
+    <item id="grid-full-table" row="6" column-start="1" column-span="12">
+      <table id="grid-evidence" padding-top="3" padding-bottom="3">
+        <columns><column weight="1"/><column weight="2"/><column weight="1"/></columns>
+        <header><cell size="10" line-height="14">Region</cell><cell size="10" line-height="14">Editable source</cell><cell size="10" line-height="14">Tracks</cell></header>
+        <row><cell size="10" line-height="14">Full-width table</cell><cell size="10" line-height="14">A real table inside one spanning item</cell><cell size="10" line-height="14">1 through 12</cell></row>
+      </table>
+    </item>
+    <item id="grid-full-picture" row="7" column-start="1" column-span="12"><p id="grid-figure" line-height="86" align="CENTER"><image ref="flow_diagram" width="320" height="80" alt="Self-authored full-width region diagram"/></p></item>
+  </grid>
+  <columns id="grid-after" count="3" gap="16" balanced="true">
+    <p id="grid-after-text" size="10" line-height="14">${afterword}</p>
+  </columns>
+  <p id="grid-ending" size="9" line-height="13" space-before="10">Fictional layout sample. Grid items and continuous body columns remain separate, editable sibling regions.</p>
+</document>

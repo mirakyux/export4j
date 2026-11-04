@@ -79,8 +79,9 @@ final class PdfImageSupport {
         try {
             ExecutionContext.execute(execution, () -> {
                 try (var stream = Files.newOutputStream(temporary)) { ExecutionContext.output(stream).write(bytes); }
-                ExecutionContext.checkpoint(); Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); return null;
+                return null;
             });
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException | RuntimeException | Error failure) {
             try { Files.deleteIfExists(temporary); } catch (IOException cleanup) { failure.addSuppressed(cleanup); } throw failure;
         }

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 export interface Entry {path:string;id:string;tag:string;label:string;depth:number}
-export interface Hit {id:string;path:string;x:number;y:number;width:number;height:number;images:{x:number;y:number;width:number;height:number}[]}
-export interface Page {width:number;height:number;hits:Hit[]}
-export interface Snapshot {source:string;revision:number;session:number;pending:boolean;canUndo:boolean;canRedo:boolean;selectedPaths:string[];entries:Entry[];pages:Page[];currentPage:number;busy:boolean;formats:Record<string,Record<string,string>>}
+export interface Hit {id:string;path:string;x:number;y:number;width:number;height:number;images:{x:number;y:number;width:number;height:number}[];tableCell?:{x:number;y:number;width:number;height:number;column:number;columnSpan:number}}
+export interface Page {width:number;height:number;hits:Hit[];imageSpaces?:{path:string;width:number;height:number}[]}
+export interface Snapshot {source:string;revision:number;session:number;pending:boolean;layoutState:'pending'|'failed'|'stale'|'synced';historyBoundary?:string;canUndo:boolean;canRedo:boolean;selectedPaths:string[];entries:Entry[];pages:Page[];currentPage:number;busy:boolean;formats:Record<string,Record<string,string>>}
 export interface Bridge {
   snapshot():Snapshot;
   choose(path:string,event?:{ctrlKey?:boolean;metaKey?:boolean;shiftKey?:boolean},groupLists?:boolean):Promise<void>;
@@ -31,7 +31,7 @@ export function at(document:Document,path:string):Element {
 export const serialize=(node:Node)=>new XMLSerializer().serializeToString(node);
 export const fixedBox=(node:Element):Element|null=>node.tagName==='box'?node:node.parentElement?.tagName==='box'?node.parentElement:null;
 export const positionable=(node:Element):boolean=>!!fixedBox(node)||(['p','table'].includes(node.tagName)&&['document','section'].includes(node.parentElement?.tagName||''));
-const flowTags=new Set(['p','heading','table','rows','bullet','numbered','caption','list','each','if','page-break','cross-reference']);
+const flowTags=new Set(['p','heading','table','rows','bullet','numbered','caption','list','each','if','page-break','cross-reference','columns','grid']);
 export const parentPath=(path:string)=>path.slice(0,path.lastIndexOf('/'));
 export function fixedPath(document:Document,path:string):string|null {
   while(path){if(fixedBox(at(document,path)))return path;path=parentPath(path);}return null;
@@ -39,13 +39,35 @@ export function fixedPath(document:Document,path:string):string|null {
 // Drag the semantic template as a whole, never an expanded data row or a table cell.
 export function flowPath(document:Document,path:string):string|null {
   let current=path,node=at(document,current);
+  // Grid item coordinates define placement. Reordering the whole item without changing them is invalid.
+  if(node.tagName==='item'&&node.closest('grid'))return null;
   while(current){
     if(fixedBox(node))return null;
     const parent=node.parentElement;
-    if(flowTags.has(node.tagName)&&parent&&['document','section','header','footer'].includes(parent.tagName))return current;
+    if(flowTags.has(node.tagName)&&parent&&(['document','section','header','footer','item'].includes(parent.tagName)||parent.tagName==='columns'&&!['table','rows'].includes(parent.parentElement?.tagName||'')))return current;
     current=parentPath(current);if(!current)return null;node=at(document,current);
   }
   return null;
+}
+/** Keeps static item coordinates ordered without moving content across conditional or loop boundaries. */
+export function sortGridItems(document:Document):void {
+  const scope=(parent:Element)=>{
+    const children=[...parent.children];
+    for(let offset=0;offset<children.length;){
+      if(children[offset].tagName!=='item'){
+        const child=children[offset++];if(['each','if','then','else'].includes(child.tagName))scope(child);continue;
+      }
+      let end=offset;while(end<children.length&&children[end].tagName==='item')end++;
+      const items=children.slice(offset,end);
+      if(items.every(item=>['row','column-start'].every(name=>/^[1-9][0-9]{0,9}$/.test(item.getAttribute(name)||'')))){
+        const ordered=[...items].sort((a,b)=>Number(a.getAttribute('row'))-Number(b.getAttribute('row'))||Number(a.getAttribute('column-start'))-Number(b.getAttribute('column-start')));
+        const slots=items.map(item=>{const slot=document.createComment('grid item slot');parent.replaceChild(slot,item);return slot;});
+        ordered.forEach((item,index)=>parent.replaceChild(item,slots[index]));
+      }
+      offset=end;
+    }
+  };
+  document.querySelectorAll('grid').forEach(scope);
 }
 export function reorder(snapshot:Snapshot,paths:string[],target:string,after:boolean):{source:string;paths:string[]} {
   const document=xml(snapshot.source),nodes=paths.map(path=>at(document,path)),destination=at(document,target),parent=destination.parentElement;

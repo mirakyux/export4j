@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<document version="1" title="${title}">
+  <page size="A4" margin="36"/>
+  <heading id="briefing-title" level="1" size="26" line-height="36" space-after="6">${title}</heading>
+  <p id="briefing-deck" size="11" line-height="17" space-after="18">${deck}</p>
+  <columns id="briefing-body" count="3" gap="16" balanced="true" weights="1 1 1">
+    <each items="storiesBefore" as="story">
+      <p id="briefing-heading" role="bold" size="12" line-height="18" space-after="5">${story.title}</p>
+      <p id="briefing-story" size="10" line-height="15" space-after="12">${story.text}</p>
+    </each>
+  </columns>
+  <table id="briefing-wide-table" space-before="10" space-after="10" padding-top="5" padding-bottom="5">
+    <columns><column weight="1"/><column weight="2"/><column weight="1"/></columns>
+    <header><cell>Edition</cell><cell>Layout change</cell><cell>Result</cell></header>
+    <row><cell>Workshop briefing</cell><cell>A full-width table between two three-column regions</cell><cell>Editable</cell></row>
+  </table>
+  <p id="briefing-wide-figure" line-height="106" align="CENTER" space-after="10"><image ref="flow_diagram" width="400" height="100" alt="Full-width illustration between three-column regions"/></p>
+  <columns id="briefing-body-after" count="3" gap="16" balanced="true" weights="1 1 1">
+    <each items="storiesAfter" as="story">
+      <p id="briefing-following-heading" role="bold" size="12" line-height="18" space-after="5">${story.title}</p>
+      <p id="briefing-following-story" size="10" line-height="15" space-after="12">${story.text}</p>
+    </each>
+    <p id="briefing-editable" size="10" line-height="15">Editorial note: these fictional updates form a single stream across all three columns. Select this paragraph in the structure tree to edit it directly. Select the parent container to try equal widths, 1 2 1 proportions or a different gap.</p>
+  </columns>
+  <p id="briefing-after" size="10" line-height="15" space-before="16">End of this fictional briefing. Full-width content continues below the final row of columns.</p>
+</document>

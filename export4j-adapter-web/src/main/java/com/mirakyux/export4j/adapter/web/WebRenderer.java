@@ -5,6 +5,8 @@ import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CellLocation;
+import com.mirakyux.export4j.model.ColumnFlow;
+import com.mirakyux.export4j.model.GridLayout;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.ExecutionContext;
@@ -147,7 +149,19 @@ final class WebRenderer {
 
     private void block(Block block, ExportLocation location) throws IOException {
         ExecutionContext.checkpoint();
-        if (block instanceof Paragraph paragraph) { paragraph(paragraph, "p", "", location, ParagraphFormat.of(12)); }
+        if (block instanceof GridLayout grid) {
+            for (var item : grid.items()) {
+                for (var child : item.blocks()) {
+                    block(child, new ExportLocation(location.sectionIndex(), location.region(), location.rootBlockIndex(),
+                            child.id(), location.cellPath(), -1));
+                }
+            }
+        } else if (block instanceof ColumnFlow columns) {
+            for (var child : columns.blocks()) {
+                block(child, new ExportLocation(location.sectionIndex(), location.region(), location.rootBlockIndex(),
+                        child.id(), location.cellPath(), -1));
+            }
+        } else if (block instanceof Paragraph paragraph) { paragraph(paragraph, "p", "", location, ParagraphFormat.of(12)); }
         else if (block instanceof Heading heading) {
             paragraph(heading.paragraph(), "h" + heading.level(), "#".repeat(heading.level()) + " ", location, Heading.defaultFormat(heading.level()));
         } else if (block instanceof Table table) { table(table, location); }
@@ -475,12 +489,18 @@ final class WebRenderer {
             };
             String section = location.sectionIndex() < 0 ? "" : document.sections().get(location.sectionIndex()).id();
             var source = new ProcessingIssue.Location(section, location.region(), location.blockId(), location.cellPath(), location.sourceOffset(), location.sourceOffset());
+            String effect = feature == ExportFeature.COLUMN_FLOW || feature == ExportFeature.GRID_LAYOUT
+                    ? "LAYOUT_REMOVED_CONTENT_RETAINED" : feature.name() + "_" + treatment.name();
             var issue = new ProcessingIssue("EXPORT", "MODEL", target, feature.name(), "EXPORT", source,
-                    message, rule.action(), rule.treatment(), List.of(feature.name() + "_" + treatment.name()));
+                    message, rule.action(), rule.treatment(), List.of(effect));
             if (rule.action() == ProcessingPolicy.Action.ERROR) { throw new ProcessingException(issue); }
             if (rule.treatment() != treatment) { throw new IllegalArgumentException("web export treatment unavailable: " + feature); }
             if (issues.size() >= limits.maxDiagnostics()) { limit(location, "Processing report budget exceeded"); }
             issues.add(issue); return;
+        }
+        if (feature == ExportFeature.COLUMN_FLOW || feature == ExportFeature.GRID_LAYOUT) {
+            throw failure(ExportException.Code.UNSUPPORTED, feature, location,
+                    "Semantic layout containers require an explicit conversion DEGRADE policy");
         }
         UnsupportedAction action = policy.action(feature);
         if (action == UnsupportedAction.IGNORE) { return; }
@@ -521,7 +541,11 @@ final class WebRenderer {
                 try {
                     if (++blocks > limits.maxBlocks()) { limit(location, "Block budget exceeded"); }
                     sourceText(block.id(), location);
-                    if (block instanceof Table table) {
+                    if (block instanceof GridLayout) {
+                        loss(ExportFeature.GRID_LAYOUT, location, "Track grid replaced with sequential paragraph and table flow");
+                    } else if (block instanceof ColumnFlow) {
+                        loss(ExportFeature.COLUMN_FLOW, location, "Continuous columns replaced with sequential paragraph and table flow");
+                    } else if (block instanceof Table table) {
                         rotation(table.format().rotation(), location, "Table rotation omitted from flowing output");
                         slots += (long) table.rows().size() * table.columns().size();
                         if (slots > limits.maxTableSlots()) { limit(location, "Table slot budget exceeded"); }

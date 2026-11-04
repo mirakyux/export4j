@@ -9,7 +9,8 @@ import java.util.function.Consumer;
 
 /** Shared synchronous semantic preorder traversal. Visits every occurrence, including repeated instances;
  * only real cell anchors own descendants. Supports at most 16 table levels and retains no mutable state.
- * Custom top-level blocks are leaves. Cell descendants must be supported Paragraph/Table values.
+ * ColumnFlow and GridLayout/GridItem descendants retain their host root index. Custom blocks are leaves.
+ * Cell descendants must be supported Paragraph/Table values.
  */
 public final class SemanticTree {
     /** Maximum nested table count, including the root, across all semantic adapters. */
@@ -17,7 +18,10 @@ public final class SemanticTree {
     private SemanticTree() { }
 
     /** Immutable source visit. rootBlockIndex belongs to the original supplied root list; cellPath is an
-     * outer-to-inner defensive snapshot. Empty paths identify root blocks. The block remains borrowed.
+     * outer-to-inner defensive snapshot. Empty paths identify blocks outside table cells, including
+     * ColumnFlow and GridLayout/GridItem descendants; compare the visited block to
+     * roots.get(rootBlockIndex) to identify a root.
+     * The block remains borrowed.
      */
     public record Visit(Block block, int rootBlockIndex, List<CellLocation> cellPath) {
         public Visit {
@@ -51,7 +55,15 @@ public final class SemanticTree {
         int depth = tableDepth + (block instanceof Table ? 1 : 0);
         if (depth > MAX_TABLE_DEPTH) { throw new IllegalArgumentException("semantic table nesting budget exceeded"); }
         visitor.accept(new Visit(block, rootIndex, path));
-        if (block instanceof Table table && table.hasBlockCells()) {
+        if (block instanceof ColumnFlow columns) {
+            for (var child : columns.blocks()) {
+                walk(child, rootIndex, path, depth, visitor);
+            }
+        } else if (block instanceof GridLayout grid) {
+            for (var item : grid.items()) { walk(item, rootIndex, path, depth, visitor); }
+        } else if (block instanceof GridItem item) {
+            for (var child : item.blocks()) { walk(child, rootIndex, path, depth, visitor); }
+        } else if (block instanceof Table table && table.hasBlockCells()) {
             var grid = table.grid();
             for (var row : grid.anchorRows()) {
                 ExecutionContext.checkpoint();

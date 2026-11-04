@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.function.IntUnaryOperator;
 import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.graphics.DocumentExtras;
+import com.mirakyux.export4j.graphics.AffineTransform;
 import com.mirakyux.export4j.graphics.Point;
 import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.layout.DocumentLayout;
@@ -26,7 +27,7 @@ import com.mirakyux.export4j.text.TextLine;
 final class InlineFields {
     record Result(DocumentLayout body, List<DocumentExtras.Link> links, List<ContextualDiagnostic> diagnostics) { }
     private record Owner(String blockId, int blockIndex, int pageIndex, int rowIndex, int columnIndex, Point origin,
-            List<CellLocation> sourcePath) {
+            List<CellLocation> sourcePath, AffineTransform transform) {
         DocumentLayoutException failure(DocumentLayoutException.Code code, int source, String message, Throwable cause) {
             return new DocumentLayoutException(code, blockId, blockIndex, pageIndex, rowIndex, columnIndex, source, sourcePath, message, cause);
         }
@@ -37,18 +38,27 @@ final class InlineFields {
             Map<String, ResolvedAnchor> anchors, Map<String, String> labels, List<Note> notes,
             FontGroup fonts, Map<String, FontGroup> roles, long maxLinks, long maxGeneratedCodePoints) {
         return resolve(body, offset, Math.addExact(offset, body.pages().size()), numbers, anchors, labels, notes,
-                fonts, roles, maxLinks, maxGeneratedCodePoints);
+                fonts, roles, maxLinks, maxGeneratedCodePoints, Map.of());
+    }
+
+    static Result resolve(DocumentLayout body, int offset, IntUnaryOperator numbers,
+            Map<String, ResolvedAnchor> anchors, Map<String, String> labels, List<Note> notes,
+            FontGroup fonts, Map<String, FontGroup> roles, long maxLinks, long maxGeneratedCodePoints,
+            Map<String, Double> rotations) {
+        return resolve(body, offset, Math.addExact(offset, body.pages().size()), numbers, anchors, labels, notes,
+                fonts, roles, maxLinks, maxGeneratedCodePoints, rotations);
     }
 
     /** Fixed page regions reuse the same reserved-slot resolver with final physical/displayed numbering. */
     static Result resolveRegion(DocumentLayout body, ComponentContext context) {
         return resolve(body, context.pageIndex(), context.pageCount(), ignored -> context.displayPageNumber(),
-                Map.of(), Map.of(), List.of(), context.fontGroup(), context.fontRoles(), 1, 100_000);
+                Map.of(), Map.of(), List.of(), context.fontGroup(), context.fontRoles(), 1, 100_000, Map.of());
     }
 
     private static Result resolve(DocumentLayout body, int offset, int totalPages, IntUnaryOperator numbers,
             Map<String, ResolvedAnchor> anchors, Map<String, String> labels, List<Note> notes,
-            FontGroup fonts, Map<String, FontGroup> roles, long maxLinks, long maxGeneratedCodePoints) {
+            FontGroup fonts, Map<String, FontGroup> roles, long maxLinks, long maxGeneratedCodePoints,
+            Map<String, Double> rotations) {
         boolean present = body.pages().stream().flatMap(page -> page.elements().stream()).anyMatch(InlineFields::hasFields);
         if (!present) { return new Result(body, List.of(), List.of()); }
         var resolver = new Resolver(totalPages, offset, numbers, anchors, labels, notes, maxLinks, maxGeneratedCodePoints);
@@ -56,9 +66,9 @@ final class InlineFields {
         for (var page : body.pages()) {
             var fragments = new ArrayList<LayoutFragment>();
             for (var fragment : page.elements()) {
-                fragments.add(SemanticFragments.map(fragment, fonts, roles, leaf -> resolver.layout(leaf.layout(),
+                fragments.add(SemanticFragments.map(fragment, fonts, roles, rotations, leaf -> resolver.layout(leaf.layout(),
                         new Owner(leaf.blockId(), leaf.blockIndex(), page.pageIndex() + offset, leaf.rowIndex(), leaf.columnIndex(),
-                                leaf.origin(), leaf.sourcePath()), page.pageIndex(), leaf.fonts(), leaf.roles())));
+                                leaf.origin(), leaf.sourcePath(), leaf.transform()), page.pageIndex(), leaf.fonts(), leaf.roles())));
             }
             pages.add(new LayoutPage(page.pageIndex(), page.size(), page.contentBounds(), fragments));
         }
@@ -151,7 +161,8 @@ final class InlineFields {
                             if (links.size() >= maxLinks) { throw budget(owner, box.sourceIndex()); }
                             double x = owner.origin().x() + line.offsetX() + box.x();
                             double y = owner.origin().y() + line.baselineY() - source.lines().getFirst().baselineY();
-                            links.add(new DocumentExtras.Link(owner.pageIndex(), new Rect(x, y, field.width(), step),
+                            var bounds = SemanticFragments.transformedBounds(new Rect(x, y, field.width(), step), owner.transform());
+                            links.add(new DocumentExtras.Link(owner.pageIndex(), bounds,
                                     target.pageIndex() + offset, new Point(target.point().x(), target.point().y())));
                         }
                     } catch (DocumentLayoutException cause) {

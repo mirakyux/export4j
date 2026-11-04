@@ -3,6 +3,9 @@ package com.mirakyux.export4j.model.edit;
 
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.CellLocation;
+import com.mirakyux.export4j.model.ColumnFlow;
+import com.mirakyux.export4j.model.GridLayout;
+import com.mirakyux.export4j.model.GridItem;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.PageRegions;
@@ -73,16 +76,27 @@ final class EditSupport {
     static SectionedDocument map(SectionedDocument source, State state,
             BiFunction<Block, ProcessingIssue.Location, List<Block>> blocks,
             BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells) {
+        return map(source, state, blocks, cells, false);
+    }
+    /** Validation sees all semantic sources while editing keeps layout containers opaque. */
+    static SectionedDocument validationMap(SectionedDocument source, State state,
+            BiFunction<Block, ProcessingIssue.Location, List<Block>> blocks,
+            BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells) {
+        return map(source, state, blocks, cells, true);
+    }
+    private static SectionedDocument map(SectionedDocument source, State state,
+            BiFunction<Block, ProcessingIssue.Location, List<Block>> blocks,
+            BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells, boolean columnChildren) {
         var headers = new HashMap<PageRegion, PageRegion>();
         var footers = new HashMap<PageRegion, PageRegion>();
         var backgrounds = new HashMap<PageRegion, PageRegion>(); var foregrounds = new HashMap<PageRegion, PageRegion>();
         var sections = new ArrayList<Section>();
         for (var section : source.sections()) {
-            var body = mapBlocks(section.blocks(), section.id(), "BODY", List.of(), state, blocks, cells);
+            var body = mapBlocks(section.blocks(), section.id(), "BODY", List.of(), state, blocks, cells, columnChildren);
             var regions = section.pageRegions().map((name, band) -> mapRegion(band,
                     name.startsWith("HEADER") ? headers : name.startsWith("FOOTER") ? footers
                             : name.startsWith("BACKGROUND") ? backgrounds : foregrounds,
-                    section.id(), name, state, blocks, cells));
+                    section.id(), name, state, blocks, cells, columnChildren));
             sections.add(body.equals(section.blocks()) && regions.equals(section.pageRegions()) ? section
                     : new Section(section.id(), section.pageSettings(), body, section.firstPageNumber(), regions));
         }
@@ -90,16 +104,16 @@ final class EditSupport {
     }
     private static PageRegion mapRegion(PageRegion source, Map<PageRegion, PageRegion> cache,
             String section, String region, State state, BiFunction<Block, ProcessingIssue.Location, List<Block>> blocks,
-            BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells) {
+            BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells, boolean columnChildren) {
         return cache.computeIfAbsent(source, value -> {
-            var mapped = mapBlocks(value.blocks(), section, region, List.of(), state, blocks, cells);
+            var mapped = mapBlocks(value.blocks(), section, region, List.of(), state, blocks, cells, columnChildren);
             return mapped.equals(value.blocks()) ? value : new PageRegion(value.height(), value.gap(),
                     value.edgeOffset(), value.leftInset(), value.rightInset(), mapped);
         });
     }
     private static List<Block> mapBlocks(List<Block> source, String section, String region, List<CellLocation> path,
             State state, BiFunction<Block, ProcessingIssue.Location, List<Block>> blocks,
-            BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells) {
+            BiFunction<TableCell, ProcessingIssue.Location, TableCell> cells, boolean columnChildren) {
         var result = new ArrayList<Block>();
         for (var original : source) {
             int issueStart = state.issues.size();
@@ -108,7 +122,27 @@ final class EditSupport {
                 state.work(1);
                 var location = new ProcessingIssue.Location(section, region, original.id(), path, -1, -1);
                 Block block = original;
-                if (block instanceof Table table) {
+                if (columnChildren && block instanceof ColumnFlow columns) {
+                    var children = mapBlocks(columns.blocks(), section, region, path, state, blocks, cells, true);
+                    if (!children.equals(columns.blocks())) {
+                        block = new ColumnFlow(columns.id(), children, columns.columns(), columns.gap(),
+                                columns.balanced(), columns.columnWeights());
+                    }
+                } else if (columnChildren && block instanceof GridLayout grid) {
+                    var items = new ArrayList<GridItem>();
+                    for (var item : grid.items()) {
+                        var mapped = mapBlocks(List.of(item), section, region, path, state, blocks, cells, true);
+                        items.add((GridItem) mapped.getFirst());
+                    }
+                    if (!items.equals(grid.items())) {
+                        block = new GridLayout(grid.id(), grid.tracks(), grid.columnGap(), grid.rowGap(), items);
+                    }
+                } else if (columnChildren && block instanceof GridItem item) {
+                    var children = mapBlocks(item.blocks(), section, region, path, state, blocks, cells, true);
+                    if (!children.equals(item.blocks())) {
+                        block = new GridItem(item.id(), item.row(), item.columnStart(), item.columnSpan(), children);
+                    }
+                } else if (block instanceof Table table) {
                     long slots = (long) table.rows().size() * table.columns().size();
                     if (slots > state.limits.maxNodes()) { throw new IllegalArgumentException("editing table structure budget exceeded"); }
                     state.work(slots);
@@ -126,7 +160,7 @@ final class EditSupport {
                                 for (int index = 0; index < cell.blocks().size(); index++) {
                                     var childPath = new ArrayList<>(path);
                                     childPath.add(new CellLocation(table.id(), anchor.rowIndex(), anchor.columnIndex(), index));
-                                    nested.addAll(mapBlocks(List.of(cell.blocks().get(index)), section, region, childPath, state, blocks, cells));
+                                    nested.addAll(mapBlocks(List.of(cell.blocks().get(index)), section, region, childPath, state, blocks, cells, columnChildren));
                                 }
                                 if (!nested.equals(cell.blocks())) { cell = cell.toBuilder().blocks(nested).build(); }
                             }

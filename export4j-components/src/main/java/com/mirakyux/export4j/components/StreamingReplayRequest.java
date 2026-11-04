@@ -160,7 +160,7 @@ public final class StreamingReplayRequest {
             if (finalPages > limits.document().maxPages() || table.expectedPages() > 0 && table.expectedPages() != finalPages) {
                 throw new IOException("streaming replay final page total exceeds budget or differs from declaration");
             }
-            if (contents != null) { for (var page : contents.pages()) { collectLinks(page); } }
+            if (contents != null) { for (var page : contents.pages()) { collectLinks(page, Map.of()); } }
             var navigation = navigation();
             var output = new CountedOutput(ExecutionContext.output(target));
             SemanticStreamingTableLayouter.Summary result;
@@ -298,20 +298,21 @@ public final class StreamingReplayRequest {
                     }
                 }, ignored -> { });
             }
-            collectLinks(page);
+            collectLinks(page, sourceRotations(sources));
         }
 
-        private void collectLinks(LayoutPage page) {
+        private void collectLinks(LayoutPage page, Map<String, Double> rotations) {
             for (var fragment : page.elements()) {
-                SemanticFragments.walk(fragment, ignored -> { }, leaf -> {
+                SemanticFragments.walk(fragment, rotations, ignored -> { }, leaf -> {
                     double step = leaf.layout().lines().isEmpty() ? 0 : leaf.layout().height() / leaf.layout().lines().size();
                     for (var line : leaf.layout().lines()) {
                         for (var box : line.fields()) {
                             var kind = box.field().kind();
                             if (kind != InlineField.Kind.REFERENCE_PAGE && kind != InlineField.Kind.REFERENCE_NUMBER) { continue; }
                             if (pending.size() >= limits.maxLinks()) { throw budget(leaf, page.pageIndex(), box.sourceIndex(), "streaming replay internal link budget exceeded"); }
-                            pending.add(new PendingLink(page.pageIndex(), new Rect(leaf.origin().x() + line.offsetX() + box.x(),
-                                    leaf.origin().y() + line.baselineY() - leaf.layout().lines().getFirst().baselineY(), box.field().width(), step), box.field().targetId()));
+                            var bounds = new Rect(leaf.origin().x() + line.offsetX() + box.x(),
+                                    leaf.origin().y() + line.baselineY() - leaf.layout().lines().getFirst().baselineY(), box.field().width(), step);
+                            pending.add(new PendingLink(page.pageIndex(), SemanticFragments.transformedBounds(bounds, leaf.transform()), box.field().targetId()));
                         }
                     }
                 });

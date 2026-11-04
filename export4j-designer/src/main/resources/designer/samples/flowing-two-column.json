@@ -1,0 +1,14 @@
+{
+  "title": "Reliable document composition",
+  "abstract": "This fictional short article demonstrates a full-width title and abstract followed by two columns of continuous text. The same retained XML controls editing, data binding, preview and export.",
+  "paragraphsBefore": [
+    "A reusable document separates content from page geometry. Authors can update the test data while retaining the source structure, font roles and paragraph styles. A continuous flow preserves the reading order even when a paragraph reaches the end of a column. The next fragment resumes with the same original text rather than a manually copied second block.",
+    "Column width and the gap between columns affect line breaks. Equal widths provide a compact and familiar reading pattern. Explicit positive proportions can reserve a wider column for longer explanations. The preview is produced by the Java engine, so the browser is not responsible for deciding final line breaks or page boundaries."
+  ],
+  "paragraphsAfter": [
+    "A full-width introduction can share a page with the start of a multi-column body. The body uses the available height below that introduction and continues onto further pages when necessary. The final page can balance its columns, leaving the following full-width content below the completed group instead of forcing a separate page.",
+    "Changing the content should not require drawing a text box for every column. Paragraphs, headings and bound repetitions remain ordinary source nodes inside one container. Authors can insert a new paragraph, move adjacent nodes and save the template with its resources. Reopening the saved bundle retains those choices for the next document.",
+    "Validation remains explicit. A gap that leaves no usable column width or a proportion list that does not match the number of columns is rejected with a diagnostic. Unsupported output formats report their actual layout treatment through the existing export policy. A successful preview does not silently change the original template into bound text."
+  ],
+  "conclusion": "Continuous columns are a property of a region of content. Edit the region to choose the number of columns, spacing, proportions and final-page balance; edit its child nodes to change the document itself."
+}

@@ -40,6 +40,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             }
         }
         if (!sections.isEmpty() && !nodes.isEmpty()) { throw new IllegalArgumentException("sections cannot mix with root body nodes"); }
+        requireBodyNodes(nodes, 0);
+        for (var section : sections) { requireBodyNodes(section.nodes(), 0); }
     }
 
     /** A rule attached to this exact prototype cell; equal cells may have independent rules. */
@@ -101,7 +103,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         }
     }
 
-    public sealed interface Node permits ValueBlock, When, Each, Rows { }
+    public sealed interface Node permits ValueBlock, When, Each, Rows, Columns, Grid, GridItem { }
     /** Task-confined nested template authoring; branches are snapshotted when the callback returns. */
     public static final class Nodes {
         private final List<Node> values = new ArrayList<>();
@@ -109,28 +111,205 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Nodes node(Node value) { values.add(Objects.requireNonNull(value, "node")); return this; }
         public Nodes block(Block value) { return node(new ValueBlock(value)); }
         public Nodes when(String path, java.util.function.Consumer<Nodes> yes, java.util.function.Consumer<Nodes> no) {
+            return when(path, TemplateCondition.Operator.TRUE, "", yes, no);
+        }
+        /** Adds a scalar comparison; branch callbacks are snapshotted before returning. */
+        public Nodes when(String path, TemplateCondition.Operator operator, String value,
+                java.util.function.Consumer<Nodes> yes, java.util.function.Consumer<Nodes> no) {
             var left = new Nodes(); var right = new Nodes(); yes.accept(left); no.accept(right);
-            return node(new When(path, left.snapshot(), right.snapshot()));
+            return node(new When(path, operator, value, left.snapshot(), right.snapshot()));
         }
         public Nodes each(String path, String variable, java.util.function.Consumer<Nodes> configure) {
             var value = new Nodes(); configure.accept(value); return node(new Each(path, variable, value.snapshot()));
         }
+        public Nodes columns(String id, int count, double gap, boolean balanced, List<Double> weights,
+                java.util.function.Consumer<Nodes> configure) {
+            var value = new Nodes(); configure.accept(value);
+            return node(new Columns(id, count, gap, balanced, weights, value.snapshot()));
+        }
+        public Nodes columns(java.util.function.Consumer<Columns.Builder> configure) {
+            var value = Columns.builder(); configure.accept(value); return node(value.build());
+        }
+        public Nodes grid(String id, int tracks, double columnGap, double rowGap,
+                java.util.function.Consumer<Nodes> configure) {
+            var value = new Nodes(); configure.accept(value);
+            return node(new Grid(id, tracks, columnGap, rowGap, value.snapshot()));
+        }
+        public Nodes gridItem(String id, int row, int columnStart, int columnSpan,
+                java.util.function.Consumer<Nodes> configure) {
+            var value = new Nodes(); configure.accept(value);
+            return node(new GridItem(id, row, columnStart, columnSpan, value.snapshot()));
+        }
         private List<Node> snapshot() { return List.copyOf(values); }
     }
-    /** Supports paragraphs (including styled runs), headings, lists, captions, cross references, page breaks and semantic tables with
+    /** Supports paragraphs (including styled runs), headings, lists, captions, cross references, page breaks, continuous columns and semantic tables with
      * bounded Paragraph/Table block cells. Descendants share expansion budgets and retain their formats. */
     public record ValueBlock(Block prototype) implements Node {
         public ValueBlock { Objects.requireNonNull(prototype, "prototype"); }
     }
-    /** Path must resolve to a boolean. Both branches are immutable. */
-    public record When(String path, List<Node> yes, List<Node> no) implements Node {
-        public When { checkPath(path); yes = List.copyOf(yes); no = List.copyOf(no); }
+    /** A lexical scalar condition with immutable branches. Only the selected branch expands.
+     * Nesting another condition in {@code no} forms an ordered, mutually exclusive alternative.
+     * The three-argument constructor preserves the original boolean-true condition. */
+    public record When(String path, TemplateCondition.Operator operator, String value,
+            List<Node> yes, List<Node> no) implements Node {
+        public When {
+            checkPath(path); new TemplateCondition(operator, value);
+            yes = List.copyOf(yes); no = List.copyOf(no);
+        }
+        public When(String path, List<Node> yes, List<Node> no) {
+            this(path, TemplateCondition.Operator.TRUE, "", yes, no);
+        }
     }
     /** Iteration variable is lexical; generated block IDs receive a deterministic iteration suffix.
      * Static field targets declared in this copy scope relocate to the current copy, including targets in
      * conditional branches. External targets and dynamically bound target strings remain unchanged. */
     public record Each(String path, String variable, List<Node> children) implements Node {
         public Each { checkPath(path); checkVariable(variable); children = List.copyOf(children); }
+    }
+    /** Continuous body columns. Static geometry surrounds paragraphs/tables expanded in lexical scope.
+     * All branches are checked, nested columns and paragraph page breaks/keep-with-next chains are rejected,
+     * and an empty bound flow is omitted.
+     * Gap uses points; empty weights select equal widths. Children share the complete binding budget. */
+    public record Columns(String id, int count, double gap, boolean balanced, List<Double> weights,
+            List<Node> children) implements Node {
+        public Columns {
+            if (Objects.requireNonNull(id, "id").isBlank()) { throw new IllegalArgumentException("blank column flow ID"); }
+            if (count < 1 || count > 3 || !Double.isFinite(gap) || gap < 0) {
+                throw new IllegalArgumentException("invalid column geometry");
+            }
+            weights = List.copyOf(weights); children = List.copyOf(children);
+            if (!weights.isEmpty() && weights.size() != count) { throw new IllegalArgumentException("column weight count mismatch"); }
+            for (double weight : weights) {
+                if (!Double.isFinite(weight) || weight <= 0) { throw new IllegalArgumentException("invalid column weight"); }
+            }
+            if (children.isEmpty()) { throw new IllegalArgumentException("empty column template"); }
+            requireColumnNodes(children, 0);
+        }
+        public Columns(String id, int count, double gap, boolean balanced, List<Node> children) {
+            this(id, count, gap, balanced, List.of(), children);
+        }
+        public static Builder builder() { return new Builder(); }
+        /** Task-confined construction; children and weights are snapshotted on assignment and build. */
+        public static final class Builder {
+            private String id = "";
+            private int count = 2;
+            private double gap = 18;
+            private boolean balanced = true;
+            private List<Double> weights = List.of();
+            private List<Node> children = new ArrayList<>();
+            private Builder() { }
+            public Builder id(String value) { id = Objects.requireNonNull(value, "id"); return this; }
+            public Builder count(int value) { count = value; return this; }
+            public Builder gap(double value) { gap = value; return this; }
+            public Builder balanced(boolean value) { balanced = value; return this; }
+            public Builder weights(List<Double> values) { weights = List.copyOf(values); return this; }
+            public Builder children(List<Node> values) { children = new ArrayList<>(List.copyOf(values)); return this; }
+            public Builder node(Node value) { children.add(Objects.requireNonNull(value, "node")); return this; }
+            public Builder block(Block value) { return node(new ValueBlock(value)); }
+            public Columns build() { return new Columns(id, count, gap, balanced, weights, children); }
+        }
+    }
+
+    private static void requireColumnNodes(List<Node> nodes, int depth) {
+        if (depth > 128) { throw new IllegalArgumentException("column template nesting exceeds limit"); }
+        for (var node : nodes) {
+            ExecutionContext.checkpoint();
+            switch (node) {
+                case ValueBlock value -> {
+                    if (!(value.prototype() instanceof Paragraph || value.prototype() instanceof Table)) {
+                        throw new IllegalArgumentException("columns require paragraph or table content");
+                    }
+                    if (value.prototype() instanceof Paragraph paragraph && (paragraph.format().pagination().pageBreakBefore()
+                            || paragraph.format().pagination().keepWithNext())) {
+                        throw new IllegalArgumentException("columns do not support page breaks or keep-with-next chains");
+                    }
+                }
+                case Rows ignored -> { }
+                case When when -> { requireColumnNodes(when.yes(), depth + 1); requireColumnNodes(when.no(), depth + 1); }
+                case Each each -> requireColumnNodes(each.children(), depth + 1);
+                case Columns ignored -> throw new IllegalArgumentException("nested column templates are unsupported");
+                case Grid ignored -> throw new IllegalArgumentException("grid templates cannot occur inside columns");
+                case GridItem ignored -> throw new IllegalArgumentException("grid items cannot occur inside columns");
+            }
+        }
+    }
+
+    /** Static track geometry around ordered item templates. Bound empty items and grids are omitted. */
+    public record Grid(String id, int tracks, double columnGap, double rowGap, List<Node> children) implements Node {
+        public Grid {
+            if (Objects.requireNonNull(id, "id").isBlank() || tracks < 1 || tracks > 12
+                    || !Double.isFinite(columnGap) || columnGap < 0 || !Double.isFinite(rowGap) || rowGap < 0) {
+                throw new IllegalArgumentException("invalid grid template geometry");
+            }
+            children = List.copyOf(children);
+            if (children.isEmpty()) { throw new IllegalArgumentException("empty grid template"); }
+            requireGridNodes(children, tracks, 0);
+            if (!hasTemplateContent(children, 0)) { throw new IllegalArgumentException("empty grid template"); }
+        }
+    }
+
+    /** One explicit one-based placement; content is restricted to paragraphs and tables in every branch. */
+    public record GridItem(String id, int row, int columnStart, int columnSpan, List<Node> children) implements Node {
+        public GridItem {
+            if (Objects.requireNonNull(id, "id").isBlank() || row < 1 || columnStart < 1 || columnSpan < 1
+                    || (long) columnStart + columnSpan - 1 > 12) {
+                throw new IllegalArgumentException("invalid grid item template geometry");
+            }
+            children = List.copyOf(children);
+            if (children.isEmpty()) { throw new IllegalArgumentException("empty grid item template"); }
+            requireColumnNodes(children, 0);
+            if (!hasTemplateContent(children, 0)) { throw new IllegalArgumentException("empty grid item template"); }
+        }
+    }
+
+    private static boolean hasTemplateContent(List<Node> nodes, int depth) {
+        if (depth > 128) { throw new IllegalArgumentException("grid template nesting exceeds limit"); }
+        for (var node : nodes) {
+            ExecutionContext.checkpoint();
+            if (node instanceof When when) {
+                if (hasTemplateContent(when.yes(), depth + 1) || hasTemplateContent(when.no(), depth + 1)) { return true; }
+            } else if (node instanceof Each each) {
+                if (hasTemplateContent(each.children(), depth + 1)) { return true; }
+            } else { return true; }
+        }
+        return false;
+    }
+
+    private static void requireGridNodes(List<Node> nodes, int tracks, int depth) {
+        if (depth > 128) { throw new IllegalArgumentException("grid template nesting exceeds limit"); }
+        for (var node : nodes) {
+            ExecutionContext.checkpoint();
+            switch (node) {
+                case GridItem item -> {
+                    if ((long) item.columnStart() + item.columnSpan() - 1 > tracks) {
+                        throw new IllegalArgumentException("grid item exceeds track count");
+                    }
+                }
+                case ValueBlock value -> {
+                    if (!(value.prototype() instanceof com.mirakyux.export4j.model.GridItem item)
+                            || (long) item.columnStart() + item.columnSpan() - 1 > tracks) {
+                        throw new IllegalArgumentException("grids accept only grid items");
+                    }
+                }
+                case When when -> { requireGridNodes(when.yes(), tracks, depth + 1); requireGridNodes(when.no(), tracks, depth + 1); }
+                case Each each -> requireGridNodes(each.children(), tracks, depth + 1);
+                default -> throw new IllegalArgumentException("grids accept only grid item templates");
+            }
+        }
+    }
+
+    private static void requireBodyNodes(List<Node> nodes, int depth) {
+        if (depth > 128) { throw new IllegalArgumentException("body template nesting exceeds limit"); }
+        for (var node : nodes) {
+            ExecutionContext.checkpoint();
+            if (node instanceof GridItem || node instanceof ValueBlock value
+                    && value.prototype() instanceof com.mirakyux.export4j.model.GridItem) {
+                throw new IllegalArgumentException("grid items require a grid owner");
+            }
+            if (node instanceof When when) {
+                requireBodyNodes(when.yes(), depth + 1); requireBodyNodes(when.no(), depth + 1);
+            } else if (node instanceof Each each) { requireBodyNodes(each.children(), depth + 1); }
+        }
     }
     /** Expands one data collection into body rows after fixed headers. An empty collection fails explicitly.
      * The repeated body prototype cannot span rows; static headers can span within the complete header group.
@@ -337,16 +516,23 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         }
 
         private void expand(List<Node> source, Scope scope, String suffix, int depth, Map<String, String> relocations) {
+            expand(source, scope, suffix, depth, relocations, blocks);
+        }
+
+        private void expand(List<Node> source, Scope scope, String suffix, int depth, Map<String, String> relocations,
+                List<Block> target) {
             if (depth > limits.maxDepth()) { throw error(BindingException.Code.BUDGET_EXCEEDED, "nodes"); }
             for (var node : source) {
                 visit("nodes");
                 switch (node) {
-                    case ValueBlock value -> add(bind(value.prototype(), scope, suffix,
+                    case ValueBlock value -> target.add(bind(value.prototype(), scope, suffix,
                             blockIds(value.prototype(), suffix, relocations), depth));
                     case When when -> {
                         Object value = get(when.path(), scope);
-                        if (!(value instanceof Boolean flag)) { throw error(BindingException.Code.TYPE_MISMATCH, when.path()); }
-                        expand(flag ? when.yes() : when.no(), scope, suffix, depth + 1, relocations);
+                        boolean flag;
+                        try { flag = new TemplateCondition(when.operator(), when.value()).matches(value); }
+                        catch (IllegalArgumentException invalid) { throw error(BindingException.Code.TYPE_MISMATCH, when.path()); }
+                        expand(flag ? when.yes() : when.no(), scope, suffix, depth + 1, relocations, target);
                     }
                     case Each each -> {
                         var items = collection(each.path(), scope);
@@ -356,7 +542,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                             String nestedSuffix = suffix + "@" + i;
                             var nestedIds = new HashMap<>(relocations);
                             collectIds(each.children(), nestedSuffix, nestedIds, depth + 1);
-                            expand(each.children(), nested, nestedSuffix, depth + 1, nestedIds);
+                            expand(each.children(), nested, nestedSuffix, depth + 1, nestedIds, target);
                         }
                     }
                     case Rows table -> {
@@ -376,16 +562,48 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                             collectRowIds(table.row(), rowSuffix, rowIds);
                             result.add(bindRow(table.row(), nested, rowSuffix, rowIds, depth + 1));
                         }
-                        add(new Table(table.id() + suffix, table.columns(), result, table.headers().size(), table.format()));
+                        target.add(new Table(table.id() + suffix, table.columns(), result, table.headers().size(), table.format()));
+                    }
+                    case Columns columns -> {
+                        consumeBlock(depth);
+                        var children = new ArrayList<Block>();
+                        var columnIds = new HashMap<>(relocations);
+                        columnIds.put(columns.id(), columns.id() + suffix);
+                        collectIds(columns.children(), suffix, columnIds, depth + 1);
+                        expand(columns.children(), scope, suffix, depth + 1, columnIds, children);
+                        if (!children.isEmpty()) {
+                            target.add(new ColumnFlow(columns.id() + suffix, children, columns.count(), columns.gap(),
+                                    columns.balanced(), columns.weights()));
+                        }
+                    }
+                    case Grid grid -> {
+                        consumeBlock(depth);
+                        var children = new ArrayList<Block>();
+                        var gridIds = new HashMap<>(relocations);
+                        gridIds.put(grid.id(), grid.id() + suffix);
+                        collectIds(grid.children(), suffix, gridIds, depth + 1);
+                        expand(grid.children(), scope, suffix, depth + 1, gridIds, children);
+                        if (!children.isEmpty()) {
+                            target.add(new GridLayout(grid.id() + suffix, grid.tracks(), grid.columnGap(), grid.rowGap(),
+                                    children.stream().map(child -> (com.mirakyux.export4j.model.GridItem) child).toList()));
+                        }
+                    }
+                    case GridItem item -> {
+                        consumeBlock(depth);
+                        var children = new ArrayList<Block>();
+                        var itemIds = new HashMap<>(relocations);
+                        itemIds.put(item.id(), item.id() + suffix);
+                        collectIds(item.children(), suffix, itemIds, depth + 1);
+                        expand(item.children(), scope, suffix, depth + 1, itemIds, children);
+                        if (!children.isEmpty()) {
+                            target.add(new com.mirakyux.export4j.model.GridItem(item.id() + suffix, item.row(),
+                                    item.columnStart(), item.columnSpan(), children));
+                        }
                     }
                 }
             }
         }
 
-        private void add(Block block) {
-            ExecutionContext.checkpoint();
-            blocks.add(block);
-        }
         private void consumeBlock(int depth) {
             visit("blocks");
             if (depth > limits.maxDepth() || ++blockCount > limits.maxBlocks()) {
@@ -404,6 +622,18 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                         for (var row : table.headers()) { collectRowIds(row, suffix, ids); }
                     }
                     case Each ignored -> { /* A nested iteration owns its own lexical copy scope. */ }
+                    case Columns columns -> {
+                        ids.put(columns.id(), columns.id() + suffix);
+                        collectIds(columns.children(), suffix, ids, depth + 1);
+                    }
+                    case Grid grid -> {
+                        ids.put(grid.id(), grid.id() + suffix);
+                        collectIds(grid.children(), suffix, ids, depth + 1);
+                    }
+                    case GridItem item -> {
+                        ids.put(item.id(), item.id() + suffix);
+                        collectIds(item.children(), suffix, ids, depth + 1);
+                    }
                 }
             }
         }
@@ -495,6 +725,15 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 }
                 case Table t -> new Table(id, t.columns(), t.rows().stream()
                         .map(row -> bindRow(row, scope, suffix, relocations, depth + 1)).toList(), t.headerRows(), t.format());
+                case ColumnFlow flow -> new ColumnFlow(id, flow.blocks().stream()
+                        .map(child -> bind(child, scope, suffix, relocations, depth + 1)).toList(),
+                        flow.columns(), flow.gap(), flow.balanced(), flow.columnWeights());
+                case GridLayout grid -> new GridLayout(id, grid.tracks(), grid.columnGap(), grid.rowGap(),
+                        grid.items().stream().map(item -> (com.mirakyux.export4j.model.GridItem)
+                                bind(item, scope, suffix, relocations, depth + 1)).toList());
+                case com.mirakyux.export4j.model.GridItem item -> new com.mirakyux.export4j.model.GridItem(id,
+                        item.row(), item.columnStart(), item.columnSpan(), item.blocks().stream()
+                                .map(child -> bind(child, scope, suffix, relocations, depth + 1)).toList());
                 default -> throw error(BindingException.Code.UNSUPPORTED_BLOCK, "block");
             };
         }
@@ -722,11 +961,29 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder node(Node value) { nodes.add(Objects.requireNonNull(value, "node")); return this; }
         public Builder block(Block value) { return node(new ValueBlock(value)); }
         public Builder when(String path, java.util.function.Consumer<Nodes> yes, java.util.function.Consumer<Nodes> no) {
+            return when(path, TemplateCondition.Operator.TRUE, "", yes, no);
+        }
+        /** Adds a scalar comparison; branch callbacks are snapshotted before returning. */
+        public Builder when(String path, TemplateCondition.Operator operator, String value,
+                java.util.function.Consumer<Nodes> yes, java.util.function.Consumer<Nodes> no) {
             var left = new Nodes(); var right = new Nodes(); yes.accept(left); no.accept(right);
-            return node(new When(path, left.snapshot(), right.snapshot()));
+            return node(new When(path, operator, value, left.snapshot(), right.snapshot()));
         }
         public Builder each(String path, String variable, java.util.function.Consumer<Nodes> configure) {
             var value = new Nodes(); configure.accept(value); return node(new Each(path, variable, value.snapshot()));
+        }
+        public Builder columns(String id, int count, double gap, boolean balanced, List<Double> weights,
+                java.util.function.Consumer<Nodes> configure) {
+            var value = new Nodes(); configure.accept(value);
+            return node(new Columns(id, count, gap, balanced, weights, value.snapshot()));
+        }
+        public Builder columns(java.util.function.Consumer<Columns.Builder> configure) {
+            var value = Columns.builder(); configure.accept(value); return node(value.build());
+        }
+        public Builder grid(String id, int tracks, double columnGap, double rowGap,
+                java.util.function.Consumer<Nodes> configure) {
+            var value = new Nodes(); configure.accept(value);
+            return node(new Grid(id, tracks, columnGap, rowGap, value.snapshot()));
         }
         public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, navigation, cellRules); }
     }

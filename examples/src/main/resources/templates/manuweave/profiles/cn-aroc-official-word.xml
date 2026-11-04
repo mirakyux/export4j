@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">zh</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">cn-aroc-official-word</entry>
+  <entry key="name">计算机应用研究，官方投稿编辑模板</entry>
+  <entry key="page.height_mm">297.0036</entry>
+  <entry key="page.margin_bottom_mm">14.9931</entry>
+  <entry key="page.margin_left_mm">14.9931</entry>
+  <entry key="page.margin_right_mm">14.9931</entry>
+  <entry key="page.margin_top_mm">20.0025</entry>
+  <entry key="page.width_mm">210.0086</entry>
+  <entry key="readme-name">计算机应用研究</entry>
+  <entry key="role.abstract.size_pt">9.0</entry>
+  <entry key="role.body.alignment">justify</entry>
+  <entry key="role.body.east_asia_font">宋体</entry>
+  <entry key="role.body.first_line_pt">18.2</entry>
+  <entry key="role.body.font">Times New Roman</entry>
+  <entry key="role.body.size_pt">9.0</entry>
+  <entry key="role.keywords.size_pt">9.0</entry>
+  <entry key="role.names">["title","body","abstract","keywords"]</entry>
+  <entry key="role.title.alignment">center</entry>
+  <entry key="role.title.east_asia_font">黑体</entry>
+  <entry key="role.title.size_pt">16.0</entry>
+  <entry key="sections.body_columns">2</entry>
+  <entry key="sections.body_starts_at">first_heading1</entry>
+  <entry key="sections.front_matter_columns">1</entry>
+  <entry key="source">https://www.arocmag.cn/download/template</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">chinese-engineering</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">https://www.arocmag.cn/download/template</entry>
+  <entry key="template.source_version">official-download-snapshot-2026-10-30</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/chinese-engineering/profiles/cn-aroc-official-word.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">ad191c40253d67bbd33e9eb5484ba3616568218e84b4fab840e197793a1845b1</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

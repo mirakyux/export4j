@@ -69,6 +69,8 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java authoring and semantic DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML reports and data binding |
+| `:examples:manuWeave` | `examples/build/manuweave/` | All 286 ManuWeave academic profiles, with individual PDF and formatting reports |
+| `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | Vector PDF/SVG mathematics and native, editable Word equations |
 | `:examples:production` | `examples/build/production/` | Pagination, columns, tables and multiple formats |
 | `:examples:documentConversion` | `examples/build/document-conversion/` | Import, edit, preview losses and export |
 | `:examples:staticForms` | `examples/build/static-forms/` | Dense static forms |
@@ -144,6 +146,10 @@ Describe the document in XML and supply data, fonts, images and output settings 
 
 Templates support variables, conditions, loops, tables, sections, page bands and includes. Save XML sources and resources in an ordinary ZIP, or save supported Java models as editable XML. See the [XML guide](docs/xml-template-api.md), [template bundles](docs/xml-template-bundle-api.md), [model saving](docs/xml-model-saving-api.md) and [complete Java example](examples/src/main/java/com/mirakyux/export4j/examples/XmlTemplateExample.java).
 
+[Editable body columns](docs/column-flow-api.md) support one to three continuous columns, width ratios and full-width tables or images between column sections. XML/ZIP retains the structure; DOCX/Web conversion currently requires explicit degradation to sequential content.
+
+[Editable grids](docs/grid-layout-api.md) start with visual layout choices and empty editable regions. Place existing content side by side, drag dividers to resize, or split and merge cells; numeric track settings stay under advanced options. Text, tables and images retain their source structure in XML/ZIP; each row paginates as a unit and can sit between continuous-column sections.
+
 [Document-model recovery](docs/model-recovery-api.md) is optional: use a companion XML/resource bundle or embed it in a supported output. Recovery data increases file size, and external edits may invalidate or remove it. The guide explains binding checks, compatibility and conversion losses.
 
 ## HTML and Markdown export
@@ -175,6 +181,7 @@ HTML preserves supported styles, embedded images and merged/nested tables. Markd
 | SVG / PNG | Image/vector resources within their respective supported subsets | Static pages and PNG page ZIPs |
 
 - Formats preserve different information. Unsupported features follow explicit loss policies; general Word round trips and identical DOCX/PDF pagination are not guaranteed.
+- [Native Word equations](docs/docx-math-api.md) use typed OMML and remain editable. The separate [math example](docs/examples.md#数学公式) renders a bounded TeX subset as PDF/SVG vectors; it requires no TeX installation.
 - PDF recovery infers editable structure from text, coordinates and drawings. It reports uncertainty, accepts explicit table grids and does not perform OCR. Font requirements and image fallbacks are described in the [recovery guide](docs/pdf-semantic-import-api.md).
 - [PDF redaction](docs/pdf-redaction-api.md) offers rasterization and selective reconstruction. The first loses searchable text and vectors; the second preserves supported content outside selected regions. Callers identify all sensitive regions.
 - Complex text, search and selection depend on the documented font/script/reader coverage. PDF/A and PDF/UA require their specific output paths and final-file validation; signing requires caller-owned keys and trust evidence.
@@ -233,6 +240,7 @@ Export4j builds on open-source infrastructure and explicitly supplied font resou
 | [LWJGL](https://www.lwjgl.org/), [HarfBuzz](https://harfbuzz.github.io/) | Optional native OpenType shaping, outlines and color glyph rendering |
 | [OpenJDK](https://openjdk.org/) | Java runtime, Java2D/OpenType, ZIP and XML infrastructure |
 | [Gradle](https://gradle.org/), [JUnit](https://junit.org/) | Build and Java tests |
+| [ManuWeave](https://github.com/jiassia/manuweave/) | Academic template catalog and formatting facts for the [286 profile examples](examples/src/main/resources/templates/manuweave/README.md); MIT-licensed data, with explicit font substitutions and layout limits |
 | [pypdf](https://github.com/py-pdf/pypdf), [pypdfium2](https://github.com/pypdfium2-team/pypdfium2), [Pillow](https://python-pillow.org/), [python-docx](https://github.com/python-openxml/python-docx), [cryptography](https://cryptography.io/), [Poppler](https://poppler.freedesktop.org/) | Independent format, rendering and verification tools |
 | [Liberation Fonts](https://github.com/liberationfonts/liberation-fonts), [LXGW WenKai TC](https://github.com/lxgw/LxgwWenkaiTC), [ZCOOL XiaoWei](https://github.com/googlefonts/zcool-xiaowei) | Explicit example/test fonts |
 | [Noto Fonts](https://github.com/notofonts/noto-fonts), [Source Sans 3](https://github.com/adobe-fonts/source-sans) | Complex-script and CFF example/test fonts |

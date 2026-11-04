@@ -41,6 +41,9 @@ final class DocxSemanticSupport {
     private DocxSemanticSupport() { }
     /** Native side stories share the same source/resource budgets as the ordinary body. */
     static void budget(DocxSemanticDocument document, DocxLimits limits) throws java.io.IOException {
+        budget(document, limits, List.of());
+    }
+    static void budget(DocxSemanticDocument document, DocxLimits limits, List<DocxMath> mathematics) throws java.io.IOException {
         var sources = new ArrayList<List<Block>>(); var bands = new HashSet<PageRegion>();
         for (var section : document.body().sections()) {
             sources.add(section.blocks());
@@ -52,6 +55,7 @@ final class DocxSemanticSupport {
         for (var control : document.controls()) { units += control.items().size(); }
         if (units > limits.maxBlocks()) { throw new java.io.IOException("DOCX cumulative native feature budget exceeded"); }
         var sourceBudget = new DocxCells.Budget(limits); var ids = new HashSet<String>(); var images = new HashMap<String, ImageResource>();
+        DocxMathSupport.charge(mathematics, sourceBudget);
         long bytes = 0; long pixels = 0;
         for (var blocks : sources) {
             var visits = new ArrayList<SemanticTree.Visit>(); SemanticTree.walk(blocks, visits::add);

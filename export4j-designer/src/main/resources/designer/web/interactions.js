@@ -2,6 +2,8 @@
 'use strict';
 const BodyEditor=(()=>{
     let source, originals=new Map(), nextKey=0, selection, host, area, toolbar;
+    let bindings, bindingPath, bindingError, bindingAction, bindingMode, bindingUsed, bindingFields, bindingValue, bindingReset, fieldBrowser, valueEditor, occurrence, bodyVersion=0;
+    const pathPattern=/^[A-Za-z_][A-Za-z_0-9]*(?:\.[A-Za-z_][A-Za-z_0-9]*)*$/;
     const make=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
     function stamp(element,node){const key=String(++nextKey);originals.set(key,node.cloneNode(true));element.dataset.inlineKey=key;}
     function display(node){
@@ -46,16 +48,86 @@ const BodyEditor=(()=>{
         [...source.children].filter(node=>node.tagName==='style-if').forEach(node=>result.appendChild(doc.importNode(node,true)));
         return result;
     }
-    function modified(){if(!source||busy||nodeXmlDirty)return;try{Editor.updateBody(read());}catch(error){status(error.message,true);}}
+    function modified(){if(!source||busy||nodeXmlDirty)return;try{Editor.updateBody(read());bodyVersion++;refreshVariables();}catch(error){status(error.message,true);}}
     function restore(){area.focus();if(selection&&area.contains(selection.commonAncestorContainer)){const current=window.getSelection();current.removeAllRanges();current.addRange(selection);}}
     function command(name,value){if(!source||busy||nodeXmlDirty)return;restore();document.execCommand(name,false,value);modified();}
-    function render(node){
-        if(!host)return;source=node?.cloneNode(true);host.hidden=!source;originals.clear();nextKey=0;selection=undefined;area.replaceChildren();
-        if(source)[...source.childNodes].filter(child=>child.nodeType!==1||child.tagName!=='style-if').forEach(child=>area.append(display(child)));
-        $('rich-fragments').hidden=!source;lock(busy||nodeXmlDirty);
+    function bindingFailure(message){bindingError.textContent=message;bindingError.hidden=!message;}
+    function refreshValue(){
+        valueEditor?.destroy();valueEditor=undefined;bindingValue.replaceChildren();
+        const value=bindingPath.value.trim();
+        if(source&&value.length<=256&&pathPattern.test(value)&&typeof DesignerBindings.mountValue==='function')valueEditor=DesignerBindings.mountValue(bindingValue,{path:selected?.path||'',fieldPath:value});
     }
-    function lock(value){if(area)area.contentEditable=String(!!source&&!value);}
-    function focus(){if(source&&!busy){document.querySelector('[data-inspect="properties"]').click();area.focus();area.scrollIntoView({block:'nearest'});}else status('请选择段落、标题、列表项或行内单元格。',true);}
+    function insertionMode(){
+        occurrence=undefined;bindingAction.textContent='插入到正文';bindingReset.hidden=true;
+        bindingMode.textContent='选择字段或填写路径，再插入到正文光标处。';
+        for(const button of bindingUsed.querySelectorAll('[data-body-variable]'))button.setAttribute('aria-pressed','false');
+    }
+    function variableOccurrences(){
+        const chunks=[];let chunk={text:'',nodes:[]};
+        const split=()=>{if(chunk.text)chunks.push(chunk);chunk={text:'',nodes:[]};};
+        function walk(node){
+            if(node.nodeType===3){if(node.nodeValue){const start=chunk.text.length;chunk.text+=node.nodeValue;chunk.nodes.push({node,start,end:chunk.text.length});}return;}
+            if(node.nodeType!==1)return;
+            if(node!==area&&(node.contentEditable==='false'||node.classList.contains('body-token')||node.tagName==='BR')){split();return;}
+            const block=node!==area&&['DIV','P'].includes(node.tagName);if(block)split();
+            [...node.childNodes].forEach(walk);if(block)split();
+        }
+        walk(area);split();const result=[],limit=200;
+        for(const part of chunks)for(const match of part.text.matchAll(/\$\{([^{}]*)\}/g)){
+            if(result.length===limit)return {items:result,truncated:true};
+            const start=match.index,end=start+match[0].length,first=part.nodes.find(item=>item.start<=start&&start<item.end),last=part.nodes.find(item=>item.start<end&&end<=item.end);
+            if(!first||!last)continue;
+            // The inspector reparents its body section after render. Live DOM ranges
+            // collapse when an ancestor moves, so retain stable text-node boundaries.
+            result.push({path:match[1],token:match[0],startNode:first.node,startOffset:start-first.start,endNode:last.node,endOffset:end-last.start,version:bodyVersion});
+        }
+        return {items:result,truncated:false};
+    }
+    function refreshVariables(){
+        if(!bindingUsed)return;insertionMode();bindingUsed.replaceChildren();
+        const found=source?variableOccurrences():{items:[],truncated:false},variables=found.items;
+        for(const [index,value] of variables.entries()){
+            const button=make('button','${'+value.path+'}');button.type='button';button.dataset.bodyVariable=value.path;button.setAttribute('aria-label','编辑变量 '+value.path+'（第 '+(index+1)+' 处）');button.setAttribute('aria-pressed','false');
+            button.onpointerdown=event=>event.preventDefault();button.onclick=()=>{
+                if(!source||busy||nodeXmlDirty)return;
+                occurrence=value;bindingPath.value=value.path;bindingAction.textContent='更新变量引用';bindingReset.hidden=false;
+                bindingMode.textContent='正在编辑第 '+(index+1)+' 处变量；更新只影响这一处引用。';bindingFailure('');
+                for(const option of bindingUsed.querySelectorAll('[data-body-variable]'))option.setAttribute('aria-pressed',String(option===button));
+                refreshValue();bindingPath.focus();
+            };bindingUsed.append(button);
+        }
+        if(!variables.length){const empty=make('p','正文还没有变量。');empty.className='binding-empty';bindingUsed.append(empty);}
+        if(found.truncated){const note=make('p','仅显示前 200 处变量；其余引用可继续在正文中编辑。');note.className='binding-inline-count';bindingUsed.append(note);}
+    }
+    function protectedSelection(range){return [...area.querySelectorAll('[contenteditable="false"],.body-token')].some(node=>range.intersectsNode(node));}
+    function applyVariable(){
+        if(!source||busy||nodeXmlDirty)return;
+        try{
+            const value=bindingPath.value.trim();
+            if(value.length>256||!pathPattern.test(value))throw new Error('请填写 ASCII 点路径，例如 patient.name 或 item.code；不填写 ${} 或表达式。');
+            let range;
+            if(occurrence){
+                if(occurrence.version!==bodyVersion||!area.contains(occurrence.startNode)||!area.contains(occurrence.endNode)||occurrence.startOffset>occurrence.startNode.length||occurrence.endOffset>occurrence.endNode.length)throw new Error('正文已变化，请重新选择要修改的变量。');
+                range=document.createRange();range.setStart(occurrence.startNode,occurrence.startOffset);range.setEnd(occurrence.endNode,occurrence.endOffset);
+                if(range.toString()!==occurrence.token)throw new Error('正文已变化，请重新选择要修改的变量。');
+            }else if(selection&&area.contains(selection.commonAncestorContainer))range=selection.cloneRange();
+            else{range=document.createRange();range.selectNodeContents(area);range.collapse(false);}
+            if(protectedSelection(range))throw new Error('选区包含图片或页码等行内对象，请将光标放在文字中再插入变量。');
+            // Insert at the original start before removing the old reference. This keeps
+            // its first span/link alive even when a reference crosses several text nodes.
+            restore();const text=document.createTextNode('${'+value+'}'),anchor=range.cloneRange();anchor.collapse(true);anchor.insertNode(text);range.setStartAfter(text);range.deleteContents();range.setStartAfter(text);range.collapse(true);
+            selection=range;const current=window.getSelection();current.removeAllRanges();current.addRange(range);bindingFailure('');modified();refreshValue();
+        }catch(error){bindingFailure(error.message);}
+    }
+    function render(node){
+        if(!host)return;source=node?.cloneNode(true);host.hidden=!source;originals.clear();nextKey=0;selection=undefined;bodyVersion++;area.replaceChildren();
+        if(source)[...source.childNodes].filter(child=>child.nodeType!==1||child.tagName!=='style-if').forEach(child=>area.append(display(child)));
+        bindingPath.value='';bindingFailure('');refreshVariables();fieldBrowser?.destroy();fieldBrowser=undefined;
+        if(source)fieldBrowser=DesignerBindings.mountFields(bindingFields,{path:selected?.path||'',types:['string','number','boolean','mixed','unknown'],onSelect:value=>{bindingPath.value=value;bindingFailure('');refreshValue();}});
+        else bindingFields.replaceChildren();refreshValue();$('rich-fragments').hidden=!source;lock(busy||nodeXmlDirty);
+    }
+    function lock(value){if(area){area.contentEditable=String(!!source&&!value);for(const control of host.querySelectorAll('button,input,select,textarea'))control.disabled=!source||value;}}
+    function focus(){if(source&&!busy){DesignerWorkspace.openInspector();document.querySelector('[data-inspect="properties"]').click();area.focus();area.scrollIntoView({block:'nearest'});}else status('请选择段落、标题、列表项或行内单元格。',true);}
     function start(){
         host=make('div');host.id='direct-body';toolbar=make('div');toolbar.className='body-toolbar';toolbar.setAttribute('aria-label','正文格式');
         for(const [label,title,name] of [['B','粗体','bold'],['U','下划线','underline'],['S','删除线','strikeThrough']]){const button=make('button',label);button.type='button';button.title=title;button.setAttribute('aria-label',title);button.onpointerdown=event=>event.preventDefault();button.onclick=()=>command(name);toolbar.append(button);}
@@ -66,8 +138,18 @@ const BodyEditor=(()=>{
         area.oninput=modified;area.onpaste=event=>{event.preventDefault();command('insertText',event.clipboardData.getData('text/plain'));};area.ondrop=event=>event.preventDefault();
         area.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();command('insertText','\n');}};
         document.addEventListener('selectionchange',()=>{const value=window.getSelection();if(value.rangeCount&&area.contains(value.anchorNode)&&area.contains(value.focusNode))selection=value.getRangeAt(0).cloneRange();});
-        const hint=make('p','变量及行内对象保持原文。');hint.className='hint';
-        host.append(toolbar,area,hint);$('rich-fragments').before(host);
+        const variable=make('button','插入变量');variable.type='button';variable.onpointerdown=event=>event.preventDefault();variable.onclick=()=>{insertionMode();bindingFailure('');bindingPath.focus();bindingPath.scrollIntoView({block:'nearest'});};toolbar.append(variable);
+        bindings=make('section');bindings.id='body-bindings';bindings.className='body-bindings';bindings.setAttribute('aria-label','正文变量');
+        const heading=make('h4','正文变量'),usedLabel=make('p','已用变量（点击修改这一处引用）');usedLabel.className='body-binding-caption';bindingUsed=make('div');bindingUsed.className='body-used-variables';
+        const label=make('label','变量路径');label.className='setting-field';bindingPath=make('input');bindingPath.type='text';bindingPath.autocomplete='off';bindingPath.spellcheck=false;bindingPath.placeholder='例如 patient.name 或 item.code';bindingPath.setAttribute('aria-label','变量路径');label.append(bindingPath);
+        bindingPath.oninput=()=>{bindingFailure('');refreshValue();};bindingPath.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();applyVariable();}};
+        bindingMode=make('p');bindingMode.className='body-binding-mode';bindingAction=make('button','插入到正文');bindingAction.type='button';bindingAction.className='primary';bindingAction.onpointerdown=event=>event.preventDefault();bindingAction.onclick=applyVariable;
+        bindingReset=make('button','改为插入变量');bindingReset.type='button';bindingReset.onclick=()=>{insertionMode();bindingFailure('');};const actions=make('div');actions.className='body-binding-actions';actions.append(bindingAction,bindingReset);
+        bindingError=make('p');bindingError.className='body-binding-error';bindingError.setAttribute('role','alert');bindingError.hidden=true;
+        bindingValue=make('div');bindingValue.className='body-variable-value';bindingFields=make('div');bindingFields.className='body-binding-fields';
+        bindings.append(heading,usedLabel,bindingUsed,label,bindingMode,actions,bindingError,bindingValue,bindingFields);
+        const hint=make('p','列表和数据表格内可直接使用当前项字段；变量预览使用测试数据。');hint.className='hint';
+        host.append(toolbar,area,bindings,hint);$('rich-fragments').before(host);
     }
     return {start,render,lock,focus};
 })();
@@ -79,6 +161,7 @@ const DesignerActions=(()=>{
     async function duplicate(){
         if(!selected?.path)throw new Error('请选择要复制的元素。');await drafts();
         const node=nodeAt(selected.path).cloneNode(true),ids=new Map(),taken=new Set(entries.map(entry=>entry.id));let number=1;
+        if(node.tagName==='item')throw new Error('栅格项使用显式坐标，请在栅格属性中添加新行，避免副本与原项重叠。');
         for(const element of [node,...node.querySelectorAll('[id]')]){
             if(!element.hasAttribute('id'))continue;const old=element.getAttribute('id');if(old.includes('${'))throw new Error('动态 ID 的模板请在节点 XML 中显式复制和调整。');
             let fresh;do{fresh='design-'+number++;}while(taken.has(fresh));taken.add(fresh);ids.set(old,fresh);element.setAttribute('id',fresh);
@@ -106,11 +189,12 @@ const DesignerActions=(()=>{
         if(propertyDirty||!selectedPaths.includes(entry.path))return;close();
         const multi=selectedPaths.length>1;
         const choices=[['编辑正文','Enter',editBody,multi],['在前面插入段落','',()=>insert('p',{path:selected.path,after:false}),multi||!selected.path],['在后面插入段落','',()=>insert('p',{path:selected.path,after:true}),multi||!selected.path],['从此处新建分节','',()=>insert('section',{path:selected.path}),multi||!canStartSection(selected)],['复制元素','Ctrl+D',duplicate,multi||!selected.path],['上移','Alt+↑',()=>multi?moveSelection(-1):edit({operation:'move',direction:-1}),!selected.path],['下移','Alt+↓',()=>multi?moveSelection(1):edit({operation:'move',direction:1}),!selected.path],['删除所选元素','Delete',()=>edit(multi?{operation:'batch-remove',paths:selectedPaths}:{operation:'remove'}),!selected.path]];
+        if(selectedPaths.some(path=>entries.find(entry=>entry.path===path)?.tag==='item'))for(const choice of choices)if(['上移','下移','复制元素','在前面插入段落','在后面插入段落'].includes(choice[0]))choice[3]=true;
         showMenu(event,choices,'元素操作');
     }
     function blankContext(event,placement){
         event.preventDefault();event.stopPropagation();if(busy)return;
-        const choices=[['插入段落','',()=>insert('p',placement)],['插入标题','',()=>insert('heading',placement)],['插入列表项','',()=>insert('bullet',placement)],['插入数据列表','',()=>insert('list',placement)],['插入编号','',()=>insert('numbered',placement)],['插入表格','',()=>insert('table',placement)],['插入图片','',()=>insert('image',placement)],['插入题注','',()=>insert('caption',placement)],['插入引用','',()=>insert('cross-reference',placement)],['插入换页','',()=>insert('page-break',placement)],['从此处新建分节','',()=>insert('section',placement),!canStartSection(entries.find(item=>item.path===placement?.path))]];
+        const choices=[['插入段落','',()=>insert('p',placement)],['插入标题','',()=>insert('heading',placement)],['插入列表项','',()=>insert('bullet',placement)],['插入数据列表','',()=>insert('list',placement)],['插入编号','',()=>insert('numbered',placement)],['插入表格','',()=>insert('table',placement)],['插入数据表格','',()=>insert('rows',placement)],['插入正文分栏','',()=>insert('columns',placement)],['插入独立图文栅格','',()=>insert('grid',placement)],['插入图片','',()=>insert('image',placement)],['插入题注','',()=>insert('caption',placement)],['插入引用','',()=>insert('cross-reference',placement)],['插入换页','',()=>insert('page-break',placement)],['从此处新建分节','',()=>insert('section',placement),!canStartSection(entries.find(item=>item.path===placement?.path))]];
         showMenu(event,choices,'在空白区域插入');
     }
     function resources(){

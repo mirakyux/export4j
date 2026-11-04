@@ -193,6 +193,7 @@ export interface RichOptions {
   session?:RichSession;
   selectionChanged?(view:EditorView):void;
   navigate?(direction:'previous'|'next',edge:'start'|'end'):boolean;
+  tab?(direction:'previous'|'next',view:EditorView):boolean;
 }
 function inlineContent(fragment:Fragment):ModelNode[] {
   const result:ModelNode[]=[];let blocks=0;
@@ -204,6 +205,22 @@ function inlineContent(fragment:Fragment):ModelNode[] {
     else throw new Error('该内容不能放入单个文本块，请先转换为文字或行内内容。');
   });
   return result;
+}
+function tableClipboardText(data:DataTransfer,owner:Document):string|null {
+  const html=data.getData('text/html');if(!/<table(?:\s|>)/i.test(html))return null;
+  const template=owner.createElement('template');template.innerHTML=html;
+  const tables=[...template.content.querySelectorAll('table')];if(!tables.length)return null;
+  const plain=data.getData('text/plain');if(plain)return plain;
+  // HTML-only tables become delimited text; never expand spans or import a table into a text editor.
+  for(const node of template.content.querySelectorAll('script,style'))node.remove();
+  for(const node of template.content.querySelectorAll('br'))node.replaceWith('\n');
+  for(const node of template.content.querySelectorAll('p,div,li'))node.append('\n');
+  const edgeWhitespace=/^[ \r\n]+|[ \r\n]+$/g;
+  for(const table of tables.reverse()){
+    const text=[...table.rows].map(row=>[...row.cells].map(cell=>(cell.textContent||'').replace(edgeWhitespace,'')).join('\t')).join('\n');
+    table.replaceWith('\n'+text+'\n');
+  }
+  return (template.content.textContent||'').replace(edgeWhitespace,'');
 }
 function inlineTransaction(transaction:Transaction):void {
   if(transaction.doc.childCount<2)return;
@@ -222,6 +239,14 @@ function inlineTransaction(transaction:Transaction):void {
   // inserted structure and its inline projection as one action.
   transaction.replaceWith(0,doc.content.size,paragraph);
   transaction.setSelection(TextSelection.create(transaction.doc,flatten(selection.from),flatten(selection.to)));
+}
+/** Captures native caret movement before a command or focus change can replace it. */
+export function syncNativeSelection(view:EditorView):void {
+  const native=view.dom.ownerDocument.getSelection();
+  if(!(view.state.selection instanceof TextSelection)||!native?.anchorNode||!native.focusNode||!view.dom.contains(native.anchorNode)||!view.dom.contains(native.focusNode))return;
+  const anchor=view.posAtDOM(native.anchorNode,native.anchorOffset),head=view.posAtDOM(native.focusNode,native.focusOffset);
+  const selection=TextSelection.between(view.state.doc.resolve(anchor),view.state.doc.resolve(head));
+  if(selection instanceof TextSelection&&!selection.eq(view.state.selection))view.dispatch(view.state.tr.setSelection(selection).setMeta('addToHistory',false));
 }
 export function mountRich(host:HTMLElement,node:Element,options:RichOptions):EditorView {
   const session=options.session;
@@ -270,16 +295,11 @@ export function mountRich(host:HTMLElement,node:Element,options:RichOptions):Edi
     state:EditorState.create({doc:session?sessionDocument(session):editorDocument(node),plugins:[history(),keymap(bindings),identities]}),
     attributes:{role:'textbox','aria-label':'画布正文编辑','aria-multiline':'true',spellcheck:'false'},
     handleKeyDown(editor,event){
+      if(editor.composing||event.isComposing||event.keyCode===229||!editor.editable||options.editable?.()===false)return false;
       // Native navigation may move the caret before selectionchange is delivered.
       // Commands must use that caret rather than deleting at its previous position.
-      const native=editor.dom.ownerDocument.getSelection();
-      if(editor.composing||event.isComposing||event.keyCode===229||!editor.editable||options.editable?.()===false||!(editor.state.selection instanceof TextSelection)||!native?.anchorNode||!native.focusNode||!editor.dom.contains(native.anchorNode)||!editor.dom.contains(native.focusNode))return false;
-      let selection:ReturnType<typeof TextSelection.between>;
-      try{
-        const anchor=editor.posAtDOM(native.anchorNode,native.anchorOffset),head=editor.posAtDOM(native.focusNode,native.focusOffset);
-        selection=TextSelection.between(editor.state.doc.resolve(anchor),editor.state.doc.resolve(head));
-      }catch{return false;} // Let the editor handle a transient DOM replacement.
-      if(selection instanceof TextSelection&&!selection.eq(editor.state.selection))editor.dispatch(editor.state.tr.setSelection(selection).setMeta('addToHistory',false));
+      try{syncNativeSelection(editor);}catch{if(event.key!=='Tab')return false;} // Cell navigation also works during a transient DOM replacement.
+      if(event.key==='Tab'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&options.tab?.(event.shiftKey?'previous':'next',editor)){event.preventDefault();return true;}
       return false;
     },
     dispatchTransaction(transaction){
@@ -289,10 +309,12 @@ export function mountRich(host:HTMLElement,node:Element,options:RichOptions):Edi
       if(applied.transactions.some(change=>change.docChanged))options.changed(view);
       if(transaction.selectionSet||transaction.docChanged||transaction.storedMarksSet)options.selectionChanged?.(view);
     },
-    handlePaste(_view,event){
+    handlePaste(editor,event){
       if(options.editable?.()===false){event.preventDefault();return true;}
       const file=[...(event.clipboardData?.files??[])].find(file=>file.type==='image/png'||file.type==='image/jpeg');
-      if(file){event.preventDefault();options.paste(file);return true;}return false;
+      if(file){event.preventDefault();options.paste(file);return true;}
+      const text=event.clipboardData?tableClipboardText(event.clipboardData,host.ownerDocument):null;
+      if(text!==null){event.preventDefault();editor.pasteText(text);return true;}return false;
     },
     transformPasted(slice){return options.inlineOnly&&slice.content.childCount>1?new Slice(Fragment.fromArray(inlineContent(slice.content)),0,0):slice;}
   });

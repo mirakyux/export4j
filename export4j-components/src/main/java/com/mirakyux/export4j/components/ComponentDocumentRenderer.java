@@ -209,12 +209,12 @@ public final class ComponentDocumentRenderer {
         }
         // Collect source-linked external rectangles before replacing one-position field slots with generated text.
         var externalLinks = InlineHyperlinks.collect(document, body, offset, componentLimits.maxInteractions() - interactions);
+        var rotations = ModelRotations.of(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
         var inline = InlineFields.resolve(body, offset,
                 page -> number(document, sectionPages, localPages, page, offset), anchors, semantic.labels(), notes,
-                fonts, roles, componentLimits.maxInteractions() - interactions - externalLinks.size(), layoutLimits.maxCodePoints());
+                fonts, roles, componentLimits.maxInteractions() - interactions - externalLinks.size(), layoutLimits.maxCodePoints(), rotations);
         body = inline.body();
         List<DisplayPage> pages = new ArrayList<>(contents.pages());
-        var rotations = ModelRotations.of(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
         var painted = DocumentPainter.paint(body, rotations).pages();
         List<DocumentExtras.Link> links = new ArrayList<>(contents.links());
         links.addAll(inline.links());

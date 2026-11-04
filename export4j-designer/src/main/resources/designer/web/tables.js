@@ -65,7 +65,7 @@ const DesignerTables = (() => {
                     picked=new Set(grid.cells.filter(item=>item.x<r&&item.x+item.w>l&&item.y<b&&item.y+item.h>t).map(item=>item.path));
                 }else if(event.ctrlKey||event.metaKey){picked.has(cell.path)?picked.delete(cell.path):picked.add(cell.path);anchorPath=cell.path;}
                 else{picked=new Set([cell.path]);anchorPath=cell.path;}
-                scope='selection';$('table-style-scope').value=scope;drawGrid();renderDetails();renderRules();
+                scope='selection';const scopeControl=$('table-style-scope');if(scopeControl)scopeControl.value=scope;drawGrid();renderDetails();renderRules();
             });td.append(select);tr.append(td);
         }html.append(tr);});host.append(html);
         $('table-selection-count').textContent=`已选 ${picked.size} 格 · Shift 连选矩形，Ctrl 多选`;
@@ -76,7 +76,7 @@ const DesignerTables = (() => {
         select.addEventListener('change',()=>change(select.value));wrap.append(select);return wrap;
     }
     function renderRules() {
-        const host=$('table-rules');host.replaceChildren();
+        const host=$('table-rules');if(!host)return;host.replaceChildren();
         const table=nodeForPath(helpers.xml(draftSource()),tablePath),cells=targets(table);
         const sets=cells.map(cell=>[...cell.children].filter(child=>child.tagName==='style-if'));
         const signatures=sets.map(rules=>rules.map(helpers.serialize).join(''));
@@ -142,6 +142,16 @@ const DesignerTables = (() => {
     }
     function start(value) {
         helpers=value;
+        document.addEventListener('designer-table-layout',event=>{void run(async()=>{
+            await drafts();
+            const path=event.detail?.path;
+            if(typeof path!=='string')throw new Error('请先选择表格或单元格。');
+            let node=nodeAt(path),cell;
+            for(;node&&!['table','rows'].includes(node.tagName);node=node.parentElement)if(node.tagName==='cell')cell=node;
+            if(!node)throw new Error('请先选择表格或单元格。');
+            tablePath=nodePath(node);picked=new Set(cell?[nodePath(cell)]:[]);anchorPath=cell?nodePath(cell):undefined;
+            drawGrid();$('table-dialog').showModal();
+        });});
         const dialog=make('dialog');dialog.id='table-dialog';dialog.innerHTML='<div class="dialog-heading"><h2>单元格布局</h2><button id="close-table-dialog" aria-label="关闭单元格布局">×</button></div><p id="table-selection-count"></p><div id="table-cell-grid"></div><div class="table-commands" id="table-grid-actions"></div><p id="table-grid-error" role="status"></p>';
         document.body.append(dialog);
         $('close-table-dialog').addEventListener('click',()=>{dialog.close();renderDetails();renderRules();});

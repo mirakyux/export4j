@@ -8,6 +8,7 @@
 | --- | --- | --- | --- |
 | `LiberationSans-Regular.ttf` | [PDFBox 3.0.8 JAR](https://repo.maven.apache.org/maven2/org/apache/pdfbox/pdfbox/3.0.8/pdfbox-3.0.8.jar) 中的 `org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf`，原样提取 | Google Corporation（2010）、Red Hat, Inc.（2012） | 拉丁文字度量、主字体、嵌入与回退测试 |
 | `LiberationSans-Bold.ttf`、`LiberationSans-Italic.ttf`、`LiberationSans-BoldItalic.ttf` | [Liberation Fonts 2.1.5 官方发布包](https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz)，原样提取 | Google Corporation（2010）、Red Hat, Inc.（2012） | 综合示例的真实粗体、斜体与粗斜体 |
+| `LiberationSerif-Regular.ttf`、`LiberationSerif-Bold.ttf`、`LiberationSerif-Italic.ttf`、`LiberationSerif-BoldItalic.ttf` | 同一 Liberation Fonts 2.1.5 官方发布包，原样提取 | Google Corporation（2010）、Red Hat, Inc.（2012） | ManuWeave 示例的衬线字体与真实四变体；Times、Computer Modern、Libertine、STIX 等源字体的替代关系在输出报告中逐角色登记 |
 | `LXGWWenKaiTC-Regular.ttf` | [Google Fonts 固定提交](https://raw.githubusercontent.com/google/fonts/d427686494a89f0b7ecb9833273b6aabb83a6350/ofl/lxgwwenkaitc/LXGWWenKaiTC-Regular.ttf)，提交 `d427686494a89f0b7ecb9833273b6aabb83a6350` | The LXGW WenKai Project Authors（2024） | 当前中文回退、混排、分页及 PDF 输出样本 |
 | `ZCOOLXiaoWei-Regular.ttf` | [Google Fonts 固定提交](https://raw.githubusercontent.com/google/fonts/d427686494a89f0b7ecb9833273b6aabb83a6350/ofl/zcoolxiaowei/ZCOOLXiaoWei-Regular.ttf)，提交 `d427686494a89f0b7ecb9833273b6aabb83a6350` | The ZCOOL XiaoWei Project Authors（2018） | 中文字体回退、中英文混排与 PDF 提取验证 |
 | `NotoNaskhArabic-Regular.ttf` | [Noto Fonts 固定提交](https://raw.githubusercontent.com/notofonts/noto-fonts/ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoNaskhArabic/NotoNaskhArabic-Regular.ttf)，提交 `ffebf8c1ee449e544955a7e813c54f9b73848eac` | The Noto Project Authors（2018） | OpenType 阿拉伯语连接字形、组合字符及双向混排 |
@@ -22,6 +23,8 @@
 Liberation 的版权与 OFL 原文从已保存的 [PDFBox 完整 LICENSE](../../third-party/licenses/pdfbox-3.0.8-LICENSE.txt) 中按完整字体条目原样提取，保存为 [LiberationSans-OFL.txt](LiberationSans-OFL.txt)。其保留名称包括 Arimo、Tinos、Cousine 和 Liberation。
 
 2.1.5 变体的版权和许可来自同一官方发布包的 `LICENSE`，原样保存为 [LiberationSans-2.1.5-OFL.txt](LiberationSans-2.1.5-OFL.txt)。遵守相同 OFL 嵌入与再分发条件，保留原字体名和许可文件。
+
+Liberation Serif 四变体共用该发布包原始 `LICENSE`，与上面的 `LiberationSans-2.1.5-OFL.txt` 字节一致。字体未修改或重命名，随示例 JAR 保留原许可。源字体名称相同或宽度兼容不代表字形完全相同；[Microsoft 字体再分发说明](https://learn.microsoft.com/en-us/typography/fonts/font-faq)区分文档嵌入与应用分发授权，Windows 中安装的 Times New Roman 等字体不因此成为可随示例分发的资源。调用方可通过显式外部字体映射提供其有权使用的原字体；示例不扫描或复制系统字体。
 
 站酷小薇体使用同一固定提交中的 [OFL.txt](https://raw.githubusercontent.com/google/fonts/d427686494a89f0b7ecb9833273b6aabb83a6350/ofl/zcoolxiaowei/OFL.txt)，原文保存为 [ZCOOLXiaoWei-OFL.txt](ZCOOLXiaoWei-OFL.txt)。
 
@@ -42,6 +45,10 @@ Source Sans 3 使用同一固定标签中的 [LICENSE.md](https://raw.githubuser
 | `LiberationSans-Italic.ttf` | 415,816 | `e5bae5c4cde31f22142753855f4f8fb86da6ff39955ed3c0a11248b0d16948b0` |
 | `LiberationSans-BoldItalic.ttf` | 408,996 | `698da70fc191cc5f33ad4d6d3fe830fe4624b898ea2e3169955928b7c491f1ee` |
 | `LiberationSans-2.1.5-OFL.txt` | 4,414 | `93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b` |
+| `LiberationSerif-Regular.ttf` | 393,576 | `058ea80864aef09a23f45cbec2bb5400bc3dfbdea01c3f10538a21fcb497fb74` |
+| `LiberationSerif-Bold.ttf` | 370,096 | `d754ba427cfe0bca54ae052384baa8f842da5bd6550ad4da024ac441e7a7d5ce` |
+| `LiberationSerif-Italic.ttf` | 375,632 | `0e3dea9f8d613e006ccfa62201f33e265d19167bd0907725c3e145368b04fc2e` |
+| `LiberationSerif-BoldItalic.ttf` | 376,772 | `f17db8af71e24d2066b587546021d4f0b296be389512b658dec3c09affeb11a7` |
 | `ZCOOLXiaoWei-Regular.ttf` | 6,313,808 | `a42b620140f493db42f741351dfbf343c0936d58588ee8004b8b2a218d997ff1` |
 | `LXGWWenKaiTC-Regular.ttf` | 13,110,528 | `4fcc5aec11cbbf737b0cfab7b63796f7f280087a7a656b2f13342cd5e5318d95` |
 | `LiberationSans-OFL.txt` | 4,694 | `95aec8e37f46eae22a0798ada8e545beacd7b98856667693053777d173d1e8ea` |

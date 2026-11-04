@@ -82,7 +82,7 @@ class DesignerServerTest {
             assertTrue(match.find()); String token = match.group(1);
             var state = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
             var samples = (java.util.List<?>) state.get("samples");
-            assertEquals(11, samples.size());
+            assertEquals(14, samples.size());
             assertEquals("药品不良反应报告表", ((Map<?, ?>) samples.get(4)).get("name"));
             assertEquals("项目周报", ((Map<?, ?>) samples.get(10)).get("name"));
             var blank = send(client, server.origin(), "new", token,
@@ -179,6 +179,90 @@ class DesignerServerTest {
             }
         }
     }
+    @Test void imageAndSourceCommitTogetherAndUndoAsOneChange() throws Exception {
+        try (var server = new DesignerApp.Server(0); var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            server.start();
+            var home = client.send(HttpRequest.newBuilder(URI.create(server.origin() + "/")).timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString());
+            var match = Pattern.compile("name=\"designer-token\" content=\"([^\"]+)\"").matcher(home.body());
+            assertTrue(match.find()); String token = match.group(1);
+            var initial = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
+            String original = "<document version='1'><p id='kept'>KEPT ${name}</p></document>";
+            String data = "{\"name\":\"Atomic\"}";
+            var before = BindingJson.parse(send(client, server.origin(), "apply", token,
+                    BindingJson.write(BindingJson.object("revision", initial.get("revision"), "source", original, "data", data)), null).body());
+            String png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/QAAAABJRU5ErkJggg==";
+            String source = "<document version='1'><p id='kept'>KEPT ${name}</p><p id='pasted'><image ref='atomic_image' width='12' height='12'/></p></document>";
+            var response = send(client, server.origin(), "resource", token, BindingJson.write(BindingJson.object(
+                    "revision", before.get("revision"), "kind", "image", "name", "atomic_image", "bytes", png, "source", source, "data", data, "validateLayout", true)), null);
+            assertEquals(200, response.statusCode(), response.body());
+            var pasted = BindingJson.parse(response.body());
+            assertEquals(source, pasted.get("source")); assertEquals(data, pasted.get("data"));
+            assertTrue(((List<?>) pasted.get("images")).stream().anyMatch(value -> "atomic_image".equals(((Map<?, ?>) value).get("name"))));
+            var undone = BindingJson.parse(send(client, server.origin(), "undo", token,
+                    BindingJson.write(Map.of("revision", pasted.get("revision"))), null).body());
+            assertEquals(original, undone.get("source")); assertEquals(data, undone.get("data"));
+            assertEquals(before.get("resourceIdentity"), undone.get("resourceIdentity"));
+            var redone = BindingJson.parse(send(client, server.origin(), "redo", token,
+                    BindingJson.write(Map.of("revision", undone.get("revision"))), null).body());
+            assertEquals(source, redone.get("source")); assertEquals(pasted.get("resourceIdentity"), redone.get("resourceIdentity"));
+            for (String rejectedSource : List.of("<document version='1'><unsupported/></document>", "<!DOCTYPE document><document/>",
+                    "<document version='1'><p line-height='1000'><image ref='rejected_image' width='12' height='12'/></p></document>")) {
+                var rejected = send(client, server.origin(), "resource", token, BindingJson.write(BindingJson.object(
+                        "revision", redone.get("revision"), "kind", "image", "name", "rejected_image", "bytes", png, "source", rejectedSource, "data", data, "validateLayout", true)), null);
+                assertEquals(422, rejected.statusCode());
+                var unchanged = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
+                assertEquals(redone.get("revision"), unchanged.get("revision"));
+                assertEquals(source, unchanged.get("source")); assertEquals(redone.get("resourceIdentity"), unchanged.get("resourceIdentity"));
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Timeout(30)
+    void cancellingDuringImageUploadPreservesSourceResourcesAndHistory() throws Exception {
+        try (var server = new DesignerApp.Server(0); var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            server.start();
+            var home = client.send(HttpRequest.newBuilder(URI.create(server.origin() + "/")).timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString());
+            var match = Pattern.compile("name=\"designer-token\" content=\"([^\"]+)\"").matcher(home.body());
+            assertTrue(match.find()); String token = match.group(1);
+            var before = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
+            String source = "<document version='1'><p id='kept'>KEPT</p><p id='pasted'><image ref='cancelled_image' width='12' height='12'/></p></document>";
+            byte[] body = BindingJson.write(BindingJson.object("revision", before.get("revision"), "kind", "image", "name", "cancelled_image",
+                    "bytes", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/QAAAABJRU5ErkJggg==",
+                    "source", source, "data", "{}", "validateLayout", true)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            var address = URI.create(server.origin());
+            try (var socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress("127.0.0.1", address.getPort()), 5_000); socket.setSoTimeout(10_000);
+                String headers = "POST /api/resource HTTP/1.1\r\nHost: 127.0.0.1:" + address.getPort() + "\r\nX-Designer-Token: " + token
+                        + "\r\nContent-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
+                socket.getOutputStream().write(headers.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                socket.getOutputStream().write(body, 0, 1); socket.getOutputStream().flush();
+                long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+                while (!readingRequestBody(server)) {
+                    assertTrue(System.nanoTime() < deadline, "server must start reading the partial upload before cancellation");
+                    Thread.yield();
+                }
+                assertEquals(200, send(client, server.origin(), "cancel", token, "{}", null).statusCode());
+                socket.getOutputStream().write(body, 1, body.length - 1); socket.getOutputStream().flush();
+                String response = new String(socket.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                assertTrue(response.startsWith("HTTP/1.1 422"), response);
+            }
+            var after = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
+            for (String key : List.of("revision", "source", "data", "resourceIdentity", "canUndo", "canRedo", "historyResources")) {
+                assertEquals(before.get(key), after.get(key), key);
+            }
+        }
+    }
+
+    private static boolean readingRequestBody(DesignerApp.Server server) {
+        for (var thread : java.lang.management.ManagementFactory.getThreadMXBean().dumpAllThreads(true, false)) {
+            if (java.util.Arrays.stream(thread.getLockedMonitors()).noneMatch(lock -> lock.getIdentityHashCode() == System.identityHashCode(server))) { continue; }
+            for (var frame : thread.getStackTrace()) {
+                if (frame.getClassName().equals(DesignerApp.Server.class.getName()) && frame.getMethodName().equals("read")) { return true; }
+            }
+        }
+        return false;
+    }
+
     private static HttpResponse<String> send(HttpClient client, String origin, String path, String token, String body, String foreignOrigin) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create(origin + "/api/" + path)).timeout(Duration.ofSeconds(30));
         if (token != null) { builder.header("X-Designer-Token", token); }

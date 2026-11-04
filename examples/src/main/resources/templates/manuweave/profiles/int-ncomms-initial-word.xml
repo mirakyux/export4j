@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">en</entry>
+  <entry key="formal_title">Nature Communications</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">int-ncomms-initial-word</entry>
+  <entry key="journal_id">SCIE-101710</entry>
+  <entry key="manuscript_format">Microsoft Word</entry>
+  <entry key="manuscript_type">all_manuscripts</entry>
+  <entry key="name">Nature Communications initial Word manuscript preparation</entry>
+  <entry key="page.columns">1</entry>
+  <entry key="readme-name">Nature Communications</entry>
+  <entry key="role.abstract.line_spacing">2.0</entry>
+  <entry key="role.abstract_heading.line_spacing">2.0</entry>
+  <entry key="role.body.line_spacing">2.0</entry>
+  <entry key="role.caption.line_spacing">2.0</entry>
+  <entry key="role.equation.line_spacing">2.0</entry>
+  <entry key="role.figure_caption.line_spacing">2.0</entry>
+  <entry key="role.heading1.line_spacing">2.0</entry>
+  <entry key="role.heading2.line_spacing">2.0</entry>
+  <entry key="role.heading3.line_spacing">2.0</entry>
+  <entry key="role.heading4.line_spacing">2.0</entry>
+  <entry key="role.heading5.line_spacing">2.0</entry>
+  <entry key="role.heading6.line_spacing">2.0</entry>
+  <entry key="role.keywords.line_spacing">2.0</entry>
+  <entry key="role.names">["title","body","abstract_heading","abstract","keywords","heading1","heading2","heading3","heading4","heading5","heading6","caption","figure_caption","table_caption","table_body","reference","references_heading","equation","toc","unknown"]</entry>
+  <entry key="role.reference.line_spacing">2.0</entry>
+  <entry key="role.references_heading.line_spacing">2.0</entry>
+  <entry key="role.table_body.line_spacing">2.0</entry>
+  <entry key="role.table_caption.line_spacing">2.0</entry>
+  <entry key="role.title.line_spacing">2.0</entry>
+  <entry key="role.toc.line_spacing">2.0</entry>
+  <entry key="role.unknown.line_spacing">2.0</entry>
+  <entry key="source">https://www.nature.com/ncomms/submit/how-to-submit</entry>
+  <entry key="stage">initial_submission</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">imported-journals</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">https://www.nature.com/ncomms/submit/how-to-submit</entry>
+  <entry key="template.source_version">official-how-to-submit-retrieved-2026-10-30</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/imported-journals/profiles/int-ncomms-initial-word.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">404c5bf65c31405d83f78b63bf5f3c95a557f517e8cf5f47275b6a0b29866734</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

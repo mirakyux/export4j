@@ -133,3 +133,20 @@ The Noto color-font experimental builds use Google color-fonts and Noto Emoji SV
 artwork under Apache-2.0, with region-flag source exceptions preserved verbatim.
 Original font and artwork licenses, exact source revisions and byte hashes are
 recorded in assets/fonts/README.md and the corresponding license files.
+
+Academic example profile data is derived from ManuWeave (MIT License).
+Copyright (c) 2026 ManuWeave contributors.
+Source: https://github.com/jiassia/manuweave/
+Revision: e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b
+Original license: examples/src/main/resources/templates/manuweave/MIT.txt
+Only formatting facts and catalog metadata are included; the example renderer
+and synthetic manuscript content are authored by Export4j.
+
+Academic mathematics examples use the unmodified JLaTeXMath 1.0.7 library.
+Copyright (C) 2009-2011 Calixte Denizet; Kris Coolsaet; Nico Van Cleemput;
+Kurt Vermeulen; Copyright 2004-2007 Universiteit Gent.
+The library is GPL-2.0-or-later with its stated linking exception; its bundled
+fonts retain their individual licenses. Complete original notices are in
+third-party/licenses/jlatexmath-1.0.7/. The examples distribution includes the
+upstream sources JAR and corresponding Maven build POMs.
+Source: https://github.com/opencollab/jlatexmath

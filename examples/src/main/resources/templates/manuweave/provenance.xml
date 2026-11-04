@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="groups">{"Journals":16,"Publishers":57,"ACM":41,"IEEE":52,"Chinese journals":10,"Elsevier":5,"Wiley":16,"More journals":80,"General templates":9}</entry>
+  <entry key="index.columns">group	id	name	source	upstream-path</entry>
+  <entry key="index.header">false</entry>
+  <entry key="preset.source-count">9</entry>
+  <entry key="profile.count">286</entry>
+  <entry key="profile.source-count">277</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.readme.sha256">ef819ae09d685ae67b4dd089a0990b2a0529f818a585c0be3424846799ea7e06</entry>
+  <entry key="upstream.url">https://github.com/jiassia/manuweave</entry>
+</properties>

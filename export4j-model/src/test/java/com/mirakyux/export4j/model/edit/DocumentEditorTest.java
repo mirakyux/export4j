@@ -5,6 +5,9 @@ import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.ColumnFlow;
+import com.mirakyux.export4j.model.GridLayout;
+import com.mirakyux.export4j.model.GridItem;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
@@ -60,6 +63,47 @@ class DocumentEditorTest {
     private static Paragraph mixed() {
         return new Paragraph("p", List.of(new InlineText("ab", BLUE, "https://example.org/"), new InlineText("cd", NORMAL),
                 new InlineText("tail", BLUE)), FORMAT);
+    }
+    @Test void gridValidationSeesEveryItemButOrdinaryEditingKeepsTheContainerOpaque() throws Exception {
+        var grid = new GridLayout("grid", 12, 10, 10, List.of(new GridItem("item", 1, 1, 12, List.of(p("inside", "Body")))));
+        var reference = Paragraph.mixed("reference", List.of(new InlineField(InlineField.Kind.REFERENCE_PAGE,
+                "inside", 24, NORMAL)), FORMAT);
+        var source = doc(reference, grid);
+        assertEquals(source, DocumentEditor.edit(source).execute().document());
+        assertSame(grid, DocumentEditor.edit(source).moveBefore("grid", "reference").execute().document().blocks().getFirst());
+        assertThrows(ProcessingException.class, () -> DocumentEditor.edit(source).replaceText("inside", "Body", "Changed").execute());
+        assertThrows(ProcessingException.class, () -> DocumentEditor.edit(source).replaceText("Body", "Changed").execute());
+        assertThrows(ProcessingException.class, () -> DocumentEditor.edit(source).remove("item").execute());
+        var onlyGrid = doc(grid);
+        assertEquals(onlyGrid, DocumentEditor.edit(onlyGrid).limits(new EditLimits(10, 3, 4, 10, 10, 10000)).execute().document());
+        assertThrows(IllegalArgumentException.class, () -> DocumentEditor.edit(onlyGrid).limits(new EditLimits(10, 2, 4, 10, 10, 10000)).prepare());
+        assertThrows(IllegalArgumentException.class, () -> DocumentEditor.edit(onlyGrid).limits(new EditLimits(10, 3, 3, 10, 10, 10000)).prepare());
+    }
+    @Test void columnsMoveAsWholeSubtreesAndUnsupportedChildEditsNeverSilentlySucceed() throws Exception {
+        var flow = new ColumnFlow("flow", List.of(p("inside", "Body")), 2, 12, true);
+        var source = doc(p("before", "Before"), flow);
+        var result = DocumentEditor.edit(source).moveBefore("flow", "before").execute();
+        assertSame(flow, result.document().blocks().getFirst());
+        assertEquals("inside", ((ColumnFlow) result.document().blocks().getFirst()).blocks().getFirst().id());
+        assertThrows(ProcessingException.class, () -> DocumentEditor.edit(source).replaceText("inside", "Body", "Changed").execute());
+        assertThrows(ProcessingException.class, () -> DocumentEditor.edit(source).replaceText("Body", "Changed").execute());
+        assertThrows(ProcessingException.class, () -> DocumentEditor.edit(source).remove("inside").execute());
+        var note = new Note("note", "inside", "Content", Note.Kind.FOOTNOTE);
+        assertThrows(IllegalArgumentException.class, () -> DocumentEditor.edit(source).notes(List.of(note)).prepare());
+    }
+    @Test void columnDescendantsRemainVisibleToValidationReferencesAndSourceBudgets() throws Exception {
+        var flow = new ColumnFlow("flow", List.of(p("inside", "Body")), 2, 12, true);
+        var reference = Paragraph.mixed("reference", List.of(new InlineField(InlineField.Kind.REFERENCE_PAGE,
+                "inside", 24, NORMAL)), FORMAT);
+        var source = doc(reference, flow);
+        assertEquals(source, DocumentEditor.edit(source).execute().document());
+        var onlyColumns = doc(flow);
+        assertThrows(IllegalArgumentException.class, () -> DocumentEditor.edit(onlyColumns)
+                .limits(new EditLimits(10, 1, 1000, 10, 10, 10000)).prepare());
+        assertThrows(IllegalArgumentException.class, () -> DocumentEditor.edit(onlyColumns)
+                .limits(new EditLimits(10, 100, 3, 10, 10, 10000)).prepare());
+        var exact = DocumentEditor.edit(onlyColumns).limits(new EditLimits(10, 2, 4, 10, 10, 10000)).execute();
+        assertEquals(onlyColumns, exact.document());
     }
     @Test void sameStyleCrossRunMatchRetainsSurroundingLinksAndSource() throws Exception {
         var source = new Paragraph("p", List.of(new InlineText("😀a", BLUE, "https://example.org/"),

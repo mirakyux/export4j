@@ -3,6 +3,10 @@ plugins {
     application
 }
 description = "Runnable precision drawing, text, flow, table and interactive component examples"
+val jlatexmathSources by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
 dependencies {
     implementation(project(":export4j-graphics-core"))
     implementation(project(":export4j-backend-pdf"))
@@ -14,9 +18,40 @@ dependencies {
     implementation(project(":export4j-adapter-template"))
     implementation(project(":export4j-adapter-pdf"))
     implementation(project(":export4j-adapter-web"))
+    implementation(libs.jlatexmath) {
+        isTransitive = false
+    }
+    add(jlatexmathSources.name, "org.scilab.forge:jlatexmath:${libs.versions.jlatexmath.get()}:sources")
+}
+distributions {
+    main {
+        contents {
+            from(jlatexmathSources) { into("third-party/source") }
+            from(rootProject.file("third-party/jlatexmath-source-build")) { into("third-party/source/build") }
+        }
+    }
 }
 application {
     mainClass.set("com.mirakyux.export4j.examples.PdfExample")
+}
+
+tasks.register<JavaExec>("manuWeave") {
+    group = "application"
+    description = "Generates all 286 ManuWeave profile examples, or selected IDs, with explicit formatting reports."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.ManuWeaveExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+    maxHeapSize = "768m"
+}
+
+tasks.register<JavaExec>("manuWeaveMath") {
+    group = "application"
+    description = "Generates vector academic mathematics and native editable Word equations."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.ManuWeaveMathExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
 }
 
 for (external in listOf(false, true)) {

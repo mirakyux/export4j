@@ -28,7 +28,10 @@ final class DesignerSamples {
             new Sample("用户手册", "安装运维、操作流程、权限参数与跨页排障清单", "common/user-manual"),
             new Sample("报价单", "分组长明细、含税计算、交付方案与商务条款", "common/quotation"),
             new Sample("会议纪要", "议题讨论、方案比较、决策与责任行动台账", "common/meeting-minutes"),
-            new Sample("项目周报", "健康度、预算资源、工作流进度与风险变更台账", "common/weekly-report"));
+            new Sample("项目周报", "健康度、预算资源、工作流进度与风险变更台账", "common/weekly-report"),
+            new Sample("双栏学术短文", "通栏标题与摘要、双栏正文、中间通栏图表与双栏续排", "flowing-two-column"),
+            new Sample("三栏简报", "三栏资讯、中间通栏图表、三栏续排与数据循环", "flowing-three-column"),
+            new Sample("十二轨栅格编辑", "6 + 6、8 + 4、三等分、偏移、通栏图表与前后正文分栏", "grid-editor"));
     static final List<String> NAMES = SAMPLES.stream().map(Sample::name).toList();
     private DesignerSamples() { }
     static List<Map<String, Object>> catalog() {
@@ -71,6 +74,10 @@ final class DesignerSamples {
             if (!image.isEmpty()) {
                 resources.image(image, ImageResource.load(sampleBytes("common/assets/" + image + ".png")))
                         .license(image + "-license.txt", sampleResource("common/assets/" + image + "-license.txt"));
+            }
+            if (sample.resource().startsWith("flowing-") || sample.resource().equals("grid-editor")) {
+                resources.image("flow_diagram", ImageResource.load(flowDiagram()))
+                        .license("flow-diagram-license.txt", "Self-authored Export4j sample diagram. Apache-2.0.\n");
             }
             return new DesignerProject(resources.build(),
                     sampleResource(sample.resource() + ".json"));
@@ -145,5 +152,19 @@ final class DesignerSamples {
         finally { graphics.dispose(); }
         var bytes = new ByteArrayOutputStream(); ImageIO.write(picture, "png", bytes); picture.flush();
         return new DesignerProject(DesignerService.defaults(source).image("mark", ImageResource.load(bytes.toByteArray())).build(), data);
+    }
+    private static byte[] flowDiagram() throws IOException {
+        var picture = new BufferedImage(640, 160, BufferedImage.TYPE_INT_RGB); var graphics = picture.createGraphics();
+        try {
+            graphics.setColor(Color.WHITE); graphics.fillRect(0, 0, 640, 160);
+            graphics.setColor(new Color(0xDCE7F8));
+            for (int column = 0; column < 3; column++) { graphics.fillRect(16 + column * 208, 12, 192, 42); graphics.fillRect(16 + column * 208, 106, 192, 42); }
+            graphics.setColor(new Color(0x315A8A));
+            for (int column = 0; column < 3; column++) {
+                for (int line = 0; line < 3; line++) { graphics.fillRect(26 + column * 208, 20 + line * 10, 164, 3); graphics.fillRect(26 + column * 208, 114 + line * 10, 164, 3); }
+            }
+            graphics.setColor(new Color(0xC68A45)); graphics.fillRect(16, 66, 608, 28);
+        } finally { graphics.dispose(); }
+        var bytes = new ByteArrayOutputStream(); ImageIO.write(picture, "png", bytes); picture.flush(); return bytes.toByteArray();
     }
 }

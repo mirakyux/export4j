@@ -31,6 +31,30 @@ tasks.register<JavaExec>("openType") {
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
 }
 
+tasks.register<JavaExec>("nativeMath") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.NativeMathExample")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("columnFlow") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.ColumnFlowConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("gridLayout") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.GridLayoutConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
 mapOf(
     "verticalText" to "consumer.Gap08VerticalTextConsumer",
     "streamingRowSpans" to "consumer.StreamingRowSpansConsumer",

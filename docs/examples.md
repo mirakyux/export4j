@@ -14,6 +14,8 @@
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java 编写、文字排版与语义 DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告模板与数据绑定 |
+| `:examples:manuWeave` | `examples/build/manuweave/` | ManuWeave 全部 286 个学术模板配置，支持按 Profile ID 选择，输出 PDF 及实际格式／差异报告 |
+| `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | 8 类 PDF／SVG 矢量公式及 Word 原生可编辑公式 |
 | `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | 编辑、保存和重开普通 ZIP 中的 XML 源码／资源，再绑定不同数据 |
 | `:examples:recoveryClosure` | `examples/build/recovery-closure/` | 导航／注释／分节／图层／表格／图片组合恢复、实际编辑及有损多轮 |
 | `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | 语义模型保存为 XML，再重开编辑导出；三轮无编辑控制及明确损失报告 |
@@ -37,6 +39,46 @@
 | `:examples:variableTables` | `examples/build/variable-tables/` | 按实际栏宽布局的语义行、合并 owner 和原子嵌套格 |
 | `:examples:variableSplitTables` | `examples/build/variable-split-tables/` | 行内格在变宽栏间按完整行续排，保留最终字段、图片和链接 |
 | `:examples:verifyPdfSignatures` | `examples/build/pdf-signature-verification/` | 显式离线 CMS 校验、未签追加及签名字节篡改区分 |
+
+## ManuWeave 学术模板
+
+```powershell
+# 生成全部 286 个配置的样例：
+.\gradlew.bat :examples:manuWeave
+# 列出模板，或只生成指定模板：
+.\gradlew.bat :examples:manuWeave --args="--list"
+.\gradlew.bat :examples:manuWeave --args="acm-sigconf ieee-conference zh-master"
+```
+
+[运行入口](../examples/src/main/java/com/mirakyux/export4j/examples/ManuWeaveExample.java)读取仓库内固定的[模板目录](../examples/src/main/resources/templates/manuweave/README.md)，以共享的虚构学术内容展示各配置的纸张、边距、标题、摘要、正文、分栏、图表及参考文献。全部 Profile ID 与所引用版本的 [ManuWeave README](https://github.com/jiassia/manuweave/blob/e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b/README.md)对应，运行时不访问上游仓库。
+
+每个配置输出 `<id>.pdf`、`<id>-report.xml` 和 `<id>-source.txt`。报告记录源配置、实际采用的字体与排版参数，以及缺省、替代或无法表达的项目。示例使用仓库内已授权的固定字体，未捆绑上游指定的全部字体；这些 PDF 用于演示 Export4j 排版，不承诺期刊投稿合规、LaTeX 类文件执行或 Word 模板无损复现。详细边界、资源许可与独立验证命令见[模板说明](../examples/src/main/resources/templates/manuweave/README.md)。
+
+模板使用真实衬线／无衬线粗斜体、标题相邻保留、图表与题注整组移页、2／2 孤行控制和末栏平衡；有明确源要求的配置生成审稿行号、奇偶页区和镜像边距。示例参考文献按源事实选择有限格式，未执行外部 CSL 或出版社类文件。
+
+可以通过 `--font-map <Properties XML>` 明确提供已授权的源字体，路径及真实变体要求见[模板说明](../examples/src/main/resources/templates/manuweave/README.md)。全部模板的独立结构与双渲染结果见[验收记录](verification/manuweave-templates.md)。
+
+## 数学公式
+
+```powershell
+.\gradlew.bat :examples:manuWeaveMath
+```
+
+[数学示例](../examples/src/main/java/com/mirakyux/export4j/examples/ManuWeaveMathExample.java)生成分式／根式、上下标、积分、求和、矩阵、分段、希腊字母／三角函数及极限／连乘。`math.pdf` 和 `math.svg` 使用显式 Computer Modern 数学字体排成矢量路径，保留 TeX 原文 ActualText；公式按自然尺寸原子布局，不通过缩小或栅格图片适应栏宽。
+
+`math.docx` 包含 8 条标准 OMML 原生公式，`math-edited.docx` 演示把第一条公式的分母从 `2a` 修改为 `3a`，其他公式保持。`math-standard-round-1.docx` 至 `math-standard-round-3.docx` 验证不依赖项目私有元数据的三轮读写。Word 原生公式 API 不依赖数学库或 Office；用法及受支持的类型见[数学 API](docx-math-api.md)。
+
+矢量示例新增的 JLaTeXMath 1.0.7 仅进入 `examples`，无需安装 TeX；其许可、链接例外、字体条款和源包分发见[依赖说明](dependencies.md)。只允许源码中明确列出的有限 TeX 命令及矩阵环境，拒绝宏、外联、未知命令和超预算输入。两种输出目前分别编写等价内容，没有自动 TeX↔OMML 转换器。
+
+```powershell
+python scripts/verify_manuweave_math.py
+# 本机有 Word 时，在自有后台实例中实际修改、保存并重开：
+powershell -NoProfile -File verification/verify_docx_math_word.ps1 -InputPath examples/build/manuweave-math/math.docx -OutputDirectory build/verification/manuweave-math-word
+.\gradlew.bat :examples:manuWeaveMath --args="--verify-word-saved build/verification/manuweave-math-word/word-saved.docx"
+python scripts/verify_manuweave_math.py --word-directory build/verification/manuweave-math-word
+```
+
+验证脚本使用项目隔离 Python 环境及固定依赖。Word 保存后的普通样式／主题等损失逐项报告，数学类型与设置另行严格核对；应用自动化和人工界面验收不混称，详见[验收记录](verification/manuweave-templates.md)。
 
 ## 个例报告：Java 与 XML 两种编写方式
 

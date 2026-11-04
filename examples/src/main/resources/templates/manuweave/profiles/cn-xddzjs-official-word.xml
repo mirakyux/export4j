@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">zh</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">cn-xddzjs-official-word</entry>
+  <entry key="name">现代电子技术，2025官方研究论文投稿模板</entry>
+  <entry key="page.height_mm">297.0</entry>
+  <entry key="page.margin_bottom_mm">20.0</entry>
+  <entry key="page.margin_left_mm">20.0</entry>
+  <entry key="page.margin_right_mm">20.0</entry>
+  <entry key="page.margin_top_mm">20.0</entry>
+  <entry key="page.width_mm">210.0</entry>
+  <entry key="readme-name">现代电子技术</entry>
+  <entry key="role.abstract.size_pt">9.0</entry>
+  <entry key="role.body.east_asia_font">宋体</entry>
+  <entry key="role.body.font">Times New Roman</entry>
+  <entry key="role.body.line_spacing">1.5</entry>
+  <entry key="role.body.line_spacing_rule">auto</entry>
+  <entry key="role.body.size_pt">10.5</entry>
+  <entry key="role.figure_caption.east_asia_font">黑体</entry>
+  <entry key="role.figure_caption.size_pt">9.0</entry>
+  <entry key="role.heading1.east_asia_font">黑体</entry>
+  <entry key="role.heading1.size_pt">12.0</entry>
+  <entry key="role.heading2.east_asia_font">黑体</entry>
+  <entry key="role.heading2.size_pt">10.5</entry>
+  <entry key="role.heading3.east_asia_font">楷体</entry>
+  <entry key="role.heading3.size_pt">10.5</entry>
+  <entry key="role.keywords.size_pt">9.0</entry>
+  <entry key="role.names">["title","body","heading1","heading2","heading3","abstract","keywords","figure_caption","table_caption"]</entry>
+  <entry key="role.table_caption.east_asia_font">黑体</entry>
+  <entry key="role.table_caption.size_pt">9.0</entry>
+  <entry key="role.title.alignment">center</entry>
+  <entry key="role.title.east_asia_font">黑体</entry>
+  <entry key="role.title.size_pt">16.0</entry>
+  <entry key="sections.body_columns">2</entry>
+  <entry key="sections.body_starts_at">first_heading1</entry>
+  <entry key="sections.different_first_page">true</entry>
+  <entry key="sections.different_odd_even_headers">true</entry>
+  <entry key="sections.front_matter_columns">1</entry>
+  <entry key="source">https://publishmedia.cbpt.cnki.net/portal/minio/webs/xddj/media/web/2025/11/12/%E8%AE%BA%E6%96%87%E6%A8%A1%E6%9D%BF.docx</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">chinese-engineering</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">https://publishmedia.cbpt.cnki.net/portal/minio/webs/xddj/media/web/2025/11/12/论文模板.docx</entry>
+  <entry key="template.source_version">official-download-snapshot-2026-10-30</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/chinese-engineering/profiles/cn-xddzjs-official-word.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">64998dd92811d2fd0373c2f532538d33cc55907d1e96e5a66b7f4c38a02a8342</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

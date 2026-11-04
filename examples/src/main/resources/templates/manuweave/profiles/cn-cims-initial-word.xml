@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">zh</entry>
+  <entry key="formal_title">计算机集成制造系统</entry>
+  <entry key="group">Journals</entry>
+  <entry key="id">cn-cims-initial-word</entry>
+  <entry key="journal_id">CN-1006-5911</entry>
+  <entry key="manuscript_format">Microsoft Word</entry>
+  <entry key="manuscript_type">all_manuscripts</entry>
+  <entry key="name">计算机集成制造系统初投稿</entry>
+  <entry key="page.columns">1</entry>
+  <entry key="readme-name">计算机集成制造系统</entry>
+  <entry key="role.names">[]</entry>
+  <entry key="source">http://www.cims-journal.cn/fileup/1006-5911/ITEM/20241121154611.docx</entry>
+  <entry key="stage">initial_submission</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">imported-journals</entry>
+  <entry key="template.license">rules_only_source_not_redistributed</entry>
+  <entry key="template.source_url">http://www.cims-journal.cn/fileup/1006-5911/ITEM/20241121154611.docx</entry>
+  <entry key="template.source_version">20241121154611.docx;current-link-snapshot-2026-10-30</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/imported-journals/profiles/cn-cims-initial-word.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">710b595a16dceaa763e6aeb82b0cece52de8d88aafd7fbac13d1a429ef94fdf2</entry>
+  <entry key="version">1.0.0</entry>
+</properties>

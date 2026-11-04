@@ -124,3 +124,6 @@
 | 0105 | [显式 API 基线与签名分发](0105-explicit-api-baseline-and-signed-distribution.md) | 已采纳；固定旧提交、保守兼容检查、显式平台与本地签名包，远端发布独立授权 |
 | 0106 | [可选 HTML 模板设计器](0106-optional-html-template-designer.md) | 已采纳；独立应用、保留源码、同引擎预览／导出及显式损失 |
 | 0107 | [画布编辑与两种显示模式](0107-interactive-template-canvas.md) | 已采纳；React 画布、结构化富文本、便捷／精确模式及有界固定框 |
+| 0108 | [原生 DOCX 数学模型与示例矢量排版分离](0108-native-docx-math-and-example-typesetting.md) | 已采纳；有界 OMML 类型树、真实锚点、严格未知语法及示例依赖边界 |
+| 0109 | [正文连续分栏使用可保存的语义容器](0109-semantic-body-columns.md) | 已采纳；可编辑连续流、通栏中插、真实来源及明确跨格式布局损失 |
+| 0110 | [语义栅格、XML 保存与设计器](0110-editable-semantic-grid.md) | 已采纳；显式轨道／跨轨项、整行原子分页及真实项边界 |

@@ -10,6 +10,8 @@
 
 示例与测试的字体独立登记在[字体资源](../assets/fonts/README.md)，同目录保存各自许可原文。它们不属于 Maven 坐标清单。
 
+数学示例单独依赖 JLaTeXMath 1.0.7，采用 GPL-2.0-or-later 及其原始 linking exception，不进入核心库的 POM、BOM 或运行 SBOM。原始库声明、GPL 全文与内嵌字体条款保存在 `licenses/jlatexmath-1.0.7/`。示例分发包携带未经修改、包含字体资源的上游 sources JAR，以及 `jlatexmath-source-build/` 中三个原始 Maven POM；Greek／Cyrillic 文本扩展字体包未引入。PDF／SVG 中实际使用的是主 JAR 自带的四款 Computer Modern 数学字体轮廓。
+
 常用文档的简历配图独立登记在[图片资源](../examples/src/main/resources/templates/common/assets/README.md)，保留 Pexels 作品、作者及许可链接；该照片不采用项目的 Apache-2.0。它不是 Java 依赖，未列入 Maven 坐标清单。
 
 `native-artifacts.csv` 单独记录应用显式选择的原生 classifier；普通 OpenType 模块 POM 不默认携带平台二进制。已验收的 Windows x64 包含 LWJGL、HarfBuzz、libffi、libpng 和 zlib，其完整声明保存在 `licenses/`。libpng 1.6.55 与 zlib 1.3.2 来自原生包记录的 HarfBuzz 提交 `9f2f03173b7fee860cc00d999857d09fa4a362e2` 下 `subprojects/libpng.wrap` 和 `subprojects/zlib.wrap`；libpng 版本另经实际二进制字符串核对。其他 classifier 的存在不等于已经执行跨平台验收。

@@ -73,6 +73,23 @@ public final class DocxAdapter {
     public record SemanticReadResult(DocxSemanticDocument document, List<Diagnostic> diagnostics) {
         public SemanticReadResult { Objects.requireNonNull(document, "document"); diagnostics = List.copyOf(diagnostics); }
     }
+    /** Native OMML equations and typed Word semantics; no equation is converted to a picture or TeX. */
+    public record MathReadResult(DocxMathDocument document, List<Diagnostic> diagnostics) {
+        public MathReadResult { Objects.requireNonNull(document, "document"); diagnostics = List.copyOf(diagnostics); }
+    }
+    public MathReadResult readMath(InputStream input, Policy policy) throws IOException {
+        return readMath(input, policy, DocxMathLimits.DEFAULT);
+    }
+    public MathReadResult readMath(InputStream input, Policy policy, DocxMathLimits mathLimits) throws IOException {
+        return DocxMathPackage.read(this, limits, Objects.requireNonNull(input, "input"), Objects.requireNonNull(policy, "policy"), Objects.requireNonNull(mathLimits, "mathLimits"));
+    }
+    /** Rebuilds editable standard OMML. Complete validation precedes touching the borrowed output. */
+    public void writeMath(DocxMathDocument document, OutputStream output) throws IOException {
+        writeMath(document, output, DocxMathLimits.DEFAULT);
+    }
+    public void writeMath(DocxMathDocument document, OutputStream output, DocxMathLimits mathLimits) throws IOException {
+        Objects.requireNonNull(output, "output"); byte[] encoded = DocxMathPackage.write(this, limits, Objects.requireNonNull(document, "document"), Objects.requireNonNull(mathLimits, "mathLimits")); output.write(encoded);
+    }
     public SemanticReadResult readSemantic(InputStream input, Policy policy) throws IOException {
         return DocxSemanticReader.read(this, limits, Objects.requireNonNull(input, "input"), Objects.requireNonNull(policy, "policy"));
     }
@@ -695,6 +712,11 @@ public final class DocxAdapter {
     private ReadResult readPackage(InputStream input, Policy policy, double defaultFieldWidth, boolean alreadyMaterialized) throws IOException {
         var parts = unzip(Objects.requireNonNull(input, "input"));
         if (!parts.containsKey("[Content_Types].xml") || !parts.containsKey("word/document.xml")) { throw new IOException("DOCX document parts are missing"); }
+        for (var entry : parts.entrySet()) {
+            if (entry.getKey().endsWith(".xml") || entry.getKey().endsWith(".rels")) {
+                DocxMathXml.rejectNativeContent(parse(entry.getValue()), entry.getKey());
+            }
+        }
         List<Diagnostic> diagnostics = new ArrayList<>();
         boolean stylesMaterialized = alreadyMaterialized || DocxStyles.materialize(parts, fontFamilies, policy, diagnostics, limits);
         Element relations = parts.containsKey("word/_rels/document.xml.rels") ? parse(parts.get("word/_rels/document.xml.rels")) : null;
@@ -1225,6 +1247,7 @@ public final class DocxAdapter {
     }
 
     static void validateMarkup(Element element, Policy policy, List<Diagnostic> diagnostics) throws IOException {
+        if (DocxMathXml.M.equals(element.getNamespaceURI())) { throw new IOException("native OMML mathematics requires readMath; portable import cannot discard equations"); }
         String name = element.getLocalName();
         if (W.equals(element.getNamespaceURI())) { validateStructure(element, policy, diagnostics); }
         // DrawingML is validated while reading the image so ALLOW_LOSS can omit it with a diagnostic.

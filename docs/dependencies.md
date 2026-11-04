@@ -200,6 +200,10 @@ Liberation Sans 粗体、斜体与粗斜体来自官方 2.1.5 发布包，未经
 
 ## LICENSE、NOTICE 与 SBOM
 
+ManuWeave 学术示例的目录及排版事实取自 [jiassia/manuweave](https://github.com/jiassia/manuweave/) 的固定提交 `e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b`，覆盖当时 README 的 286 个 Profile ID。权利人为 ManuWeave contributors，采用 MIT 许可；[原始许可](../examples/src/main/resources/templates/manuweave/MIT.txt)随示例资源分发。配置记录上游相对路径及源文件 SHA-256，不包含上游执行代码、测试、字体或官方 Word／LaTeX 文件。渲染器与虚构内容由 Export4j 编写；新增 Liberation Serif 2.1.5 四种真实字体变体，来源、OFL 及摘要见[字体记录](../assets/fonts/README.md)。调用方可显式提供已授权的原字体映射，示例不搜索系统字体或合成粗斜体；字体替代及未映射格式逐模板报告，详见[模板说明](../examples/src/main/resources/templates/manuweave/README.md)。
+
+数学排版仅在 `examples` 的运行配置引入 `org.scilab.forge:jlatexmath:1.0.7` 主 JAR，关闭其传递字体附加包。许可为 GPL-2.0-or-later，附带上游原始链接例外；内置数学字体另保留原有条款，完整原文见 [JLaTeXMath 许可目录](../third-party/licenses/jlatexmath-1.0.7/)。未修改上游类或字体。示例分发的 `third-party/source/` 同时携带固定 sources JAR 和[原始构建 POM](../third-party/jlatexmath-source-build/)，版本、源包及二进制摘要受 Gradle 校验元数据约束。该依赖不进入库 POM、BOM 或库运行 SBOM。Word 原生公式由适配器使用既有 JDK ZIP／XML 自行读写，不依赖 JLaTeXMath 或 Office；Office 仅用于独立兼容性验收。
+
 根目录 [LICENSE](../LICENSE) 使用 Apache 官方全文，适用于项目自研部分。第三方代码与资源保留原有声明。
 
 根目录 [NOTICE](../NOTICE) 汇集当前运行依赖的原始归属声明。构建出的 JAR 携带自研 LICENSE、NOTICE 和第三方许可原文；示例发行包同时携带未修改的依赖 JAR。

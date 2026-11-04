@@ -5,12 +5,14 @@ import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CellLocation;
+import com.mirakyux.export4j.model.ColumnFlow;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentNavigation;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
+import com.mirakyux.export4j.model.GridLayout;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineContent;
@@ -259,6 +261,7 @@ public final class XmlTemplateWriter {
                 ExecutionContext.checkpoint();
                 if (++blocks > limits.maxBlocks()) { throw new IllegalArgumentException("XML writer block budget exceeded"); }
                 reserved.add(visit.block().id());
+                if (visit.block() instanceof NumberedItem numbered) { reserved.add(numbered.listId()); }
             });
         }
         private void regions(PageRegions regions) {
@@ -315,6 +318,31 @@ public final class XmlTemplateWriter {
         private void block(Block value, List<CellLocation> path) {
             ExecutionContext.checkpoint();
             location = new ProcessingIssue.Location(location.sectionId(), location.region(), value.id(), path, -1, -1);
+            if (value instanceof GridLayout grid) {
+                var owner = location;
+                add("<grid"); attr("id", identifier(grid.id())); attr("tracks", grid.tracks());
+                attr("column-gap", grid.columnGap()); attr("row-gap", grid.rowGap()); add(">");
+                for (var item : grid.items()) {
+                    ExecutionContext.checkpoint();
+                    location = new ProcessingIssue.Location(owner.sectionId(), owner.region(), item.id(), path, -1, -1);
+                    add("<item"); attr("id", identifier(item.id())); attr("row", item.row());
+                    attr("column-start", item.columnStart()); attr("column-span", item.columnSpan()); add(">");
+                    for (var child : item.blocks()) { block(child, path); }
+                    add("</item>");
+                }
+                add("</grid>"); location = owner; return;
+            }
+            if (value instanceof ColumnFlow flow) {
+                var owner = location;
+                add("<columns"); attr("id", identifier(flow.id())); attr("count", flow.columns());
+                attr("gap", flow.gap()); attr("balanced", flow.balanced());
+                if (!flow.columnWeights().isEmpty()) {
+                    attr("weights", flow.columnWeights().stream().map(number -> BigDecimal.valueOf(number).toPlainString())
+                            .collect(java.util.stream.Collectors.joining(" ")));
+                }
+                add(">"); for (var child : flow.blocks()) { block(child, path); } add("</columns>");
+                location = owner; return;
+            }
             if (value instanceof Table table) { table(table, path); return; }
             if (value instanceof PageBreak) { add("<page-break"); attr("id", identifier(value.id())); add("/>"); return; }
             if (value instanceof Caption caption) {

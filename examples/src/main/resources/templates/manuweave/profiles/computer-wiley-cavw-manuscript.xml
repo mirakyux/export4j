@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+  <entry key="compliance">source_backed_template_partial_coverage</entry>
+  <entry key="example.anonymous">false</entry>
+  <entry key="example.kind">article</entry>
+  <entry key="example.language">en</entry>
+  <entry key="extracted_format.citations">{}</entry>
+  <entry key="extracted_format.mode">source_stated_preferred_manuscript_typography</entry>
+  <entry key="group">Wiley</entry>
+  <entry key="id">computer-wiley-cavw-manuscript</entry>
+  <entry key="name">Computer animation &amp; virtual worlds — explicit preferred manuscript typography</entry>
+  <entry key="readme-name">Computer animation &amp; virtual worlds</entry>
+  <entry key="role.body.font">Times</entry>
+  <entry key="role.body.size_pt">12</entry>
+  <entry key="role.names">["body"]</entry>
+  <entry key="source">https://onlinelibrary.wiley.com/page/journal/1546427x/homepage/forauthors.html</entry>
+  <entry key="template.engine_support.docx">partial</entry>
+  <entry key="template.engine_support.latex">unsupported</entry>
+  <entry key="template.family">computer-wiley</entry>
+  <entry key="template.license">ManuWeave rule encoding is MIT; factual configuration only; no publisher source software redistributed</entry>
+  <entry key="template.source_url">https://onlinelibrary.wiley.com/page/journal/1546427x/homepage/forauthors.html</entry>
+  <entry key="template.source_version">official page text indexed 2026-10-30</entry>
+  <entry key="upstream-path">src/manuweave/data/templates/computer-wiley/profiles/computer-wiley-cavw-manuscript.json</entry>
+  <entry key="upstream.commit">e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b</entry>
+  <entry key="upstream.sha256">437d29ddf8e1bc044584edb5dff0869b348c8fc92a3147f41e2ba54790d8db5d</entry>
+  <entry key="version">1.0.0</entry>
+</properties>
