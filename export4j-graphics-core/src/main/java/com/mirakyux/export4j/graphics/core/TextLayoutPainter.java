@@ -119,8 +119,7 @@ public final class TextLayoutPainter {
                 surface.drawOutlinedText(text, List.of(), color, new Rect(x,
                         baseline - layout.lines().getFirst().baselineY(), Math.max(1, line.width()), height));
                 for (var outline : line.outlines()) {
-                    var ink = outline.rgb() < 0 ? color : new RgbColor((outline.rgb() >> 16 & 255) / 255.0,
-                            (outline.rgb() >> 8 & 255) / 255.0, (outline.rgb() & 255) / 255.0);
+                    var ink = ink(outline.rgb(), color);
                     List<VectorPath.Segment> segments = new ArrayList<>();
                     for (var segment : outline.segments()) {
                         var c = segment.coordinates();
@@ -136,8 +135,7 @@ public final class TextLayoutPainter {
                 }
             }
             for (GlyphRun run : line.runs()) {
-                var ink = run.rgb() < 0 ? color : new RgbColor((run.rgb() >> 16 & 255) / 255.0,
-                        (run.rgb() >> 8 & 255) / 255.0, (run.rgb() & 255) / 255.0);
+                var ink = ink(run.rgb(), color);
                 double baseline = origin.y() + line.baselineY() + run.baselineShift();
                 surface.drawGlyphRun(run, new Point(x, baseline), ink);
                 if (run.underline()) {
@@ -149,6 +147,13 @@ public final class TextLayoutPainter {
                 x += run.width();
             }
         }
+    }
+
+    private static RgbColor ink(int rgb, RgbColor fallback) {
+        if (rgb < 0) { return fallback; }
+        if (rgb == 0) { return RgbColor.BLACK; }
+        if (rgb == 0xffffff) { return RgbColor.WHITE; }
+        return new RgbColor((rgb >> 16 & 255) / 255.0, (rgb >> 8 & 255) / 255.0, (rgb & 255) / 255.0);
     }
 
     private static void line(DrawingSurface surface, double x, double y, double width, RgbColor color, double size) {

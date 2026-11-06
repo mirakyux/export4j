@@ -3,6 +3,8 @@ package com.mirakyux.export4j.backend.pdf;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -22,8 +24,13 @@ import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
+import org.apache.pdfbox.util.Matrix;
+import org.apache.pdfbox.util.Vector;
+import org.apache.fontbox.util.BoundingBox;
 import com.mirakyux.export4j.font.FontData;
 import com.mirakyux.export4j.graphics.DisplayPage;
 import com.mirakyux.export4j.graphics.DrawCommand;
@@ -44,7 +51,7 @@ final class PdfFontSubsets implements AutoCloseable {
 
     private record Glyph(int codePoint, int glyphId) { }
     private record Key(String fontId, boolean subsetAllowed, List<Glyph> glyphs) { }
-    private record Program(Node graph, long bytes) { }
+    private record Program(Node graph, Map<Integer, Float> widths, boolean embedded, long bytes) { }
 
     private static final class Usage {
         private final FontData data;
@@ -101,18 +108,14 @@ final class PdfFontSubsets implements AutoCloseable {
         if (outlined[0] && logicalAnchor != null) { page.remove(logicalAnchor.get().id()); }
     }
 
-    PDType0Font create(PDDocument document, FontData data) throws IOException {
+    PDFont create(PDDocument document, FontData data) throws IOException {
         var usage = page.get(data.id());
         if (usage == null || usage.disabled) { return null; }
         var program = entries.get(usage.key());
         if (program == null) { return null; }
         ExecutionContext.checkpoint();
         var dictionary = (COSDictionary) rebuild(program.graph(), document, new IdentityHashMap<>());
-        var font = new EncodedSubset(dictionary, usage.glyphs);
-        if (font.getDescendantFont() instanceof PDCIDFontType2 descendant && descendant.getTrueTypeFont() != null) {
-            document.registerTrueTypeFontForClosing(descendant.getTrueTypeFont());
-        }
-        return font;
+        return new EncodedSubset(document, dictionary, usage.glyphs, program.widths(), program.embedded());
     }
 
     void loaded(FontData data, PDType0Font font) {
@@ -126,17 +129,28 @@ final class PdfFontSubsets implements AutoCloseable {
             if (usage.pending == null || usage.disabled) { continue; }
             var dictionary = usage.pending.getCOSObject();
             if (!COSName.IDENTITY_H.equals(dictionary.getCOSName(COSName.ENCODING))) { continue; }
-            var snapshot = new Snapshot(MAX_BYTES - 128L - usage.glyphs.size() * 48L);
+            var widths = new LinkedHashMap<Integer, Float>();
+            boolean validWidths = true;
+            for (int glyph : usage.glyphs.values()) {
+                ExecutionContext.checkpoint();
+                float width = usage.pending.getWidth(glyph);
+                if (!Float.isFinite(width)) { validWidths = false; break; }
+                widths.putIfAbsent(glyph, width);
+            }
+            if (!validWidths) { continue; }
+            // Account for boxed keys/values and map storage as well as the existing Unicode/GID key.
+            long metadataBytes = 128L + usage.glyphs.size() * 48L + widths.size() * 96L;
+            var snapshot = new Snapshot(MAX_BYTES - metadataBytes);
             Node graph;
             try { graph = snapshot.capture(dictionary, 0); }
             catch (Uncacheable ignored) { continue; }
-            long weight = snapshot.bytes + 128L + usage.glyphs.size() * 48L;
+            long weight = snapshot.bytes + metadataBytes;
             var old = entries.remove(usage.key());
             if (old != null) { bytes -= old.bytes(); }
             while (entries.size() >= MAX_ENTRIES || weight > MAX_BYTES - bytes) {
                 bytes -= entries.pollFirstEntry().getValue().bytes();
             }
-            entries.put(usage.key(), new Program(graph, weight));
+            entries.put(usage.key(), new Program(graph, Map.copyOf(widths), usage.pending.isEmbedded(), weight));
             bytes += weight;
         }
     }
@@ -148,16 +162,79 @@ final class PdfFontSubsets implements AutoCloseable {
      * The key includes every original Unicode/GID pair. The normal renderer still checks each encoded
      * CID against its measured glyph ID; widths and ToUnicode come from the captured finalized graph.
      */
-    private static final class EncodedSubset extends PDType0Font {
+    private static final class EncodedSubset extends PDFont {
+        private final PDDocument document;
         private final Map<Integer, Integer> glyphs;
-        private EncodedSubset(COSDictionary dictionary, Map<Integer, Integer> glyphs) throws IOException {
+        private final Map<Integer, Float> widths;
+        private final boolean embedded;
+        private PDType0Font reader;
+
+        private EncodedSubset(PDDocument document, COSDictionary dictionary, Map<Integer, Integer> glyphs,
+                Map<Integer, Float> widths, boolean embedded) {
             super(dictionary);
+            this.document = document;
             this.glyphs = glyphs;
+            this.widths = widths;
+            this.embedded = embedded;
         }
         @Override protected byte[] encode(int unicode) {
             Integer glyph = glyphs.get(unicode);
             if (glyph == null) { throw new IllegalArgumentException("code point is outside the finalized font subset"); }
             return new byte[] {(byte) (glyph >>> 8), (byte) glyph.intValue()};
+        }
+
+        @Override public float getWidth(int code) throws IOException {
+            Float width = widths.get(code);
+            return width == null ? reader().getWidth(code) : width;
+        }
+
+        @Override public String getName() { return dict.getNameAsString(COSName.BASE_FONT); }
+        @Override public boolean isEmbedded() { return embedded; }
+        @Override public boolean isVertical() { return false; }
+        @Override public boolean willBeSubset() { return false; }
+        @Override public void addToSubset(int codePoint) {
+            throw new IllegalStateException("the font subset is already finalized");
+        }
+        @Override public void subset() {
+            throw new IllegalStateException("the font subset is already finalized");
+        }
+        @Override protected float getStandard14Width(int code) {
+            throw new UnsupportedOperationException("a finalized embedded font is not a standard font");
+        }
+
+        // Positioned output only needs the exact finalized widths and Unicode/GID encoding above.
+        // Other PDFont operations retain their ordinary meaning through a page-owned lazy reader.
+        private PDType0Font reader() throws IOException {
+            ExecutionContext.checkpoint();
+            if (reader == null) {
+                var loaded = new PDType0Font(dict);
+                if (loaded.getDescendantFont() instanceof PDCIDFontType2 descendant
+                        && descendant.getTrueTypeFont() != null) {
+                    document.registerTrueTypeFontForClosing(descendant.getTrueTypeFont());
+                }
+                reader = loaded;
+            }
+            return reader;
+        }
+
+        private PDType0Font uncheckedReader() {
+            try { return reader(); }
+            catch (IOException failure) { throw new UncheckedIOException("finalized font reading failed", failure); }
+        }
+
+        @Override public PDFontDescriptor getFontDescriptor() { return uncheckedReader().getFontDescriptor(); }
+        @Override public Matrix getFontMatrix() { return uncheckedReader().getFontMatrix(); }
+        @Override public BoundingBox getBoundingBox() throws IOException { return reader().getBoundingBox(); }
+        @Override @Deprecated public float getHeight(int code) throws IOException { return reader().getHeight(code); }
+        @Override public boolean hasExplicitWidth(int code) throws IOException { return reader().hasExplicitWidth(code); }
+        @Override public float getWidthFromFont(int code) throws IOException { return reader().getWidthFromFont(code); }
+        @Override public float getAverageFontWidth() { return uncheckedReader().getAverageFontWidth(); }
+        @Override public Vector getPositionVector(int code) { return uncheckedReader().getPositionVector(code); }
+        @Override public int readCode(InputStream input) throws IOException { return reader().readCode(input); }
+        @Override public boolean isDamaged() { return uncheckedReader().isDamaged(); }
+        @Override public String toUnicode(int code) {
+            String unicode = super.toUnicode(code);
+            return unicode == null ? uncheckedReader().toUnicode(code) : unicode;
         }
     }
 

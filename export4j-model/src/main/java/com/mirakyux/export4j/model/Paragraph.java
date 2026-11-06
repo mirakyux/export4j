@@ -25,36 +25,7 @@ public record Paragraph(String id, String text, ParagraphFormat format, List<Inl
         inlines = List.copyOf(inlines);
         images = List.copyOf(images);
         fields = List.copyOf(fields);
-        if (!fields.isEmpty() && inlines.isEmpty()) { throw new IllegalArgumentException("field markers require explicit inline styles"); }
-        var positions = new java.util.HashSet<Integer>();
-        if (images.size() > 1024 || images.stream().anyMatch(image -> image.sourceIndex() >= text.length()
-                || text.charAt(image.sourceIndex()) != '\ufffc' || !positions.add(image.sourceIndex()))) {
-            throw new IllegalArgumentException("image markers must be unique and match paragraph source");
-        }
-        if (fields.size() > 1024 || fields.stream().anyMatch(field -> field.sourceIndex() >= text.length()
-                || text.charAt(field.sourceIndex()) != '\ufffc' || !positions.add(field.sourceIndex()))) {
-            throw new IllegalArgumentException("field markers must be unique and match paragraph source");
-        }
-        if (!inlines.isEmpty() && !text.equals(inlines.stream().map(InlineText::text).collect(java.util.stream.Collectors.joining()))) {
-            throw new IllegalArgumentException("inline text must match paragraph source");
-        }
-        int offset = 0;
-        for (var run : inlines) {
-            int end = offset + run.text().length();
-            for (var image : images) {
-                if (image.sourceIndex() >= offset && image.sourceIndex() < end
-                        && (!image.image().hyperlink().equals(run.hyperlink()) || !run.style().equals(InlineStyle.of(format.fontSize())))) {
-                    throw new IllegalArgumentException("image markers require the paragraph's default style and their image hyperlink");
-                }
-            }
-            for (var field : fields) {
-                if (field.sourceIndex() >= offset && field.sourceIndex() < end
-                        && (!run.hyperlink().isEmpty() || !run.style().equals(field.field().style()))) {
-                    throw new IllegalArgumentException("field marker style must match its field and have no external hyperlink");
-                }
-            }
-            offset = end;
-        }
+        InlineContents.validate(text, inlines, images, fields, format.fontSize());
         if (id.isBlank()) {
             throw new IllegalArgumentException("paragraph ID must not be blank");
         }
@@ -74,24 +45,8 @@ public record Paragraph(String id, String text, ParagraphFormat format, List<Inl
 
     /** Combines styled text and atomic images, assigning deterministic UTF-16 marker positions. */
     public static Paragraph mixed(String id, List<? extends InlineContent> content, ParagraphFormat format) {
-        var text = new StringBuilder();
-        var runs = new java.util.ArrayList<InlineText>();
-        var images = new java.util.ArrayList<ImageSpan>();
-        var fields = new java.util.ArrayList<FieldSpan>();
-        for (var item : List.copyOf(content)) {
-            switch (item) {
-                case InlineText run -> { text.append(run.text()); runs.add(run); }
-                case InlineImage image -> {
-                    images.add(new ImageSpan(text.length(), image)); text.append('\ufffc');
-                    runs.add(new InlineText("\ufffc", InlineStyle.of(format.fontSize()), image.hyperlink()));
-                }
-                case InlineField field -> {
-                    fields.add(new FieldSpan(text.length(), field)); text.append('\ufffc');
-                    runs.add(new InlineText("\ufffc", field.style()));
-                }
-            }
-        }
-        return new Paragraph(id, text.toString(), format, runs, images, fields);
+        var mixed = InlineContents.mixed(content, format.fontSize());
+        return new Paragraph(id, mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields());
     }
 
     /** Returns original logical content, retaining styled text and image marker order. */
@@ -117,6 +72,6 @@ public record Paragraph(String id, String text, ParagraphFormat format, List<Inl
     }
 
     public Paragraph(String id, List<InlineText> inlines, ParagraphFormat format) {
-        this(id, inlines.stream().map(InlineText::text).collect(java.util.stream.Collectors.joining()), format, inlines);
+        this(id, InlineContents.text(inlines), format, inlines);
     }
 }

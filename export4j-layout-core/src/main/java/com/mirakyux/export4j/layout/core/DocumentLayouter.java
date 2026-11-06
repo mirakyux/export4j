@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -484,6 +485,7 @@ public final class DocumentLayouter {
         private final FontGroup fontGroup;
         private final Map<Integer, ParagraphLayout> paragraphs = new HashMap<>();
         private final SimpleLayoutValues simpleLayouts;
+        private final CellGeometryValues cellGeometry;
         private final Map<Integer, MeasuredTable> tables = new HashMap<>();
         private final Map<String, MeasuredTable> cellTables = new HashMap<>();
         private final Map<Integer, List<ComponentLayout>> components = new HashMap<>();
@@ -534,6 +536,7 @@ public final class DocumentLayouter {
             this.document = document;
             pages = new Pages(consumer);
             simpleLayouts = pages.streaming() ? null : new SimpleLayoutValues();
+            cellGeometry = pages.streaming() ? null : new CellGeometryValues();
             blocks = FlowBlockInput.fixed(document.blocks());
             settings = document.pageSettings();
             this.fontGroup = group;
@@ -560,6 +563,7 @@ public final class DocumentLayouter {
             blocks = FlowBlockInput.streaming(source, this::acceptBlock);
             pages = new Pages(page -> consumer.accept(page, blocks.sources(page)));
             simpleLayouts = null;
+            cellGeometry = null;
             exclusionSource = exclusions;
             loadExclusions();
         }
@@ -1843,8 +1847,13 @@ public final class DocumentLayouter {
                 int span = measured.anchors().get(anchor).cell().columnSpan();
                 double x = spannedWidth(widths, 0, column);
                 double width = spannedWidth(widths, column, span);
-                cells.add(new CellFragment(column, new Rect(x, y, width, measured.cellHeights().get(anchor)),
-                        new Point(x + padding.left(), y + padding.top()), measured.cells().get(anchor).content()));
+                var bounds = new Rect(x, y, width, measured.cellHeights().get(anchor));
+                var textOrigin = new Point(x + padding.left(), y + padding.top());
+                if (cellGeometry != null) {
+                    bounds = cellGeometry.reuse(bounds);
+                    textOrigin = cellGeometry.reuse(textOrigin);
+                }
+                cells.add(new CellFragment(column, bounds, textOrigin, measured.cells().get(anchor).content()));
             }
             return new TableRowFragment(row, row < table.headerRows(), repeated, cells);
         }
@@ -3262,6 +3271,31 @@ public final class DocumentLayouter {
 
         private Point origin() {
             return new Point(settings.margins().left(), settings.margins().top() + used);
+        }
+    }
+
+    /** Confined to a collected flow; exact immutable geometry has no source identity.
+     * Eviction drops only cache references, while returned IR owns its geometry references.
+     */
+    private static final class CellGeometryValues {
+        private static final int MAX_ENTRIES = 2048;
+        private final LinkedHashMap<Rect, Rect> bounds = new LinkedHashMap<>(16, 0.75f, true);
+        private final LinkedHashMap<Point, Point> origins = new LinkedHashMap<>(16, 0.75f, true);
+
+        private Rect reuse(Rect value) {
+            var existing = bounds.get(value);
+            if (existing != null) { return existing; }
+            if (bounds.size() == MAX_ENTRIES) { bounds.pollFirstEntry(); }
+            bounds.put(value, value);
+            return value;
+        }
+
+        private Point reuse(Point value) {
+            var existing = origins.get(value);
+            if (existing != null) { return existing; }
+            if (origins.size() == MAX_ENTRIES) { origins.pollFirstEntry(); }
+            origins.put(value, value);
+            return value;
         }
     }
 

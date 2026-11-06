@@ -23,7 +23,8 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
         private DocumentMetadata metadata;
         private PageSettings settings;
         private final java.util.ArrayList<Block> blocks = new java.util.ArrayList<>();
-        private final Set<String> usedIds = new HashSet<>();
+        private Set<String> usedIds;
+        private ModelCompactor compactor;
         private DocumentTheme theme = DocumentTheme.builder().build();
         private ParagraphFormat bodyFormat = theme.bodyFormat();
         private CellFormat cellFormat = theme.cellFormat();
@@ -35,9 +36,22 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
             this.settings = Objects.requireNonNull(settings, "settings");
         }
 
+        /** Adds an immutable block value; equal inline styles and simple table cells may share storage. */
         public Builder add(Block block) {
-            blocks.add(Objects.requireNonNull(block, "block"));
-            SemanticTree.walk(block, visit -> usedIds.add(visit.block().id()));
+            Objects.requireNonNull(block, "block");
+            if (block instanceof Table table) {
+                if (compactor == null) { compactor = new ModelCompactor(); }
+                block = compactor.compact(table);
+            } else if (block instanceof Paragraph paragraph) {
+                if (compactor == null) { compactor = new ModelCompactor(); }
+                block = compactor.compact(paragraph);
+            }
+            blocks.add(block);
+            var ids = usedIds;
+            SemanticTree.walk(block, visit -> {
+                String id = visit.block().id();
+                if (ids != null) { ids.add(id); }
+            });
             return this;
         }
 
@@ -136,6 +150,11 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
         public Builder pageBreak() { return pageBreak(nextId()); }
 
         private String nextId() {
+            if (usedIds == null) {
+                var ids = new HashSet<String>();
+                SemanticTree.walk(blocks, visit -> ids.add(visit.block().id()));
+                usedIds = ids;
+            }
             String id;
             do { sequence = Math.incrementExact(sequence); id = "auto-" + sequence; } while (usedIds.contains(id));
             return id;
@@ -159,7 +178,10 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
         }
 
         public Document build() {
-            return new Document(metadata, settings, blocks);
+            var result = new Document(metadata, settings, blocks);
+            if (compactor != null) { compactor.clear(); }
+            usedIds = null;
+            return result;
         }
     }
     public Document {

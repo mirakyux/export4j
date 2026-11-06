@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.backend.pdf;
 
+import java.io.EOFException;
 import java.io.File;
 import java.io.FilterOutputStream;
 import java.io.IOException;
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,6 +55,8 @@ import com.mirakyux.export4j.model.ExecutionContext;
  * The temporary-work byte budget conservatively includes the current page's serialized-equivalent
  * bytes until copying completes, preserving its existing admission boundary without storing those
  * bytes on disk. Only the xref and page indices require temporary files.
+ * Each of the three indices caches at most two 8 KiB blocks; reserved logical bytes still count
+ * exactly toward the temporary budget, without charging cache-block padding or preallocating it.
  * Does not apply encryption, archival certification, signatures or accessibility certification.
  * Output is borrowed; the supplied temporary parent is borrowed and must already exist.
  * Instances are immutable and reusable; sessions are confined to their opening thread.
@@ -106,10 +110,9 @@ public final class PdfSpoolBackend implements PageBackend {
         private final Path xrefFile;
         private final Path leavesFile;
         private final Path pagesFile;
-        private final RandomAccessFile xref;
-        private final RandomAccessFile leaves;
-        private final RandomAccessFile pageIndex;
-        private final ByteBuffer indexValue = ByteBuffer.allocate(Long.BYTES);
+        private final DiskIndex xref;
+        private final DiskIndex leaves;
+        private final DiskIndex pageIndex;
         private final byte[] xrefEntry = "0000000000 00000 n \n".getBytes(StandardCharsets.US_ASCII);
         private final CountedOutput output;
         private final PdfBackend renderer = new PdfBackend(pageLimits);
@@ -137,13 +140,13 @@ public final class PdfSpoolBackend implements PageBackend {
             xrefFile = directory.resolve("xref.bin");
             leavesFile = directory.resolve("leaves.bin");
             pagesFile = directory.resolve("pages.bin");
-            RandomAccessFile openedXref = null;
-            RandomAccessFile openedLeaves = null;
-            RandomAccessFile openedPages = null;
+            DiskIndex openedXref = null;
+            DiskIndex openedLeaves = null;
+            DiskIndex openedPages = null;
             try {
-                openedXref = new RandomAccessFile(xrefFile.toFile(), "rw");
-                openedLeaves = new RandomAccessFile(leavesFile.toFile(), "rw");
-                openedPages = new RandomAccessFile(pagesFile.toFile(), "rw");
+                openedXref = new DiskIndex(xrefFile);
+                openedLeaves = new DiskIndex(leavesFile);
+                openedPages = new DiskIndex(pagesFile);
                 xref = openedXref; leaves = openedLeaves;
                 pageIndex = openedPages;
                 output = new CountedOutput(target, limits.maxOutputBytes());
@@ -336,11 +339,16 @@ public final class PdfSpoolBackend implements PageBackend {
         }
 
         private long reserve() throws IOException {
+            ExecutionContext.checkpoint();
             if (nextObject > limits.maxObjects()) { throw new IOException("PDF spool object budget exceeded"); }
-            long object = nextObject++;
-            if (nextObject * 8 > limits.maxTemporaryBytes()) { throw new IOException("PDF spool xref budget exceeded"); }
-            xref.setLength(nextObject * 8);
-            checkTemporaryBudget();
+            if (nextObject >= limits.maxTemporaryBytes() / Long.BYTES) {
+                throw new IOException("PDF spool xref budget exceeded");
+            }
+            long object = nextObject;
+            long required = (object + 1) * Long.BYTES;
+            checkTemporaryBudget(required - xref.length());
+            xref.setLength(required);
+            nextObject++;
             return object;
         }
 
@@ -350,14 +358,14 @@ public final class PdfSpoolBackend implements PageBackend {
             write(object + " 0 obj\n");
         }
 
-        private void writeIndexLong(RandomAccessFile file, long value) throws IOException {
-            indexValue.putLong(0, value);
-            file.write(indexValue.array());
+        private void writeIndexLong(DiskIndex file, long value) throws IOException {
+            long end = file.getFilePointer() + Long.BYTES;
+            checkTemporaryBudget(Math.max(0, end - file.length()));
+            file.writeLong(value);
         }
 
-        private long readIndexLong(RandomAccessFile file) throws IOException {
-            file.readFully(indexValue.array());
-            return indexValue.getLong(0);
+        private long readIndexLong(DiskIndex file) throws IOException {
+            return file.readLong();
         }
 
         private void writeXrefEntry(long position) throws IOException {
@@ -371,12 +379,22 @@ public final class PdfSpoolBackend implements PageBackend {
         }
 
         private void checkTemporaryBudget() throws IOException {
-            long pageBytes = serializedPageBytes;
-            if (pageBytes > limits.maxTemporaryBytes() - xref.length()
-                    || leaves.length() > limits.maxTemporaryBytes() - xref.length() - pageBytes
-                    || pageIndex.length() > limits.maxTemporaryBytes() - xref.length() - pageBytes - leaves.length()) {
+            checkTemporaryBudget(0);
+        }
+
+        private void checkTemporaryBudget(long additionalBytes) throws IOException {
+            long remaining = limits.maxTemporaryBytes();
+            if (serializedPageBytes > remaining) {
                 throw new IOException("PDF spool temporary byte budget exceeded");
             }
+            remaining -= serializedPageBytes;
+            if (xref.length() > remaining) { throw new IOException("PDF spool temporary byte budget exceeded"); }
+            remaining -= xref.length();
+            if (leaves.length() > remaining) { throw new IOException("PDF spool temporary byte budget exceeded"); }
+            remaining -= leaves.length();
+            if (pageIndex.length() > remaining) { throw new IOException("PDF spool temporary byte budget exceeded"); }
+            remaining -= pageIndex.length();
+            if (additionalBytes > remaining) { throw new IOException("PDF spool temporary byte budget exceeded"); }
         }
 
         private final class PageObjects {
@@ -524,6 +542,104 @@ public final class PdfSpoolBackend implements PageBackend {
                 try { Files.deleteIfExists(file); }
                 catch (IOException | RuntimeException cleanup) { failure.addSuppressed(cleanup); }
             }
+        }
+    }
+
+    /** Two fixed-size cache blocks per scratch index. Logical growth has no file-system side effect;
+     * evicted blocks initialize any preceding gap explicitly, so reserved entries always read zero.
+     * Every physical write remains within the logical length admitted by the session's byte budget.
+     * These files are private scratch storage: close discards dirty blocks because the session has
+     * already consumed the index, or has failed, and immediately removes the file.
+     */
+    private static final class DiskIndex implements AutoCloseable {
+        private static final int BLOCK_BYTES = 8 * 1024;
+        private static final int CACHED_BLOCKS = 2;
+        private static final byte[] ZERO_BYTES = new byte[BLOCK_BYTES];
+        private final RandomAccessFile file;
+        private final LinkedHashMap<Long, Block> blocks = new LinkedHashMap<>(4, 0.75f, true);
+        private long length;
+        private long storedLength;
+        private long position;
+
+        private DiskIndex(Path path) throws IOException { file = new RandomAccessFile(path.toFile(), "rw"); }
+
+        private long length() { return length; }
+        private long getFilePointer() { return position; }
+        private void seek(long offset) {
+            if (offset < 0 || (offset & (Long.BYTES - 1)) != 0) {
+                throw new IllegalArgumentException("PDF index offset must be a nonnegative multiple of eight");
+            }
+            position = offset;
+        }
+        private void setLength(long value) {
+            if (value < length || (value & (Long.BYTES - 1)) != 0) {
+                throw new IllegalArgumentException("PDF index length must grow in complete entries");
+            }
+            length = value;
+        }
+
+        private long readLong() throws IOException {
+            if (position > length - Long.BYTES) { throw new EOFException("PDF index entry is outside its logical length"); }
+            var block = block(position - position % BLOCK_BYTES);
+            long result = block.values.getLong((int) (position - block.offset));
+            position += Long.BYTES;
+            return result;
+        }
+
+        private void writeLong(long value) throws IOException {
+            if (position > Long.MAX_VALUE - Long.BYTES) { throw new IOException("PDF index length overflow"); }
+            var block = block(position - position % BLOCK_BYTES);
+            block.values.putLong((int) (position - block.offset), value);
+            block.dirty = true;
+            position += Long.BYTES;
+            length = Math.max(length, position);
+        }
+
+        private Block block(long offset) throws IOException {
+            ExecutionContext.checkpoint();
+            var result = blocks.get(offset);
+            if (result != null) { return result; }
+            if (blocks.size() == CACHED_BLOCKS) {
+                var oldest = blocks.firstEntry();
+                result = oldest.getValue();
+                flush(result);
+                blocks.remove(oldest.getKey());
+                Arrays.fill(result.bytes, (byte) 0);
+            } else { result = new Block(); }
+            result.offset = offset;
+            result.dirty = false;
+            int available = (int) Math.min(BLOCK_BYTES, Math.max(0, storedLength - offset));
+            if (available != 0) {
+                file.seek(offset);
+                file.readFully(result.bytes, 0, available);
+            }
+            blocks.put(offset, result);
+            return result;
+        }
+
+        private void flush(Block block) throws IOException {
+            if (!block.dirty) { return; }
+            while (storedLength < block.offset) {
+                ExecutionContext.checkpoint();
+                int zeros = (int) Math.min(BLOCK_BYTES, block.offset - storedLength);
+                file.seek(storedLength);
+                file.write(ZERO_BYTES, 0, zeros);
+                storedLength += zeros;
+            }
+            int count = (int) Math.min(BLOCK_BYTES, length - block.offset);
+            file.seek(block.offset);
+            file.write(block.bytes, 0, count);
+            storedLength = Math.max(storedLength, block.offset + count);
+            block.dirty = false;
+        }
+
+        @Override public void close() throws IOException { blocks.clear(); file.close(); }
+
+        private static final class Block {
+            private final byte[] bytes = new byte[BLOCK_BYTES];
+            private final ByteBuffer values = ByteBuffer.wrap(bytes);
+            private long offset;
+            private boolean dirty;
         }
     }
 

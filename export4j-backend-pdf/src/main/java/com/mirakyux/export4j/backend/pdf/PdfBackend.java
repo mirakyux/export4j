@@ -210,11 +210,9 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private void save(PDDocument pdf, OutputStream output) throws IOException {
-        if (options.archival().filter(value -> value.target() == PdfArchival.Profile.A1B).isPresent()) {
-            pdf.save(new BorrowedOutputStream(output), org.apache.pdfbox.pdfwriter.compress.CompressParameters.NO_COMPRESSION);
-        } else {
-            pdf.save(new BorrowedOutputStream(output));
-        }
+        // Object-stream packing builds an additional index over the complete PDF object graph.
+        // Write dictionaries separately; existing content and image stream compression is unchanged.
+        pdf.save(new BorrowedOutputStream(output), org.apache.pdfbox.pdfwriter.compress.CompressParameters.NO_COMPRESSION);
     }
 
     private PDDocument createDocument(DocumentMetadata metadata) {
@@ -748,7 +746,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         stream.endText();
     }
 
-    private static PDType0Font loadPositionedFont(PDDocument pdf, FontData data, PdfFontPrograms programs) throws IOException {
+    private static PDFont loadPositionedFont(PDDocument pdf, FontData data, PdfFontPrograms programs) throws IOException {
         if (programs != null) {
             var cached = programs.subsets().create(pdf, data);
             if (cached != null) { return cached; }

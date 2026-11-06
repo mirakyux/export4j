@@ -4,6 +4,8 @@ package com.mirakyux.export4j.backend.pdf;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +21,7 @@ import javax.imageio.stream.MemoryCacheImageOutputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -73,10 +76,36 @@ class PdfJpegSourceTest {
             var later = pdf.getPage(1).getResources();
             assertSame(image.getCOSObject(), later.getXObject(later.getXObjectNames().iterator().next()).getCOSObject());
             assertEquals(COSName.DCT_DECODE, image.getCOSObject().getDictionaryObject(COSName.FILTER));
+            assertEquals(COSName.DEVICERGB, image.getCOSObject().getDictionaryObject(COSName.COLORSPACE));
+            assertNull(image.getCOSObject().getDictionaryObject(COSName.DECODE_PARMS));
             assertEquals(8, image.getBitsPerComponent());
             assertEquals(32, image.getWidth()); assertEquals(16, image.getHeight());
             try (var raw = image.getCOSObject().createRawInputStream()) { assertArrayEquals(encoded, raw.readAllBytes()); }
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void directJfifPassthroughPreservesThePreviousDecoderPixels(boolean progressive) throws IOException {
+        byte[] encoded = jpeg(false, progressive);
+        var resource = ImageResource.load(encoded);
+        var recognition = new PdfJpegSource.Recognition();
+        try (var referenceDocument = new PDDocument(); var firstDocument = new PDDocument();
+                var laterDocument = new PDDocument()) {
+            var reference = JPEGFactory.createFromByteArray(referenceDocument, encoded);
+            var first = recognition.create(firstDocument, resource);
+            var later = recognition.create(laterDocument, resource);
+            assertNotNull(first); assertNotNull(later);
+            assertEquals(reference.getCOSObject().getDictionaryObject(COSName.COLORSPACE),
+                    first.getCOSObject().getDictionaryObject(COSName.COLORSPACE));
+            assertEquals(reference.getCOSObject().getDictionaryObject(COSName.DECODE_PARMS),
+                    first.getCOSObject().getDictionaryObject(COSName.DECODE_PARMS));
+            var expected = reference.getImage();
+            try {
+                assertPixels(expected, first.getImage());
+                assertPixels(expected, later.getImage());
+            } finally { expected.flush(); }
+        } finally { recognition.clear(); }
     }
 
     @ParameterizedTest
@@ -129,6 +158,18 @@ class PdfJpegSourceTest {
                 }
             } finally { pixels.flush(); }
         }
+    }
+
+    private static void assertPixels(BufferedImage expected, BufferedImage actual) {
+        try {
+            assertEquals(expected.getWidth(), actual.getWidth());
+            assertEquals(expected.getHeight(), actual.getHeight());
+            for (int y = 0; y < expected.getHeight(); y++) {
+                for (int x = 0; x < expected.getWidth(); x++) {
+                    assertEquals(expected.getRGB(x, y), actual.getRGB(x, y));
+                }
+            }
+        } finally { actual.flush(); }
     }
 
     static byte[] jpeg(boolean gray, boolean progressive) throws IOException {

@@ -2,6 +2,7 @@
 package com.mirakyux.export4j.backend.pdf;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -9,10 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.font.PDCIDFontType2;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import com.mirakyux.export4j.font.FontFace;
@@ -29,6 +34,52 @@ import com.mirakyux.export4j.text.GlyphRun;
 import com.mirakyux.export4j.text.SimpleTextShaper;
 
 class PdfSpoolRenderingResourcesTest {
+    @Test
+    void finalizedFontHitsPreserveExactWidthsUnicodeAndOrdinaryReading() throws IOException {
+        var face = font("LiberationSans-Regular.ttf");
+        var source = page(List.of(face), List.of("AéÅ"));
+        try (var programs = new PdfFontPrograms()) {
+            assertEquals(List.of("AéÅ"), render(programs, source));
+            programs.subsets().begin(List.of(source));
+            try (var document = new PDDocument()) {
+                var cached = programs.subsets().create(document, face.data());
+                assertNotNull(cached);
+                var reference = new PDType0Font(cached.getCOSObject());
+                var decoded = ((PDCIDFontType2) reference.getDescendantFont()).getTrueTypeFont();
+                assertNotNull(decoded);
+                document.registerTrueTypeFontForClosing(decoded);
+                var glyphs = new SimpleTextShaper().shape("AéÅ", List.of(face), 18).glyphs();
+                for (var positioned : glyphs) {
+                    var glyph = positioned.glyph();
+                    int code = glyph.glyphId();
+                    byte[] encoded = {(byte) (code >>> 8), (byte) code};
+                    assertArrayEquals(encoded, cached.encode(glyph.text()));
+                    assertEquals(reference.getWidth(code), cached.getWidth(code));
+                    assertEquals(reference.toUnicode(code), cached.toUnicode(code));
+                    assertEquals(reference.readCode(new ByteArrayInputStream(encoded)),
+                            cached.readCode(new ByteArrayInputStream(encoded)));
+                    assertEquals(reference.hasExplicitWidth(code), cached.hasExplicitWidth(code));
+                    assertEquals(reference.getWidthFromFont(code), cached.getWidthFromFont(code));
+                    assertEquals(reference.getPositionVector(code).getX(), cached.getPositionVector(code).getX());
+                    assertEquals(reference.getPositionVector(code).getY(), cached.getPositionVector(code).getY());
+                }
+                assertEquals(reference.getName(), cached.getName());
+                assertEquals(reference.isEmbedded(), cached.isEmbedded());
+                assertEquals(reference.isDamaged(), cached.isDamaged());
+                assertEquals(reference.isVertical(), cached.isVertical());
+                assertEquals(reference.getAverageFontWidth(), cached.getAverageFontWidth());
+                assertEquals(reference.getFontMatrix().getScaleX(), cached.getFontMatrix().getScaleX());
+                assertEquals(reference.getFontMatrix().getScaleY(), cached.getFontMatrix().getScaleY());
+                assertEquals(reference.getBoundingBox().getLowerLeftX(), cached.getBoundingBox().getLowerLeftX());
+                assertEquals(reference.getBoundingBox().getUpperRightY(), cached.getBoundingBox().getUpperRightY());
+                assertEquals(reference.getFontDescriptor().getFlags(), cached.getFontDescriptor().getFlags());
+                assertThrows(IllegalStateException.class, () -> cached.addToSubset('A'));
+                assertThrows(IllegalStateException.class, cached::subset);
+            } finally { programs.releasePage(); }
+            assertEquals(List.of("AéÅ"), render(programs, source), "the earlier page must not own the session's cached values");
+        }
+    }
+
     @Test
     void successiveDocumentsBorrowOneProgramButKeepTheirOwnSubsets() throws IOException {
         var face = font("LiberationSans-Regular.ttf");

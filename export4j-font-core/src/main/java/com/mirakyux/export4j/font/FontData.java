@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.font;
 
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -31,6 +32,14 @@ public final class FontData {
 
     public byte[] bytes() {
         return bytes.clone();
+    }
+
+    /** Returns a new read-only view of the complete program without copying its bytes.
+     * Position starts at zero and limit equals byteSize(); cursor changes are independent
+     * of other views, and the private backing array cannot be accessed or modified.
+     */
+    public ByteBuffer readOnlyBuffer() {
+        return ByteBuffer.wrap(bytes).asReadOnlyBuffer();
     }
 
     /** False when the font's embedding flags require embedding the complete program. */

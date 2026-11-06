@@ -75,7 +75,7 @@ final class PdfFontPrograms implements AutoCloseable {
 
     static TrueTypeFont parse(FontData data) throws IOException {
         TrueTypeFont parsed;
-        try (var input = new RandomAccessReadBuffer(data.bytes())) {
+        try (var input = new RandomAccessReadBuffer(data.readOnlyBuffer())) {
             parsed = new TTFParser().parse(input);
         }
         // Layout has already selected and measured every glyph; PDFBox must not shape it again.

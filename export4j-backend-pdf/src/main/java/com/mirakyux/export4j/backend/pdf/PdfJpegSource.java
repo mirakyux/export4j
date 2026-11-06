@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.backend.pdf;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.LinkedHashMap;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ImageResource;
@@ -51,8 +53,13 @@ final class PdfJpegSource {
         if (!(recognition == null ? supports(encoded, source.pixelWidth(), source.pixelHeight())
                 : recognition.supports(source, encoded))) { return null; }
         ExecutionContext.checkpoint();
-        // JPEGFactory retains the encoded DCT data; no additional lossy image encoding occurs.
-        return JPEGFactory.createFromByteArray(document, encoded);
+        // ImageResource already decoded the image, and recognition admits only 8-bit JFIF YCbCr
+        // with the standard three component identities. PDF's default DCT ColorTransform=1
+        // therefore matches JFIF without asking ImageIO to inspect/cache the same JPEG again.
+        try (var input = new ByteArrayInputStream(encoded)) {
+            return new PDImageXObject(document, input, COSName.DCT_DECODE, source.pixelWidth(),
+                    source.pixelHeight(), 8, PDDeviceRGB.INSTANCE);
+        }
     }
 
     static boolean supports(byte[] encoded, int width, int height) {
