@@ -2,6 +2,8 @@
 
 `0.1.0-rc.1` 已于 2026-11-05 发布到 Maven Central，并完成正式签名、远端字节及隔离调用方验证；当前尚无稳定版。开发默认坐标仍为 `com.mirakyux.export4j:export4j-*:0.1.0-SNAPSHOT`。本地构建、签名、Central 发布和远端消费分别验收。
 
+待发布候选的变化及已知限制见 [0.1.0-rc.2 说明](releases/0.1.0-rc.2.md)。工作流会把 `docs/releases/<版本>.md` 中的说明附入对应 GitHub Release；具体发布状态以 Central 及工作流结果为准。
+
 ## 手动 GitHub Actions 发布
 
 [Release to Maven Central](../.github/workflows/release.yml) 只接受 `workflow_dispatch`。在 GitHub 仓库的 **Actions → Release to Maven Central → Run workflow** 中选择待发布分支，输入新版本，例如 `0.1.0-rc.2`。点击运行会构建该分支当前提交并自动发布到 Central，远端验证成功后创建对应 GitHub Release；普通 push、PR 和标签不会触发发布。工作流需先进入默认分支，页面才显示手动入口，见 [GitHub 官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)。
@@ -14,7 +16,7 @@
 | Secret | `EXPORT4J_SIGNING_PASSWORD` | 私钥密码；仅无密码私钥可省略 |
 | Secret | `CENTRAL_TOKEN_USERNAME` | Central Portal 的 Generate User Token 返回的 username |
 | Secret | `CENTRAL_TOKEN_PASSWORD` | 同一 Central user token 返回的 password |
-| Variable | `EXPORT4J_SIGNING_FINGERPRINT` | 对应公钥的完整大写指纹 |
+| Variable 或 Secret | `EXPORT4J_SIGNING_FINGERPRINT` | 对应公钥的完整大写指纹；两者均存在时优先使用 Variable |
 
 Central 凭据使用 Portal user token，不使用网页登录密码或 GitHub token。生成位置与鉴权协议见 [Central 官方 API 文档](https://central.sonatype.org/publish/publish-portal-api/#authentication-authorization)。
 

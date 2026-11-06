@@ -43,7 +43,7 @@ jobs:
       - name: Check unused version, signing identity and public key availability
         env:
           EXPORT4J_SIGNING_KEY: ${{ secrets.EXPORT4J_SIGNING_KEY }}
-          EXPORT4J_SIGNING_FINGERPRINT: ${{ vars.EXPORT4J_SIGNING_FINGERPRINT }}
+          EXPORT4J_SIGNING_FINGERPRINT: ${{ vars.EXPORT4J_SIGNING_FINGERPRINT || secrets.EXPORT4J_SIGNING_FINGERPRINT }}
         run: python3 scripts/maven_central.py preflight --version "$RELEASE_VERSION"
       - name: Check that the GitHub release tag is unused
         env:
@@ -54,6 +54,12 @@ jobs:
           if [[ -n "$existing" ]]; then
             echo 'The GitHub release tag already exists; choose a new version.' >&2
             exit 1
+          fi
+      - name: Include version-specific release notes
+        run: |
+          notes="docs/releases/$RELEASE_VERSION.md"
+          if [[ -f "$notes" ]]; then
+            cp "$notes" "$RELEASE_DIR/release-notes.md"
           fi
       - name: Build, test and sign the release and generate samples
         env:
@@ -97,6 +103,7 @@ jobs:
             build/release/central/public-key.asc
             build/release/central/sbom.cdx.json
             build/release/central/dependency-audit.json
+            build/release/central/release-notes.md
             build/release/central/deployment.json
             build/release/central/distribution/*.json
             build/release/central/distribution/maven-central-bundle.zip
@@ -153,6 +160,9 @@ jobs:
           )
           if "-" in version:
               notes += "This is a prerelease; APIs may change.\n\n"
+          version_notes = root / "release-notes.md"
+          if version_notes.is_file():
+              notes += version_notes.read_text(encoding="utf-8").rstrip() + "\n\n"
           (Path(os.environ["RUNNER_TEMP"]) / "release-notes.md").write_text(notes, encoding="utf-8")
           PY
       - name: Create the matching tag and GitHub Release
