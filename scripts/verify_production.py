@@ -104,8 +104,8 @@ def check_docx(path):
     return {"paragraphs": len(doc.paragraphs), "sections": 2, "tables": 1, "independentParser": metadata.version("python-docx")}
 
 
-def check_bundle(consumer_build_directory=None):
-    sbom = json.loads((ROOT / "build/reports/sbom.cdx.json").read_text(encoding="utf-8"))
+def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", repository=None, sbom_path=None):
+    sbom = json.loads((sbom_path or ROOT / "build/reports/sbom.cdx.json").read_text(encoding="utf-8"))
     require(sbom["bomFormat"] == "CycloneDX" and sbom["specVersion"] == "1.6", "SBOM format differs")
     components = sbom["components"]
     require(len(components) == len({c["bom-ref"] for c in components}) == 29, "SBOM runtime inventory differs")
@@ -120,7 +120,7 @@ def check_bundle(consumer_build_directory=None):
         require(reviewed[key]["scope"] == "runtime" and reviewed[key]["sha256"] == component["hashes"][0]["content"], f"external SBOM artifact differs: {key}")
         expected_license = "BSD-3-Clause" if component["group"] == "org.lwjgl" else "BSD-2-Clause" if component["group"] == "org.commonmark" else "MIT" if component["group"] in ("org.jsoup", "org.bouncycastle") else "Apache-2.0"
         require(component["licenses"] == [{"license": {"id": expected_license}}], f"external SBOM license differs: {key}")
-    repo = ROOT / "build/repository/com/mirakyux/export4j"
+    repo = (repository or ROOT / "build/repository") / "com/mirakyux/export4j"
     def published(name, version, extension, classifier=""):
         directory = repo / name / version
         resolved = version
@@ -133,21 +133,22 @@ def check_bundle(consumer_build_directory=None):
         suffix = "-" + classifier if classifier else ""
         return directory / f"{name}-{resolved}{suffix}.{extension}"
     for component in own:
-        name, version = component["name"], component["version"]
-        artifact = published(name, version, "jar")
+        name, component_version = component["name"], component["version"]
+        require(component_version == version, f"SBOM version differs: {name}")
+        artifact = published(name, component_version, "jar")
         require(hashlib.sha256(artifact.read_bytes()).hexdigest() == component["hashes"][0]["content"], f"SBOM hash differs: {name}")
-        require(published(name, version, "jar", "sources").exists(), f"sources missing: {name}")
-        require(published(name, version, "jar", "javadoc").exists(), f"Javadoc missing: {name}")
+        require(published(name, component_version, "jar", "sources").exists(), f"sources missing: {name}")
+        require(published(name, component_version, "jar", "javadoc").exists(), f"Javadoc missing: {name}")
         with ZipFile(artifact) as archive:
             require("META-INF/LICENSE" in archive.namelist() and "META-INF/NOTICE" in archive.namelist(), f"license bundle missing: {name}")
             require(archive.read("META-INF/LICENSE") == (ROOT / "LICENSE").read_bytes()
                     and archive.read("META-INF/NOTICE") == (ROOT / "NOTICE").read_bytes(),
                     f"published license/notice is stale: {name}")
     ns = {"m": "http://maven.apache.org/POM/4.0.0"}
-    bom = ET.parse(published("export4j-bom", "0.1.0-SNAPSHOT", "pom"))
+    bom = ET.parse(published("export4j-bom", version, "pom"))
     managed = bom.findall("m:dependencyManagement/m:dependencies/m:dependency", ns)
     require({d.findtext("m:artifactId", namespaces=ns) for d in managed} == {c["name"] for c in own}, "BOM constraints differ")
-    optional = ET.parse(published("export4j-opentype", "0.1.0-SNAPSHOT", "pom"))
+    optional = ET.parse(published("export4j-opentype", version, "pom"))
     native_bindings = [entry for entry in optional.findall("m:dependencies/m:dependency", ns)
                        if entry.findtext("m:groupId", namespaces=ns) == "org.lwjgl"]
     require({entry.findtext("m:artifactId", namespaces=ns) for entry in native_bindings}
@@ -196,7 +197,7 @@ def check_bundle(consumer_build_directory=None):
         require(archive.namelist() == ["page-00001.png"], "consumer PNG pages differ")
         with Image.open(io.BytesIO(archive.read("page-00001.png"))) as page:
             require(page.width > 500 and page.height > 800, "consumer raster dimensions differ")
-    examples_jar = ROOT / "examples/build/libs/examples-0.1.0-SNAPSHOT.jar"
+    examples_jar = ROOT / f"examples/build/libs/examples-{version}.jar"
     with ZipFile(examples_jar) as archive:
         for name in ("NotoNaskhArabic-Regular.ttf", "NotoNaskhArabic-OFL.txt", "NotoSansDevanagari-Regular.ttf", "NotoSansThai-Regular.ttf"):
             require(archive.read("fonts/" + name) == (ROOT / "assets/fonts" / name).read_bytes(), f"packaged Arabic font/license differs: {name}")
@@ -208,6 +209,9 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "build/verification/production")
     parser.add_argument("--reader-copy", type=Path, help="Optional Edge-filled PDF retained from an actual reader save")
     parser.add_argument("--consumer-build-directory", type=Path, help="Successful isolated consumer build; defaults to the script's last-success pointer")
+    parser.add_argument("--version", default="0.1.0-SNAPSHOT")
+    parser.add_argument("--repository", type=Path, default=ROOT / "build/repository")
+    parser.add_argument("--sbom", type=Path, default=ROOT / "build/reports/sbom.cdx.json")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     report = {"pdfs": {}, "tools": {name: metadata.version(name) for name in ("pypdf", "pypdfium2", "Pillow", "python-docx")}}
@@ -255,7 +259,7 @@ def main():
     svg = ET.parse(FIXTURES / "typography.svg").getroot()
     require(svg.tag.endswith("svg") and len(svg.findall(".//{http://www.w3.org/2000/svg}path")) > 5, "SVG outlines missing")
     report["docx"] = check_docx(FIXTURES / "semantic.docx")
-    report["localBundle"] = check_bundle(args.consumer_build_directory)
+    report["localBundle"] = check_bundle(args.consumer_build_directory, args.version, args.repository, args.sbom)
     consumer_directory = args.consumer_build_directory or Path((ROOT / "build/verification/consumer-build-directory.txt").read_text(encoding="utf-8").strip())
     consumer_source = consumer_directory / "output/consumer-floats.pdf"
     consumer_poppler = render_poppler(consumer_source, args.output / "consumer-floats/poppler")

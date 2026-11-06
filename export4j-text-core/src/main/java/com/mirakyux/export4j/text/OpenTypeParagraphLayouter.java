@@ -6,7 +6,6 @@ import java.awt.Graphics2D;
 import java.awt.font.GraphicAttribute;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineField;
-import java.awt.FontFormatException;
 import java.awt.Shape;
 import java.awt.font.FontRenderContext;
 import java.awt.font.TextAttribute;
@@ -14,8 +13,6 @@ import java.awt.font.TextMeasurer;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.PathIterator;
 import java.awt.geom.Rectangle2D;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.text.AttributedString;
 import java.text.Bidi;
 import java.text.BreakIterator;
@@ -35,15 +32,14 @@ import com.mirakyux.export4j.font.FontGroup;
 /** Shared JDK shaping for semantic text. No system fallback, backend objects or live font handles escape. */
 final class OpenTypeParagraphLayouter {
     private static final FontRenderContext FRC = new FontRenderContext(null, true, true);
+    private static final ExplicitPhysicalFontCache PHYSICAL_FONTS = new ExplicitPhysicalFontCache(32, 64L * 1024 * 1024);
     private final TextLayoutLimits limits;
 
     OpenTypeParagraphLayouter(TextLayoutLimits limits) { this.limits = limits; }
 
     private static Font physical(FontData data, double size) {
-        try {
-            return Font.createFont(Font.TRUETYPE_FONT, new ByteArrayInputStream(data.bytes())).deriveFont((float) size)
-                    .deriveFont(Map.of(TextAttribute.KERNING, TextAttribute.KERNING_ON, TextAttribute.LIGATURES, TextAttribute.LIGATURES_ON));
-        } catch (IOException | FontFormatException failure) { throw new IllegalArgumentException("explicit physical font cannot be loaded", failure); }
+        return PHYSICAL_FONTS.get(data).deriveFont((float) size)
+                .deriveFont(Map.of(TextAttribute.KERNING, TextAttribute.KERNING_ON, TextAttribute.LIGATURES, TextAttribute.LIGATURES_ON));
     }
 
     static double minimumLineHeight(FontGroup group, double size) {

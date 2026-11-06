@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.components;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
@@ -93,6 +94,16 @@ public final class StreamingReplayRequest {
     public StreamingExportSummary to(Path target) throws IOException {
         Objects.requireNonNull(backend, "backend must be configured");
         return DocumentEngine.writeAtomically(target, this::to);
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public StreamingExportSummary to(String target) throws IOException {
+        return to(Path.of(Objects.requireNonNull(target, "target")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public StreamingExportSummary to(File target) throws IOException {
+        return to(Objects.requireNonNull(target, "target").toPath());
     }
     public StreamingExportSummary to(OutputStream output) throws IOException {
         Objects.requireNonNull(output, "output");

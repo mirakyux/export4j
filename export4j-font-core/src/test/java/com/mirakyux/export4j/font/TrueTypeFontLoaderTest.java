@@ -6,7 +6,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,6 +19,41 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TrueTypeFontLoaderTest {
+    @TempDir Path directory;
+
+    @Test
+    void localFileInputsRemainBoundedAndReleaseTheirHandles() throws IOException {
+        var file = directory.resolve("字体 sample.ttf");
+        byte[] bytes = fontBytes(); Files.write(file, bytes);
+        String expected = TrueTypeFontLoader.load(bytes).data().id();
+        assertEquals(expected, TrueTypeFontLoader.load(file).data().id());
+        assertEquals(expected, TrueTypeFontLoader.load(file.toString(), bytes.length).data().id());
+        assertEquals(expected, TrueTypeFontLoader.load(file.toFile(), bytes.length).data().id());
+        assertEquals(expected, TrueTypeFontLoader.load(file.toString()).data().id());
+        assertEquals(expected, TrueTypeFontLoader.load(file.toFile()).data().id());
+        assertEquals(FontLoadException.Code.BUDGET_EXCEEDED,
+                assertThrows(FontLoadException.class, () -> TrueTypeFontLoader.load(file, 32)).code());
+        assertThrows(FontLoadException.class, () -> TrueTypeFontLoader.load(file.toString(), 32));
+        assertThrows(FontLoadException.class, () -> TrueTypeFontLoader.load(file.toFile(), 32));
+        assertThrows(IllegalArgumentException.class, () -> TrueTypeFontLoader.load(directory.resolve("missing.ttf"), 0));
+        Files.move(file, directory.resolve("moved.ttf"));
+    }
+
+    @Test
+    void defaultStreamLoadingBorrowsTheStreamOnSuccessAndFailure() throws IOException {
+        class Input extends ByteArrayInputStream {
+            boolean closed;
+            Input(byte[] bytes) { super(bytes); }
+            @Override public void close() { closed = true; }
+        }
+        var valid = new Input(fontBytes());
+        assertTrue(TrueTypeFontLoader.load(valid).glyph('A').isPresent());
+        assertFalse(valid.closed);
+        var invalid = new Input(new byte[12]);
+        assertThrows(FontLoadException.class, () -> TrueTypeFontLoader.load(invalid));
+        assertFalse(invalid.closed);
+    }
+
     @Test
     void loadedFaceOwnsBytesAndRemainsUsableAfterInputCloses() throws IOException {
         byte[] bytes = fontBytes();

@@ -9,6 +9,7 @@ import com.mirakyux.export4j.graphics.DocumentExtras;
 import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.graphics.Point;
 import com.mirakyux.export4j.layout.DocumentLayout;
+import com.mirakyux.export4j.layout.LayoutPage;
 import com.mirakyux.export4j.layout.ComponentFragment;
 import com.mirakyux.export4j.layout.core.ComponentSemantics;
 import com.mirakyux.export4j.model.Block;
@@ -29,6 +30,73 @@ final class InlineHyperlinks {
     private record Source(String text, List<InlineText> inlines, double step, Point origin, ParagraphLayout layout,
             SemanticFragments.Text context) { }
     private InlineHyperlinks() { }
+
+    /** Collects one incremental page from only its active original source blocks. The source map,
+     * parsed grids and component semantic sources become unreachable when this call returns.
+     * maxLinks is the caller's remaining document-wide interaction budget.
+     */
+    static List<DocumentExtras.ExternalLink> collectPage(LayoutPage page, List<Block> pageSources, long maxLinks) {
+        var sources = new ArrayList<>(pageSources);
+        var blocks = new HashMap<String, Block>();
+        SemanticTree.walk(pageSources, visit -> blocks.put(visit.block().id(), visit.block()));
+        for (var fragment : page.elements()) {
+            if (fragment instanceof ComponentFragment component) {
+                for (var located : ComponentSemantics.locate(component.layout(), component.origin())) {
+                    var source = located.placement().source();
+                    if (!blocks.containsKey(source.id())) {
+                        sources.add(source);
+                        SemanticTree.walk(source, visit -> blocks.put(visit.block().id(), visit.block()));
+                    }
+                }
+            }
+        }
+        var result = new ArrayList<DocumentExtras.ExternalLink>();
+        collectPage(page, 0, maxLinks, blocks, ModelRotations.of(sources), new java.util.IdentityHashMap<>(), result);
+        return List.copyOf(result);
+    }
+
+    /** Indexes semantic sources once while retaining only the current page's interaction rectangles. */
+    static final class Session {
+        private final Map<String, Block> blocks = new HashMap<>();
+        private final Map<String, Double> rotations;
+        private final Map<Table, TableGrid> grids = new BoundedGrids();
+        private final int offset;
+        private final long maxLinks;
+        private long count;
+
+        Session(List<? extends Block> sources, int offset, long maxLinks) {
+            var snapshot = List.<Block>copyOf(sources);
+            SemanticTree.walk(snapshot, visit -> blocks.put(visit.block().id(), visit.block()));
+            rotations = ModelRotations.of(snapshot);
+            this.offset = offset;
+            this.maxLinks = maxLinks;
+        }
+
+        List<DocumentExtras.ExternalLink> collect(LayoutPage page) {
+            var result = new ArrayList<DocumentExtras.ExternalLink>();
+            collectPage(page, offset, maxLinks - count, blocks, rotations, grids, result);
+            count += result.size();
+            return List.copyOf(result);
+        }
+
+        int cachedTables() { return grids.size(); }
+    }
+
+    /** Identity keys avoid hashing every source row on each text leaf; only recent tables retain parsed grids. */
+    private static final class BoundedGrids extends java.util.IdentityHashMap<Table, TableGrid> {
+        private static final long serialVersionUID = 1L;
+        private final java.util.ArrayDeque<Table> order = new java.util.ArrayDeque<>();
+
+        @Override public TableGrid computeIfAbsent(Table table, java.util.function.Function<? super Table, ? extends TableGrid> mapping) {
+            var value = get(table);
+            if (value == null) {
+                value = mapping.apply(table);
+                if (size() == 16) { remove(order.removeFirst()); }
+                put(table, value); order.addLast(table);
+            }
+            return value;
+        }
+    }
 
     static List<DocumentExtras.ExternalLink> collect(SectionedDocument document, DocumentLayout body, int pageOffset, long maxLinks) {
         Map<String, Block> blocks = new HashMap<>();
@@ -52,7 +120,14 @@ final class InlineHyperlinks {
         var rotations = ModelRotations.of(rotationSources);
         Map<Table, TableGrid> grids = new java.util.IdentityHashMap<>();
         for (var page : body.pages()) {
-            for (var fragment : page.elements()) {
+            collectPage(page, pageOffset, maxLinks, blocks, rotations, grids, result);
+        }
+        return List.copyOf(result);
+    }
+
+    private static void collectPage(LayoutPage page, int pageOffset, long maxLinks, Map<String, Block> blocks,
+            Map<String, Double> rotations, Map<Table, TableGrid> grids, List<DocumentExtras.ExternalLink> result) {
+        for (var fragment : page.elements()) {
                 List<Source> sources = new ArrayList<>();
                 SemanticFragments.walk(fragment, rotations, ignored -> { }, leaf -> {
                     var block = blocks.get(leaf.blockId());
@@ -77,9 +152,7 @@ final class InlineHyperlinks {
                             collector::accept);
                     collector.finish();
                 }
-            }
         }
-        return List.copyOf(result);
     }
 
     private static void append(List<DocumentExtras.ExternalLink> links, long maxLinks, DocumentExtras.ExternalLink link,

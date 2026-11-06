@@ -30,6 +30,38 @@ final class SemanticBlocks {
 
     private SemanticBlocks() { }
 
+    /** Single-pass lowering keeps numbering counters without retaining completed source blocks. */
+    static final class Stream {
+        private final Map<String, Integer> counters = new HashMap<>();
+        private final Map<String, int[]> lists = new HashMap<>();
+
+        Block compile(Block original) {
+            if (original instanceof NumberedItem item) {
+                int[] levels = lists.computeIfAbsent(item.listId(), ignored -> new int[9]);
+                for (int level = 0; level < item.level() - 1; level++) {
+                    if (levels[level] == 0) { throw new IllegalArgumentException("numbered list cannot skip levels"); }
+                }
+                levels[item.level() - 1] = item.restartAt() > 0 ? item.restartAt() : Math.addExact(levels[item.level() - 1], 1);
+                java.util.Arrays.fill(levels, item.level(), levels.length, 0);
+                String label = java.util.stream.IntStream.range(0, item.level()).mapToObj(level -> Integer.toString(levels[level]))
+                        .collect(java.util.stream.Collectors.joining("."));
+                return prefix(item.paragraph(), label + ". ", indent(item.format(), item.level()), item.markerStyle());
+            }
+            if (original instanceof BulletItem item) {
+                return prefix(item.paragraph(), item.marker() + " ", indent(item.format(), item.level()), item.markerStyle());
+            }
+            if (original instanceof Caption caption) {
+                int number = Math.addExact(counters.getOrDefault(caption.kind(), 0), 1);
+                counters.put(caption.kind(), number);
+                return new Paragraph(caption.id(), caption.kind() + " " + number + ". " + caption.text(), caption.format());
+            }
+            if (original instanceof CrossReference) {
+                throw new IllegalArgumentException("ordinary block streams cannot resolve cross references");
+            }
+            return original;
+        }
+    }
+
     static Result compile(SectionedDocument document, List<Note> notes) {
         notes = List.copyOf(notes);
         Note.validate(document, notes);

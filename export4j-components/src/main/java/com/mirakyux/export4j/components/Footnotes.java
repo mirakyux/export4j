@@ -34,6 +34,170 @@ final class Footnotes {
 
     private Footnotes() { }
 
+    /** Compact replay plan: source and shaped note slices only, never completed body-page IR or display lists.
+     * Shaped note storage grows with the supplied footnote text; the caller's semantic source remains retained.
+     */
+    static final class Plan {
+        private final Document source;
+        private final int bodyPages;
+        private final List<List<ParagraphLayout>> notes;
+        private final List<Double> bottoms;
+        private final PageSettings settings;
+        private final java.util.function.IntFunction<List<com.mirakyux.export4j.graphics.Rect>> exclusions;
+
+        private Plan(Document source, int bodyPages, List<List<ParagraphLayout>> notes, List<Double> bottoms,
+                PageSettings settings, java.util.function.IntFunction<List<com.mirakyux.export4j.graphics.Rect>> exclusions) {
+            this.source = source;
+            this.bodyPages = bodyPages;
+            this.notes = notes.stream().map(List::copyOf).toList();
+            this.bottoms = List.copyOf(bottoms);
+            this.settings = settings;
+            this.exclusions = exclusions;
+        }
+
+        int pages() { return Math.max(bodyPages, notes.size()); }
+
+        int replay(FontGroup fonts, Map<String, FontGroup> roles, DocumentLayoutLimits limits,
+                ComponentLimits componentLimits, DocumentLayouter.PageConsumer consumer) throws java.io.IOException {
+            var layouter = new DocumentLayouter(new ParagraphLayouter(), limits, componentLimits);
+            int count = exclusions == null ? layouter.layoutPages(source, fonts, roles, consumer)
+                    : layouter.layoutPages(source, fonts, roles, exclusions, consumer);
+            if (count != bodyPages) { throw new IllegalArgumentException("body pagination changed between planning and replay"); }
+            var bodySettings = source.pageSettings();
+            var bounds = new com.mirakyux.export4j.graphics.Rect(bodySettings.margins().left(), bodySettings.margins().top(),
+                    bodySettings.contentWidth(), bodySettings.contentHeight());
+            while (count < pages()) {
+                com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                consumer.accept(new LayoutPage(count++, bodySettings.size(), bounds, List.of()));
+            }
+            return count;
+        }
+
+        ComponentLayout page(int index) {
+            var group = index < notes.size() ? notes.get(index) : List.<ParagraphLayout>of();
+            double bottom = index < bottoms.size() ? bottoms.get(index) : settings.size().height() - settings.margins().bottom();
+            return paintNotes(settings, group, bottom);
+        }
+    }
+
+    /** The supplied consumer observes each final stable body page once; reservations retain only note metadata. */
+    static Plan plan(Document document, List<Note> allNotes, FontGroup fonts, Map<String, FontGroup> roles,
+            DocumentLayoutLimits limits, ComponentLimits componentLimits,
+            java.util.function.IntFunction<List<com.mirakyux.export4j.graphics.Rect>> exclusions,
+            DocumentLayouter.PageConsumer consumer) throws java.io.IOException {
+        var ids = document.blocks().stream().map(com.mirakyux.export4j.model.Block::id).collect(java.util.stream.Collectors.toSet());
+        var relevant = allNotes.stream().filter(note -> note.kind() == Note.Kind.FOOTNOTE && ids.contains(note.paragraphId())).toList();
+        var layouter = new DocumentLayouter(new ParagraphLayouter(), limits, componentLimits);
+        if (relevant.isEmpty()) {
+            int count = exclusions == null ? layouter.layoutPages(document, fonts, roles, consumer)
+                    : layouter.layoutPages(document, fonts, roles, exclusions, consumer);
+            return new Plan(document, count, List.of(), List.of(), document.pageSettings(), exclusions);
+        }
+        var text = new ParagraphLayouter();
+        boolean complex = relevant.stream().anyMatch(note -> ParagraphLayouter.requiresOpenType(note.text(), fonts));
+        double step = complex ? Math.max(13.5, ParagraphLayouter.minimumLineHeight(fonts, 9))
+                : Math.max(13.5, 9 * (fonts.fonts().stream().mapToDouble(f -> f.metrics().ascent()).max().orElseThrow()
+                + fonts.fonts().stream().mapToDouble(f -> f.metrics().descent()).max().orElseThrow()));
+        List<Measured> measured = new ArrayList<>();
+        for (int index = 0; index < allNotes.size(); index++) {
+            var note = allNotes.get(index);
+            if (note.kind() == Note.Kind.FOOTNOTE && ids.contains(note.paragraphId())) {
+                measured.add(new Measured(note.id(), note.paragraphId(), text.layout("[" + (index + 1) + "] " + note.text(), fonts,
+                        document.pageSettings().contentWidth(), new ParagraphStyle(9, step, 0, 0, com.mirakyux.export4j.text.TextAlignment.LEFT))));
+            }
+        }
+        var settings = document.pageSettings();
+        var margins = settings.margins();
+        double cap = Math.floor((settings.contentHeight() * 0.4 - 16) / step) * step + 16;
+        if (cap < step + 16) { throw new IllegalArgumentException("page is too short for footnotes and body"); }
+        double reserve = 0;
+        double avoidanceOffset = 0;
+        for (int iteration = 0; iteration < 32; iteration++) {
+            com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+            var bodySettings = new PageSettings(settings.size(), new PageMargins(margins.top(), margins.right(),
+                    margins.bottom() + reserve + avoidanceOffset, margins.left()));
+            var bodySource = new Document(document.metadata(), bodySettings, document.blocks());
+            Map<String, Integer> lastPages = new HashMap<>();
+            Map<String, Integer> markerPages = new HashMap<>();
+            DocumentLayouter.PageConsumer locate = page -> {
+                for (var fragment : page.elements()) {
+                    lastPages.put(fragment.blockId(), page.pageIndex());
+                    if (fragment instanceof com.mirakyux.export4j.layout.ParagraphFragment paragraph) {
+                        for (var line : paragraph.layout().lines()) {
+                            for (var field : line.fields()) {
+                                if (field.field().kind() == com.mirakyux.export4j.model.InlineField.Kind.NOTE_MARKER) {
+                                    markerPages.put(field.field().targetId(), page.pageIndex());
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            int count = exclusions == null ? layouter.layoutPages(bodySource, fonts, roles, locate)
+                    : layouter.layoutPages(bodySource, fonts, roles, exclusions, locate);
+            List<List<ParagraphLayout>> assigned = new ArrayList<>();
+            for (int index = 0; index < count; index++) { assigned.add(new ArrayList<>()); }
+            for (var note : measured) {
+                Integer page = markerPages.getOrDefault(note.id(), lastPages.get(note.paragraph()));
+                if (page == null) { throw new IllegalArgumentException("footnote anchor has no body page"); }
+                assigned.get(page).add(note.text());
+            }
+            double required = Math.min(cap, assigned.stream().filter(group -> !group.isEmpty()).mapToDouble(Footnotes::height).max().orElse(0));
+            if (required > Math.nextUp(reserve)) { reserve = required; continue; }
+            assigned = continueNotes(assigned, reserve, step, limits.maxPages());
+            var bottoms = new ArrayList<Double>();
+            double requiredOffset = avoidanceOffset;
+            for (int page = 0; page < assigned.size(); page++) {
+                double end = settings.size().height() - margins.bottom();
+                double noteHeight = height(assigned.get(page));
+                if (noteHeight > 0) {
+                    var areas = exclusions == null ? List.<com.mirakyux.export4j.graphics.Rect>of() : List.copyOf(exclusions.apply(page));
+                    if (areas.size() > 64) { throw new IllegalArgumentException("footnote exclusion budget exceeded"); }
+                    boolean moved;
+                    do {
+                        com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+                        moved = false;
+                        for (var area : areas) {
+                            if (area.x() < settings.size().width() - margins.right() && area.x() + area.width() > margins.left()
+                                    && end > area.y() && end - noteHeight < area.y() + area.height()) {
+                                end = area.y(); moved = true;
+                            }
+                        }
+                    } while (moved);
+                    if (end - noteHeight < margins.top()) { throw new IllegalArgumentException("fixed body avoidance leaves no room for footnotes"); }
+                    requiredOffset = Math.max(requiredOffset, settings.size().height() - margins.bottom() - end);
+                }
+                bottoms.add(end);
+            }
+            if (requiredOffset > Math.nextUp(avoidanceOffset)) { avoidanceOffset = requiredOffset; continue; }
+            var result = new Plan(bodySource, count, assigned, bottoms, settings, exclusions);
+            result.replay(fonts, roles, limits, componentLimits, consumer);
+            return result;
+        }
+        throw new IllegalArgumentException("footnote pagination did not converge within 32 reservations");
+    }
+
+    private static ComponentLayout paintNotes(PageSettings settings, List<ParagraphLayout> group, double bottom) {
+        var builder = new DisplayListBuilder(settings.size());
+        double left = settings.margins().left();
+        double y = bottom - height(group);
+        int lines = 0;
+        List<TextDiagnostic> diagnostics = new ArrayList<>();
+        if (!group.isEmpty()) {
+            builder.strokePath(new VectorPath(List.of(new VectorPath.MoveTo(new Point(left, y + 3)),
+                    new VectorPath.LineTo(new Point(left + Math.min(96, settings.contentWidth()), y + 3)))),
+                    new RgbColor(0.5, 0.55, 0.6), 0.5);
+            y += 12;
+            for (var note : group) {
+                TextLayoutPainter.draw(builder, note, new Point(left, y), RgbColor.BLACK);
+                y += note.height() + 4;
+                lines += note.lines().size();
+                diagnostics.addAll(note.diagnostics());
+            }
+        }
+        return new ComponentLayout(settings.size().width(), settings.size().height(), lines, builder.build().commands(), diagnostics);
+    }
+
     static Result layout(Document document, List<Note> allNotes, FontGroup fonts, Map<String, FontGroup> roles,
             DocumentLayoutLimits limits, ComponentLimits componentLimits) {
         return layout(document, allNotes, fonts, roles, limits, componentLimits, null);

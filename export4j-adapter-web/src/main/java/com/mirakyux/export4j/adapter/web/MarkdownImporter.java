@@ -9,8 +9,11 @@ import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -19,7 +22,8 @@ import org.commonmark.ext.gfm.tables.TablesExtension;
 import org.commonmark.parser.IncludeSourceSpans;
 import org.commonmark.parser.Parser;
 
-/** Offline CommonMark/GFM semantic import, independent of Markdown templates. Never reads URLs/files.
+/** Offline CommonMark/GFM semantic import, independent of Markdown templates. Explicit UTF-8 files/streams
+ * or source text only; never fetches URLs or discovers resources from linked paths.
  * Only explicitly registered images are available. Unknown model semantics default to ERROR.
  * Immutable, thread-safe and owns no resources. Third-party parser types do not enter the public API.
  */
@@ -42,16 +46,51 @@ public final class MarkdownImporter {
         emphasisRole = builder.emphasisRole; combinedRole = builder.combinedRole; codeRole = builder.codeRole; baseUri = builder.baseUri;
     }
     public Request read(String source) { return new Request(Objects.requireNonNull(source, "source"), this); }
+    /** Immediately reads an explicit UTF-8 file under the import input limit and closes its stream.
+     * Request execution options apply to subsequent parsing, not this initial read.
+     */
+    public Request read(Path source) throws IOException { return read(TextImportIO.read(source, limits)); }
+    /** Immediately reads an explicit UTF-8 file under the same budget as read(Path). */
+    public Request read(File source) throws IOException { return read(Objects.requireNonNull(source, "source").toPath()); }
+    /** Immediately decodes a bounded UTF-8 source; the borrowed input remains open.
+     * Invalid UTF-8 is rejected. Request execution options apply to subsequent parsing.
+     */
+    public Request read(InputStream source) throws IOException { return read(TextImportIO.read(source, limits)); }
+    /** Explicit local file path; read(String) continues to mean Markdown source text. */
+    public Request readFile(String source) throws IOException { return read(Path.of(Objects.requireNonNull(source, "source"))); }
     /** Starts a unified import/edit/export plan. Source and resource configuration are snapshotted;
      * the plan's shared policy controls both import and target losses.
      */
     public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(String source) {
         Objects.requireNonNull(source, "source");
+        return conversion(() -> source);
+    }
+    /** Opens and closes this explicit UTF-8 file during prepare, under its execution and import limits. */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(Path source) {
+        Objects.requireNonNull(source, "source");
+        return conversion(() -> TextImportIO.read(source, limits));
+    }
+    /** Explicit UTF-8 file, opened during prepare. */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(File source) {
+        return conversion(Objects.requireNonNull(source, "source").toPath());
+    }
+    /** Reads a bounded UTF-8 source during prepare without closing the borrowed stream.
+     * Repeated preparation requires a new input stream; invalid UTF-8 is rejected.
+     */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(InputStream source) {
+        Objects.requireNonNull(source, "source");
+        return conversion(() -> TextImportIO.read(source, limits));
+    }
+    /** Explicit local file path; conversion(String) continues to mean Markdown source text. */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversionFile(String source) {
+        return conversion(Path.of(Objects.requireNonNull(source, "source")));
+    }
+    private com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(TextImportIO.Source source) {
         return com.mirakyux.export4j.model.processing.DocumentConversion.from("MARKDOWN", shared -> {
             var builder = new Builder().policy(shared).limits(limits).metadata(metadata).pageSettings(pageSettings)
                     .paragraphFormat(format).fontRoles(strongRole, emphasisRole, combinedRole, codeRole);
             builder.images.putAll(images); builder.baseUri = baseUri;
-            var imported = builder.build().read(source).execute();
+            var imported = builder.build().read(source.read()).execute();
             return com.mirakyux.export4j.model.processing.DocumentConversion.Input.of(imported.document(), imported.report());
         }).policy(policy);
     }

@@ -30,7 +30,10 @@ import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingIssue;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
-import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +45,26 @@ final class DocxConversions {
     private DocxConversions() { }
     static DocumentConversion.Request source(DocxAdapter adapter, byte[] encoded) {
         return adapter.semanticConversion(Objects.requireNonNull(encoded, "encoded")).project();
+    }
+    static DocumentConversion.Request source(DocxAdapter adapter, Path source) {
+        Objects.requireNonNull(source, "source");
+        return DocumentConversion.from("DOCX", policy -> {
+            try (var input = Files.newInputStream(source)) { return read(adapter, input, policy); }
+        });
+    }
+    static DocumentConversion.Request source(DocxAdapter adapter, InputStream source) {
+        Objects.requireNonNull(source, "source");
+        return DocumentConversion.from("DOCX", policy -> read(adapter, source, policy));
+    }
+    private static DocumentConversion.Input read(DocxAdapter adapter, InputStream input, ProcessingPolicy policy) throws IOException {
+        var imported = adapter.readSemantic(input, DocxAdapter.Policy.ALLOW_LOSS);
+        var issues = DocxSemanticConversion.importIssues(imported.diagnostics(), policy);
+        var edited = imported.document().edit().policy(policy).execute();
+        issues.addAll(edited.report().issues());
+        var projected = DocxSemanticProjection.project(edited.document(), policy);
+        issues.addAll(projected.report().issues());
+        return new DocumentConversion.Input(projected.document(), projected.notes(),
+                new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues));
     }
     static DocumentConversion.Target target(DocxAdapter adapter) {
         return new DocumentConversion.Target("DOCX", (source, notes, policy, output) -> {

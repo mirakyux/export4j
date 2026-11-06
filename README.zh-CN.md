@@ -9,7 +9,7 @@ Export4j 是面向报告、表单和结构化文档的开源 **Java PDF 生成�
 
 可导入明确子集内的 PDF、DOCX、HTML 和 Markdown 内容，编辑后转换为其他格式，并对不兼容特性执行明确策略。可保存 XML 模板，也可恢复已保存的受支持文档模型，继续编辑与导出。
 
-**当前处于早期开发阶段，尚未发布稳定版本，API 可能调整。** 接入前请查看[格式限制](#格式支持与限制)和[能力矩阵](docs/capabilities-api.md)。
+**候选版本 [`0.1.0-rc.1` 已发布到 Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.1)。** 当前尚无稳定版，API 仍可能调整。接入前请查看[格式限制](#格式支持与限制)和[能力矩阵](docs/capabilities-api.md)。
 
 ## 目录
 
@@ -44,7 +44,48 @@ Export4j 是面向报告、表单和结构化文档的开源 **Java PDF 生成�
 
 ## 快速开始
 
-环境要求：**JDK 21**，生成文档无需安装 Office 或浏览器。首次构建需要访问 Gradle 分发与 Maven Central；仓库已包含 Gradle Wrapper。
+环境要求：**JDK 21**，生成文档无需安装 Office 或浏览器。通过已发布的 BOM 对齐模块版本；以下依赖可运行下方的 PDF 示例。
+
+Maven：
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>com.mirakyux.export4j</groupId>
+      <artifactId>export4j-bom</artifactId>
+      <version>0.1.0-rc.1</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+<dependencies>
+  <dependency>
+    <groupId>com.mirakyux.export4j</groupId>
+    <artifactId>export4j-components</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>com.mirakyux.export4j</groupId>
+    <artifactId>export4j-backend-pdf</artifactId>
+  </dependency>
+</dependencies>
+```
+
+Gradle Kotlin DSL：
+
+```kotlin
+repositories { mavenCentral() }
+dependencies {
+    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.1"))
+    implementation("com.mirakyux.export4j:export4j-components")
+    implementation("com.mirakyux.export4j:export4j-backend-pdf")
+}
+```
+
+其他适配器和后端按需加入，BOM 统一约束全部 16 个发布库。可选模板设计器通过源码运行，不包含在 BOM 中。
+
+运行仓库示例时克隆源码。首次构建需要访问 Gradle 分发与 Maven Central；仓库已包含 Gradle Wrapper。
 
 ```shell
 git clone https://github.com/mirakyux/export4j.git
@@ -78,7 +119,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 
 更多任务见[示例索引](docs/examples.md)。示例加载仓库内固定字体；业务应用应提供具有相应授权的字体，来源与许可见[字体记录](assets/fonts/README.md)。可选[原生 OpenType 模块](docs/native-opentype-api.md)还需配置目标平台的原生制品。
 
-当前尚无可直接安装的稳定 Maven 版本。可从源码构建，或通过[本地 Maven 制品及 BOM](docs/releasing.md)试用当前快照。
+源码构建默认使用开发版本 `0.1.0-SNAPSHOT`。已发布候选版、本地快照试用与发布验证见[发布指南](docs/releasing.md)。
 
 ## HTML 模板设计器
 
@@ -86,7 +127,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 
 ## Java 使用示例
 
-下面是使用公共编写 API 的完整类。运行目录为仓库根目录，classpath 需包含组件模块、PDF 后端及其运行依赖；字体路径指向仓库样例资源。
+在配置好上述依赖的应用中，将完整类保存为 `src/main/java/QuickStart.java`。在运行目录下的 `assets/fonts/` 中准备 `LiberationSans-Regular.ttf` 和 `LXGWWenKaiTC-Regular.ttf`，或将路径改为自行提供的授权字体。[仓库字体样例](assets/fonts/README.md)提供这两个示例文件；业务应用始终显式提供字体。
 
 ```java
 import java.io.IOException;
@@ -193,7 +234,7 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 当前剩余工作由[能力缺口表](docs/capability-gaps.md)跟踪：
 
 - **GAP-14.2：** 更广兼容语料及跨平台应用／阅读器验证。
-- **GAP-14.3：** 稳定 API／版本、正式签名与 Maven Central 分发。
+- **GAP-14.3：** 稳定 API 与版本验收；`0.1.0-rc.1` 的签名制品已通过 Maven Central 分发。
 - **GAP-22：** XLSX、PPTX、EPUB、XPS 等更多格式。
 
 验收条件见[执行计划](docs/remaining-capabilities-plan.md)。OCR 不在当前范围内。

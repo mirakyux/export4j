@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.font;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +30,27 @@ public final class TrueTypeFontLoader {
     public static FontFace load(byte[] bytes) throws IOException {
         return load(bytes, DEFAULT_MAX_BYTES);
     }
+
+    /** Reads a borrowed stream under the default byte limit; never closes it. */
+    public static FontFace load(InputStream input) throws IOException { return load(input, DEFAULT_MAX_BYTES); }
+
+    /** Loads an explicit local file under the default byte limit; closes the opened stream. */
+    public static FontFace load(Path source) throws IOException { return load(source, DEFAULT_MAX_BYTES); }
+
+    /** Loads an explicit local file; reads at most maxBytes+1 bytes and closes the opened stream. */
+    public static FontFace load(Path source, int maxBytes) throws IOException {
+        Objects.requireNonNull(source, "source"); requireLimit(maxBytes);
+        try (var input = Files.newInputStream(source)) { return load(input, maxBytes); }
+    }
+
+    /** Local filesystem path, with the same bounded loading and ownership as load(Path). */
+    public static FontFace load(String source) throws IOException { return load(Path.of(Objects.requireNonNull(source, "source"))); }
+    /** Local filesystem path with an explicit encoded byte limit. */
+    public static FontFace load(String source, int maxBytes) throws IOException { return load(Path.of(Objects.requireNonNull(source, "source")), maxBytes); }
+    /** Local file, with the same bounded loading and ownership as load(Path). */
+    public static FontFace load(File source) throws IOException { return load(Objects.requireNonNull(source, "source").toPath()); }
+    /** Local file with an explicit encoded byte limit. */
+    public static FontFace load(File source, int maxBytes) throws IOException { return load(Objects.requireNonNull(source, "source").toPath(), maxBytes); }
 
     /** Reads at most maxBytes+1 bytes. The borrowed input stream is never closed. */
     public static FontFace load(InputStream input, int maxBytes) throws IOException {

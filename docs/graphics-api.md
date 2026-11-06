@@ -53,7 +53,13 @@ public class HelloPdf {
 
 `RgbImage` 接受从左上角逐行存储的 RGB 字节，每像素 3 个无符号通道。构造和读取均复制数组，图片对象可以安全共享。
 
+`RgbImage.from(ImageResource)` 保留已验证的不可变 PNG／JPEG 快照，首次读取像素时才解码；`encodedSource()` 可读取原资源，`id()` 提供稳定的内容标识。完整文档绘制在任务内复用图片，缓存同时限制条目数与预计解码字节数；输出命令仍分别保留每次放置的位置。显式 RGB／alpha 构造器保持兼容。
+
+`DocumentPainter` 在一次绘制任务内按精确坐标复用最多 256 个表格矩形边框路径，跨页及嵌套表可共享不可变几何。每条边框仍独立产生绘制命令，保留线宽、颜色、变换和原预算；不同任务不共享缓存。完整模型、IR 和绘制列表仍随总内容增长，资源复用不等于全文档使用固定内存。
+
 图片绘制到给定矩形，宽高分别缩放，不自动保持比例。`RgbImage` 支持可选 straight alpha，原三参数构造器保持不透明。绘制核心的 `ImageDecoder.decode(byte[], maxBytes, maxPixels)` 有界解码 PNG／JPEG，后端以 soft mask 保存透明度；不读取 URL。
+
+普通 PDF 后端在单次输出内按内容标识复用图片资源，索引最多保留 256 项。已验证的标准 8 bit、三分量 JFIF JPEG 可保留原始 DCT 编码；灰阶、带 ICC、Adobe 或不确定颜色／标记结构的 JPEG 继续使用像素转换路径，PNG 与透明图片保留原像素及 soft mask。资源复用不减少每次绘制的像素、命令或交互预算。
 
 逻辑字体 `SANS_SERIF`、`SERIF`、`MONOSPACE` 分别映射到 Helvetica、Times Roman 和 Courier。可编码范围由所选标准字体决定，主要用于拉丁文字。
 

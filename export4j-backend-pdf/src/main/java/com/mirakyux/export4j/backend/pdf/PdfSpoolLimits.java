@@ -2,8 +2,10 @@
 package com.mirakyux.export4j.backend.pdf;
 
 /** Positive bounds for ordinary disk-backed PDF output. Per-page PDFBox work is additionally
- * governed by PdfLimits. Temporary bytes count the current rendered page and disk indices;
- * output bytes count the complete destination. Neither bound measures process memory.
+ * governed by PdfLimits. Temporary bytes conservatively count the current page's serialized
+ * equivalent and disk indices, although page serialization is discarded without a file;
+ * output bytes count the complete destination. The per-page object bound counts the source
+ * graph even when a font resource reuses an earlier output object. Neither byte bound measures process memory.
  */
 public record PdfSpoolLimits(int maxPages, long maxCommands, int maxObjectsPerPage, long maxObjects,
         long maxPageBytes, long maxTemporaryBytes, long maxOutputBytes) {

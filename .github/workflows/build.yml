@@ -35,6 +35,7 @@ jobs:
         run: |
           python scripts/test_api_compatibility.py
           python scripts/test_dependency_audit.py
+          python scripts/test_maven_central.py
           bash ./gradlew --no-daemon --console=plain -Pexport4jNativeClassifier=${{ matrix.classifier }} build apiCheck sbom publishLocalBundle :examples:run :examples:textPdf :examples:flowPdf :examples:tablePdf :examples:componentPdf :examples:advancedPdf
       - name: Audit exact runtime dependencies against known advisories
         if: runner.os == 'Linux'
@@ -43,7 +44,7 @@ jobs:
         run: python scripts/create_compatibility_corpus.py
       - name: Consume only published coordinates and run native OpenType
         shell: bash
-        run: bash ./gradlew --no-daemon --console=plain -p verification/consumer -Pexport4jNativeClassifier=${{ matrix.classifier }} build run openType compatibilityCorpus resolvedLibraries --refresh-dependencies
+        run: bash ./gradlew --no-daemon --console=plain -p verification/consumer -Pexport4jNativeClassifier=${{ matrix.classifier }} build run ioConvenience ergonomics openType compatibilityCorpus resolvedLibraries --refresh-dependencies
       - name: Verify generation and conversion without printing services
         shell: bash
         run: python scripts/verify_driverless.py --consumer-build-directory verification/consumer/build --output-directory build/verification/driverless
@@ -57,6 +58,9 @@ jobs:
       - name: Verify PDF structures, editable forms and visual baseline
         if: runner.os == 'Linux'
         run: build/pdf-verification-venv/bin/python scripts/verify_advanced_pdf.py
+      - name: Verify file, image, font and table authoring conveniences
+        if: runner.os == 'Linux'
+        run: build/pdf-verification-venv/bin/python scripts/verify_api_ergonomics.py --consumer-build-directory verification/consumer/build
       - name: Independently inspect conversion corpus and both PDF renderers
         if: runner.os == 'Linux'
         run: build/pdf-verification-venv/bin/python scripts/verify_compatibility_corpus.py --consumer-build-directory verification/consumer/build --output build/verification/compatibility-corpus
@@ -75,7 +79,9 @@ jobs:
             verification/consumer/build/resolved-components.txt
             verification/consumer/build/resolved-library-sha256.txt
             verification/consumer/build/output/**/*.pdf
+            verification/consumer/build/output/ergonomics/**
             verification/consumer/build/output/compatibility-corpus/**
+            build/verification/api-ergonomics-output/**
             build/verification/compatibility-corpus/report.json
             build/verification/compatibility-fixtures/manifest.json
             build/verification/driverless/report.json

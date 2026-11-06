@@ -5,6 +5,7 @@ import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -247,6 +248,16 @@ public final class PdfAdapter {
         catch (IOException exception) { throw new PdfOperationException(PdfOperationException.Code.INPUT_IO, -1, -1, exception); }
     }
 
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public PdfInput input(String source, String password) throws IOException {
+        return input(Path.of(Objects.requireNonNull(source, "source")), password);
+    }
+
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public PdfInput input(File source, String password) throws IOException {
+        return input(Objects.requireNonNull(source, "source").toPath(), password);
+    }
+
     private static void password(String value) {
         Objects.requireNonNull(value, "password");
         if (value.length() > 1024) { throw new IllegalArgumentException("PDF password exceeds 1024 UTF-16 code units"); }
@@ -300,6 +311,16 @@ public final class PdfAdapter {
         return merge(List.of(selection), output);
     }
 
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public WriteResult copy(PdfSelection selection, String output) throws IOException {
+        return copy(selection, Path.of(Objects.requireNonNull(output, "output")));
+    }
+
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public WriteResult copy(PdfSelection selection, File output) throws IOException {
+        return copy(selection, Objects.requireNonNull(output, "output").toPath());
+    }
+
     public WriteResult merge(List<PdfSelection> selections, OutputStream output) throws IOException {
         return merge(selections, output, ExecutionOptions.DEFAULT);
     }
@@ -315,6 +336,16 @@ public final class PdfAdapter {
 
     public WriteResult merge(List<PdfSelection> selections, Path output) throws IOException {
         return merge(selections, output, ExecutionOptions.DEFAULT);
+    }
+
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public WriteResult merge(List<PdfSelection> selections, String output) throws IOException {
+        return merge(selections, Path.of(Objects.requireNonNull(output, "output")));
+    }
+
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public WriteResult merge(List<PdfSelection> selections, File output) throws IOException {
+        return merge(selections, Objects.requireNonNull(output, "output").toPath());
     }
 
     /** Writes a sibling temporary file, closes it and then atomically replaces the target.
@@ -345,6 +376,16 @@ public final class PdfAdapter {
                 else { throw new PdfOperationException(PdfOperationException.Code.OUTPUT_IO, -1, -1, exception); }
             }
         }
+    }
+
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public WriteResult merge(List<PdfSelection> selections, String output, ExecutionOptions options) throws IOException {
+        return merge(selections, Path.of(Objects.requireNonNull(output, "output")), options);
+    }
+
+    /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+    public WriteResult merge(List<PdfSelection> selections, File output, ExecutionOptions options) throws IOException {
+        return merge(selections, Objects.requireNonNull(output, "output").toPath(), options);
     }
 
     private List<PdfSelection> selections(List<PdfSelection> values) throws IOException {

@@ -148,6 +148,10 @@ engine.writeAtomically(document, backend, targetPath, options);
 
 输出流入口 `engine.write(document, backend, stream, options)` 保留流所有权，失败可能已写入部分字节。`writeAtomically` 要求目标父目录已存在及文件系统支持原子移动：临时文件写入成功后才替换目标，失败删除临时文件并保留原文件。PDF 使用 `PdfOptions.storage(TEMP_FILE)` 可把后端流缓冲放到临时文件；Layout IR、Display List 和资源仍驻留内存，不能称为完整流式大文档引擎。
 
+开发源码新增[普通文档逐页导出](paged-document-api.md)：`engine.exportPaged` 接受 `Document`、`PageDocument` 和 `SectionedDocument`，规划最终分页后逐页绘制及释放，返回轻量摘要。目录、未来引用、分节页码、页区和脚注使用最终分页；评论与可编辑表单在打开写出器前拒绝。配合 `PdfSpoolBackend` 可释放完成页的 PDFBox 对象，并直接复制活页对象，避免单页临时 PDF 的写入及重新解析。完整输入、最大块、脚注切片和有限索引仍占内存，多遍规划增加计算成本；详见[验收](verification/paged-document-export.md)。已发布的 `0.1.0-rc.1` 不含此入口。
+
+同一指南另提供按需普通块源：`exportSemantic(PageSettings, BlockSource.Factory)` 已知总数时单遍布局，`exportReplay` 显式两遍稳定快照，均无需先构造完整正文模型。支持标题／列表／题注、表格、图片、组件、外链、固定页区和最终页字段；全局导航、未来引用、分节及脚注重排不在该流入口范围内。来源和测量缓存按当前页／keep 链释放，全局 ID 与页摘要仍随有限节点／页数增长。
+
 固定列普通／纯富文本长表可采用独立的 [单向源 API](streaming-table-api.md)，同步逐页测量和输出，返回扁平计数。[阶段二十四](verification/phase-24-streaming-tables.md)已验收 7 组独立 JVM：布局丢弃页和真实 PDF 各 1k／10k／100k 行，另有 64 MiB 堆的 100k 行布局控制；退出临时文件数／字节均为 0。[阶段二十九](verification/phase-29-streaming-rich-text.md)进一步验收纯富文本／真实字体角色和空运行额度，9 组普通／富文本独立 JVM 包含 64 MiB 布局控制；[指南](streaming-rich-text-api.md)说明该入口明确拒绝的语义。单次源不保留完整 IR／Display List，也不解析未来引用；需要未来引用、自动列宽或未知总数时使用[显式重放](streaming-replay-api.md)。普通 PDF 后端仍累计页树，可选 `PdfSpoolBackend` 使用单页工作集及磁盘索引，两者均按各自预算和资源契约运行。
 
 单向固定列横向合并已由[阶段六十四](verification/phase-64-streaming-column-spans.md)验收：表头／正文完整覆盖，按真实物理列测量与呈现，锚点和覆盖槽分别计数，单行预读及原子输出保护保持；图片和被动链接已由[阶段六十五](verification/phase-65-streaming-media.md)验收；完整行续排见[阶段六十七](verification/phase-67-streaming-row-split.md)；实际页码及准确总数见[单向字段 API](streaming-fields-api.md)；[显式有界纵向合并](streaming-row-spans-api.md)现已接入，默认单行路径保持；它与完整行拆分不能组合。

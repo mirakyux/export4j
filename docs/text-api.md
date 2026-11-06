@@ -82,6 +82,8 @@ LF、CR 和 CRLF 产生显式换行，空输入及末尾换行保留空行。行
 
 `TextShaper` 是扩展接口。`SimpleTextShaper` 对普通水平拉丁、汉字、希腊、西里尔、假名与预组合韩文逐码点映射，不实现 kerning、连字、字形簇、字形偏移、GSUB/GPOS 或双向排序。显式注入该 shaper 时保持严格限制。默认 `ParagraphLayouter` 对复杂文字使用公共 JDK OpenType 路径；静态 CFF 的简单文字可保留原生字形映射，复杂塑形或显式 `layoutOpenType` 才使用轮廓。语义段落、单元格和固定页区共享此路由。纯拉丁文字显式 kerning／连字开关仍使用组件 `OpenTypeText`，详见[能力指南](capabilities-api.md)。
 
+`SimpleTextShaper` 的每个实例通过有界并发缓存复用不可变字形值，最多保留 4,096 项；缓存只保存码点、字形 ID 和精确 advance，不持有字体或来源文本。每次调用独立保留选定字体、原始 UTF-16 范围、行框度量和诊断。字形对象身份不属于公共契约。
+
 简单塑形器拒绝复杂或双向脚本、组合标记和多码点序列。默认公共路径支持样例中的阿拉伯语、希伯来语与组合字符，每个字形簇必须由一个显式物理字体覆盖；跨样式边界的字形簇明确失败。普通补充平面码点可以参与布局，但实际字体必须提供字形；这不代表支持多码点 emoji 序列或彩色 emoji。调用方可显式预先做 Unicode 规范化，库不隐式改写原文。
 
 ## 预算与错误
@@ -111,7 +113,7 @@ var layouter = new ParagraphLayouter(new com.mirakyux.export4j.text.SimpleTextSh
 
 固定字体字节、回退顺序、文本、宽度、样式和 JDK 断行规则时，重复布局结果一致；不以 PDF 文件字节一致作为验收条件。基础布局器可共享，注入的自定义 shaper 必须线程安全。
 
-字体字节复制、解析及文本预算约束特定规模，不构成不可信输入沙箱或执行时间限制。文本模块本身不分页；语义 Document 与自动分页位于模型及布局模块。当前没有字体全局缓存；`StyledSpan`、`InlineText` 与 `InlineStyle` 已支持行内字体角色、字号、颜色、上下标和装饰，详见[进阶 API](advanced-api.md)。
+字体字节复制、解析及文本预算约束特定规模，不构成不可信输入沙箱或执行时间限制。文本模块本身不分页；语义 Document 与自动分页位于模型及布局模块。共享塑形按显式字体程序的 SHA-256 复用基础物理字体，进程内缓存最多 32 个程序、源字节权重最多 64 MiB；不保留源字节数组、派生字号或隐式系统字体。该权重不等于 AWT 原生内存的精确占用。`StyledSpan`、`InlineText` 与 `InlineStyle` 已支持行内字体角色、字号、颜色、上下标和装饰，详见[进阶 API](advanced-api.md)。
 
 初始公共接口变化见 [ADR-0003](adr/0003-font-text-layout.md)；字体组策略、富文本接口及兼容重载见 [ADR-0007](adr/0007-advanced-layout-and-font-policy.md)。警告由调用方遍历 `diagnostics()` 并选择输出方式，库不自行打印日志；完整代码见[字体组与缺字策略](advanced-api.md#字体组与缺字策略)。
 

@@ -11,6 +11,7 @@ import com.mirakyux.export4j.model.processing.ProcessingIssue;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -166,11 +167,31 @@ public final class XmlModelRecovery {
             return ExecutionContext.execute(execution, () -> { ExecutionContext.output(output).write(document); return actual(); });
         }
         public ProcessingReport writeDocument(Path output) throws IOException { TemplateBundleIO.publish(document, output, execution); return actual(); }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeDocument(String output) throws IOException {
+            return writeDocument(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeDocument(File output) throws IOException {
+            return writeDocument(Objects.requireNonNull(output, "output").toPath());
+        }
         public void writeCompanion(OutputStream output) throws IOException {
             Objects.requireNonNull(output, "output"); byte[] bytes = required();
             ExecutionContext.execute(execution, () -> { ExecutionContext.output(output).write(bytes); return null; });
         }
         public void writeCompanion(Path output) throws IOException { TemplateBundleIO.publish(required(), output, execution); }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public void writeCompanion(String output) throws IOException {
+            writeCompanion(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public void writeCompanion(File output) throws IOException {
+            writeCompanion(Objects.requireNonNull(output, "output").toPath());
+        }
         /** HTML/MARKDOWN/SVG use a Base64 comment; single PNG a private chunk; DOCX/PNG_ZIP a ZIP member.
          * Defensive bytes; the total document budget includes the envelope. DISCARD captures return plain
          * output; reimported recovery contains only the current-file model. Plaintext resources provide no encryption/authentication. */
@@ -198,6 +219,16 @@ public final class XmlModelRecovery {
         public ProcessingReport writeEmbedded(Path output) throws IOException {
             TemplateBundleIO.publish(embeddedBytes(), output, execution); return actual();
         }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeEmbedded(String output) throws IOException {
+            return writeEmbedded(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeEmbedded(File output) throws IOException {
+            return writeEmbedded(Objects.requireNonNull(output, "output").toPath());
+        }
         /** Borrowed output, never closed or flushed; encoding completes before the first write. */
         public ProcessingReport writeEmbedded(EmbeddedRecoveryCodec codec, OutputStream output) throws IOException {
             Objects.requireNonNull(output, "output"); byte[] bytes = embeddedBytes(codec);
@@ -207,12 +238,32 @@ public final class XmlModelRecovery {
         public ProcessingReport writeEmbedded(EmbeddedRecoveryCodec codec, Path output) throws IOException {
             TemplateBundleIO.publish(embeddedBytes(codec), output, execution); return actual();
         }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeEmbedded(EmbeddedRecoveryCodec codec, String output) throws IOException {
+            return writeEmbedded(codec, Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeEmbedded(EmbeddedRecoveryCodec codec, File output) throws IOException {
+            return writeEmbedded(codec, Objects.requireNonNull(output, "output").toPath());
+        }
         /** HTML-only convenience for {@link #embeddedBytes()}; retains the original format check. */
         public byte[] embeddedHtmlBytes() throws IOException { requireHtml(); return embeddedBytes(); }
         /** HTML-only borrowed-output convenience; never closes or flushes. */
         public ProcessingReport writeEmbeddedHtml(OutputStream output) throws IOException { requireHtml(); return writeEmbedded(output); }
         /** HTML-only atomic-path convenience. */
         public ProcessingReport writeEmbeddedHtml(Path output) throws IOException { requireHtml(); return writeEmbedded(output); }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeEmbeddedHtml(String output) throws IOException {
+            return writeEmbeddedHtml(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport writeEmbeddedHtml(File output) throws IOException {
+            return writeEmbeddedHtml(Objects.requireNonNull(output, "output").toPath());
+        }
         private void requireHtml() {
             if (!format.equals("HTML")) { throw new IllegalStateException("embedded HTML requires HTML output"); }
         }

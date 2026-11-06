@@ -2,17 +2,18 @@
 package com.mirakyux.export4j.backend.pdf;
 
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -22,6 +23,7 @@ import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.util.Matrix;
 import com.mirakyux.export4j.graphics.AffineTransform;
 import com.mirakyux.export4j.graphics.DisplayDocument;
@@ -96,6 +98,42 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
 
     public com.mirakyux.export4j.model.processing.ProcessingReport write(DisplayDocument document, OutputStream output,
             com.mirakyux.export4j.model.processing.ProcessingPolicy policy) throws IOException {
+        return write(document, output, policy, null);
+    }
+
+    /** Spool sessions may borrow parsed programs; PDF fonts and every PDF document remain independent. */
+    com.mirakyux.export4j.model.processing.ProcessingReport write(DisplayDocument document, OutputStream output,
+            com.mirakyux.export4j.model.processing.ProcessingPolicy policy, PdfFontPrograms programs) throws IOException {
+        return write(document, output, policy, programs, null);
+    }
+
+    com.mirakyux.export4j.model.processing.ProcessingReport write(DisplayDocument document, OutputStream output,
+            com.mirakyux.export4j.model.processing.ProcessingPolicy policy, PdfFontPrograms programs,
+            PdfImagePrograms imagePrograms) throws IOException {
+        return write(document, output, policy, programs, imagePrograms, null);
+    }
+
+    /** Consumes one finalized page while its document and borrowed font programs are still owned here.
+     * The serialization output is measured/discarded by the caller; saving follows the ordinary path
+     * so font subsets and the exact serialized-page byte budget retain their existing meaning.
+     */
+    void withRenderedPage(DisplayDocument document, OutputStream serialization, PdfFontPrograms programs,
+            PdfImagePrograms imagePrograms, RenderedPageConsumer consumer) throws IOException {
+        Objects.requireNonNull(document, "document");
+        Objects.requireNonNull(consumer, "consumer");
+        if (document.pages().size() != 1) { throw new IllegalArgumentException("one rendered page is required"); }
+        write(document, serialization, com.mirakyux.export4j.model.processing.ProcessingPolicy.STRICT,
+                programs, imagePrograms, consumer);
+    }
+
+    @FunctionalInterface
+    interface RenderedPageConsumer {
+        void accept(PDPage page) throws IOException;
+    }
+
+    private com.mirakyux.export4j.model.processing.ProcessingReport write(DisplayDocument document, OutputStream output,
+            com.mirakyux.export4j.model.processing.ProcessingPolicy policy, PdfFontPrograms programs,
+            PdfImagePrograms imagePrograms, RenderedPageConsumer consumer) throws IOException {
         Objects.requireNonNull(document, "document"); Objects.requireNonNull(policy, "policy");
         var issues = new java.util.ArrayList<com.mirakyux.export4j.model.processing.ProcessingIssue>();
         var pages = new java.util.ArrayList<DisplayPage>();
@@ -107,24 +145,33 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         Objects.requireNonNull(output, "output");
         preflight(document);
         try (PDDocument pdf = createDocument(document.metadata())) {
+            if (programs != null) { programs.subsets().begin(document.pages(), this::anchorFontData); }
             if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, document.metadata(), document.extras()); }
             Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
             Map<String, PDFont> embedded = new HashMap<>();
+            var images = new ImageCache(imagePrograms);
             var tags = options.accessibility().isPresent() ? new PdfTagWriter(document) : null;
             for (int pageIndex = 0; pageIndex < document.pages().size(); pageIndex++) {
                 com.mirakyux.export4j.model.ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, document.pages().size());
-                renderPage(pdf, document.pages().get(pageIndex), pageIndex, fonts, embedded, tags);
+                renderPage(pdf, document.pages().get(pageIndex), pageIndex, fonts, embedded, images, tags, programs);
             }
             PdfExtrasWriter.write(pdf, document.extras());
             if (tags != null) { tags.finish(pdf); }
             protect(pdf);
             // Explicitly shield borrowed streams from implementation-specific close behavior.
             save(pdf, output);
+            if (programs != null) { programs.subsets().remember(); }
+            if (consumer != null) {
+                ExecutionContext.checkpoint();
+                consumer.accept(pdf.getPage(0));
+            }
         } catch (PdfRenderException failure) {
             throw failure;
         } catch (IOException failure) {
             throw new PdfRenderException(PdfErrorCode.OUTPUT_FAILED, -1, -1,
                     "PDF output failed", failure);
+        } finally {
+            if (programs != null) { programs.releasePage(); }
         }
         return new com.mirakyux.export4j.model.processing.ProcessingReport(com.mirakyux.export4j.model.processing.ProcessingReport.Phase.ACTUAL, issues);
     }
@@ -336,6 +383,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         private final BudgetState budget;
         private final Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
         private final Map<String, PDFont> embedded = new HashMap<>();
+        private final ImageCache images = new ImageCache();
         private WriterState state = WriterState.OPEN;
         private long interactionCount;
         private long interactionCodePoints;
@@ -384,7 +432,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 interactionCount += snapshot.size();
                 budget.accept(page);
                 ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, -1);
-                renderPage(pdf, page, pageIndex, fonts, embedded, null);
+                renderPage(pdf, page, pageIndex, fonts, embedded, images, null, null);
                 PdfExtrasWriter.write(pdf, new DocumentExtras(List.of(), List.of(), List.of(), List.of(), snapshot));
                 ExecutionContext.checkpoint();
             } catch (IOException failure) {
@@ -433,6 +481,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             } finally {
                 fonts.clear();
                 embedded.clear();
+                images.clear();
                 budget.fontIds.clear();
             }
         }
@@ -477,7 +526,8 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private void renderPage(PDDocument pdf, DisplayPage source, int pageIndex,
-            Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded, PdfTagWriter tags) throws IOException {
+            Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded, ImageCache images,
+            PdfTagWriter tags, PdfFontPrograms programs) throws IOException {
         PDPage page = new PDPage(new PDRectangle(
                 checkedFloat(source.size().width(), pageIndex, -1),
                 checkedFloat(source.size().height(), pageIndex, -1)));
@@ -493,7 +543,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 try {
                     boolean marked = tags != null && tags.begin(stream, pageIndex, index);
                     renderCommand(pdf, stream, source.commands().get(index),
-                            fonts, embedded, pageIndex, index, page.getResources(), paintState);
+                            fonts, embedded, images, pageIndex, index, page.getResources(), paintState, programs);
                     if (marked) { stream.endMarkedContent(); }
                 } catch (PdfRenderException failure) {
                     throw failure;
@@ -519,11 +569,12 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private void renderCommand(PDDocument pdf, PDPageContentStream stream, DrawCommand command,
-            Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded,
-            int page, int index, org.apache.pdfbox.pdmodel.PDResources resources, PaintState paintState) throws IOException {
+            Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded, ImageCache images,
+            int page, int index, org.apache.pdfbox.pdmodel.PDResources resources, PaintState paintState,
+            PdfFontPrograms programs) throws IOException {
         PdfPaintWriter.Renderer nested = (content, commands, nestedResources, initialMatrix) -> {
             var childState = new PaintState(); childState.matrix = new java.awt.geom.AffineTransform(initialMatrix); childState.baseMatrix = new java.awt.geom.AffineTransform(initialMatrix);
-            for (var child : commands) { renderCommand(pdf, content, child, fonts, embedded, page, index, nestedResources, childState); }
+            for (var child : commands) { renderCommand(pdf, content, child, fonts, embedded, images, page, index, nestedResources, childState, programs); }
         };
         switch (command) {
             case DrawCommand.OutlineText text -> {
@@ -536,7 +587,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                     var bounds = text.logicalBounds();
                     var data = anchorFontData();
                     var anchorFont = embedded.get(data.id());
-                    if (anchorFont == null) { anchorFont = PDType0Font.load(pdf, new ByteArrayInputStream(data.bytes()), data.subsetAllowed()); embedded.put(data.id(), anchorFont); }
+                    if (anchorFont == null) { anchorFont = loadPositionedFont(pdf, data, programs); embedded.put(data.id(), anchorFont); }
                     stream.saveGraphicsState();
                     stream.beginText();
                     // A small anchor avoids tall invisible glyph boxes interleaving adjacent logical lines.
@@ -556,7 +607,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 }
                 stream.endMarkedContent();
             }
-            case DrawCommand.GlyphText text -> renderGlyphs(pdf, stream, text, embedded, page, index);
+            case DrawCommand.GlyphText text -> renderGlyphs(pdf, stream, text, embedded, page, index, programs);
             case DrawCommand.FillRect fill -> {
                 fillColor(stream, fill.color());
                 addRect(stream, fill.bounds(), page, index);
@@ -597,7 +648,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             }
             case DrawCommand.Image image -> {
                 Rect bounds = image.bounds();
-                stream.drawImage(LosslessFactory.createFromImage(pdf, toBufferedImage(image.image())),
+                stream.drawImage(images.get(pdf, image.image()),
                         new Matrix(checkedFloat(bounds.width(), page, index), 0, 0,
                                 -checkedFloat(bounds.height(), page, index),
                                 checkedFloat(bounds.x(), page, index),
@@ -633,7 +684,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private static void renderGlyphs(PDDocument pdf, PDPageContentStream stream, DrawCommand.GlyphText text,
-            Map<String, PDFont> fonts, int page, int index) throws IOException {
+            Map<String, PDFont> fonts, int page, int index, PdfFontPrograms programs) throws IOException {
         GlyphRun run = text.run();
         if (run.font().cffOutlines()) {
             double cursor = text.baseline().x();
@@ -653,8 +704,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         PDFont font = fonts.get(run.font().id());
         if (font == null) {
             try {
-                font = PDType0Font.load(pdf, new ByteArrayInputStream(run.font().bytes()),
-                        run.font().subsetAllowed());
+                font = loadPositionedFont(pdf, run.font(), programs);
             } catch (IOException | IllegalArgumentException failure) {
                 throw new PdfRenderException(PdfErrorCode.INVALID_FONT, page, index,
                         "embedded font loading failed", failure);
@@ -687,7 +737,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             if (i + 1 < run.glyphs().size()) {
                 checkedFloat(cursor, page, index);
                 // TJ advances are relative. Rounding two absolute cursors first adds origin-dependent spacing noise.
-                positioned.add(checkedFloat(font.getStringWidth(glyph.text()) - glyph.advance() * 1000 / fontSize, page, index));
+                positioned.add(checkedFloat(font.getWidth(glyphId) - glyph.advance() * 1000 / fontSize, page, index));
             }
         }
         stream.beginText();
@@ -696,6 +746,68 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         stream.setTextMatrix(new Matrix(1, 0, 0, -1, checkedFloat(text.baseline().x(), page, index), baseline));
         if (!positioned.isEmpty()) { stream.showTextWithPositioning(positioned.toArray()); }
         stream.endText();
+    }
+
+    private static PDType0Font loadPositionedFont(PDDocument pdf, FontData data, PdfFontPrograms programs) throws IOException {
+        if (programs != null) {
+            var cached = programs.subsets().create(pdf, data);
+            if (cached != null) { return cached; }
+        }
+        TrueTypeFont parsed = programs == null ? null : programs.borrow(data);
+        boolean pageOwned = parsed == null;
+        if (pageOwned) { parsed = PdfFontPrograms.parse(data); }
+        try {
+            var result = PDType0Font.load(pdf, parsed, data.subsetAllowed());
+            // This PDFBox overload borrows the program. Cached programs remain session-owned.
+            if (pageOwned) { pdf.registerTrueTypeFontForClosing(parsed); }
+            if (programs != null) { programs.subsets().loaded(data, result); }
+            return result;
+        } catch (IOException | RuntimeException | Error failure) {
+            if (pageOwned) {
+                try { parsed.close(); }
+                catch (IOException | RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+            }
+            throw failure;
+        }
+    }
+
+    /** Bounded, document-confined content reuse; no raw image or decoded pixel array is retained by this index.
+     * The PDF document already owns the resulting objects. Draw budgets remain per occurrence.
+     */
+    private static final class ImageCache {
+        private static final int MAX_ENTRIES = 256;
+        private final LinkedHashMap<String, PDImageXObject> entries = new LinkedHashMap<>(16, 0.75f, true);
+        private final PdfImagePrograms programs;
+
+        private ImageCache() { this(null); }
+        private ImageCache(PdfImagePrograms programs) { this.programs = programs; }
+
+        PDImageXObject get(PDDocument pdf, RgbImage source) throws IOException {
+            ExecutionContext.checkpoint();
+            String key = source.id();
+            var existing = entries.get(key);
+            if (existing != null) { return existing; }
+            var created = programs == null ? null : programs.create(pdf, key);
+            if (created == null) {
+                var encoded = source.encodedSource();
+                if (encoded.isPresent()) {
+                    created = programs == null ? PdfJpegSource.create(pdf, encoded.orElseThrow())
+                            : programs.createJpeg(pdf, encoded.orElseThrow());
+                }
+            }
+            if (created == null) {
+                var raster = toBufferedImage(source);
+                try { created = LosslessFactory.createFromImage(pdf, raster); }
+                finally { raster.flush(); }
+                if (programs != null) { programs.remember(key, created); }
+            }
+            ExecutionContext.checkpoint();
+            if (entries.size() == MAX_ENTRIES) { entries.pollFirstEntry(); }
+            entries.put(key, created);
+            return created;
+        }
+
+        void clear() { entries.clear(); }
     }
 
     private static void fillColor(PDPageContentStream stream, RgbColor color) throws IOException {

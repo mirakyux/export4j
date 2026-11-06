@@ -127,3 +127,5 @@
 | 0108 | [原生 DOCX 数学模型与示例矢量排版分离](0108-native-docx-math-and-example-typesetting.md) | 已采纳；有界 OMML 类型树、真实锚点、严格未知语法及示例依赖边界 |
 | 0109 | [正文连续分栏使用可保存的语义容器](0109-semantic-body-columns.md) | 已采纳；可编辑连续流、通栏中插、真实来源及明确跨格式布局损失 |
 | 0110 | [语义栅格、XML 保存与设计器](0110-editable-semantic-grid.md) | 已采纳；显式轨道／跨轨项、整行原子分页及真实项边界 |
+| 0111 | [普通文档按页规划、重放与释放](0111-page-at-a-time-document-export.md) | 已采纳；共享分页、最终语义、轻量摘要及单页 PDF 对象直接复制 |
+| 0112 | [普通内容块的按需输入与显式重放](0112-incremental-block-source.md) | 已采纳；当前页来源窗口、单遍已知总数及两遍稳定快照 |

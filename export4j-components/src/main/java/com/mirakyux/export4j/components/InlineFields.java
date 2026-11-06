@@ -26,6 +26,25 @@ import com.mirakyux.export4j.text.TextLine;
 /** Replaces reserved logical slots with final ink without changing source ranges, line positions or pagination. */
 final class InlineFields {
     record Result(DocumentLayout body, List<DocumentExtras.Link> links, List<ContextualDiagnostic> diagnostics) { }
+    record PageResult(LayoutPage page, List<DocumentExtras.Link> links, List<ContextualDiagnostic> diagnostics) { }
+
+    /** One replay pass owns one session; draining a page never resets document-wide generation budgets. */
+    static final class Session {
+        private final Resolver resolver;
+
+        Session(int totalPages, int offset, IntUnaryOperator numbers, Map<String, ResolvedAnchor> anchors,
+                Map<String, String> labels, List<Note> notes, long maxLinks, long maxGeneratedCodePoints) {
+            resolver = new Resolver(totalPages, offset, numbers, anchors, labels, notes, maxLinks, maxGeneratedCodePoints);
+        }
+
+        PageResult resolve(LayoutPage page, FontGroup fonts, Map<String, FontGroup> roles, Map<String, Double> rotations) {
+            var result = new PageResult(resolvePage(page, fonts, roles, rotations, resolver),
+                    List.copyOf(resolver.links), List.copyOf(resolver.diagnostics));
+            resolver.links.clear();
+            resolver.diagnostics.clear();
+            return result;
+        }
+    }
     private record Owner(String blockId, int blockIndex, int pageIndex, int rowIndex, int columnIndex, Point origin,
             List<CellLocation> sourcePath, AffineTransform transform) {
         DocumentLayoutException failure(DocumentLayoutException.Code code, int source, String message, Throwable cause) {
@@ -64,15 +83,31 @@ final class InlineFields {
         var resolver = new Resolver(totalPages, offset, numbers, anchors, labels, notes, maxLinks, maxGeneratedCodePoints);
         var pages = new ArrayList<LayoutPage>();
         for (var page : body.pages()) {
-            var fragments = new ArrayList<LayoutFragment>();
-            for (var fragment : page.elements()) {
-                fragments.add(SemanticFragments.map(fragment, fonts, roles, rotations, leaf -> resolver.layout(leaf.layout(),
-                        new Owner(leaf.blockId(), leaf.blockIndex(), page.pageIndex() + offset, leaf.rowIndex(), leaf.columnIndex(),
-                                leaf.origin(), leaf.sourcePath(), leaf.transform()), page.pageIndex(), leaf.fonts(), leaf.roles())));
-            }
-            pages.add(new LayoutPage(page.pageIndex(), page.size(), page.contentBounds(), fragments));
+            pages.add(resolvePage(page, fonts, roles, rotations, resolver));
         }
         return new Result(new DocumentLayout(body.metadata(), pages), List.copyOf(resolver.links), List.copyOf(resolver.diagnostics));
+    }
+
+    /** Unchanged pages/fragments retain their IR identity; only paths containing fields are mapped. */
+    private static LayoutPage resolvePage(LayoutPage page, FontGroup fonts, Map<String, FontGroup> roles,
+            Map<String, Double> rotations, Resolver resolver) {
+        List<LayoutFragment> fragments = null;
+        for (int index = 0; index < page.elements().size(); index++) {
+            com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+            var fragment = page.elements().get(index);
+            var resolved = fragment;
+            if (hasFields(fragment)) {
+                resolved = SemanticFragments.map(fragment, fonts, roles, rotations, leaf -> resolver.layout(leaf.layout(),
+                        new Owner(leaf.blockId(), leaf.blockIndex(), page.pageIndex() + resolver.offset, leaf.rowIndex(), leaf.columnIndex(),
+                                leaf.origin(), leaf.sourcePath(), leaf.transform()), page.pageIndex(), leaf.fonts(), leaf.roles()));
+            }
+            if (resolved != fragment && fragments == null) {
+                fragments = new ArrayList<>(page.elements().size());
+                fragments.addAll(page.elements().subList(0, index));
+            }
+            if (fragments != null) { fragments.add(resolved); }
+        }
+        return fragments == null ? page : new LayoutPage(page.pageIndex(), page.size(), page.contentBounds(), fragments);
     }
 
     private static boolean hasFields(ParagraphLayout layout) {
@@ -99,6 +134,7 @@ final class InlineFields {
         private final List<DocumentExtras.Link> links = new ArrayList<>();
         private final List<ContextualDiagnostic> diagnostics = new ArrayList<>();
         private int count;
+        private long linkCount;
         private long generatedCodePoints;
 
         Resolver(int totalPages, int offset, IntUnaryOperator numbers, Map<String, ResolvedAnchor> anchors,
@@ -158,12 +194,13 @@ final class InlineFields {
                                     "INLINE_FIELD:" + box.sourceIndex(), owner.rowIndex(), owner.columnIndex(), diagnostic, owner.sourcePath()));
                         }
                         if (field.kind() == InlineField.Kind.REFERENCE_PAGE || field.kind() == InlineField.Kind.REFERENCE_NUMBER) {
-                            if (links.size() >= maxLinks) { throw budget(owner, box.sourceIndex()); }
+                            if (linkCount >= maxLinks) { throw budget(owner, box.sourceIndex()); }
                             double x = owner.origin().x() + line.offsetX() + box.x();
                             double y = owner.origin().y() + line.baselineY() - source.lines().getFirst().baselineY();
                             var bounds = SemanticFragments.transformedBounds(new Rect(x, y, field.width(), step), owner.transform());
                             links.add(new DocumentExtras.Link(owner.pageIndex(), bounds,
                                     target.pageIndex() + offset, new Point(target.point().x(), target.point().y())));
+                            linkCount++;
                         }
                     } catch (DocumentLayoutException cause) {
                         throw cause;

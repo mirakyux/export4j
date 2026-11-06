@@ -26,6 +26,19 @@ public final class PageComposer {
             }
         }
     }
+
+    /** One composed page and its immutable placement diagnostics. Declared placements include
+     * unselected page-specific decorations, matching the whole-document composition budget.
+     */
+    public record ComposedPage(DisplayPage page, List<PageComposition.Placed> placements, long declaredPlacements) {
+        public ComposedPage {
+            Objects.requireNonNull(page, "page");
+            placements = List.copyOf(placements);
+            if (declaredPlacements < 0) { throw new IllegalArgumentException("negative declared placement count"); }
+        }
+    }
+
+    private record ComposedCommands(DisplayPage page, long commands) { }
     private final ComponentLimits limits;
 
     public PageComposer() {
@@ -63,6 +76,33 @@ public final class PageComposer {
         return composeDetailed(body, specs, fonts, Map.of());
     }
 
+    /** Composes one final body page without retaining preceding pages. Dimensions use points.
+     * The zero-based physical index selects positioned decorations; the displayed number comes from
+     * the specification, and fields receive the positive final physical page count. Inputs remain borrowed,
+     * roles are snapshotted, and no I/O occurs. The body must already reserve template bands.
+     * This call enforces per-page budgets. A streaming caller must additionally accumulate declared
+     * placements and emitted commands, reject inaccessible decoration bindings, and verify that every
+     * explicitly selected placement occurs in its declaring section or page variant across the final plan.
+     */
+    public ComposedPage composePageDetailed(DisplayPage source, PageSpec spec, FontGroup fonts,
+            Map<String, FontGroup> roles, int physicalPageIndex, int finalPages) {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(spec, "spec");
+        Objects.requireNonNull(fonts, "fonts");
+        roles = Map.copyOf(roles);
+        if (finalPages <= 0 || physicalPageIndex < 0 || physicalPageIndex >= finalPages) {
+            throw new IllegalArgumentException("physical page index must be within the final page count");
+        }
+        spec.template().bodySettings(spec.settings());
+        long declared = declaredPlacements(spec.template());
+        if (declared > limits.maxPlacements()) {
+            throw new IllegalArgumentException("component placement budget exceeded");
+        }
+        var traces = new ArrayList<PageComposition.Placed>();
+        var result = composeSingle(source, spec, fonts, roles, physicalPageIndex, finalPages, 0, traces);
+        return new ComposedPage(result.page(), traces, declared);
+    }
+
     /** Composes final page regions with explicit, named font groups and their missing-glyph policies.
      * Specifications and roles are snapshotted before any component is invoked. All dimensions use points;
      * fonts remain borrowed and are never closed. Custom components own their thread-safety contract.
@@ -87,8 +127,7 @@ public final class PageComposer {
                 if (placement.page() > 0) { selected.add(placement); if (placement.page() == physicalPage) { rendered.add(placement); } }
             }
             spec.template().bodySettings(spec.settings());
-            placements += spec.template().background().size() + (long) spec.template().foreground().size()
-                    + spec.template().header().placements().size() + spec.template().footer().placements().size();
+            placements += declaredPlacements(spec.template());
         }
         if (!rendered.containsAll(selected)) { throw new IllegalArgumentException("positioned page is outside its declaring section or selected page variant"); }
         if (placements > limits.maxPlacements()) {
@@ -101,34 +140,47 @@ public final class PageComposer {
         List<DisplayPage> pages = new ArrayList<>();
         List<PageComposition.Placed> traces = new ArrayList<>();
         for (int index = 0; index < body.pages().size(); index++) {
-            var spec = specs.get(index);
-            var settings = spec.settings();
-            var template = spec.template();
-            var margins = settings.margins();
-            Rect pageRegion = new Rect(0, 0, settings.size().width(), settings.size().height());
-            DisplayPage source = body.pages().get(index);
-            if (!source.size().equals(settings.size())) {
-                throw new IllegalArgumentException("page template requires uniform page sizes");
-            }
-            DisplayListBuilder builder = new DisplayListBuilder(source.size());
-            commands += source.commands().size();
-            commands = place(builder, template.background(), pageRegion, fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.BACKGROUND);
-            builder.appendCommands(source.commands());
-            if (template.header().height() > 0) {
-                commands = place(builder, template.header().placements(), bandViewport(template.header(), settings, true),
-                        fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.HEADER);
-            }
-            if (template.footer().height() > 0) {
-                commands = place(builder, template.footer().placements(), bandViewport(template.footer(), settings, false),
-                        fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.FOOTER);
-            }
-            commands = place(builder, template.foreground(), pageRegion, fonts, roles, index, body.pages().size(), spec.pageNumber(), commands, traces, PageComposition.Region.FOREGROUND);
-            if (commands > limits.maxCommands()) {
-                throw new IllegalArgumentException("component command budget exceeded");
-            }
-            pages.add(builder.build());
+            var result = composeSingle(body.pages().get(index), specs.get(index), fonts, roles, index,
+                    body.pages().size(), commands, traces);
+            commands = result.commands();
+            pages.add(result.page());
         }
         return new PageComposition(new DisplayDocument(body.metadata(), pages, body.extras(), body.accessibility()), traces);
+    }
+
+    private static long declaredPlacements(PageTemplate template) {
+        return template.background().size() + (long) template.foreground().size()
+                + template.header().placements().size() + template.footer().placements().size();
+    }
+
+    private ComposedCommands composeSingle(DisplayPage source, PageSpec spec, FontGroup fonts,
+            Map<String, FontGroup> roles, int index, int finalPages, long commands,
+            List<PageComposition.Placed> traces) {
+        var settings = spec.settings();
+        var template = spec.template();
+        Rect pageRegion = new Rect(0, 0, settings.size().width(), settings.size().height());
+        if (!source.size().equals(settings.size())) {
+            throw new IllegalArgumentException("page template requires uniform page sizes");
+        }
+        DisplayListBuilder builder = new DisplayListBuilder(source.size());
+        commands += source.commands().size();
+        commands = place(builder, template.background(), pageRegion, fonts, roles, index, finalPages,
+                spec.pageNumber(), commands, traces, PageComposition.Region.BACKGROUND);
+        builder.appendCommands(source.commands());
+        if (template.header().height() > 0) {
+            commands = place(builder, template.header().placements(), bandViewport(template.header(), settings, true),
+                    fonts, roles, index, finalPages, spec.pageNumber(), commands, traces, PageComposition.Region.HEADER);
+        }
+        if (template.footer().height() > 0) {
+            commands = place(builder, template.footer().placements(), bandViewport(template.footer(), settings, false),
+                    fonts, roles, index, finalPages, spec.pageNumber(), commands, traces, PageComposition.Region.FOOTER);
+        }
+        commands = place(builder, template.foreground(), pageRegion, fonts, roles, index, finalPages,
+                spec.pageNumber(), commands, traces, PageComposition.Region.FOREGROUND);
+        if (commands > limits.maxCommands()) {
+            throw new IllegalArgumentException("component command budget exceeded");
+        }
+        return new ComposedCommands(builder.build(), commands);
     }
 
     private static Rect bandViewport(PageBand band, com.mirakyux.export4j.model.PageSettings settings, boolean header) {

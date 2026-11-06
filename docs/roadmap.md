@@ -175,4 +175,6 @@
 
 [阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成 Windows Word 四页复查、控件实际编辑保存重开，以及 PDF 搜索、视觉选择、表单填写保存重开和最终 JAR 回读；修复 DOCX 现代布局模式声明及 PDF 应用元数据兼容。1,792 项测试、固定语料与无打印依赖验证通过；本轮字节未重新签名，浏览器前台交互、其他平台、新远端 CI 和正式发布分别保留未验。
 
-[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成 GAP-13：独立 HTML 应用直接编辑既有 XML／ZIP，保留变量／条件／循环与显式资源，提供真实分页预览、8 步撤销、保存重开和六格式损失预检。四套业务样例共 24 份输出、11 页独立渲染及 11 项失败控制通过；构建 1,804 项 Java 测试、库 API 对比和隔离调用方通过。当前未完成独立项为 GAP-14.2、GAP-14.3、GAP-22；没有正式发布。
+[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成 GAP-13：独立 HTML 应用直接编辑既有 XML／ZIP，保留变量／条件／循环与显式资源，提供真实分页预览、8 步撤销、保存重开和六格式损失预检。四套业务样例共 24 份输出、11 页独立渲染及 11 项失败控制通过；构建 1,804 项 Java 测试、库 API 对比和隔离调用方通过。该阶段未完成独立项为 GAP-14.2、GAP-14.3、GAP-22，未执行正式发布。
+
+2026-11-05，候选版 `0.1.0-rc.1` 已使用正式身份签名并发布到 Maven Central，17 个模块的 82 个制品远端字节、签名和校验一致，16 个库与 BOM 的 Central 隔离消费及文档输出验证通过，见[发布记录与流程](releasing.md)。GAP-14.3 继续保留稳定 API 与稳定版验收；新增手动 Maven／GitHub Release 工作流尚无 GitHub 实际运行证据，不以本地演练替代远端 CI。

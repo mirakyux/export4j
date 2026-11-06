@@ -59,6 +59,10 @@ mapOf(
     "verticalText" to "consumer.Gap08VerticalTextConsumer",
     "streamingRowSpans" to "consumer.StreamingRowSpansConsumer",
     "streamingReplay" to "consumer.StreamingReplayConsumer",
+    "pagedDocument" to "consumer.PagedDocumentConsumer",
+    "streamingDocument" to "consumer.StreamingDocumentConsumer",
+    "ioConvenience" to "consumer.IoConvenienceConsumer",
+    "ergonomics" to "consumer.ErgonomicsConsumer",
     "gap21Graphics" to "consumer.Gap21GraphicsConsumer"
 ).forEach { (taskName, entryPoint) ->
     tasks.register<JavaExec>(taskName) {

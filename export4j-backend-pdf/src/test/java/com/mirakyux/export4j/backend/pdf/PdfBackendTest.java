@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.pdfbox.Loader;
@@ -202,14 +203,16 @@ class PdfBackendTest {
     void sameBackendSupportsConcurrentIndependentDocuments() throws Exception {
         PdfBackend backend = new PdfBackend();
         DisplayPage page = new DisplayListBuilder(SIZE)
-                .drawText("Concurrent", new Point(10, 30), STYLE).build();
+                .drawText("Concurrent", new Point(10, 30), STYLE)
+                .drawImage(twoRowImage(), new Rect(20, 50, 40, 40)).build();
         List<Callable<byte[]>> tasks = IntStream.range(0, 8)
                 .<Callable<byte[]>>mapToObj(index -> () -> render(backend, page)).toList();
         try (var executor = Executors.newFixedThreadPool(4)) {
-            for (var result : executor.invokeAll(tasks)) {
+            for (var result : executor.invokeAll(tasks, 30, TimeUnit.SECONDS)) {
                 try (PDDocument pdf = Loader.loadPDF(result.get())) {
                     assertEquals(1, pdf.getNumberOfPages());
                     assertTrue(new PDFTextStripper().getText(pdf).contains("Concurrent"));
+                    assertPixel(new PDFRenderer(pdf).renderImageWithDPI(0, 72), 30, 55, 0xff0000);
                 }
             }
         }

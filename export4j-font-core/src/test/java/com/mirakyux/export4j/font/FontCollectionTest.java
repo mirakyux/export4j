@@ -6,11 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class FontCollectionTest {
+    @TempDir Path directory;
     private static byte[] bytes(String name) throws IOException {
         try (var input = FontCollectionTest.class.getResourceAsStream("/fonts/" + name)) { return input.readAllBytes(); }
     }
@@ -42,6 +47,23 @@ class FontCollectionTest {
         assertTrue(latin.glyph('A').isPresent()); assertTrue(cff.data().cffOutlines());
         assertNotEquals(latin.data().id(), cff.data().id());
         assertEquals(TrueTypeFontLoader.load(members.getFirst()).glyph('A'), latin.glyph('A'));
+        var file = directory.resolve("collection sample.ttc"); Files.write(file, collection.array());
+        assertEquals(cff.data().id(), FontCollectionLoader.load(file, 1).data().id());
+        assertEquals(latin.data().id(), FontCollectionLoader.load(file.toFile(), 0).data().id());
+        assertEquals(cff.data().id(), FontCollectionLoader.load(file.toString(), 1).data().id());
+        assertEquals(latin.data().id(), FontCollectionLoader.load(file, 0, total).data().id());
+        assertEquals(cff.data().id(), FontCollectionLoader.load(file.toFile(), 1, total).data().id());
+        assertEquals(latin.data().id(), FontCollectionLoader.load(file.toString(), 0, total).data().id());
+        var borrowed = new ByteArrayInputStream(collection.array()) {
+            @Override public void close() { throw new AssertionError("borrowed collection stream closed"); }
+        };
+        assertEquals(cff.data().id(), FontCollectionLoader.load(borrowed, 1).data().id());
+        assertEquals(FontLoadException.Code.BUDGET_EXCEEDED,
+                assertThrows(FontLoadException.class, () -> FontCollectionLoader.load(file, 0, 32)).code());
+        assertThrows(FontLoadException.class, () -> FontCollectionLoader.load(file.toString(), 0, 32));
+        assertThrows(FontLoadException.class, () -> FontCollectionLoader.load(file.toFile(), 0, 32));
+        assertThrows(FontLoadException.class, () -> FontCollectionLoader.load(file, 2));
+        Files.move(file, directory.resolve("moved.ttc"));
         assertThrows(FontLoadException.class, () -> FontCollectionLoader.load(collection.array(), 2));
         collection.putInt(12, -1);
         assertThrows(FontLoadException.class, () -> FontCollectionLoader.load(collection.array(), 0));

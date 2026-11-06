@@ -10,14 +10,17 @@ import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import org.jsoup.parser.Parser;
 
-/** Offline HTML/CSS semantic subset. Accepts explicit source text and registered images only;
+/** Offline HTML/CSS semantic subset. Accepts source text or explicit UTF-8 files/streams, and registered images only;
  * never executes scripts, fetches resources or asks a browser to paginate.
  * Immutable, thread-safe and owns no resources. Dimensions in the model are points.
  */
@@ -44,14 +47,49 @@ public final class HtmlImporter {
     }
     public static Builder builder() { return new Builder(); }
     public Request read(String source) { return new Request(Objects.requireNonNull(source, "source"), this); }
+    /** Immediately reads an explicit UTF-8 file under the import input limit and closes its stream.
+     * Request execution options apply to subsequent parsing, not this initial read.
+     */
+    public Request read(Path source) throws IOException { return read(TextImportIO.read(source, limits)); }
+    /** Immediately reads an explicit UTF-8 file under the same budget as read(Path). */
+    public Request read(File source) throws IOException { return read(Objects.requireNonNull(source, "source").toPath()); }
+    /** Immediately decodes a bounded UTF-8 source; the borrowed input remains open.
+     * Invalid UTF-8 is rejected. Request execution options apply to subsequent parsing.
+     */
+    public Request read(InputStream source) throws IOException { return read(TextImportIO.read(source, limits)); }
+    /** Explicit local file path; read(String) continues to mean HTML source text. */
+    public Request readFile(String source) throws IOException { return read(Path.of(Objects.requireNonNull(source, "source"))); }
     /** Starts an exact-source unified import/edit/export plan, using its shared policy for all stages. */
     public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(String source) {
         Objects.requireNonNull(source, "source");
+        return conversion(() -> source);
+    }
+    /** Opens and closes this explicit UTF-8 file during prepare, under its execution and import limits. */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(Path source) {
+        Objects.requireNonNull(source, "source");
+        return conversion(() -> TextImportIO.read(source, limits));
+    }
+    /** Explicit UTF-8 file, opened during prepare. */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(File source) {
+        return conversion(Objects.requireNonNull(source, "source").toPath());
+    }
+    /** Reads a bounded UTF-8 source during prepare without closing the borrowed stream.
+     * Repeated preparation requires a new input stream; invalid UTF-8 is rejected.
+     */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(InputStream source) {
+        Objects.requireNonNull(source, "source");
+        return conversion(() -> TextImportIO.read(source, limits));
+    }
+    /** Explicit local file path; conversion(String) continues to mean HTML source text. */
+    public com.mirakyux.export4j.model.processing.DocumentConversion.Request conversionFile(String source) {
+        return conversion(Path.of(Objects.requireNonNull(source, "source")));
+    }
+    private com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(TextImportIO.Source source) {
         return com.mirakyux.export4j.model.processing.DocumentConversion.from("HTML", shared -> {
             var builder = new Builder().policy(shared).limits(limits).metadata(metadata).pageSettings(pageSettings).paragraphFormat(format);
             builder.images.putAll(images); builder.families.putAll(families); builder.baseUri = baseUri;
             builder.layoutMode = layoutMode; builder.media = media; builder.viewport = viewport;
-            var imported = builder.build().read(source).execute();
+            var imported = builder.build().read(source.read()).execute();
             return com.mirakyux.export4j.model.processing.DocumentConversion.Input.of(imported.document(), imported.report());
         }).policy(policy);
     }
