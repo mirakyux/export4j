@@ -166,6 +166,8 @@ public final class ComponentDocumentRenderer {
             blockBase += section.blocks().size();
         }
         var body = new DocumentLayout(document.metadata(), bodyPages);
+        // DocumentLayout owns an immutable page snapshot; this assembly list must not retain pre-field IR.
+        bodyPages.clear();
         PageSettings bodySettings = templates.getFirst().bodySettings(document.sections().getFirst().pageSettings());
         Map<String, ResolvedAnchor> anchors = new HashMap<>();
         var sources = new ArrayList<com.mirakyux.export4j.model.Block>(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
@@ -287,7 +289,7 @@ public final class ComponentDocumentRenderer {
             specs.add(new PageComposer.PageSpec(document.sections().getFirst().pageSettings(),
                     page % 2 == 0 ? templates.getFirst().odd() : templates.getFirst().even(), page + 1));
         }
-        for (int page = 0; page < bodyPages.size(); page++) {
+        for (int page = 0; page < body.pages().size(); page++) {
             int section = sectionPages.get(page);
             int label = number(document, sectionPages, localPages, page, offset);
             specs.add(new PageComposer.PageSpec(document.sections().get(section).pageSettings(),

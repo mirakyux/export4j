@@ -10,6 +10,7 @@ import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.edit.DocumentEditor;
 import com.mirakyux.export4j.model.edit.EditLimits;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -88,6 +89,30 @@ public final class DocumentConversion {
             if (edits.size() >= limits.maxEditCallbacks()) { throw new IllegalArgumentException("conversion edit callback budget exceeded"); }
             edits.add(Objects.requireNonNull(value, "edit")); return this;
         }
+        /** Prepares once, then publishes to a borrowed stream without flushing or closing it.
+         * Preparation and publication retain the same separate execution scopes as prepare(target).to(output).
+         */
+        public Result convertTo(Target target, OutputStream output) throws IOException {
+            Objects.requireNonNull(target, "target"); Objects.requireNonNull(output, "output");
+            return prepare(target).to(output);
+        }
+        /** Prepares once, then atomically publishes; parent directory must already exist.
+         * Preparation and publication retain the same separate execution scopes as prepare(target).to(output).
+         */
+        public Result convertTo(Target target, Path output) throws IOException {
+            Objects.requireNonNull(target, "target"); Objects.requireNonNull(output, "output");
+            return prepare(target).to(output);
+        }
+        /** Local filesystem path using the same preparation and atomic publication as the Path overload. */
+        public Result convertTo(Target target, String output) throws IOException {
+            Objects.requireNonNull(target, "target");
+            return convertTo(target, Path.of(Objects.requireNonNull(output, "output")));
+        }
+        /** Local file using the same preparation and atomic publication as the Path overload. */
+        public Result convertTo(Target target, File output) throws IOException {
+            Objects.requireNonNull(target, "target");
+            return convertTo(target, Objects.requireNonNull(output, "output").toPath());
+        }
         public Prepared prepare(Target target) throws IOException {
             Objects.requireNonNull(target, "target");
             var policySnapshot = policy; var limitSnapshot = limits; var editLimitSnapshot = editLimits;
@@ -164,6 +189,16 @@ public final class DocumentConversion {
                 try { Files.deleteIfExists(temporary); }
                 catch (IOException exception) { if (failure == null) { throw exception; } failure.addSuppressed(exception); }
             }
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public Result to(String output) throws IOException {
+            return to(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public Result to(File output) throws IOException {
+            return to(Objects.requireNonNull(output, "output").toPath());
         }
     }
     private static void append(List<ProcessingIssue> destination, ProcessingReport report, Limits limits) {

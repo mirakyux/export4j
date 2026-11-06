@@ -17,4 +17,20 @@ public record PageSize(double width, double height) {
             throw new IllegalArgumentException("height must be finite and positive");
         }
     }
+
+    /** Converts explicit positive millimetre dimensions to the engine's point dimensions. */
+    public static PageSize ofMillimeters(double width, double height) {
+        return new PageSize(Units.mm(width), Units.mm(height));
+    }
+
+    /** Converts explicit positive inch dimensions to the engine's point dimensions. */
+    public static PageSize ofInches(double width, double height) {
+        return new PageSize(Units.inches(width), Units.inches(height));
+    }
+
+    /** Returns these dimensions with width at least height; square pages and existing landscape sizes are unchanged. */
+    public PageSize landscape() { return width >= height ? this : new PageSize(height, width); }
+
+    /** Returns these dimensions with height at least width; square pages and existing portrait sizes are unchanged. */
+    public PageSize portrait() { return height >= width ? this : new PageSize(height, width); }
 }

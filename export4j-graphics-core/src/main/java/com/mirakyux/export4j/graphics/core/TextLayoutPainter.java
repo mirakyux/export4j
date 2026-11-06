@@ -2,10 +2,14 @@
 package com.mirakyux.export4j.graphics.core;
 
 import java.util.Objects;
+import java.util.LinkedHashMap;
 import com.mirakyux.export4j.graphics.DrawingSurface;
 import com.mirakyux.export4j.graphics.Point;
 import com.mirakyux.export4j.graphics.RgbColor;
+import com.mirakyux.export4j.graphics.RgbImage;
 import com.mirakyux.export4j.graphics.VectorPath;
+import com.mirakyux.export4j.model.ExecutionContext;
+import com.mirakyux.export4j.model.ImageResource;
 import java.util.List;
 import com.mirakyux.export4j.text.GlyphRun;
 import com.mirakyux.export4j.text.ParagraphLayout;
@@ -19,23 +23,89 @@ public final class TextLayoutPainter {
     private TextLayoutPainter() {
     }
 
-    /** Draws relative to a top-left origin in points; all arguments must be non-null. */
+    /**
+     * Task-confined LRU image-resource cache; never share an instance between concurrent tasks.
+     * Retention is bounded by entry count and estimated decoded RGB plus alpha bytes (four per pixel).
+     * Images exceeding the byte bound are drawn without retention. Encoded resources are already
+     * validated immutable snapshots; RGB decoding remains deferred until a backend needs pixels.
+     * Discard this cache after its painting task, or call {@link #clear()} to release its entries.
+     * Emitted drawing commands independently retain the image resources they reference.
+     */
+    public static final class ImageCache {
+        private static final int DEFAULT_MAX_ENTRIES = 128;
+        private static final long DEFAULT_MAX_DECODED_BYTES = 64L * 1024 * 1024;
+        private final int maxEntries;
+        private final long maxDecodedBytes;
+        private final LinkedHashMap<String, CachedImage> images = new LinkedHashMap<>(16, 0.75f, true);
+        private long decodedBytes;
+
+        /** Creates an empty cache retaining at most 128 entries and 64 MiB of estimated decoded bytes. */
+        public ImageCache() {
+            this(DEFAULT_MAX_ENTRIES, DEFAULT_MAX_DECODED_BYTES);
+        }
+
+        /** Creates an empty cache with positive entry and estimated decoded-byte limits. */
+        public ImageCache(int maxEntries, long maxDecodedBytes) {
+            if (maxEntries <= 0 || maxDecodedBytes <= 0) {
+                throw new IllegalArgumentException("image cache limits must be positive");
+            }
+            this.maxEntries = maxEntries;
+            this.maxDecodedBytes = maxDecodedBytes;
+        }
+
+        /** Releases cache-owned references; previously emitted commands retain their images. */
+        public void clear() {
+            images.clear();
+            decodedBytes = 0;
+        }
+
+        private RgbImage image(ImageResource resource) {
+            ExecutionContext.checkpoint();
+            var cached = images.get(resource.id());
+            if (cached != null) {
+                return cached.image();
+            }
+            var image = RgbImage.from(resource);
+            long estimate = 4L * resource.pixelWidth() * resource.pixelHeight();
+            if (estimate > maxDecodedBytes) {
+                return image;
+            }
+            while (images.size() >= maxEntries || decodedBytes > maxDecodedBytes - estimate) {
+                var evicted = images.pollFirstEntry();
+                decodedBytes -= evicted.getValue().decodedBytes();
+            }
+            images.put(resource.id(), new CachedImage(image, estimate));
+            decodedBytes += estimate;
+            return image;
+        }
+
+        private record CachedImage(RgbImage image, long decodedBytes) { }
+    }
+
+    /** Draws relative to a top-left origin in points using an independent task-local image cache. */
     public static void draw(DrawingSurface surface, ParagraphLayout layout, Point origin, RgbColor color) {
+        draw(surface, layout, origin, color, new ImageCache());
+    }
+
+    /**
+     * Draws relative to a top-left origin in points without measuring or changing line breaks.
+     * All arguments must be non-null; the caller owns the task-confined cache and drawing surface.
+     * Repeated resources reuse image identity, while every placement still emits its drawing command.
+     */
+    public static void draw(DrawingSurface surface, ParagraphLayout layout, Point origin, RgbColor color,
+            ImageCache images) {
         Objects.requireNonNull(surface, "surface");
         Objects.requireNonNull(layout, "layout");
         Objects.requireNonNull(origin, "origin");
         Objects.requireNonNull(color, "color");
-        var images = new java.util.HashMap<String, com.mirakyux.export4j.graphics.RgbImage>();
+        Objects.requireNonNull(images, "images");
         for (TextLine line : layout.lines()) {
+            ExecutionContext.checkpoint();
             if (!line.fields().isEmpty()) { throw new IllegalArgumentException("inline fields must be resolved before painting"); }
             double x = origin.x() + line.offsetX();
             for (var box : line.images()) {
                 var item = box.image();
-                var image = images.computeIfAbsent(item.resource().id(), ignored -> {
-                    try { return ImageDecoder.decode(item.resource().bytes(), com.mirakyux.export4j.model.ImageResource.MAX_BYTES,
-                            com.mirakyux.export4j.model.ImageResource.MAX_PIXELS); }
-                    catch (java.io.IOException failure) { throw new IllegalArgumentException("inline image decode failed", failure); }
-                });
+                var image = images.image(item.resource());
                 var bounds = new Rect(x + box.x(), origin.y() + line.baselineY() + item.baselineShift() - item.height(), item.width(), item.height());
                 if (item.rotation() != 0) { surface.save().transform(AffineTransform.fittedRotation(bounds, item.rotation())); }
                 surface.drawImage(image, bounds);
@@ -49,8 +119,7 @@ public final class TextLayoutPainter {
                 surface.drawOutlinedText(text, List.of(), color, new Rect(x,
                         baseline - layout.lines().getFirst().baselineY(), Math.max(1, line.width()), height));
                 for (var outline : line.outlines()) {
-                    var ink = outline.rgb() < 0 ? color : new RgbColor((outline.rgb() >> 16 & 255) / 255.0,
-                            (outline.rgb() >> 8 & 255) / 255.0, (outline.rgb() & 255) / 255.0);
+                    var ink = ink(outline.rgb(), color);
                     List<VectorPath.Segment> segments = new ArrayList<>();
                     for (var segment : outline.segments()) {
                         var c = segment.coordinates();
@@ -66,8 +135,7 @@ public final class TextLayoutPainter {
                 }
             }
             for (GlyphRun run : line.runs()) {
-                var ink = run.rgb() < 0 ? color : new RgbColor((run.rgb() >> 16 & 255) / 255.0,
-                        (run.rgb() >> 8 & 255) / 255.0, (run.rgb() & 255) / 255.0);
+                var ink = ink(run.rgb(), color);
                 double baseline = origin.y() + line.baselineY() + run.baselineShift();
                 surface.drawGlyphRun(run, new Point(x, baseline), ink);
                 if (run.underline()) {
@@ -79,6 +147,13 @@ public final class TextLayoutPainter {
                 x += run.width();
             }
         }
+    }
+
+    private static RgbColor ink(int rgb, RgbColor fallback) {
+        if (rgb < 0) { return fallback; }
+        if (rgb == 0) { return RgbColor.BLACK; }
+        if (rgb == 0xffffff) { return RgbColor.WHITE; }
+        return new RgbColor((rgb >> 16 & 255) / 255.0, (rgb >> 8 & 255) / 255.0, (rgb & 255) / 255.0);
     }
 
     private static void line(DrawingSurface surface, double x, double y, double width, RgbColor color, double size) {

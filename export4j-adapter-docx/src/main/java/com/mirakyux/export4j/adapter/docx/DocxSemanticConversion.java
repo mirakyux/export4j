@@ -8,6 +8,7 @@ import com.mirakyux.export4j.model.processing.ProcessingIssue;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -72,6 +73,16 @@ public final class DocxSemanticConversion {
                 try { try (var output = Files.newOutputStream(temporary)) { ExecutionContext.output(output).write(encoded); } ExecutionContext.checkpoint(); Files.move(temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
                 finally { Files.deleteIfExists(temporary); } return null;
             });
+        }
+
+        /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+        public void writeTo(String target) throws IOException {
+            writeTo(Path.of(Objects.requireNonNull(target, "target")));
+        }
+
+        /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */
+        public void writeTo(File target) throws IOException {
+            writeTo(Objects.requireNonNull(target, "target").toPath());
         }
         public DocumentConversion.Request project() { return DocumentConversion.from("DOCX", policy -> { var projected = DocxSemanticProjection.project(document, policy); var issues = new ArrayList<>(report.issues()); issues.addAll(projected.report().issues()); return new DocumentConversion.Input(projected.document(), projected.notes(), new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues)); }); }
     }

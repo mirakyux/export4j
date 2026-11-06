@@ -7,6 +7,7 @@ import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.processing.DocumentConversion;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -149,6 +150,16 @@ public final class XmlTemplateBundle {
     /** Parent directory must exist. Same-directory temporary and atomic replacement; no copy fallback.
      * Failure/cancellation before publication preserves the old target and removes the temporary. */
     public void write(Path output) throws IOException { TemplateBundleIO.publish(encode(), output, execution); }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public void write(String output) throws IOException {
+        write(Path.of(Objects.requireNonNull(output, "output")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public void write(File output) throws IOException {
+        write(Objects.requireNonNull(output, "output").toPath());
+    }
     private static String stem(String name) { return name.substring(name.indexOf('/') + 1, name.lastIndexOf('.')); }
     private static String decode(byte[] bytes) throws IOException {
         try {

@@ -9,7 +9,7 @@ Export4j is an open-source **Java PDF generation and document export library** f
 
 Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert between formats with explicit policies for incompatible features. Save reusable XML templates and reopen supported document models for further editing.
 
-**Early development:** no stable release has been published, and APIs may change. See the [format limits](#formats-and-limitations) and [capability matrix](docs/capabilities-api.md) before integrating.
+**Release candidate:** [`0.1.0-rc.1` is available on Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.1). There is no stable release yet, and APIs may change. See the [format limits](#formats-and-limitations) and [capability matrix](docs/capabilities-api.md) before integrating.
 
 ## Contents
 
@@ -44,7 +44,48 @@ Support applies to the documented input subsets. See the [API guides](docs/READM
 
 ## Getting started
 
-Requirements: **JDK 21**. Document generation does not require Office or a browser. The first build needs access to the Gradle distribution and Maven Central; the repository includes the Gradle Wrapper.
+Requirements: **JDK 21**. Document generation does not require Office or a browser. Use the published BOM to align module versions. These dependencies cover the PDF example below.
+
+Maven:
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>com.mirakyux.export4j</groupId>
+      <artifactId>export4j-bom</artifactId>
+      <version>0.1.0-rc.1</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+<dependencies>
+  <dependency>
+    <groupId>com.mirakyux.export4j</groupId>
+    <artifactId>export4j-components</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>com.mirakyux.export4j</groupId>
+    <artifactId>export4j-backend-pdf</artifactId>
+  </dependency>
+</dependencies>
+```
+
+Gradle Kotlin DSL:
+
+```kotlin
+repositories { mavenCentral() }
+dependencies {
+    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.1"))
+    implementation("com.mirakyux.export4j:export4j-components")
+    implementation("com.mirakyux.export4j:export4j-backend-pdf")
+}
+```
+
+Add adapters or other backends as needed; the BOM aligns all 16 published libraries. The optional template designer runs from source and is excluded from the BOM.
+
+To run the repository examples, clone the source. The first build needs access to the Gradle distribution and Maven Central; the repository includes the Gradle Wrapper.
 
 ```shell
 git clone https://github.com/mirakyux/export4j.git
@@ -78,7 +119,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 
 More runnable tasks are listed in the [example index](docs/examples.md). Examples load bundled fonts; applications supply their own licensed fonts. See [font sources and licenses](assets/fonts/README.md). The optional [native OpenType module](docs/native-opentype-api.md) also requires the target platform's native artifacts.
 
-There is no stable Maven release to install yet. Build from source, or use the [local Maven bundle and BOM](docs/releasing.md) to evaluate the current snapshot.
+Source builds use the development version `0.1.0-SNAPSHOT` by default. Published candidates, local snapshot evaluation and release verification are described in the [release guide](docs/releasing.md).
 
 ## HTML template designer
 
@@ -86,7 +127,7 @@ Run `./gradlew :export4j-designer:run` (`.\gradlew.bat` on Windows), then open t
 
 ## Java example
 
-This complete class uses the public authoring API. Run from the repository root with the components and PDF-backend runtime dependencies on the classpath. The font paths refer to repository fixtures.
+Save this complete class as `src/main/java/QuickStart.java` in an application with the dependencies above. Place `LiberationSans-Regular.ttf` and `LXGWWenKaiTC-Regular.ttf` in `assets/fonts/` relative to the working directory, or change the paths to your own licensed fonts. The [repository font fixtures](assets/fonts/README.md) provide these two example fonts; fonts are supplied explicitly by the application.
 
 ```java
 import java.io.IOException;
@@ -193,7 +234,7 @@ HTML preserves supported styles, embedded images and merged/nested tables. Markd
 The remaining work is tracked in the [capability gaps](docs/capability-gaps.md):
 
 - **GAP-14.2:** broader compatibility corpus and application/reader checks across platforms.
-- **GAP-14.3:** stable API/release, official signing and Maven Central distribution.
+- **GAP-14.3:** stable API and release acceptance; signed Maven Central distribution is available for `0.1.0-rc.1`.
 - **GAP-22:** additional formats, including XLSX, PPTX, EPUB and XPS.
 
 See the [execution plan](docs/remaining-capabilities-plan.md) for acceptance criteria. OCR is outside the current scope.

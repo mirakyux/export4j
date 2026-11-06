@@ -1,0 +1,188 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Release to Maven Central
+run-name: Release ${{ inputs.version }} to Maven Central and GitHub
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New release version, for example 0.1.0-rc.2'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: maven-central-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      artifact_id: ${{ steps.evidence.outputs.artifact-id }}
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_DIR: build/release/central
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Check release client and install independent verification tools
+        run: |
+          python3 scripts/test_maven_central.py
+          sudo apt-get update
+          sudo apt-get install -y gnupg poppler-utils
+          python3 -m venv build/release-tools
+          build/release-tools/bin/python -m pip install -r scripts/requirements-verification.txt
+      - name: Check unused version, signing identity and public key availability
+        env:
+          EXPORT4J_SIGNING_KEY: ${{ secrets.EXPORT4J_SIGNING_KEY }}
+          EXPORT4J_SIGNING_FINGERPRINT: ${{ vars.EXPORT4J_SIGNING_FINGERPRINT || secrets.EXPORT4J_SIGNING_FINGERPRINT }}
+        run: python3 scripts/maven_central.py preflight --version "$RELEASE_VERSION"
+      - name: Check that the GitHub release tag is unused
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          existing="$(gh api "repos/$GH_REPO/git/matching-refs/tags/v$RELEASE_VERSION" --jq ".[] | select(.ref == \"refs/tags/v$RELEASE_VERSION\") | .ref")"
+          if [[ -n "$existing" ]]; then
+            echo 'The GitHub release tag already exists; choose a new version.' >&2
+            exit 1
+          fi
+      - name: Include version-specific release notes
+        run: |
+          notes="docs/releases/$RELEASE_VERSION.md"
+          if [[ -f "$notes" ]]; then
+            cp "$notes" "$RELEASE_DIR/release-notes.md"
+          fi
+      - name: Build, test and sign the release and generate samples
+        env:
+          EXPORT4J_SIGNING_KEY: ${{ secrets.EXPORT4J_SIGNING_KEY }}
+          EXPORT4J_SIGNING_PASSWORD: ${{ secrets.EXPORT4J_SIGNING_PASSWORD }}
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=Export4j CI sample' -keyout "$RUNNER_TEMP/sample-key.pem" -out "$RUNNER_TEMP/sample-cert.pem"
+          bash ./gradlew --no-daemon --console=plain "-Pexport4jVersion=$RELEASE_VERSION" "-Pexport4jRepositoryDirectory=$RELEASE_DIR/repository" -Pexport4jSign=true -Pexport4jNativeClassifier=natives-linux "-PsignerOpenSsl=$(command -v openssl)" "-PsignerCertificate=$RUNNER_TEMP/sample-cert.pem" "-PsignerKey=$RUNNER_TEMP/sample-key.pem" build publishSignedBundle :examples:production :examples:capabilities
+          cp build/reports/sbom.cdx.json "$RELEASE_DIR/sbom.cdx.json"
+      - name: Audit dependencies and independently verify the signed bundle
+        run: |
+          python3 scripts/audit_dependencies.py --sbom "$RELEASE_DIR/sbom.cdx.json" --output "$RELEASE_DIR/dependency-audit.json"
+          python3 scripts/prepare_maven_bundle.py --repository "$RELEASE_DIR/repository" --version "$RELEASE_VERSION" --public-key "$RELEASE_DIR/public-key.asc" --sbom "$RELEASE_DIR/sbom.cdx.json" --output "$RELEASE_DIR/distribution"
+      - name: Consume the exact signed JARs before upload
+        run: |
+          python3 scripts/verify_maven_consumer.py --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/repository" --output "$RELEASE_DIR/local-consumer" --native-classifier natives-linux
+          build/release-tools/bin/python scripts/verify_production.py --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/repository" --sbom "$RELEASE_DIR/sbom.cdx.json" --consumer-build-directory "$RELEASE_DIR/local-consumer/consumer-project/verification/consumer/build" --output "$RELEASE_DIR/local-output"
+          build/release-tools/bin/python scripts/verify_capabilities.py --openssl "$(command -v openssl)"
+      - name: Upload once and wait for Central publication
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+        run: python3 scripts/maven_central.py publish --version "$RELEASE_VERSION" --timeout 1800
+      - name: Download and independently verify the actual Central artifacts
+        run: python3 scripts/maven_central.py verify --version "$RELEASE_VERSION" --timeout 600
+      - name: Consume from Maven Central and verify the resulting documents
+        run: |
+          python3 scripts/verify_maven_consumer.py --central --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/remote/repository" --output "$RELEASE_DIR/remote-consumer" --native-classifier natives-linux
+          build/release-tools/bin/python scripts/verify_production.py --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/remote/repository" --sbom "$RELEASE_DIR/sbom.cdx.json" --consumer-build-directory "$RELEASE_DIR/remote-consumer/consumer-project/verification/consumer/build" --output "$RELEASE_DIR/remote-output"
+          printf '\nPublished and verified: `%s`. All 16 library JARs and the BOM were consumed from Maven Central.\n' "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain public artifacts and verification evidence
+        id: evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: maven-central-release-${{ inputs.version }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            build/release/central/build-inputs.json
+            build/release/central/public-key.asc
+            build/release/central/sbom.cdx.json
+            build/release/central/dependency-audit.json
+            build/release/central/release-notes.md
+            build/release/central/deployment.json
+            build/release/central/distribution/*.json
+            build/release/central/distribution/maven-central-bundle.zip
+            build/release/central/*-consumer/consumer-report.json
+            build/release/central/*-consumer/signed-consumer.log
+            build/release/central/*-output/report.json
+            build/release/central/*-output/contact-*.png
+            build/release/central/remote/publication-report.json
+            build/verification/capabilities/report.json
+  github-release:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_COMMIT: ${{ github.sha }}
+    steps:
+      - name: Download the verified batch from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.release.outputs.artifact_id }}
+          path: release-artifacts
+          merge-multiple: true
+      - name: Check the release commit and bundle and prepare release notes
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          root = Path("release-artifacts/release/central")
+          def read(name):
+              return json.loads((root / name).read_text(encoding="utf-8"))
+          version = os.environ["RELEASE_VERSION"]
+          inputs = read("build-inputs.json")
+          assert inputs["version"] == version and inputs["headRevision"] == os.environ["RELEASE_COMMIT"], "Release source differs"
+          local = read("distribution/distribution-report.json")
+          remote = read("remote/publication-report.json")
+          digest = hashlib.sha256((root / "distribution/maven-central-bundle.zip").read_bytes()).hexdigest()
+          assert local["version"] == remote["version"] == version, "Release versions differ"
+          assert local["bundleSha256"] == remote["bundleSha256"] == digest, "Release bundle differs"
+          assert remote["remoteArtifactsMatched"] == remote["remoteSignaturesVerified"] == 82, "Remote verification is incomplete"
+          consumer = read("remote-consumer/consumer-report.json")
+          assert consumer["remoteConsumerVerified"] and consumer["consumerJarHashesVerified"] == 16, "Remote consumer is incomplete"
+          assert consumer["consumerBomCoordinate"] == "com.mirakyux.export4j:export4j-bom:" + version, "Consumer version differs"
+          notes = (
+              f"Java 21 document layout and generation engine.\n\n"
+              f"Maven BOM: `com.mirakyux.export4j:export4j-bom:{version}`.\n\n"
+              "All 16 library JARs and the BOM were verified and consumed from Maven Central. "
+              "Assets include the signed Maven publication bundle, public key, SBOM and verification reports.\n\n"
+              f"Bundle SHA-256: `{digest}`.\n\n"
+          )
+          if "-" in version:
+              notes += "This is a prerelease; APIs may change.\n\n"
+          version_notes = root / "release-notes.md"
+          if version_notes.is_file():
+              notes += version_notes.read_text(encoding="utf-8").rstrip() + "\n\n"
+          (Path(os.environ["RUNNER_TEMP"]) / "release-notes.md").write_text(notes, encoding="utf-8")
+          PY
+      - name: Create the matching tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="v$RELEASE_VERSION"
+          existing="$(gh api "repos/$GH_REPO/git/matching-refs/tags/$tag" --jq ".[] | select(.ref == \"refs/tags/$tag\") | [.object.type, .object.sha] | @tsv")"
+          if [[ -z "$existing" ]]; then
+            gh api --method POST "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$tag" -f "sha=$RELEASE_COMMIT" --silent
+          elif [[ "$existing" != $'commit\t'"$RELEASE_COMMIT" ]]; then
+            echo 'The existing release tag points to a different source commit.' >&2
+            exit 1
+          fi
+          flags=(--latest)
+          if [[ "$RELEASE_VERSION" == *-* ]]; then flags=(--prerelease --latest=false); fi
+          root=release-artifacts/release/central
+          gh release create "$tag" --verify-tag --title "Export4j $RELEASE_VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" --generate-notes "${flags[@]}" \
+            "$root/distribution/maven-central-bundle.zip" "$root/sbom.cdx.json" \
+            "$root/public-key.asc" "$root/distribution/distribution-report.json" \
+            "$root/remote/publication-report.json" "$root/remote-consumer/consumer-report.json"

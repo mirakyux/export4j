@@ -46,6 +46,7 @@ import com.mirakyux.export4j.graphics.FormStyle;
 import com.mirakyux.export4j.graphics.Point;
 import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.graphics.RgbColor;
+import com.mirakyux.export4j.model.ExecutionContext;
 
 /** Internal conversion of resolved interactions; never makes layout decisions or installs scripts. */
 final class PdfExtrasWriter {
@@ -107,10 +108,19 @@ final class PdfExtrasWriter {
     }
 
     static void write(PDDocument pdf, DocumentExtras extras) throws IOException {
+        if (extras.externalLinks().isEmpty() && extras.bookmarks().isEmpty() && extras.links().isEmpty()
+                && extras.comments().isEmpty() && extras.fields().isEmpty()) {
+            return;
+        }
+        var pages = new ArrayList<PDPage>(pdf.getNumberOfPages());
+        for (var page : pdf.getPages()) {
+            ExecutionContext.checkpoint();
+            pages.add(page);
+        }
         for (var link : extras.externalLinks()) {
-            var page = pdf.getPage(link.pageIndex());
+            var page = pages.get(link.pageIndex());
             var annotation = new PDAnnotationLink();
-            annotation.setRectangle(rectangle(pdf, link.pageIndex(), link.bounds()));
+            annotation.setRectangle(rectangle(page, link.pageIndex(), link.bounds()));
             var action = new org.apache.pdfbox.pdmodel.interactive.action.PDActionURI();
             action.setURI(link.destination().uri());
             annotation.setAction(action);
@@ -129,52 +139,54 @@ final class PdfExtrasWriter {
                 }
                 var item = new PDOutlineItem();
                 item.setTitle(bookmark.title());
-                item.setDestination(destination(pdf, bookmark.pageIndex(), bookmark.destination()));
+                item.setDestination(destination(pages.get(bookmark.pageIndex()), bookmark.pageIndex(), bookmark.destination()));
                 parents.getLast().addLast(item);
                 parents.add(item);
             }
             outline.openNode();
         }
         for (var link : extras.links()) {
+            var page = pages.get(link.pageIndex());
             var annotation = new PDAnnotationLink();
-            annotation.setRectangle(rectangle(pdf, link.pageIndex(), link.bounds()));
+            annotation.setRectangle(rectangle(page, link.pageIndex(), link.bounds()));
             var border = new PDBorderStyleDictionary();
             border.setWidth(0);
             annotation.setBorderStyle(border);
-            annotation.setDestination(destination(pdf, link.targetPageIndex(), link.destination()));
-            pdf.getPage(link.pageIndex()).getAnnotations().add(annotation);
+            annotation.setDestination(destination(pages.get(link.targetPageIndex()), link.targetPageIndex(), link.destination()));
+            page.getAnnotations().add(annotation);
         }
         for (var comment : extras.comments()) {
+            var page = pages.get(comment.pageIndex());
             var annotation = new PDAnnotationText();
-            annotation.setRectangle(rectangle(pdf, comment.pageIndex(), comment.bounds()));
+            annotation.setRectangle(rectangle(page, comment.pageIndex(), comment.bounds()));
             annotation.setContents(comment.text());
             annotation.setTitlePopup(comment.author());
             annotation.setName(PDAnnotationText.NAME_COMMENT);
             annotation.setOpen(false);
-            annotation.setPage(pdf.getPage(comment.pageIndex()));
+            annotation.setPage(page);
             annotation.constructAppearances(pdf);
-            pdf.getPage(comment.pageIndex()).getAnnotations().add(annotation);
+            page.getAnnotations().add(annotation);
         }
         if (!extras.fields().isEmpty()) {
-            forms(pdf, extras.fields());
+            forms(pdf, pages, extras.fields());
         }
     }
 
-    private static PDPageXYZDestination destination(PDDocument pdf, int pageIndex, Point point)
+    private static PDPageXYZDestination destination(PDPage page, int pageIndex, Point point)
             throws PdfRenderException {
         var result = new PDPageXYZDestination();
-        result.setPage(pdf.getPage(pageIndex));
+        result.setPage(page);
         result.setZoom(0);
         COSArray coordinates = result.getCOSObject();
         coordinates.set(2, new COSFloat(PdfBackend.checkedFloat(point.x(), pageIndex, -1)));
         coordinates.set(3, new COSFloat(PdfBackend.checkedFloat(
-                pdf.getPage(pageIndex).getMediaBox().getHeight() - point.y(), pageIndex, -1)));
+                page.getMediaBox().getHeight() - point.y(), pageIndex, -1)));
         return result;
     }
 
-    private static PDRectangle rectangle(PDDocument pdf, int pageIndex, Rect bounds) throws PdfRenderException {
+    private static PDRectangle rectangle(PDPage page, int pageIndex, Rect bounds) throws PdfRenderException {
         var result = new PDRectangle(PdfBackend.checkedFloat(bounds.x(), pageIndex, -1),
-                PdfBackend.checkedFloat(pdf.getPage(pageIndex).getMediaBox().getHeight()
+                PdfBackend.checkedFloat(page.getMediaBox().getHeight()
                         - bounds.y() - bounds.height(), pageIndex, -1),
                 PdfBackend.checkedFloat(bounds.width(), pageIndex, -1),
                 PdfBackend.checkedFloat(bounds.height(), pageIndex, -1));
@@ -185,7 +197,7 @@ final class PdfExtrasWriter {
         return result;
     }
 
-    private static void forms(PDDocument pdf, List<DocumentExtras.FormField> fields) throws IOException {
+    private static void forms(PDDocument pdf, List<PDPage> pages, List<DocumentExtras.FormField> fields) throws IOException {
         var form = new PDAcroForm(pdf);
         var resources = new PDResources();
         resources.put(COSName.getPDFName("Helv"), new PDType1Font(Standard14Fonts.FontName.HELVETICA));
@@ -196,7 +208,7 @@ final class PdfExtrasWriter {
         var embedded = new HashMap<String, COSName>();
         for (var source : fields) {
             if (source instanceof DocumentExtras.RadioGroup radio) {
-                radio(pdf, form, radio);
+                radio(pdf, form, radio, pages.get(radio.pageIndex()));
                 continue;
             }
             PDTerminalField field = switch (source) {
@@ -206,8 +218,8 @@ final class PdfExtrasWriter {
             };
             field.setPartialName(source.name());
             var widget = field.getWidgets().getFirst();
-            widget.setRectangle(rectangle(pdf, source.pageIndex(), source.bounds()));
-            PDPage page = pdf.getPage(source.pageIndex());
+            PDPage page = pages.get(source.pageIndex());
+            widget.setRectangle(rectangle(page, source.pageIndex(), source.bounds()));
             widget.setPage(page);
             widget.setPrinted(true);
             // A single-widget terminal field is one canonical dictionary in both trees.
@@ -364,7 +376,7 @@ final class PdfExtrasWriter {
         return "/" + name.getName();
     }
 
-    private static void radio(PDDocument pdf, PDAcroForm form, DocumentExtras.RadioGroup source) throws IOException {
+    private static void radio(PDDocument pdf, PDAcroForm form, DocumentExtras.RadioGroup source, PDPage page) throws IOException {
         var radio = new PDRadioButton(form);
         radio.setPartialName(source.name());
         List<PDAnnotationWidget> widgets = new ArrayList<>();
@@ -373,9 +385,9 @@ final class PdfExtrasWriter {
         for (int index = 0; index < source.options().size(); index++) {
             var widget = new PDAnnotationWidget();
             widget.setParent(radio);
-            widget.setPage(pdf.getPage(source.pageIndex()));
+            widget.setPage(page);
             widget.setPrinted(true);
-            widget.setRectangle(rectangle(pdf, source.pageIndex(), new Rect(source.bounds().x() + index * step,
+            widget.setRectangle(rectangle(page, source.pageIndex(), new Rect(source.bounds().x() + index * step,
                     source.bounds().y(), side, side)));
             widgetStyle(widget, source.style(), source.pageIndex());
             var states = new COSDictionary();
@@ -386,7 +398,7 @@ final class PdfExtrasWriter {
             appearance.setNormalAppearance(new PDAppearanceEntry(states));
             widget.setAppearance(appearance);
             widgets.add(widget);
-            pdf.getPage(source.pageIndex()).getAnnotations().add(widget);
+            page.getAnnotations().add(widget);
         }
         radio.setWidgets(widgets);
         form.getFields().add(radio);

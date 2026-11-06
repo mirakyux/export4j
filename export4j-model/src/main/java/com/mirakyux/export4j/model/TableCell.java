@@ -67,8 +67,8 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
         public Builder rowSpan(int value) { rowSpan = value; return this; }
         public TableCell build() {
             if (content.isEmpty()) { return new TableCell(text, format, inlines, images, fields, columnSpan, rowSpan, blocks); }
-            var mixed = mixed(content, format);
-            return new TableCell(mixed.text, format, mixed.inlines, mixed.images, mixed.fields, columnSpan, rowSpan);
+            var mixed = InlineContents.mixed(content, format.fontSize());
+            return new TableCell(mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields(), columnSpan, rowSpan);
         }
     }
     public TableCell {
@@ -86,13 +86,12 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
             }
             SemanticTree.validateCellBlocks(blocks);
         } else {
-            new Paragraph("cell", text, new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false), inlines, images, fields);
+            InlineContents.validate(text, inlines, images, fields, format.fontSize());
         }
-        if (fields.stream().anyMatch(span -> span.field().kind() == InlineField.Kind.NOTE_MARKER)) {
-            throw new IllegalArgumentException("inline note markers require body paragraphs");
-        }
-        if (!inlines.isEmpty() && !text.equals(inlines.stream().map(InlineText::text).collect(java.util.stream.Collectors.joining()))) {
-            throw new IllegalArgumentException("cell inline text must match source");
+        for (var span : fields) {
+            if (span.field().kind() == InlineField.Kind.NOTE_MARKER) {
+                throw new IllegalArgumentException("inline note markers require body paragraphs");
+            }
         }
     }
     /** True when this value has explicit nonempty semantic blocks. */
@@ -129,11 +128,11 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
         this(text, format, inlines, images, fields, columnSpan, rowSpan, List.of());
     }
     public static TableCell rich(List<InlineText> inlines, CellFormat format) {
-        return new TableCell(inlines.stream().map(InlineText::text).collect(java.util.stream.Collectors.joining()), format, inlines);
+        return new TableCell(InlineContents.text(inlines), format, inlines);
     }
 
     public static TableCell mixed(List<? extends InlineContent> content, CellFormat format) {
-        var paragraph = Paragraph.mixed("cell", content, new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false));
-        return new TableCell(paragraph.text(), format, paragraph.inlines(), paragraph.images(), paragraph.fields());
+        var mixed = InlineContents.mixed(content, format.fontSize());
+        return new TableCell(mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields());
     }
 }

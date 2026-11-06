@@ -3,11 +3,14 @@ package com.mirakyux.export4j.adapter.docx;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,6 +34,7 @@ import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
@@ -172,6 +176,22 @@ public final class DocxAdapter {
     public DocumentConversion.Request conversion(byte[] encoded) {
         return DocxConversions.source(this, encoded);
     }
+    /** Opens this explicit local package during prepare, using this adapter's input limits.
+     * Each preparation reads the then-current file; opened streams close before preparation completes.
+     */
+    public DocumentConversion.Request conversion(Path source) { return DocxConversions.source(this, source); }
+    /** Explicit local file path, read during prepare under the same limits as conversion(Path). */
+    public DocumentConversion.Request conversion(String source) {
+        return conversion(Path.of(Objects.requireNonNull(source, "source")));
+    }
+    /** Explicit local file, read during prepare under the same limits as conversion(Path). */
+    public DocumentConversion.Request conversion(File source) {
+        return conversion(Objects.requireNonNull(source, "source").toPath());
+    }
+    /** Reads the borrowed package stream during prepare under this adapter's input limits; never closes it.
+     * Repeated preparation requires a new input stream.
+     */
+    public DocumentConversion.Request conversion(InputStream source) { return DocxConversions.source(this, source); }
     /** Shared-policy semantic target. Unsupported source font roles require explicit degradation;
      * structures without an implemented target mapping still fail before final output.
      */
@@ -188,6 +208,79 @@ public final class DocxAdapter {
     }
     private DocxAdapter(DocxLimits limits, RegionGeometry regionGeometry, Map<String, FontRoles> fontFamilies) {
         this.limits = Objects.requireNonNull(limits, "limits"); this.regionGeometry = regionGeometry; this.fontFamilies = Map.copyOf(fontFamilies);
+    }
+
+    /** Controlled strict semantic output; the borrowed stream is neither closed nor flushed. */
+    public void write(Document document, OutputStream output, ExecutionOptions options) throws IOException {
+        Objects.requireNonNull(document, "document");
+        DocxFileIO.write(output, options, stream -> write(document, stream));
+    }
+    /** Controlled output including declared header/footer regions; the borrowed stream remains open. */
+    public void write(PageDocument document, OutputStream output, ExecutionOptions options) throws IOException {
+        Objects.requireNonNull(document, "document");
+        DocxFileIO.write(output, options, stream -> write(document, stream));
+    }
+    /** Controlled strict sectioned output; the borrowed stream is neither closed nor flushed. */
+    public void write(SectionedDocument document, OutputStream output, ExecutionOptions options) throws IOException {
+        Objects.requireNonNull(document, "document");
+        DocxFileIO.write(output, options, stream -> write(document, stream));
+    }
+    /** Atomic local-file output. Parent must exist; no non-atomic replacement fallback is used. */
+    public void write(Document document, Path output) throws IOException { write(document, output, ExecutionOptions.DEFAULT); }
+    /** Local filesystem path with the same strict semantics and atomic publication as write(Document, Path). */
+    public void write(Document document, String output) throws IOException { write(document, Path.of(Objects.requireNonNull(output, "output"))); }
+    /** Local file with the same strict semantics and atomic publication as write(Document, Path). */
+    public void write(Document document, File output) throws IOException { write(document, Objects.requireNonNull(output, "output").toPath()); }
+    /** Atomic local-file output. Failure/cancellation before commit preserves the old destination. */
+    public void write(Document document, Path output, ExecutionOptions options) throws IOException {
+        Objects.requireNonNull(document, "document");
+        DocxFileIO.publish(output, options, stream -> write(document, stream));
+    }
+    /** Local filesystem path and explicit execution limits, with the same atomic publication as the Path overload. */
+    public void write(Document document, String output, ExecutionOptions options) throws IOException {
+        write(document, Path.of(Objects.requireNonNull(output, "output")), options);
+    }
+    /** Local file and explicit execution limits, with the same atomic publication as the Path overload. */
+    public void write(Document document, File output, ExecutionOptions options) throws IOException {
+        write(document, Objects.requireNonNull(output, "output").toPath(), options);
+    }
+    /** Atomic local-file output preserving supported body and header/footer regions. Parent must exist. */
+    public void write(PageDocument document, Path output) throws IOException { write(document, output, ExecutionOptions.DEFAULT); }
+    /** Local filesystem path with the same page-region semantics and atomic publication as the Path overload. */
+    public void write(PageDocument document, String output) throws IOException { write(document, Path.of(Objects.requireNonNull(output, "output"))); }
+    /** Local file with the same page-region semantics and atomic publication as the Path overload. */
+    public void write(PageDocument document, File output) throws IOException { write(document, Objects.requireNonNull(output, "output").toPath()); }
+    /** Atomic body and header/footer output. Failure/cancellation before commit preserves the old destination. */
+    public void write(PageDocument document, Path output, ExecutionOptions options) throws IOException {
+        Objects.requireNonNull(document, "document");
+        DocxFileIO.publish(output, options, stream -> write(document, stream));
+    }
+    /** Local filesystem path and explicit execution limits, with the same atomic publication as the Path overload. */
+    public void write(PageDocument document, String output, ExecutionOptions options) throws IOException {
+        write(document, Path.of(Objects.requireNonNull(output, "output")), options);
+    }
+    /** Local file and explicit execution limits, with the same atomic publication as the Path overload. */
+    public void write(PageDocument document, File output, ExecutionOptions options) throws IOException {
+        write(document, Objects.requireNonNull(output, "output").toPath(), options);
+    }
+    /** Atomic sectioned local-file output. Parent must exist; no non-atomic fallback is used. */
+    public void write(SectionedDocument document, Path output) throws IOException { write(document, output, ExecutionOptions.DEFAULT); }
+    /** Local filesystem path with the same section semantics and atomic publication as the Path overload. */
+    public void write(SectionedDocument document, String output) throws IOException { write(document, Path.of(Objects.requireNonNull(output, "output"))); }
+    /** Local file with the same section semantics and atomic publication as the Path overload. */
+    public void write(SectionedDocument document, File output) throws IOException { write(document, Objects.requireNonNull(output, "output").toPath()); }
+    /** Atomic sectioned output. Failure/cancellation before commit preserves the old destination. */
+    public void write(SectionedDocument document, Path output, ExecutionOptions options) throws IOException {
+        Objects.requireNonNull(document, "document");
+        DocxFileIO.publish(output, options, stream -> write(document, stream));
+    }
+    /** Local filesystem path and explicit execution limits, with the same atomic publication as the Path overload. */
+    public void write(SectionedDocument document, String output, ExecutionOptions options) throws IOException {
+        write(document, Path.of(Objects.requireNonNull(output, "output")), options);
+    }
+    /** Local file and explicit execution limits, with the same atomic publication as the Path overload. */
+    public void write(SectionedDocument document, File output, ExecutionOptions options) throws IOException {
+        write(document, Objects.requireNonNull(output, "output").toPath(), options);
     }
 
     /** Exports body and fixed repeating bands using standard OOXML parts and section references. */
@@ -683,6 +776,28 @@ public final class DocxAdapter {
             xml.append("</w:tr>");
         }
         xml.append("</w:tbl>");
+    }
+
+    /** Strict import from a borrowed stream, which remains open. */
+    public ReadResult read(InputStream input) throws IOException { return read(input, Policy.STRICT); }
+    /** Strict import from an explicit local file; the opened stream is closed. */
+    public ReadResult read(Path source) throws IOException { return read(source, Policy.STRICT); }
+    /** Strict import from an explicit local filesystem path. */
+    public ReadResult read(String source) throws IOException { return read(Path.of(Objects.requireNonNull(source, "source"))); }
+    /** Strict import from an explicit local file. */
+    public ReadResult read(File source) throws IOException { return read(Objects.requireNonNull(source, "source").toPath()); }
+    /** Imports one explicit local package under this adapter's input limits; the opened stream is closed. */
+    public ReadResult read(Path source, Policy policy) throws IOException {
+        Objects.requireNonNull(source, "source"); Objects.requireNonNull(policy, "policy");
+        try (var input = Files.newInputStream(source)) { return read(input, policy); }
+    }
+    /** Explicit local filesystem path with the same policy and budget as read(Path, Policy). */
+    public ReadResult read(String source, Policy policy) throws IOException {
+        return read(Path.of(Objects.requireNonNull(source, "source")), policy);
+    }
+    /** Explicit local file with the same policy and budget as read(Path, Policy). */
+    public ReadResult read(File source, Policy policy) throws IOException {
+        return read(Objects.requireNonNull(source, "source").toPath(), policy);
     }
 
     public ReadResult read(InputStream input, Policy policy) throws IOException {

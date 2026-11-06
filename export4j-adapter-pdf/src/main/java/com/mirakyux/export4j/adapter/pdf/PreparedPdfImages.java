@@ -4,9 +4,11 @@ package com.mirakyux.export4j.adapter.pdf;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.processing.ProcessingIssue;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -38,6 +40,16 @@ public final class PreparedPdfImages {
         public void to(OutputStream output) throws IOException { PdfImageSupport.write(bytes, output, execution); }
         /** Same-directory atomic file replacement. */
         public void to(Path output) throws IOException { PdfImageSupport.write(bytes, output, execution); }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public void to(String output) throws IOException {
+            to(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public void to(File output) throws IOException {
+            to(Objects.requireNonNull(output, "output").toPath());
+        }
     }
     public record Result(int imageCount, long outputBytes, ProcessingReport report) { }
     private final List<Image> images;
@@ -59,4 +71,14 @@ public final class PreparedPdfImages {
     public ProcessingReport preview() { return new ProcessingReport(ProcessingReport.Phase.PREVIEW, report.issues()); }
     public Result toZip(OutputStream output) throws IOException { PdfImageSupport.write(zip, output, execution); return new Result(images.size(), zip.length, report); }
     public Result toZip(Path output) throws IOException { PdfImageSupport.write(zip, output, execution); return new Result(images.size(), zip.length, report); }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public Result toZip(String output) throws IOException {
+        return toZip(Path.of(Objects.requireNonNull(output, "output")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public Result toZip(File output) throws IOException {
+        return toZip(Objects.requireNonNull(output, "output").toPath());
+    }
 }

@@ -14,6 +14,8 @@ import com.mirakyux.export4j.font.MissingGlyphPolicy;
  * Complex scripts, combining marks and joiners are rejected rather than rendered incorrectly.
  */
 public final class SimpleTextShaper implements TextShaper {
+    private final SimpleGlyphCache glyphCache = new SimpleGlyphCache();
+
     public ShapedText shape(String text, List<FontFace> fonts, double fontSize) {
         return shape(text, fonts, fontSize, 0);
     }
@@ -73,7 +75,7 @@ public final class SimpleTextShaper implements TextShaper {
             }
             double advance = Objects.requireNonNull(metrics).advance() * fontSize;
             glyphs.add(new ShapedGlyph(selected.data(),
-                    new PositionedGlyph(codePoint, metrics.glyphId(), advance), start, end,
+                    glyphCache.get(codePoint, metrics.glyphId(), advance), start, end,
                     selected.metrics().ascent() * fontSize, selected.metrics().descent() * fontSize, sourceCodePoint));
             if (selected != fonts.getFirst()) {
                 diagnostics.add(new TextDiagnostic(TextDiagnostic.Code.FONT_FALLBACK,

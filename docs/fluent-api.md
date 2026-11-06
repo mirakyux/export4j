@@ -107,6 +107,88 @@ var result = engine.export(document)
 
 `export` 只保存调用配置，在 `.to(...)` 时才开始布局和输出，必须显式配置后端。路径输出使用同目录临时文件及原子替换，失败保留旧文件并清理临时文件；父目录须已存在，不支持原子移动时明确失败。流输出借用调用方流，失败可能已输出部分字节。超时和取消覆盖同步布局及输出，不创建后台线程。
 
+不需要完整布局返回值时可使用 [`exportPaged(document)`](paged-document-api.md)，通过 `PageBackend` 逐页输出并返回轻量摘要。它保留输入模型，使用规划与重放计算总页数、目录及未来引用；配合 `PdfSpoolBackend` 可同时释放完成页的布局、绘制及 PDF 格式对象。最大单块和导航等索引仍有各自内存边界。
+
+## 文件与流的便利入口
+
+引擎的普通文档、单向长表、语义长表及显式重放导出均接受 `Path`、`File`、字符串路径或 `OutputStream`。`String` 与 `File` 仅转换成 `Path`，沿用相同原子输出、预算、取消和异常契约；不自动创建父目录，不展开 URL 或系统字体资源。流由调用方拥有，不由导出入口关闭。
+
+```java
+engine.export(document).backend(new PdfBackend()).to("output/report.pdf");
+engine.export(document).backend(new PdfBackend()).to(new File("output/report.pdf"));
+engine.write(document, new PdfBackend(), "output/report.pdf");
+```
+
+`DocumentEngine.write` 对 `Document`、`PageDocument` 和 `SectionedDocument` 均提供这些目标类型及显式 `ExecutionOptions` 重载；`PageDocument` 保留声明的页眉、页脚和图层，不需要提取正文。配置 Java 页模板与语义页区冲突时仍拒绝。
+
+HTML／Markdown 导出、统一转换、DOCX 编辑、PDF 编辑／优化／表单数据／图片 ZIP、XML 模板保存和模型恢复的已有路径输出也接受 `String` 与 `File`。`PdfAdapter.input` 的文件入口保留显式密码参数；`PdfSpoolBackend` 的临时父目录接受 `Path`、`File` 或字符串路径，目录须已存在。需要显式源与目标、签名身份或信任配置的底层 PDF 标准／签名工具继续使用其具名类型和 `Path` 契约。
+
+字体加载也可直接传本地路径：
+
+```java
+var face = TrueTypeFontLoader.load("fonts/regular.ttf");
+var bounded = TrueTypeFontLoader.load(Path.of("fonts/regular.ttf"), 8 * 1024 * 1024);
+var collectionFace = FontCollectionLoader.load(new File("fonts/family.ttc"), 1);
+```
+
+`TrueTypeFontLoader` 与 `FontCollectionLoader` 的文件入口有界读取并关闭自有流；借用 `InputStream` 的入口不关闭流，省略字节预算时使用 `TrueTypeFontLoader.DEFAULT_MAX_BYTES`（32 MiB）。集合成员索引仍显式指定，从 0 开始。已有 HTML／Markdown 读取器中的 `String` 表示正文，含义保持不变。
+
+JDK 类型按示例导入 `File`、`Path`、`OutputStream`；字体类型来自 `com.mirakyux.export4j.font`。完整隔离 Maven 调用方见 [`IoConvenienceConsumer`](../verification/consumer/src/main/java/consumer/IoConvenienceConsumer.java)，任务为 `ioConvenience`。这些便利入口已在开发源码实现，已发布的 `0.1.0-rc.1` 不包含本轮新增重载。
+
+## 常用任务的短入口
+
+以下入口属于当前开发源码，已发布的 `0.1.0-rc.1` 不包含本轮新增 API。项目类型来自对应模块；完整可执行调用方见 [`ErgonomicsConsumer`](../verification/consumer/src/main/java/consumer/ErgonomicsConsumer.java)，任务为 `ergonomics`，[验收记录](verification/api-ergonomics.md)包含验证范围与复现命令。
+
+DOCX 直接读写支持 `Path`、`File`、字符串路径及借用流。默认读取使用严格策略，显式允许损失时返回诊断。文件输出采用同目录原子替换，并支持 `ExecutionOptions`；父目录须已存在。
+
+```java
+var docx = new DocxAdapter();
+docx.write(document, "report.docx");
+var imported = docx.read("report.docx").document();
+```
+
+图片文件读取由组件层的 `Images` 完成，模型仍只持有已验证的资源。文件及流输入最多读取预算加一个字节，默认受 `ImageResource.MAX_BYTES`（32 MiB）约束，像素和格式限制继续执行；文件自有流关闭，借用流保持打开。`atWidth` 和 `fit` 显式按像素比例计算 pt 尺寸，允许放大；`fit` 的两个框边均须在 `(0, 14400]` 范围内。字号、行框和可用区域仍由调用方配置，不在布局阶段自动缩图。
+
+```java
+var image = Images.load("assets/logo.png");
+var logo = InlineImage.atWidth(image, 72, "公司标志");
+var fitted = InlineImage.fit(image, 72, 36, "公司标志");
+```
+
+字体组可使用可变参数或在 Builder 中加载显式文件；`FontSet` 保存默认字体及命名角色，可复用于多个引擎。`bold`、`italic`、`boldItalic` 对应实际提供的字体组，重复角色拒绝，不合成缺失变体；字体文件加载失败不改变 Builder。
+
+```java
+var regular = FontGroup.builder().fontFile("fonts/regular.ttf").build();
+var bold = FontGroup.strict(TrueTypeFontLoader.load("fonts/bold.ttf"));
+var fonts = FontSet.builder(regular).bold(bold).build();
+var engine = DocumentEngine.builder(fonts).build();
+```
+
+`Units.pt/mm/cm/inches` 将有限值换算为 pt，允许负偏移；实际几何继续验证正尺寸。`PageSize` 提供毫米／英寸工厂，以及幂等的 `landscape()`、`portrait()`。
+
+```java
+var page = PageSettings.builder()
+        .size(PageSize.A4.landscape())
+        .margins(Units.mm(20))
+        .build();
+```
+
+`TableRow.text(...)` 构造普通文本格，默认使用 12 pt 格式，也可显式传入 `CellFormat`。`TableRowSources.fromIterable` 延迟获取迭代器并返回可重开的工厂；`fromIterator` 包装借用迭代器，返回单次源。`fromStream` 接管单次流，`fromStreams` 在每遍打开时接管新流；拥有源必须关闭，导出入口负责释放工厂交出的源。适配器不缓存全部数据，重放时仍要求调用方提供相同业务快照。
+
+```java
+var rows = TableRowSources.fromIterable(List.of("A", "B"), value -> TableRow.text(value));
+engine.export(spec, rows).backend(new PdfSpoolBackend(temporaryParent)).to("rows.pdf");
+```
+
+统一转换可直接调用 `convertTo(target, destination)`，返回包含实际损失的 `Result`，与 `prepare(target).to(destination)` 同义，准备和输出分别使用既有执行范围。需要先查看候选或预检报告时继续使用 `prepare`。DOCX 文件／流转换源和 HTML／Markdown 的文件／流转换源在准备时读取；HTML／Markdown 的 `read(Path/File/InputStream)`、`readFile(String)` 立即有界读取，随后配置的请求执行选项只覆盖解析。文本文件使用严格 UTF-8，拒绝非法编码；`read(String)`、`conversion(String)` 始终表示正文，字符串路径使用 `readFile`、`conversionFile`。
+
+```java
+var target = engine.conversionTarget("PDF", new PdfBackend());
+var result = docx.conversion(Path.of("input.docx")).convertTo(target, "converted.pdf");
+new HtmlImporter().conversionFile("input.html")
+        .convertTo(docx.conversionTarget(), "converted.docx");
+```
+
 ## 覆盖范围
 
 | 层次 | 链式入口 |
@@ -135,7 +217,7 @@ var result = engine.export(document)
 
 `GridTable` 新增 `minimumRowHeights`，`TextComponent` 新增 `minimumHeight`；旧构造签名保留并使用零最小高度。record 反射分量及字符串表示包含新增属性。`GridTable` 的行高顺序缺陷修复可能减少旧调用中过量分配的高度，因而影响分页；本次不更新既有视觉基线。
 
-当前项目尚未发布。本地隔离 Maven 调用方验证覆盖新增 DSL、页脚、预算、PDF 临时缓存及原子输出，不等于正式发布兼容性承诺。
+`0.1.0-rc.1` 已发布到 Maven Central，后续源码新增 API 需等待新版本发布。隔离 Maven 调用方验证与正式发布分别记录；新增 DSL、页脚、预算、PDF 临时缓存及原子输出继续保留对应验收边界。
 
 模板调用见 [XML](xml-template-api.md)及 [Markdown](markdown-template-api.md)。[PDF 适配器](pdf-adapter-api.md)处理既有静态页，不恢复语义模型；它的 PdfLimits 位于 `adapter.pdf`，与 PDF 输出后端的同名限制类型属于不同契约，按所用入口显式导入。
 

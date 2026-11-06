@@ -29,6 +29,32 @@ class DocumentConversionTest {
             output.write(((com.mirakyux.export4j.model.Paragraph) document.sections().getFirst().blocks().getFirst()).text().getBytes(StandardCharsets.UTF_8)); return EMPTY;
         });
     }
+    @Test void directConversionRunsEachStageOnceAndBorrowsItsDestination() throws IOException {
+        var reads = new AtomicInteger(); var writes = new AtomicInteger();
+        var request = DocumentConversion.from("TEXT", policy -> {
+            reads.incrementAndGet(); return DocumentConversion.Input.of(source(), EMPTY);
+        }).edit(editor -> editor.replaceText("OLD", "NEW"));
+        var target = new DocumentConversion.Target("TEXT", (document, notes, policy, output) -> {
+            writes.incrementAndGet(); return text().writer().write(document, notes, policy, output);
+        });
+        var output = new ByteArrayOutputStream() {
+            @Override public void close() { throw new AssertionError("borrowed output closed"); }
+            @Override public void flush() { throw new AssertionError("borrowed output flushed"); }
+        };
+        var result = request.convertTo(target, output);
+        assertEquals("NEW", output.toString(StandardCharsets.UTF_8));
+        assertEquals(1, reads.get()); assertEquals(1, writes.get()); assertEquals(3, result.bytesWritten());
+    }
+
+    @Test void directConversionFailurePreservesExistingFileAndAvoidsReadingInvalidDestinations() throws IOException {
+        var target = directory.resolve("protected.txt"); Files.writeString(target, "old");
+        var reads = new AtomicInteger();
+        var request = DocumentConversion.from("TEXT", policy -> { reads.incrementAndGet(); throw new IOException("injected input failure"); });
+        assertThrows(NullPointerException.class, () -> request.convertTo(text(), (Path) null));
+        assertEquals(0, reads.get());
+        assertThrows(IOException.class, () -> request.convertTo(text(), target.toString()));
+        assertEquals("old", Files.readString(target));
+    }
     @Test void stagesExecuteOnceAndPreparedBytesIgnoreLaterPlanChanges() throws Exception {
         var reads = new AtomicInteger(); var edits = new AtomicInteger(); var writes = new AtomicInteger();
         var request = DocumentConversion.from("TEXT", policy -> { reads.incrementAndGet(); return DocumentConversion.Input.of(source(), EMPTY); })

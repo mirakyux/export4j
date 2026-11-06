@@ -39,6 +39,7 @@ import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingIssue;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
@@ -150,6 +151,16 @@ public final class XmlTemplateWriter {
         }
         /** Atomic single-path publication; the parent must exist. No non-atomic fallback. */
         public ProcessingReport to(Path output) throws IOException { TemplateBundleIO.publish(bytes, output, execution); return actual(); }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport to(String output) throws IOException {
+            return to(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ProcessingReport to(File output) throws IOException {
+            return to(Objects.requireNonNull(output, "output").toPath());
+        }
         private ProcessingReport actual() { return new ProcessingReport(ProcessingReport.Phase.ACTUAL, issues); }
     }
 

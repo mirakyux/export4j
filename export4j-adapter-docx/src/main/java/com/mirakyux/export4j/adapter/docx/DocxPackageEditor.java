@@ -11,6 +11,7 @@ import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -159,6 +160,16 @@ public final class DocxPackageEditor {
             } catch (IOException | RuntimeException | Error failure) {
                 try { Files.deleteIfExists(temporary); } catch (IOException cleanup) { failure.addSuppressed(cleanup); } throw failure;
             }
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public Result to(String output) throws IOException {
+            return to(Path.of(Objects.requireNonNull(output, "output")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public Result to(File output) throws IOException {
+            return to(Objects.requireNonNull(output, "output").toPath());
         }
     }
 

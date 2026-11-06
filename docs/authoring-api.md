@@ -9,8 +9,6 @@
 以下代码使用项目 API 和 JDK。字体文件由调用方提供；库不扫描系统字体，也不携带示例字体。
 
 ~~~java
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;
 import com.mirakyux.export4j.components.DocumentEngine;
@@ -19,8 +17,8 @@ import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.model.Document;
 
 // 在可抛出 IOException 的调用方法中：
-var latin = TrueTypeFontLoader.load(Files.readAllBytes(Path.of("fonts/latin.ttf")));
-var chinese = TrueTypeFontLoader.load(Files.readAllBytes(Path.of("fonts/chinese.ttf")));
+var latin = TrueTypeFontLoader.load("fonts/latin.ttf");
+var chinese = TrueTypeFontLoader.load("fonts/chinese.ttf");
 var engine = DocumentEngine.builder(FontGroup.strict(List.of(latin, chinese))).build();
 var document = Document.builder()
         .heading("季度报告", 1)
@@ -30,8 +28,10 @@ var document = Document.builder()
         .numbered("steps", "导出报告")
         .table(List.of("指标", "数值"), List.of(List.of("收入", "120")))
         .build();
-var result = engine.write(document, new PdfBackend(), Path.of("report.pdf"));
+var result = engine.write(document, new PdfBackend(), "report.pdf");
 ~~~
+
+上述本地文件便利重载为当前开发源码新增 API，已发布的 `0.1.0-rc.1` 不包含。它们使用原有文件／流实现和预算；详见[文件与流的便利入口](fluent-api.md#文件与流的便利入口)。
 
 `Document.builder()` 默认使用 A4、四边 54 pt 页边距、空元数据和 12 pt 正文。正文固定行距为 18 pt，段后间距为 6 pt。标题按级别设置字号，并保持整段与下一块。`metadata(...)`、`pageSettings(...)` 修改文档设置；`bodyFormat(...)` 只影响随后添加的正文、列表和便利表格。正文样式不覆盖标题默认格式。
 

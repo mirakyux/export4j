@@ -29,6 +29,40 @@ public record InlineImage(ImageResource resource, double width, double height, d
         this(resource, width, height, baselineShift, altText, "");
     }
 
+    /** Sizes an explicit resource to a point width while preserving its pixel aspect ratio.
+     * This explicit operation may enlarge the image; no pixel-to-point DPI is inferred.
+     * Derived dimensions obey the same positive, finite 14,400 pt limit as the constructor.
+     */
+    public static InlineImage atWidth(ImageResource resource, double width, String altText) {
+        Objects.requireNonNull(resource, "resource");
+        requireExtent(width);
+        double height = width * ((double) resource.pixelHeight() / resource.pixelWidth());
+        return new InlineImage(resource, width, height, 0, altText);
+    }
+
+    /** Fits an explicit resource proportionally inside a positive finite point box, each extent
+     * at most 14,400 pt. Fills the limiting dimension and may explicitly enlarge the image.
+     * This does not change existing image constructors or introduce automatic layout scaling.
+     */
+    public static InlineImage fit(ImageResource resource, double maxWidth, double maxHeight, String altText) {
+        Objects.requireNonNull(resource, "resource");
+        requireExtent(maxWidth);
+        requireExtent(maxHeight);
+        double width = maxWidth;
+        double height = maxWidth * ((double) resource.pixelHeight() / resource.pixelWidth());
+        if (height > maxHeight) {
+            height = maxHeight;
+            width = Math.min(maxWidth, maxHeight * ((double) resource.pixelWidth() / resource.pixelHeight()));
+        }
+        return new InlineImage(resource, width, height, 0, altText);
+    }
+
+    private static void requireExtent(double value) {
+        if (!Double.isFinite(value) || value <= 0 || value > 14_400) {
+            throw new IllegalArgumentException("inline image extent must be positive, finite and at most 14400 points");
+        }
+    }
+
     /** Task-confined builder. Dimensions use points unless the type specifies another unit.
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }

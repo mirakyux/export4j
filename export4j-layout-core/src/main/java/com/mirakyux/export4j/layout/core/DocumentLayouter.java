@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.layout.core;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -23,6 +26,7 @@ import com.mirakyux.export4j.layout.ParagraphFragment;
 import com.mirakyux.export4j.layout.TableFragment;
 import com.mirakyux.export4j.layout.TableRowFragment;
 import com.mirakyux.export4j.model.Block;
+import com.mirakyux.export4j.model.BlockSource;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.ColumnFlow;
 import com.mirakyux.export4j.model.GridLayout;
@@ -117,6 +121,126 @@ public final class DocumentLayouter {
             java.util.function.IntFunction<List<Rect>> exclusions) {
         Objects.requireNonNull(document, "document");
         return new Flow(document, group, roles, preflight(document), Objects.requireNonNull(exclusions, "exclusions")).layout();
+    }
+
+    /** Receives one immutable, fully measured page in increasing physical page order.
+     * The synchronous callback is borrowed, is never closed or retried, and may release its page on return.
+     * A callback failure stops layout immediately and is propagated unchanged.
+     */
+    @FunctionalInterface
+    public interface PageConsumer {
+        void accept(LayoutPage page) throws IOException;
+    }
+
+    /** Emits pages without retaining completed page IR. The immutable source and fonts remain borrowed.
+     * Source validation, pagination, diagnostics, repeated headers and all budgets match
+     * {@link #layout(Document, FontGroup, Map)}.
+     * Measurements for consumed blocks are released; the largest current block, necessary keep-chain
+     * lookahead and source-ID validation still require memory. This is not an incremental source API.
+     * Later content or global semantic validation may fail after earlier callbacks; callers own atomic publication.
+     * Empty documents emit one page. All callbacks run synchronously on the calling thread.
+     * @return the number of successfully emitted pages
+     * @throws IOException when the page consumer fails
+     */
+    public int layoutPages(Document document, FontGroup group, Map<String, FontGroup> roles,
+            PageConsumer consumer) throws IOException {
+        Objects.requireNonNull(document, "document");
+        var flow = new Flow(document, group, roles, preflight(document), ignored -> List.of(),
+                Objects.requireNonNull(consumer, "consumer"));
+        flow.adaptiveExclusions = false;
+        return stream(flow);
+    }
+
+    /** Emits page IR around the same snapshotted page-coordinate exclusions as the full layout overload.
+     * Exclusions may be requested for bounded lookahead and are released after their page is emitted.
+     * The source and callback ownership and retained-measurement limits match {@link #layoutPages(Document, FontGroup, Map, PageConsumer)}.
+     * @return the number of successfully emitted pages
+     * @throws IOException when the page consumer fails
+     */
+    public int layoutPages(Document document, FontGroup group, Map<String, FontGroup> roles,
+            java.util.function.IntFunction<List<Rect>> exclusions, PageConsumer consumer) throws IOException {
+        Objects.requireNonNull(document, "document");
+        return stream(new Flow(document, group, roles, preflight(document),
+                Objects.requireNonNull(exclusions, "exclusions"), Objects.requireNonNull(consumer, "consumer")));
+    }
+
+    /** Receives one page and the original top-level blocks presented on that page, in source order.
+     * Sources include a continuing block on each of its pages and retain Heading rather than its
+     * internal paragraph projection. The immutable list is a short-lived snapshot; retaining it or
+     * the page is the consumer's choice. Page-break markers with no presentation are excluded.
+     */
+    @FunctionalInterface
+    public interface BlockPageConsumer {
+        void accept(LayoutPage page, List<Block> sources) throws IOException;
+    }
+
+    /** Lays out a borrowed single-pass block source without collecting the input or completed pages.
+     * Supported roots are Paragraph, Heading, Table, PageBreak, ColumnFlow, GridLayout and
+     * ComponentBlock; other semantic forms require explicit lowering by the caller.
+     * Only the current page's source blocks, the largest active block and necessary keep-chain
+     * lookahead are retained. Global source IDs and budget counters remain until completion.
+     * All callbacks run synchronously, without retry. This method closes neither source nor consumer.
+     * Later source, layout or global validation failures can follow earlier callbacks, so consumers
+     * are responsible for atomic publication. Empty sources emit one blank page.
+     * @return the number of successfully emitted pages
+     * @throws IOException on source or consumer failure, preserving the original exception
+     */
+    public int layoutBlocks(PageSettings settings, BlockSource source, FontGroup group,
+            Map<String, FontGroup> roles, BlockPageConsumer consumer) throws IOException {
+        var flow = new Flow(Objects.requireNonNull(settings, "settings"), Objects.requireNonNull(source, "source"),
+                Objects.requireNonNull(group, "group"), Objects.requireNonNull(roles, "roles"),
+                ignored -> List.of(), Objects.requireNonNull(consumer, "consumer"));
+        flow.adaptiveExclusions = false;
+        return stream(flow);
+    }
+
+    /** Single-pass block flow around the same snapshotted page-coordinate exclusions as layoutPages.
+     * Source, callback, validation and retention contracts match the overload without exclusions.
+     * @return the number of successfully emitted pages
+     * @throws IOException on source or consumer failure, preserving the original exception
+     */
+    public int layoutBlocks(PageSettings settings, BlockSource source, FontGroup group,
+            Map<String, FontGroup> roles, java.util.function.IntFunction<List<Rect>> exclusions,
+            BlockPageConsumer consumer) throws IOException {
+        return stream(new Flow(Objects.requireNonNull(settings, "settings"), Objects.requireNonNull(source, "source"),
+                Objects.requireNonNull(group, "group"), Objects.requireNonNull(roles, "roles"),
+                Objects.requireNonNull(exclusions, "exclusions"), Objects.requireNonNull(consumer, "consumer")));
+    }
+
+    private int stream(Flow flow) throws IOException {
+        try {
+            flow.run();
+            return flow.pages.size();
+        } catch (PageConsumerFailure | FlowBlockInput.SourceFailure failure) {
+            throw failure.getCause();
+        }
+    }
+
+    /** Bridges a checked page callback through the existing synchronous pagination implementation. */
+    private static final class PageConsumerFailure extends UncheckedIOException {
+        @java.io.Serial
+        private static final long serialVersionUID = 1L;
+
+        private PageConsumerFailure(IOException cause) { super(cause); }
+    }
+
+    /** Keeps a physical count independently of whether the caller requests collected or emitted pages. */
+    private static final class Pages {
+        private final PageConsumer consumer;
+        private final List<LayoutPage> collected = new ArrayList<>();
+        private int count;
+
+        private Pages(PageConsumer consumer) { this.consumer = consumer; }
+        private int size() { return count; }
+        private boolean streaming() { return consumer != null; }
+        private void add(LayoutPage page) {
+            if (consumer == null) { collected.add(page); }
+            else {
+                try { consumer.accept(page); }
+                catch (IOException failure) { throw new PageConsumerFailure(failure); }
+            }
+            count++;
+        }
     }
 
     /**
@@ -354,12 +478,14 @@ public final class DocumentLayouter {
     private final class Flow {
         private final Document document;
         private final PageSettings settings;
-        private final List<LayoutPage> pages = new ArrayList<>();
+        private final Pages pages;
         private final List<LayoutFragment> elements = new ArrayList<>();
-        private final List<Block> blocks;
+        private final FlowBlockInput blocks;
         private final Map<String, FontGroup> roles;
         private final FontGroup fontGroup;
         private final Map<Integer, ParagraphLayout> paragraphs = new HashMap<>();
+        private final SimpleLayoutValues simpleLayouts;
+        private final CellGeometryValues cellGeometry;
         private final Map<Integer, MeasuredTable> tables = new HashMap<>();
         private final Map<String, MeasuredTable> cellTables = new HashMap<>();
         private final Map<Integer, List<ComponentLayout>> components = new HashMap<>();
@@ -375,7 +501,10 @@ public final class DocumentLayouter {
         private long componentCommands;
         private record NestedSource(Table source, int hostIndex) { }
         private final List<NestedSource> nestedSources = new ArrayList<>();
-        private final SemanticSourceRegistry semanticSources;
+        private SemanticSourceRegistry semanticSources;
+        private final java.util.Set<String> streamedSourceIds;
+        private final SourceBudget streamedSourceBudget;
+        private long streamedSemanticNodes;
         private long semanticPlacements;
         private List<CellLocation> measuringPath = List.of();
         private boolean measuringVariableTable;
@@ -387,6 +516,7 @@ public final class DocumentLayouter {
         private boolean speculativeLines;
         private long logicalFragmentLimit = limits.maxPages();
         private int keptThrough = -1;
+        private int activeBlockIndex;
         private final java.util.function.IntFunction<List<Rect>> exclusionSource;
         private final Map<Integer, List<double[]>> exclusionPages = new HashMap<>();
         private boolean adaptiveExclusions = true;
@@ -399,23 +529,81 @@ public final class DocumentLayouter {
         }
         private Flow(Document document, FontGroup group, Map<String, FontGroup> roles, long codePoints,
                 java.util.function.IntFunction<List<Rect>> exclusions) {
+            this(document, group, roles, codePoints, exclusions, null);
+        }
+        private Flow(Document document, FontGroup group, Map<String, FontGroup> roles, long codePoints,
+                java.util.function.IntFunction<List<Rect>> exclusions, PageConsumer consumer) {
             this.document = document;
-            blocks = document.blocks().stream().map(block -> block instanceof Heading heading ? heading.paragraph() : block).toList();
+            pages = new Pages(consumer);
+            simpleLayouts = pages.streaming() ? null : new SimpleLayoutValues();
+            cellGeometry = pages.streaming() ? null : new CellGeometryValues();
+            blocks = FlowBlockInput.fixed(document.blocks());
             settings = document.pageSettings();
             this.fontGroup = group;
             this.roles = Map.copyOf(roles);
             this.codePoints = codePoints;
-            semanticSources = new SemanticSourceRegistry(sourceIds(document.blocks()));
+            var originalIds = sourceIds(document.blocks());
+            semanticSources = new SemanticSourceRegistry(consumer == null ? originalIds : List.of());
+            streamedSourceIds = consumer == null ? null : new java.util.HashSet<>(originalIds);
+            streamedSourceBudget = consumer == null ? null : new SourceBudget();
+            if (streamedSourceBudget != null) { SemanticTree.walk(document.blocks(), streamedSourceBudget::accept); }
             exclusionSource = exclusions;
             loadExclusions();
         }
 
+        private Flow(PageSettings settings, BlockSource source, FontGroup group, Map<String, FontGroup> roles,
+                java.util.function.IntFunction<List<Rect>> exclusions, BlockPageConsumer consumer) {
+            document = new Document(DocumentMetadata.EMPTY, settings, List.of());
+            this.settings = settings;
+            fontGroup = group;
+            this.roles = Map.copyOf(roles);
+            semanticSources = new SemanticSourceRegistry(List.of());
+            streamedSourceIds = new java.util.HashSet<>();
+            streamedSourceBudget = new SourceBudget();
+            blocks = FlowBlockInput.streaming(source, this::acceptBlock);
+            pages = new Pages(page -> consumer.accept(page, blocks.sources(page)));
+            simpleLayouts = null;
+            cellGeometry = null;
+            exclusionSource = exclusions;
+            loadExclusions();
+        }
+
+        private void acceptBlock(Block block, int index) {
+            if (block instanceof GridItem) {
+                throw failure(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT, block, index, pages.size(),
+                        -1, -1, -1, "grid items belong inside a grid layout", null);
+            }
+            long previousCodePoints = streamedSourceBudget.codePoints;
+            SemanticTree.walk(block, visit -> {
+                String id = visit.block().id();
+                if (id == null || id.isBlank() || !streamedSourceIds.add(id)) {
+                    throw new DocumentLayoutException(DocumentLayoutException.Code.INVALID_GEOMETRY, id == null ? "" : id,
+                            index, pages.size(), -1, -1, -1, visit.cellPath(),
+                            "block IDs must be nonblank and globally unique", null);
+                }
+                streamedSourceBudget.accept(new SemanticTree.Visit(visit.block(), index, visit.cellPath()));
+            });
+            long added = streamedSourceBudget.codePoints - previousCodePoints;
+            if (added > limits.maxCodePoints() - codePoints) {
+                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, pages.size(),
+                        -1, -1, -1, "document code point budget exceeded", null);
+            }
+            codePoints += added;
+        }
+
         private DocumentLayout layout() {
-            for (int index = 0; index < blocks.size(); index++) {
-                com.mirakyux.export4j.model.ExecutionContext.progress("BODY", blocks.get(index).id(), pages.size(), index, blocks.size());
+            run();
+            return new DocumentLayout(document.metadata(), pages.collected);
+        }
+
+        private void run() {
+            for (int index = 0; blocks.has(index); index++) {
+                activeBlockIndex = index;
+                com.mirakyux.export4j.model.ExecutionContext.progress("BODY", blocks.get(index).id(), pages.size(), index, blocks.totalHint());
                 Block block = blocks.get(index);
                 if (block instanceof PageBreak) {
                     pendingBreak = !elements.isEmpty();
+                    if (blocks.streaming()) { releaseCompletedBlock(index); }
                     continue;
                 }
                 boolean breakBefore = block instanceof Paragraph p && p.format().pagination().pageBreakBefore();
@@ -432,8 +620,13 @@ public final class DocumentLayouter {
                     case ComponentBlock component -> component(component, index);
                     default -> throw new IllegalStateException("preflight must reject unknown blocks");
                 }
+                releaseCompletedBlock(index);
             }
             pages.add(page());
+            if (blocks.streaming()) {
+                elements.clear();
+                blocks.releaseBefore(Integer.MAX_VALUE);
+            }
             if (!nestedSources.isEmpty()) {
                 var budget = new SourceBudget();
                 SemanticTree.walk(document.blocks(), budget::accept);
@@ -442,7 +635,30 @@ public final class DocumentLayouter {
                             new SemanticTree.Visit(visit.block(), nested.hostIndex(), visit.cellPath())));
                 }
             }
-            return new DocumentLayout(document.metadata(), pages);
+        }
+
+        private void releaseCompletedBlock(int index) {
+            paragraphs.remove(index);
+            tables.remove(index);
+            components.remove(index);
+            componentRegions.remove(index);
+            // Keep-chain preparation may already own a future block's recursive table measurements.
+            if (index >= keptThrough && paragraphs.isEmpty() && tables.isEmpty()
+                    && components.isEmpty() && componentRegions.isEmpty()) {
+                cellTables.clear();
+                gridRows.clear();
+                maximumSourceWidths.clear();
+                if (retainedLineWidths != null) { retainedLineWidths.clear(); }
+            }
+            if (pages.streaming()) {
+                var completeSources = semanticSources.sources();
+                if (!completeSources.isEmpty()) {
+                    // Completed registries contain first-placement IR; retain only collision IDs across blocks.
+                    semanticSources = new SemanticSourceRegistry(List.of());
+                }
+            }
+            int firstPageSource = elements.isEmpty() ? index + 1 : elements.getFirst().blockIndex();
+            blocks.releaseBefore(Math.min(index + 1, firstPageSource));
         }
 
         private record ColumnBand(int page, double start, double height) { }
@@ -997,7 +1213,23 @@ public final class DocumentLayouter {
                             -1, -1, -1, "nested semantic continuation identity is invalid", cause);
                 }
                 if (!firstSource) { continue; }
-                nestedSources.add(new NestedSource(placed.source(), index));
+                if (pages.streaming()) {
+                    SemanticTree.walk(placed.source(), visit -> {
+                        if (!streamedSourceIds.add(visit.block().id())) {
+                            throw failure(DocumentLayoutException.Code.COMPONENT_LAYOUT_FAILED, block, index, pages.size(),
+                                    -1, -1, -1, "nested semantic continuation identity is invalid",
+                                    new IllegalArgumentException("semantic source descendant ID conflicts with another document source"));
+                        }
+                        if (++streamedSemanticNodes > 100_000) {
+                            throw failure(DocumentLayoutException.Code.COMPONENT_LAYOUT_FAILED, block, index, pages.size(),
+                                    -1, -1, -1, "nested semantic continuation identity is invalid",
+                                    new IllegalArgumentException("semantic source descendant budget exceeded"));
+                        }
+                        streamedSourceBudget.accept(new SemanticTree.Visit(visit.block(), index, visit.cellPath()));
+                    });
+                } else {
+                    nestedSources.add(new NestedSource(placed.source(), index));
+                }
                 SemanticTree.walk(placed.source(), visit -> {
                     var source = visit.block();
                     if (source instanceof Paragraph paragraph) {
@@ -1196,7 +1428,7 @@ public final class DocumentLayouter {
                     }
                     if (retainedLineWidths != null) { result = new ParagraphLayout(width, result.height(), result.lines(), result.diagnostics()); }
                     addLines(result.lines().size(), paragraph, index, -1, -1);
-                    return result;
+                    return simpleLayouts == null ? result : simpleLayouts.reuse(result);
                 }
                 return shape(paragraph.text(), width, new ParagraphStyle(format.fontSize(),
                         format.lineHeight(), format.firstLineIndent(), format.subsequentLineIndent(), alignment(format.alignment()), format.lineBreakPolicy()),
@@ -1210,7 +1442,7 @@ public final class DocumentLayouter {
             }
             double height = 0;
             double after = 0;
-            for (int next = index; next < blocks.size(); next++) {
+            for (int next = index; blocks.has(next); next++) {
                 Block block = blocks.get(next);
                 if (block instanceof PageBreak || next > index && block instanceof Paragraph p && p.format().pagination().pageBreakBefore()) {
                     break;
@@ -1218,6 +1450,7 @@ public final class DocumentLayouter {
                 height += next == index ? 0 : after + before(block);
                 boolean linked = block instanceof Paragraph p && p.format().pagination().keepWithNext();
                 height += minimumHeight(block, next, linked, Math.max(0, settings.contentHeight() - height));
+                if (blocks.streaming()) { requireHeight(height, first, index, -1); }
                 keptThrough = next;
                 after = after(block);
                 if (!linked) {
@@ -1614,8 +1847,13 @@ public final class DocumentLayouter {
                 int span = measured.anchors().get(anchor).cell().columnSpan();
                 double x = spannedWidth(widths, 0, column);
                 double width = spannedWidth(widths, column, span);
-                cells.add(new CellFragment(column, new Rect(x, y, width, measured.cellHeights().get(anchor)),
-                        new Point(x + padding.left(), y + padding.top()), measured.cells().get(anchor).content()));
+                var bounds = new Rect(x, y, width, measured.cellHeights().get(anchor));
+                var textOrigin = new Point(x + padding.left(), y + padding.top());
+                if (cellGeometry != null) {
+                    bounds = cellGeometry.reuse(bounds);
+                    textOrigin = cellGeometry.reuse(textOrigin);
+                }
+                cells.add(new CellFragment(column, bounds, textOrigin, measured.cells().get(anchor).content()));
             }
             return new TableRowFragment(row, row < table.headerRows(), repeated, cells);
         }
@@ -2875,7 +3113,7 @@ public final class DocumentLayouter {
             }
             if (retainedLineWidths != null) { result = new ParagraphLayout(width, result.height(), result.lines(), result.diagnostics()); }
             if (countLines) { addLines(result.lines().size(), block, index, row, column); }
-            return result;
+            return simpleLayouts == null ? result : simpleLayouts.reuse(result);
         }
 
         private List<StyledSpan> styledSpans(List<com.mirakyux.export4j.model.InlineText> inlines,
@@ -2917,7 +3155,7 @@ public final class DocumentLayouter {
                         row, column, -1, "text geometry is invalid for the content area", cause);
             }
             if (countLines) { addLines(result.lines().size(), block, index, row, column); }
-            return result;
+            return simpleLayouts == null ? result : simpleLayouts.reuse(result);
         }
 
         private void addLines(long count, Block block, int index, int row, int column) {
@@ -3019,6 +3257,8 @@ public final class DocumentLayouter {
             }
             pages.add(page());
             elements.clear();
+            blocks.releaseBefore(activeBlockIndex);
+            if (pages.streaming()) { exclusionPages.keySet().removeIf(page -> page < pages.size()); }
             used = 0;
             previousAfter = 0;
             loadExclusions();
@@ -3031,6 +3271,31 @@ public final class DocumentLayouter {
 
         private Point origin() {
             return new Point(settings.margins().left(), settings.margins().top() + used);
+        }
+    }
+
+    /** Confined to a collected flow; exact immutable geometry has no source identity.
+     * Eviction drops only cache references, while returned IR owns its geometry references.
+     */
+    private static final class CellGeometryValues {
+        private static final int MAX_ENTRIES = 2048;
+        private final LinkedHashMap<Rect, Rect> bounds = new LinkedHashMap<>(16, 0.75f, true);
+        private final LinkedHashMap<Point, Point> origins = new LinkedHashMap<>(16, 0.75f, true);
+
+        private Rect reuse(Rect value) {
+            var existing = bounds.get(value);
+            if (existing != null) { return existing; }
+            if (bounds.size() == MAX_ENTRIES) { bounds.pollFirstEntry(); }
+            bounds.put(value, value);
+            return value;
+        }
+
+        private Point reuse(Point value) {
+            var existing = origins.get(value);
+            if (existing != null) { return existing; }
+            if (origins.size() == MAX_ENTRIES) { origins.pollFirstEntry(); }
+            origins.put(value, value);
+            return value;
         }
     }
 
@@ -3095,18 +3360,38 @@ public final class DocumentLayouter {
     }
 
     static ParagraphLayout fragment(ParagraphLayout shaped, int first, int count, double lineHeight) {
-        List<TextLine> lines = new ArrayList<>();
+        List<TextLine> lines = null;
         double ascent = shaped.lines().getFirst().baselineY();
         for (int offset = 0; offset < count; offset++) {
             TextLine original = shaped.lines().get(first + offset);
-            lines.add(original.atBaseline(offset * lineHeight + ascent));
+            double baseline = offset * lineHeight + ascent;
+            boolean unchanged = Double.doubleToLongBits(original.baselineY()) == Double.doubleToLongBits(baseline);
+            if (!unchanged && lines == null) {
+                lines = new ArrayList<>(count);
+                lines.addAll(shaped.lines().subList(first, first + offset));
+            }
+            if (lines != null) { lines.add(unchanged ? original : original.atBaseline(baseline)); }
+        }
+        if (lines == null) {
+            lines = first == 0 && count == shaped.lines().size() ? shaped.lines() : shaped.lines().subList(first, first + count);
         }
         int sourceStart = lines.getFirst().sourceStart();
         int sourceEnd = lines.getLast().sourceEnd();
-        var diagnostics = shaped.diagnostics().stream()
-                .filter(diagnostic -> diagnostic.sourceStart() >= sourceStart && diagnostic.sourceStart() < sourceEnd)
-                .toList();
-        return new ParagraphLayout(shaped.width(), count * lineHeight, lines, diagnostics);
+        var diagnostics = shaped.diagnostics();
+        for (var diagnostic : diagnostics) {
+            if (diagnostic.sourceStart() < sourceStart || diagnostic.sourceStart() >= sourceEnd) {
+                diagnostics = shaped.diagnostics().stream()
+                        .filter(value -> value.sourceStart() >= sourceStart && value.sourceStart() < sourceEnd)
+                        .toList();
+                break;
+            }
+        }
+        double height = count * lineHeight;
+        // Whole paragraphs commonly reach this method after value pooling. Preserve that sharing
+        // only when slicing would leave every line, dimension and diagnostic exactly unchanged.
+        if (lines == shaped.lines() && diagnostics == shaped.diagnostics()
+                && Double.doubleToLongBits(height) == Double.doubleToLongBits(shaped.height())) { return shaped; }
+        return new ParagraphLayout(shaped.width(), height, lines, diagnostics);
     }
 
     private static boolean fits(double height, double available) {

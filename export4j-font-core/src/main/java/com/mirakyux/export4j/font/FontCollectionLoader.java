@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.font;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Objects;
 
@@ -16,6 +19,39 @@ public final class FontCollectionLoader {
 
     public static FontFace load(byte[] collection, int member) throws IOException {
         return load(collection, member, TrueTypeFontLoader.DEFAULT_MAX_BYTES);
+    }
+
+    /** Explicit zero-based member under the default byte limit; the borrowed stream remains open. */
+    public static FontFace load(InputStream collection, int member) throws IOException {
+        return load(collection, member, TrueTypeFontLoader.DEFAULT_MAX_BYTES);
+    }
+
+    /** Loads an explicit local collection and closes its stream; member is zero based. */
+    public static FontFace load(Path collection, int member) throws IOException {
+        return load(collection, member, TrueTypeFontLoader.DEFAULT_MAX_BYTES);
+    }
+
+    /** Bounded local-file loading with an explicit zero-based member; closes the opened stream. */
+    public static FontFace load(Path collection, int member, int maxBytes) throws IOException {
+        Objects.requireNonNull(collection, "collection"); requireLimit(maxBytes);
+        try (var input = Files.newInputStream(collection)) { return load(input, member, maxBytes); }
+    }
+
+    /** Local filesystem path; never selects a collection member implicitly. */
+    public static FontFace load(String collection, int member) throws IOException {
+        return load(Path.of(Objects.requireNonNull(collection, "collection")), member);
+    }
+    /** Local filesystem path with an explicit encoded byte limit. */
+    public static FontFace load(String collection, int member, int maxBytes) throws IOException {
+        return load(Path.of(Objects.requireNonNull(collection, "collection")), member, maxBytes);
+    }
+    /** Local file; never selects a collection member implicitly. */
+    public static FontFace load(File collection, int member) throws IOException {
+        return load(Objects.requireNonNull(collection, "collection").toPath(), member);
+    }
+    /** Local file with an explicit encoded byte limit. */
+    public static FontFace load(File collection, int member, int maxBytes) throws IOException {
+        return load(Objects.requireNonNull(collection, "collection").toPath(), member, maxBytes);
     }
 
     public static FontFace load(InputStream collection, int member, int maxBytes) throws IOException {

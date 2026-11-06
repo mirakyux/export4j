@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.components;
 
+import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
@@ -10,6 +12,7 @@ import java.util.HashMap;
 import java.util.Objects;
 import java.util.function.Supplier;
 import com.mirakyux.export4j.font.FontGroup;
+import com.mirakyux.export4j.font.FontSet;
 import com.mirakyux.export4j.graphics.DocumentBackend;
 import com.mirakyux.export4j.graphics.PageBackend;
 import com.mirakyux.export4j.layout.core.DocumentPainter;
@@ -17,7 +20,9 @@ import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.layout.core.StreamingTableLayouter;
 import com.mirakyux.export4j.layout.core.StreamingTableLimits;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.BlockSource;
 import com.mirakyux.export4j.model.PageDocument;
+import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
@@ -53,6 +58,14 @@ public final class DocumentEngine {
     }
 
     public static Builder builder(FontGroup fonts) { return new Builder(fonts); }
+
+    /** Uses explicit regular and named font groups; no variants are discovered or synthesized. */
+    public static Builder builder(FontSet fonts) {
+        Objects.requireNonNull(fonts, "fonts");
+        var builder = new Builder(fonts.regular());
+        fonts.roles().forEach(builder::fontRole);
+        return builder;
+    }
 
     public static final class Builder {
         private final FontGroup fonts;
@@ -133,6 +146,60 @@ public final class DocumentEngine {
         return new ExportRequest(() -> layout(document));
     }
 
+    /** Plans and replays an immutable document with a page-at-a-time layout and drawing working set.
+     * The caller's source model remains retained; completed page IR and display lists are released.
+     * Total pages, contents and future references use explicit bounded planning before output.
+     * Custom components must be deterministic across passes. Select a PageBackend on the request;
+     * backend format state and the largest individual source block have their own memory bounds.
+     * No layout or I/O occurs until to() is invoked. Comments and editable form navigation are
+     * rejected before opening the page writer because its SPI cannot represent them.
+     */
+    public PagedExportRequest exportPaged(Document document) {
+        Objects.requireNonNull(document, "document");
+        return new PagedExportRequest(new SectionedDocument(document.metadata(), List.of(new Section(
+                "document", document.pageSettings(), document.blocks(), 0))),
+                List.of(SectionTemplate.uniform(pageTemplate)), navigation, notes, fonts, roles);
+    }
+
+    /** Page-at-a-time export including semantic header/footer declarations. A nonempty configured
+     * Java page template conflicts with these declarations, as in layout(PageDocument).
+     * The immutable source remains borrowed; path publication is atomic and stream output is borrowed.
+     */
+    public PagedExportRequest exportPaged(PageDocument document) {
+        Objects.requireNonNull(document, "document");
+        if (!pageTemplate.equals(PageTemplate.EMPTY)) {
+            throw new IllegalStateException("page document conflicts with configured page template");
+        }
+        var body = document.document();
+        return new PagedExportRequest(new SectionedDocument(body.metadata(), List.of(new Section(
+                "document", body.pageSettings(), body.blocks(), 0))),
+                List.of(PageRegionTemplates.sectionFrom(document.pageRegions())), navigation, notes, fonts, roles);
+    }
+
+    /** Page-at-a-time sectioned export with displayed numbering and first/odd/even regions.
+     * Semantic model regions conflict with a nonempty configured Java page template.
+     */
+    public PagedExportRequest exportPaged(SectionedDocument document) {
+        Objects.requireNonNull(document, "document");
+        boolean hasRegions = document.sections().stream().anyMatch(section ->
+                !section.pageRegions().equals(com.mirakyux.export4j.model.PageRegions.EMPTY));
+        if (hasRegions && !pageTemplate.equals(PageTemplate.EMPTY)) {
+            throw new IllegalStateException("section regions conflict with configured page template");
+        }
+        return new PagedExportRequest(document, document.sections().stream().map(section -> hasRegions
+                ? PageRegionTemplates.sectionFrom(section.pageRegions()) : SectionTemplate.uniform(pageTemplate)).toList(),
+                navigation, notes, fonts, roles);
+    }
+
+    /** Explicit per-section templates and navigation for page-at-a-time export. Each source section
+     * requires one immutable template. The same planning, ownership and failure contracts apply.
+     */
+    public PagedExportRequest exportPaged(SectionedDocument document, List<SectionTemplate> templates,
+            Navigation selectedNavigation, List<Note> selectedNotes) {
+        return new PagedExportRequest(Objects.requireNonNull(document, "document"), templates,
+                selectedNavigation, selectedNotes, fonts, roles);
+    }
+
     /** Explicit layout/backend conversion target. format is the caller's actual target key (e.g. PDF),
      * used for shared loss policy resolution. Backend/thread-safety ownership remains with the caller.
      * Notes come from conversion input; preconfigured notes are rejected to avoid hidden source data.
@@ -205,6 +272,32 @@ public final class DocumentEngine {
             throw new IllegalStateException("single-pass semantic output requires explicit table-only settings");
         }
         return new StreamingReplayRequest(table, source, fonts, roles, false);
+    }
+
+    /** Single-pass ordinary blocks supplied on demand. The source is opened once by to() and closed
+     * before successful output completion. Configure an exact positive expectedPages on the request;
+     * page fields and this engine's page template use that total, which is checked after consuming the source.
+     * Navigation, notes and future references require a different explicit document/replay API.
+     * Source factories transfer ownership of each newly opened source; fonts and backends remain borrowed.
+     */
+    public StreamingDocumentRequest exportSemantic(PageSettings settings, BlockSource.Factory source) {
+        if (!navigation.equals(Navigation.EMPTY) || !notes.isEmpty()) {
+            throw new IllegalStateException("ordinary block streams do not support configured navigation or notes");
+        }
+        return new StreamingDocumentRequest(settings, source, fonts, roles, pageTemplate, false);
+    }
+
+    /** Explicit two-pass ordinary block export from a stable caller-controlled snapshot. The first pass
+     * determines total pages and records compact layout proofs; the second resolves page fields and writes
+     * each page once. Both source passes are owned and closed, with raw source and layout equality checked
+     * before successful writer.finish. No database requery or full source buffering is introduced.
+     * Configured navigation, notes and future references are unsupported and fail explicitly.
+     */
+    public StreamingDocumentRequest exportReplay(PageSettings settings, BlockSource.Factory source) {
+        if (!navigation.equals(Navigation.EMPTY) || !notes.isEmpty()) {
+            throw new IllegalStateException("ordinary block replay does not support configured navigation or notes");
+        }
+        return new StreamingDocumentRequest(settings, source, fonts, roles, pageTemplate, true);
     }
 
     /** Task-confined synchronous export. Keeps no full-document layout, display list or warning list.
@@ -282,6 +375,16 @@ public final class DocumentEngine {
             Objects.requireNonNull(backend, "backend must be configured");
             return writeAtomically(target, this::to);
         }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public StreamingExportSummary to(String target) throws IOException {
+            return to(Path.of(Objects.requireNonNull(target, "target")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public StreamingExportSummary to(File target) throws IOException {
+            return to(Objects.requireNonNull(target, "target").toPath());
+        }
     }
 
     private static final class CountingOutput extends OutputStream {
@@ -317,6 +420,16 @@ public final class DocumentEngine {
             Objects.requireNonNull(backend, "backend must be configured");
             return writeAtomically(target, this::to);
         }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ComponentDocumentLayout to(String target) throws IOException {
+            return to(Path.of(Objects.requireNonNull(target, "target")));
+        }
+
+        /** Local file output using the same atomic publication contract as the Path overload. */
+        public ComponentDocumentLayout to(File target) throws IOException {
+            return to(Objects.requireNonNull(target, "target").toPath());
+        }
     }
 
     /** Layout completes before output begins. Caller owns output and chooses a backend explicitly. */
@@ -326,6 +439,16 @@ public final class DocumentEngine {
 
     /** One timeout covers layout and output. Cancellation is cooperative; failed stream output may be partial. */
     public ComponentDocumentLayout write(Document document, DocumentBackend backend, OutputStream output, ExecutionOptions options) throws IOException {
+        return writeLayout(() -> layout(document), backend, output, options);
+    }
+
+    /** Exports body and declared page regions; the supplied stream remains caller-owned. */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, OutputStream output) throws IOException {
+        return write(document, backend, output, ExecutionOptions.DEFAULT);
+    }
+
+    /** Uses the same page-region validation and execution scope as export(PageDocument). */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, OutputStream output, ExecutionOptions options) throws IOException {
         return writeLayout(() -> layout(document), backend, output, options);
     }
 
@@ -357,13 +480,73 @@ public final class DocumentEngine {
         return writeAtomically(document, backend, target, ExecutionOptions.DEFAULT);
     }
 
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(Document document, DocumentBackend backend, String target) throws IOException {
+        return write(document, backend, Path.of(Objects.requireNonNull(target, "target")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(Document document, DocumentBackend backend, File target) throws IOException {
+        return write(document, backend, Objects.requireNonNull(target, "target").toPath());
+    }
+
     /** Atomic path output with caller-supplied execution limits. */
     public ComponentDocumentLayout write(Document document, DocumentBackend backend, Path target, ExecutionOptions options) throws IOException {
         return writeAtomically(document, backend, target, options);
     }
 
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(Document document, DocumentBackend backend, String target, ExecutionOptions options) throws IOException {
+        return write(document, backend, Path.of(Objects.requireNonNull(target, "target")), options);
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(Document document, DocumentBackend backend, File target, ExecutionOptions options) throws IOException {
+        return write(document, backend, Objects.requireNonNull(target, "target").toPath(), options);
+    }
+
+    /** Atomic body and page-region output; parent directory must already exist. */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, Path target) throws IOException {
+        return write(document, backend, target, ExecutionOptions.DEFAULT);
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, String target) throws IOException {
+        return write(document, backend, Path.of(Objects.requireNonNull(target, "target")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, File target) throws IOException {
+        return write(document, backend, Objects.requireNonNull(target, "target").toPath());
+    }
+
+    /** Atomic body and page-region output with caller-supplied execution limits. */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, Path target, ExecutionOptions options) throws IOException {
+        return writeAtomically(target, output -> write(document, backend, output, options));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, String target, ExecutionOptions options) throws IOException {
+        return write(document, backend, Path.of(Objects.requireNonNull(target, "target")), options);
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(PageDocument document, DocumentBackend backend, File target, ExecutionOptions options) throws IOException {
+        return write(document, backend, Objects.requireNonNull(target, "target").toPath(), options);
+    }
+
     public ComponentDocumentLayout writeAtomically(Document document, DocumentBackend backend, Path target) throws IOException {
         return writeAtomically(document, backend, target, ExecutionOptions.DEFAULT);
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout writeAtomically(Document document, DocumentBackend backend, String target) throws IOException {
+        return writeAtomically(document, backend, Path.of(Objects.requireNonNull(target, "target")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout writeAtomically(Document document, DocumentBackend backend, File target) throws IOException {
+        return writeAtomically(document, backend, Objects.requireNonNull(target, "target").toPath());
     }
 
     /** Atomic sectioned output with configured default page regions/navigation; parent directory must exist. */
@@ -371,8 +554,28 @@ public final class DocumentEngine {
         return write(document, backend, target, ExecutionOptions.DEFAULT);
     }
 
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(SectionedDocument document, DocumentBackend backend, String target) throws IOException {
+        return write(document, backend, Path.of(Objects.requireNonNull(target, "target")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(SectionedDocument document, DocumentBackend backend, File target) throws IOException {
+        return write(document, backend, Objects.requireNonNull(target, "target").toPath());
+    }
+
     public ComponentDocumentLayout write(SectionedDocument document, DocumentBackend backend, Path target, ExecutionOptions options) throws IOException {
         return writeAtomically(target, output -> write(document, backend, output, options));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(SectionedDocument document, DocumentBackend backend, String target, ExecutionOptions options) throws IOException {
+        return write(document, backend, Path.of(Objects.requireNonNull(target, "target")), options);
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout write(SectionedDocument document, DocumentBackend backend, File target, ExecutionOptions options) throws IOException {
+        return write(document, backend, Objects.requireNonNull(target, "target").toPath(), options);
     }
 
     /** Writes a sibling temporary file, then atomically replaces target after successful completion.
@@ -380,6 +583,16 @@ public final class DocumentEngine {
      */
     public ComponentDocumentLayout writeAtomically(Document document, DocumentBackend backend, Path target, ExecutionOptions options) throws IOException {
         return writeAtomically(target, output -> write(document, backend, output, options));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout writeAtomically(Document document, DocumentBackend backend, String target, ExecutionOptions options) throws IOException {
+        return writeAtomically(document, backend, Path.of(Objects.requireNonNull(target, "target")), options);
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ComponentDocumentLayout writeAtomically(Document document, DocumentBackend backend, File target, ExecutionOptions options) throws IOException {
+        return writeAtomically(document, backend, Objects.requireNonNull(target, "target").toPath(), options);
     }
 
     @FunctionalInterface
@@ -390,7 +603,9 @@ public final class DocumentEngine {
         Path temporary = Files.createTempFile(absolute.getParent(), ".export4j-", ".tmp");
         try {
             T result;
-            try (var output = Files.newOutputStream(temporary)) { result = export.write(output); }
+            try (var output = new BufferedOutputStream(Files.newOutputStream(temporary), 64 * 1024)) {
+                result = export.write(output);
+            }
             Files.move(temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             return result;
         } catch (IOException | RuntimeException | Error failure) {

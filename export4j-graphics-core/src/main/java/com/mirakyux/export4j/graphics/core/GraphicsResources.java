@@ -95,24 +95,43 @@ public final class GraphicsResources {
         };
     }
 
-    /** Maps paint resources without changing command indices or logical-text bindings. */
+    /** Maps paint resources without changing command indices or logical-text bindings.
+     * Unchanged immutable lists and command wrappers are reused; mutable inputs are still snapshotted.
+     */
     public static List<DrawCommand> mapPaints(List<DrawCommand> source, java.util.function.UnaryOperator<Paint> mapper) {
         walk(source, ignored -> { });
         return mapPaints(source, mapper, 0);
     }
     private static List<DrawCommand> mapPaints(List<DrawCommand> source, java.util.function.UnaryOperator<Paint> mapper, int depth) {
         if (depth > 32) { throw new IllegalArgumentException("paint mapping depth exceeded"); }
-        var result = new ArrayList<DrawCommand>();
-        for (var command : source) {
-            if (command instanceof DrawCommand.Group group) { command = new DrawCommand.Group(group.bounds(), mapPaints(group.commands(), mapper, depth + 1), group.opacity(), group.blend()); }
-            else if (command instanceof DrawCommand.PaintFill fill) { command = new DrawCommand.PaintFill(fill.path(), mapPaint(fill.paint(), mapper, depth), fill.rule()); }
-            else if (command instanceof DrawCommand.PaintStroke stroke) { command = new DrawCommand.PaintStroke(stroke.path(), mapPaint(stroke.paint(), mapper, depth), stroke.width()); }
-            result.add(command);
+        ArrayList<DrawCommand> result = null;
+        int index = 0;
+        for (var original : source) {
+            var command = original;
+            if (command instanceof DrawCommand.Group group) {
+                var commands = mapPaints(group.commands(), mapper, depth + 1);
+                if (commands != group.commands()) { command = new DrawCommand.Group(group.bounds(), commands, group.opacity(), group.blend()); }
+            } else if (command instanceof DrawCommand.PaintFill fill) {
+                var paint = mapPaint(fill.paint(), mapper, depth);
+                if (paint != fill.paint()) { command = new DrawCommand.PaintFill(fill.path(), paint, fill.rule()); }
+            } else if (command instanceof DrawCommand.PaintStroke stroke) {
+                var paint = mapPaint(stroke.paint(), mapper, depth);
+                if (paint != stroke.paint()) { command = new DrawCommand.PaintStroke(stroke.path(), paint, stroke.width()); }
+            }
+            if (result == null && command != original) {
+                result = new ArrayList<>(source.size());
+                result.addAll(source.subList(0, index));
+            }
+            if (result != null) { result.add(command); }
+            index++;
         }
-        return List.copyOf(result);
+        return List.copyOf(result == null ? source : result);
     }
     private static Paint mapPaint(Paint paint, java.util.function.UnaryOperator<Paint> mapper, int depth) {
-        if (paint instanceof Paint.Tile tile) { paint = new Paint.Tile(tile.bounds(), tile.xStep(), tile.yStep(), tile.transform(), mapPaints(tile.commands(), mapper, depth + 1)); }
+        if (paint instanceof Paint.Tile tile) {
+            var commands = mapPaints(tile.commands(), mapper, depth + 1);
+            if (commands != tile.commands()) { paint = new Paint.Tile(tile.bounds(), tile.xStep(), tile.yStep(), tile.transform(), commands); }
+        }
         return mapper.apply(paint);
     }
 

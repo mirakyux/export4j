@@ -8,6 +8,7 @@ import com.mirakyux.export4j.model.PageDocument;
 import com.mirakyux.export4j.model.PageRegions;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -70,5 +71,15 @@ public final class WebExportRequest {
             try { Files.deleteIfExists(temporary); }
             catch (IOException exception) { if (failure != null) { failure.addSuppressed(exception); } else { throw exception; } }
         }
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ExportResult to(String output) throws IOException {
+        return to(Path.of(Objects.requireNonNull(output, "output")));
+    }
+
+    /** Local file output using the same atomic publication contract as the Path overload. */
+    public ExportResult to(File output) throws IOException {
+        return to(Objects.requireNonNull(output, "output").toPath());
     }
 }

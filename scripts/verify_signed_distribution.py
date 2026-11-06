@@ -10,12 +10,15 @@ import shutil
 import subprocess
 
 from prepare_maven_bundle import gpg_path, prepare, temporary_keyring
+from verify_maven_consumer import consume, execute
 
 
 def build_inputs(root: Path):
     paths = {root / name for name in (
         "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "LICENSE", "NOTICE",
         "scripts/verify_signed_distribution.py", "scripts/prepare_maven_bundle.py", "scripts/verify_api_compatibility.py",
+        "scripts/verify_maven_consumer.py", "scripts/maven_central.py", ".github/workflows/release.yml",
+        "scripts/verify_production.py", "scripts/audit_dependencies.py",
         "verification/api/baseline-0.1.0-rc.1.json",
         "verification/consumer/build.gradle.kts", "verification/consumer/settings.gradle.kts",
         "verification/consumer/gradle.lockfile"
@@ -28,13 +31,6 @@ def build_inputs(root: Path):
             paths.update(path for path in (module / "src/main").rglob("*") if path.is_file())
             paths.update(path for path in (module / "build.gradle.kts", module / "gradle.lockfile") if path.is_file())
     return {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(paths)}
-
-
-def execute(command, root, log, environment=None, timeout=1800):
-    with log.open("wb") as stream:
-        result = subprocess.run(command, cwd=root, env=environment, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)
-    if result.returncode:
-        raise RuntimeError(f"Verification process failed; inspect {log.name}")
 
 
 def main():
@@ -98,45 +94,7 @@ def main():
     if home.exists():
         raise RuntimeError("Temporary private keyring was not removed")
     report["temporaryPrivateKeyringRemoved"] = True
-    # Consumer sources and lock updates are private to this run, with no project dependencies.
-    isolated = output / "consumer-project"
-    consumer = isolated / "verification/consumer"
-    consumer.mkdir(parents=True)
-    for filename in ("settings.gradle.kts", "build.gradle.kts", "gradle.lockfile"):
-        shutil.copy2(root / "verification/consumer" / filename, consumer / filename)
-    shutil.copytree(root / "verification/consumer/src", consumer / "src")
-    shutil.copytree(root / "assets", isolated / "assets")
-    (isolated / "gradle").mkdir()
-    shutil.copy2(root / "gradle/native-platform.gradle.kts", isolated / "gradle/native-platform.gradle.kts")
-    execute(gradle + ["-p", str(consumer), f"-Pexport4jVersion={args.version}",
-                      f"-Pexport4jRepositoryDirectory={repository}", f"-Pexport4jNativeClassifier={args.native_classifier}",
-                      "build", "run", "resolvedLibraries", "--write-locks", "--refresh-dependencies"],
-            root, output / "signed-consumer.log", environment)
-    libraries = (consumer / "build/resolved-libraries.txt").read_text(encoding="utf-8").splitlines()
-    actual = [line for line in libraries if line.startswith("com.mirakyux.export4j:")]
-    if len(actual) != 16 or not all(line.endswith(":" + args.version) for line in actual):
-        raise ValueError("Consumer did not resolve the complete 16 signed library JARs")
-    components = (consumer / "build/resolved-components.txt").read_text(encoding="utf-8").splitlines()
-    own_components = {line for line in components if line.startswith("com.mirakyux.export4j:")}
-    bom_coordinate = "com.mirakyux.export4j:export4j-bom:" + args.version
-    if own_components != set(actual) | {bom_coordinate}:
-        raise ValueError("Consumer resolution graph did not select the matching BOM and 16 libraries")
-    hashes = [line.split("\t") for line in (consumer / "build/resolved-library-sha256.txt").read_text(encoding="utf-8").splitlines()]
-    own_hashes = [entry for entry in hashes if entry[0].startswith("com.mirakyux.export4j:")]
-    if len(own_hashes) != 16 or {entry[0] for entry in own_hashes} != set(actual):
-        raise ValueError("Consumer did not report exactly 16 resolved library JAR hashes")
-    for coordinate, filename, sha in own_hashes:
-        artifact = coordinate.split(":")[1]
-        if filename != artifact + "-" + args.version + ".jar":
-            raise ValueError("Consumer resolved an unexpected project artifact classifier or filename")
-        staged = repository / "com/mirakyux/export4j" / artifact / args.version / filename
-        if hashlib.sha256(staged.read_bytes()).hexdigest() != sha:
-            raise ValueError("Consumer JAR bytes differ from the independently verified signed repository")
-    report["isolatedCoordinateConsumerVerified"] = True
-    report["consumerProjectArtifacts"] = len(actual)
-    report["consumerJarHashesVerified"] = len(own_hashes)
-    report["consumerProjectComponents"] = len(own_components)
-    report["consumerBomCoordinate"] = bom_coordinate
+    report.update(consume(root, output, repository, args.version, args.native_classifier, gradle))
     if build_inputs(root) != source_inputs:
         raise RuntimeError("Build or consumer inputs changed during verification; use a fresh run")
     report["nativeClassifier"] = args.native_classifier
