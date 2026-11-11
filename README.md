@@ -1,15 +1,17 @@
-# Export4j
+# Export4j — Java PDF generation and document export
 
 A Java Document Layout and Generation Engine  
 Java 文档排版与生成引擎
 
 **English** | [简体中文](README.zh-CN.md)
 
-Export4j is an open-source **Java PDF generation and document export library** for reports, forms and structured documents. Create PDF, DOCX, HTML, Markdown, SVG and PNG using a fluent Java API or XML templates.
+[Documentation](https://export4j.mirakyux.com) · [Quick start](https://export4j.mirakyux.com/getting-started) · [FAQ](https://export4j.mirakyux.com/docs/faq)
+
+Export4j is an open-source **Java PDF generation and document export library** for reports, invoices, forms and structured documents. Use a fluent Java API or XML templates to create paginated PDF documents with text, tables and explicit fonts, or export supported content to DOCX, HTML, Markdown, SVG and PNG.
 
 Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert between formats with explicit policies for incompatible features. Save reusable XML templates and reopen supported document models for further editing.
 
-**Release candidate:** [`0.1.0-rc.1` is available on Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.1). There is no stable release yet, and APIs may change. See the [format limits](#formats-and-limitations) and [capability matrix](docs/capabilities-api.md) before integrating.
+**Release candidate:** [`0.1.0-rc.2` is available on Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.2). There is no stable release yet, and APIs may change. See the [release notes](docs/releases/0.1.0-rc.2.md), [format limits](#formats-and-limitations) and [capability matrix](docs/capabilities-api.md) before integrating.
 
 ## Contents
 
@@ -20,6 +22,7 @@ Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert betw
 - [XML templates](#xml-templates)
 - [HTML and Markdown export](#html-and-markdown-export)
 - [Formats and limitations](#formats-and-limitations)
+- [FAQ](docs/faq.md)
 - [Roadmap](#roadmap)
 - [Documentation](#documentation)
 - [Build and verification](#build-and-verification)
@@ -54,7 +57,7 @@ Maven:
     <dependency>
       <groupId>com.mirakyux.export4j</groupId>
       <artifactId>export4j-bom</artifactId>
-      <version>0.1.0-rc.1</version>
+      <version>0.1.0-rc.2</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -77,7 +80,7 @@ Gradle Kotlin DSL:
 ```kotlin
 repositories { mavenCentral() }
 dependencies {
-    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.1"))
+    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.2"))
     implementation("com.mirakyux.export4j:export4j-components")
     implementation("com.mirakyux.export4j:export4j-backend-pdf")
 }
@@ -234,19 +237,22 @@ HTML preserves supported styles, embedded images and merged/nested tables. Markd
 The remaining work is tracked in the [capability gaps](docs/capability-gaps.md):
 
 - **GAP-14.2:** broader compatibility corpus and application/reader checks across platforms.
-- **GAP-14.3:** stable API and release acceptance; signed Maven Central distribution is available for `0.1.0-rc.1`.
+- **GAP-14.3:** stable API and release acceptance; signed Maven Central distribution is available for `0.1.0-rc.2`.
 - **GAP-22:** additional formats, including XLSX, PPTX, EPUB and XPS.
 
 See the [execution plan](docs/remaining-capabilities-plan.md) for acceptance criteria. OCR is outside the current scope.
 
 ## Documentation
 
-The [documentation index](docs/README.md) groups guides by task. Most detailed guides are currently written in Chinese.
+Start with the [FAQ](docs/faq.md) for Java requirements, module selection, fonts, conversion limits and licensing. The [documentation index](docs/README.md) groups detailed guides by task; most are currently written in Chinese.
 
 | Task | Start here |
 | --- | --- |
-| Author documents | [Authoring](docs/authoring-api.md) · [Fluent API](docs/fluent-api.md) · [Themes](docs/themes-api.md) |
-| Use templates | [XML](docs/xml-template-api.md) · [Template bundles](docs/xml-template-bundle-api.md) |
+| Generate PDF reports and invoices in Java | [Complete Java example](#java-example) · [Authoring](docs/authoring-api.md) · [Tables and pagination](docs/table-api.md) |
+| Generate reports from XML templates | [Template example](#xml-templates) · [XML guide](docs/xml-template-api.md) · [Template bundles](docs/xml-template-bundle-api.md) |
+| Export Word documents | [DOCX semantics and editing](docs/docx-semantic-api.md) · [Page regions](docs/docx-page-regions-api.md) |
+| Configure Chinese and multilingual fonts | [Fonts and text](docs/text-api.md) · [Font sources and licenses](assets/fonts/README.md) |
+| Export large tables and documents | [Streaming tables](docs/streaming-table-api.md) · [Paged export](docs/paged-document-api.md) · [Replay and disk-indexed PDF](docs/streaming-replay-api.md) |
 | Import, edit and convert | [Shared conversion](docs/document-conversion-api.md) · [DOCX semantics](docs/docx-semantic-api.md) · [HTML/CSS](docs/html-import-api.md) |
 | Process PDF | [PDF adapter](docs/pdf-adapter-api.md) · [Recovery](docs/pdf-semantic-import-api.md) · [Standards](docs/pdf-standards-api.md) |
 | Explore examples and internals | [Examples](docs/examples.md) · [Architecture](docs/architecture.md) · [ADRs](docs/adr/README.md) |

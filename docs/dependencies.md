@@ -1,5 +1,15 @@
 # 依赖与资源管理
 
+## 公开文档站依赖
+
+独立静态文档站使用 VitePress 1.6.4 与 Vue 3.5.45（MIT），Wrangler 4.160.0（MIT OR Apache-2.0）仅用于 Cloudflare 静态部署。直接版本、传递版本、来源和完整性由 `site/package.json` 与 `site/package-lock.json` 固定，使用 `npm --prefix site ci` 安装；它们不进入 Java POM、BOM、运行时或库 SBOM。站点不运行服务端 JavaScript，不通过 CDN 加载脚本或字体。维护和部署方法见[文档站指南](documentation-site.md)。
+
+VitePress 1.6.4 的原依赖范围仍使用 Vite 5，本项目定向 override 为 Vite 6.4.6，采用已修复版本的构建／本地服务；Vue 插件 5.2.4 的 peer 支持 Vite 6。该选择超出 VitePress 原始范围，升级时须重新执行静态构建、开发服务与页面验证，不能仅依据安装成功判断兼容。Vue SSR 修复见 [GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6)，Vite Windows 修复见 [GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm)。
+
+页面使用操作系统字体栈；首页 PDF／WebP 复用现有示例和已登记字体，来源、许可及内容边界见[样张说明](../site/pages/public/showcase/README.md)。依赖公告使用 `npm --prefix site audit --registry=https://registry.npmjs.org` 查询；构建工具公告与公开站点运行资源分别评估，不能将查询失败视为通过。
+
+静态构建按实际浏览器模块、提取样式与社交图标生成 `THIRD-PARTY-NOTICES.txt`，包含确切包名、版本及原始 LICENSE／NOTICE。缺失许可或已安装版本偏离锁文件时构建失败；未随 npm 包提供的原文固定保存在[补充许可目录](../third-party/docs-site-licenses/README.md)。主题使用不携带字体的入口，不分发 VitePress 内置 Inter 字体。Wrangler 等仅用于构建／部署的工具不进入此浏览器声明。
+
 ## 设计器浏览器依赖
 
 可选设计器的 React 19.3.1／React DOM 19.3.1 和 ProseMirror 编辑模块均采用 MIT；传递运行组件、确切版本、npm 来源、完整性和原始许可位置见[浏览器组件清单](../third-party/designer-browser-components.json)。Gradle 使用 `frontend/package-lock.json` 执行 npm ci，esbuild 生成独立浏览器包和完整 `THIRD-PARTY-NOTICES.txt`，一起进入设计器 JAR。上述组件不进入 Java 库 POM、BOM 或库 SBOM。

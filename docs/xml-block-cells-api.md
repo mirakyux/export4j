@@ -1,6 +1,6 @@
-# XML 多段单元格与原子内表
+# XML 多段单元格与嵌套表格
 
-XML 版本 1 的原子块格最初已通过编译、绑定、端到端、独立输出与隔离调用方验收，见[阶段二十八验收](verification/phase-28-xml-block-cells.md)。设计见 [ADR-0035](adr/0035-xml-block-cells.md)，模型与布局契约见[块格 API](block-cells-api.md)。
+XML 版本 1 支持多段单元格与最多 16 层嵌套表格，各层可分别开启续排。原子块格的早期编译、绑定与输出证据见[阶段二十八验收](verification/phase-28-xml-block-cells.md)，后续递归续排与深度扩展见[阶段五十七](verification/phase-57-recursive-tables.md)。语法起点见 [ADR-0035](adr/0035-xml-block-cells.md)，当前模型与布局契约见[块格 API](block-cells-api.md)。
 
 ## 直接按文档结构编写
 
@@ -60,7 +60,7 @@ var document = compiler.compile(source).render(Map.of(
 
 上例 `summary` 为 10 pt／16 pt、左对齐，`conclusion` 为 11 pt／18 pt、右对齐。内表的单元格重新使用编译器的 `cellFormat`，不继承外格局部设置；因此 `detail-result` 为 12 pt／18 pt、左对齐。`bodyFormat` 继续控制顶层段落，不能用来推断格内段落的默认值。
 
-`cell` 只接受 `size`、`line-height`、`align`、`column-span`、`row-span`。`p` 使用[总指南](xml-template-api.md)已有段落属性。没有 XML `padding`、CSS 或字体路径属性；内边距沿用既有 `TableFormat` 默认值。
+`cell` 接受 `size`、`line-height`、`align`、`line-break`、`role`、`color`、`column-span`、`row-span`。格内 `p` 使用[总指南](xml-template-api.md)已有段落属性，并可覆盖所在格的字体角色与颜色。`cell` 不接受内边距、CSS 或字体路径属性；内边距来自当前表的 `TableFormat`，可用表级 `padding-top`／`padding-right`／`padding-bottom`／`padding-left` 覆盖。
 
 ## 两种内容分支
 
@@ -121,33 +121,32 @@ PAGE、PAGES、页码引用和编号引用统一在目录偏移、分节页码�
 
 每条来源路径保留外表 ID、物理行列、格内块序号及内层位置。异常和上下文警告的 `sourcePath()` 从外到内排列；`blockIndex` 是实际宿主根索引，UTF-16 属于叶原文。字段生成值的警告继续以 `INLINE_FIELD:<原始位置>` 区分来源。
 
-## 原子布局与编译拒绝
+## 递归布局与编译拒绝
 
-根表计第 1 层，内表计第 2 层，第 3 层在编译时拒绝。整个块格及其父连通行组原子移页／移区；短首区可以跳过，新区域容不下则明确失败。内表在原子子树中完整呈现，不提供格内续排游标。
+根表计第 1 层，最多支持 16 层表格。默认整个块格及其父连通行组原子移页／移区；短首区可以跳过，新区域容不下则明确失败。
+
+静态 `table` 与动态根表 `rows` 可显式设置 `row-split="true"`，按完整段落行和内表片段续排。各层表的拆行开关独立：内表开启时逐片重复自己的表头，关闭时按其连通行组整体移动。纵向合并格由原始锚点消费内容，不复制文字。段落 `keep-together` 和最低行数约束保持；短区域、取消或预算失败不提交子游标。
 
 | 输入 | 编译行为 |
 | --- | --- |
 | 格内静态 `p`／`table` | 保留有序语义块 |
 | 格内 `if`／`each`／`rows`、标题、列表、换页或未知节点 | 拒绝未知格内块语法 |
 | 块与非空行内文字或行内节点混用 | 拒绝混合内容 |
-| 第 3 层表、无效覆盖网格、块格重复表头 | `INVALID_STRUCTURE` |
-| 含块格表或任意内表 `row-split="true"` | `INVALID_VALUE` |
+| 超过 16 层表、无效覆盖网格、块格重复表头 | `INVALID_STRUCTURE` |
+| 含块格父表或静态内表 `row-split="true"` | 保留当前表的拆行设置，接入共享递归续排 |
 | 动态根行原型 `row-span` 大于 1 | `INVALID_VALUE` |
 | 深层重复 ID、非法格式、未知属性 | 按既有值／属性诊断拒绝 |
 
-所有 `if` 分支在编译时检查，包含未选中分支的几何、层数、属性与互斥内容。不能把本应编译拒绝的结构留到绑定后才发现。普通行内父表头仍可逐区重复；内表自己的普通表头在完整原子呈现中只出现一次。
+所有 `if` 分支在编译时检查，包含未选中分支的几何、层数、属性与互斥内容。不能把本应编译拒绝的结构留到绑定后才发现。普通行内父表头仍可逐区重复；原子内表的表头只出现一次，开启内表续排后按实际片段重复。
 
 ## 预算与输出边界
 
-XML 源仍共用一组 `XmlTemplate.Limits`，统计全部元素、语法深度和解码文字，包括结构空白及未选分支。模型的两层表限制独立于 XML 语法深度，不能通过提高 `maxDepth` 放开第 3 层表。
+XML 源仍共用一组 `XmlTemplate.Limits`，统计全部元素、语法深度和解码文字，包括结构空白及未选分支。模型的 16 层表限制独立于 XML 语法深度；即使提高 `maxDepth`，也不能超过共享表深预算。
 
 绑定复用 `DocumentTemplate.Limits`，递归累计生成块、行、文字、字段目标和访问工作；每次循环复制都计费。布局再累计内外表覆盖槽、叶文字、图片及实际输出行。内表不重开一份完整引擎额度。取消与超时在同步上下文内传播，并在退出时恢复上层作用域。
 
-DOCX 继续按标准 `w:tc` 下的有序 `w:p`／`w:tbl` 输出，复用已有字段、媒体和书签契约。XML 支持不扩大 DOCX 严格子集；重复表头 PAGE、未知格式等仍按对应适配器边界拒绝。当前阶段没有新 Word 保存／导出实测，不保证一般 Word 文档无损往返或 PDF 与 Word 同分页。
+DOCX 按标准 `w:tc` 下的有序 `w:p`／`w:tbl` 输出，保留受支持的深层内表、合并与拆行设置，复用字段、媒体和书签契约。XML 支持不扩大 DOCX 严格子集；重复表头 PAGE、未知格式等仍按对应适配器边界拒绝。阶段二十八没有新增 Word 保存／导出实测；后续原生语义与应用验收见[DOCX 语义指南](docx-semantic-api.md)。这些证据不保证一般 Word 文档无损往返或 PDF 与 Word 同分页。
 
-本批只扩展 XML 语法，不新增生产依赖，也不引入 Markdown 嵌套语法、HTML/CSS、include、远程资源、递归子树续排或单向长表块格。
+阶段二十八只扩展 XML 语法，没有新增生产依赖。后续递归续排已接入同一模型；合法块列表位置也可使用[离线片段](xml-includes-api.md)，格内仍只接受静态 `p`／`table`。Markdown 新嵌套语法、HTML/CSS、格内动态节点／include、远程资源和单向长表源块格仍不在本语法范围。
 
 可读样例见 [XmlBlockCellsExample](../examples/src/main/java/com/mirakyux/export4j/examples/XmlBlockCellsExample.java)。生成任务为 `:examples:xmlBlockCells`，独立脚本为 [verify_xml_block_cells.py](../scripts/verify_xml_block_cells.py)。执行命令、实际产物和逐页证据由[阶段二十八验收](verification/phase-28-xml-block-cells.md)登记；本文不把测试通过代替独立输出验收。
-
-
-后续[阶段五十七](verification/phase-57-recursive-tables.md)将共享表深扩为 16 层，静态内表与块格父表均可显式 `row-split="true"`。各层拆分开关独立，编译阶段仍检查全部分支；旧原子子集的阶段记录保留。

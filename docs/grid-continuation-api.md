@@ -31,9 +31,9 @@ var document = Documents.builder()
 | `column.fixedText(...)` | 创建 `TextComponent`，支持最小高度，整块移动 |
 | `column.grid(...)`／`documents.grid(...)` | 组件网格，支持合并与显式格内续页 |
 | `column.table(...)` | 原组件网格入口保留兼容，等同 `.grid(...)` |
-| `documents.table(...)` | 语义表格，保留字段、来源及 DOCX 路径；当前没有合并格 |
+| `documents.table(...)` | 语义 `Table`，支持行列合并，保留字段、来源及 DOCX 路径；与组件 `GridTable` 保持独立 |
 
-项目尚未发布。原先 `.text(value, text -> text.minHeight(...))` 改为 `.fixedText(...)`；配置回调的类型从 `TextComponent.Builder` 改为 `FlowText.Builder`，显式声明回调类型的调用方也须迁移。短文字的默认字号和颜色保持原值，但长文字现在可以续页。`GridTable` 新增 record 分量 `allowRowSplit`；旧四／五参数构造器保留，默认 `false`。
+当前候选版本与安装坐标见[README](../README.zh-CN.md)。早期 API 调整将 `.text(value, text -> text.minHeight(...))` 改为 `.fixedText(...)`，配置回调类型从 `TextComponent.Builder` 改为 `FlowText.Builder`；仍使用旧调用方式的代码须迁移，显式声明回调类型的调用方也须调整。短文字的默认字号和颜色保持原值，长文字可以续页。该次调整为 `GridTable` 增加 record 分量 `allowRowSplit`；旧四／五参数构造器保留，默认 `false`。
 
 ## 合并格的内容与分页
 
@@ -51,7 +51,7 @@ var document = Documents.builder()
 - 格内 `FlowText.pagination(...)` 的断前／断后最低行数约束保持；嵌套内容仍拒绝语义块邻接策略。
 - 每格文字最多 100,000 行，混合列嵌套最多 64 层；拆分分配最多 100,000 个片段、10,000,000 次工作检查。既有输入、布局输出行、页数及执行预算继续适用。
 - 缺字诊断保留文字自己的原 UTF-16 范围。表头警告随实际重复呈现返回。普通组件文字拥有组件块和页上下文；格内 SemanticTable 进一步保留自身原表行列，不等于外层网格格坐标。
-- 语义 Table 模型合并格、DOCX 合并映射仍在[缺口表](capability-gaps.md)跟踪。语义格续排没有统一两套表格模型。
+- 语义 `Table` 已支持[列合并](column-spans-api.md)、[跨行合并](row-spans-api.md)及标准 DOCX `gridSpan`／`vMerge` 映射，并支持[有界递归块格续排](block-cells-api.md)。这些能力没有统一两套表格模型；组件 `GridTable` 的任意组件格不因此获得通用 DOCX 映射。
 
 ## 验证与许可
 

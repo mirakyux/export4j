@@ -148,7 +148,7 @@ engine.writeAtomically(document, backend, targetPath, options);
 
 输出流入口 `engine.write(document, backend, stream, options)` 保留流所有权，失败可能已写入部分字节。`writeAtomically` 要求目标父目录已存在及文件系统支持原子移动：临时文件写入成功后才替换目标，失败删除临时文件并保留原文件。PDF 使用 `PdfOptions.storage(TEMP_FILE)` 可把后端流缓冲放到临时文件；Layout IR、Display List 和资源仍驻留内存，不能称为完整流式大文档引擎。
 
-开发源码新增[普通文档逐页导出](paged-document-api.md)：`engine.exportPaged` 接受 `Document`、`PageDocument` 和 `SectionedDocument`，规划最终分页后逐页绘制及释放，返回轻量摘要。目录、未来引用、分节页码、页区和脚注使用最终分页；评论与可编辑表单在打开写出器前拒绝。配合 `PdfSpoolBackend` 可释放完成页的 PDFBox 对象，并直接复制活页对象，避免单页临时 PDF 的写入及重新解析。完整输入、最大块、脚注切片和有限索引仍占内存，多遍规划增加计算成本；详见[验收](verification/paged-document-export.md)。已发布的 `0.1.0-rc.1` 不含此入口。
+从 `0.1.0-rc.2` 起提供[普通文档逐页导出](paged-document-api.md)：`engine.exportPaged` 接受 `Document`、`PageDocument` 和 `SectionedDocument`，规划最终分页后逐页绘制及释放，返回轻量摘要。目录、未来引用、分节页码、页区和脚注使用最终分页；评论与可编辑表单在打开写出器前拒绝。配合 `PdfSpoolBackend` 可释放完成页的 PDFBox 对象，并直接复制活页对象，避免单页临时 PDF 的写入及重新解析。完整输入、最大块、脚注切片和有限索引仍占内存，多遍规划增加计算成本；详见[验收](verification/paged-document-export.md)。较早的 `0.1.0-rc.1` 不含此入口。
 
 同一指南另提供按需普通块源：`exportSemantic(PageSettings, BlockSource.Factory)` 已知总数时单遍布局，`exportReplay` 显式两遍稳定快照，均无需先构造完整正文模型。支持标题／列表／题注、表格、图片、组件、外链、固定页区和最终页字段；全局导航、未来引用、分节及脚注重排不在该流入口范围内。来源和测量缓存按当前页／keep 链释放，全局 ID 与页摘要仍随有限节点／页数增长。
 

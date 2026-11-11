@@ -1,8 +1,8 @@
 # 剩余能力执行计划
 
-更新日期：2026-10-29。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
+更新日期：2026-11-11。总状态以[缺口表](capability-gaps.md)为准。每个交付单元都要完成源码评估、实现、行为回归、独立输出验收和状态复评；不以接口存在作为完成证据。
 
-当前未完成的独立项为 GAP-14.2、GAP-14.3、GAP-22。GAP-13 已由[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成独立 HTML 设计器和四套完整业务样例。GAP-12.1／12.2 已闭合；提交 `cc132e7` 的三平台构建及临时密钥签名分发远端 CI 均已通过，见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。`0.1.0-rc.1` 已完成正式签名、Central 发布及真实远端消费，见[发布记录](releasing.md)；稳定 API／稳定版、更多阅读器兼容与新增发布工作流的 GitHub 实际运行继续在相应条目验收。下文历史阶段的未发布说明仅对应当时批次。
+当前未完成的独立项为 GAP-14.2、GAP-14.3、GAP-22。GAP-13 已由[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成独立 HTML 设计器和四套完整业务样例。GAP-12.1／12.2 已闭合；提交 `cc132e7` 的三平台构建及临时密钥签名分发远端 CI 均已通过，见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。当前候选版 `0.1.0-rc.2` 已通过[手动发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)完成正式签名、Central 发布及真实远端消费，见[发布记录](releasing.md)。稳定 API／稳定版和更多阅读器兼容继续在相应条目验收。下文历史阶段的未发布说明仅对应当时批次。
 
 [阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)已固化 16 条互转路径／32 份输出／73 次控制检查，修复 DOCX 完整包校验与输入预算，升级受公告影响的 jsoup，并固定 `0.1.0-rc.1` 候选 API 基线。新增 CI 配置只有本地证据；正式分发仍未执行，不以候选准备关闭 GAP-14.3。
 
@@ -128,7 +128,7 @@ OCR 不在当前范围内。下表保留既有推进单元及状态；编辑、�
 | PAdES／长期验证（GAP-11） | [阶段九十六](verification/phase-96-pdf-standards.md)已完成显式离线信任、撤销、RFC3161、DSS／VRI 和 LTA 续期；不读取系统信任库或隐式联网 | B／T／LT／LTA、三档认证证据更新、篡改／失效证据拒绝和独立 pyHanko 验证已完成；调用方提供密钥及证据，通用阅读器权限执行不由库保证 |
 | 多场景样例（GAP-13） | 每个行为里程碑之后复测完整调用代码与所有输出页 | 覆盖报告、静态表单和长表，记录字体、页区、失败边界及完整调用成本 |
 | 可视化设计器（GAP-13） | 先固定声明式语法、诊断来源和预览契约；设计器是独立模块 | 编辑、预览、保存／重新载入和导出闭环；不把示例页面当作设计器 |
-| 发布检查（GAP-14） | 候选 API、固定语料／安全门禁及 Windows Word／PDF 实际交互保持既有证据；`0.1.0-rc.1` 已完成正式签名、Central 上传、82 个制品远端核对及 16 个库与 BOM 的隔离消费，见[发布记录](releasing.md) | 稳定 API／稳定版、更多平台／浏览器交互和新增发布工作流的 GitHub 实际运行仍未验收；RC 发布不关闭完整兼容矩阵 |
+| 发布检查（GAP-14） | 候选 API、固定语料／安全门禁及 Windows Word／PDF 实际交互保持既有证据；`0.1.0-rc.2` 已通过手动 GitHub Actions 完成正式签名、Central 发布与远端消费，当前 API 门禁使用 Central 已发布的 RC2 基线，见[发布记录](releasing.md)和[兼容规则](api-compatibility.md) | 稳定 API／稳定版、更多平台／浏览器交互仍需独立验收；RC 发布不关闭完整兼容矩阵 |
 
 每批完成后更新实际证据和下一入口。某个单元失败时先修正，不降低阈值或自动刷新视觉基线；新增组合导致回归时重新打开已验收项。
 
@@ -232,4 +232,4 @@ HTML／Markdown 输出已完成[阶段四十三](verification/phase-43-web-expor
 
 本轮按原剩余清单统一推进，未增加编号或删减关闭条件：变宽递归格／组件网格与轮廓锚点；可变／CFF2／彩色字体、方向塑形与静态 CFF 原生 PDF；单次语义长表、显式重放与磁盘索引 PDF；CMYK／ICC／专色、混合／透明组、渐变／图案和 SVG 本地资源。当前接口见[变宽续排](variable-table-continuation-api.md)、[轮廓浮动](contour-floats-api.md)、[原生文字](native-opentype-api.md)、[语义重放](streaming-replay-api.md)及[高级图形](advanced-graphics-api.md)。最终构建、独立输出及容量结果统一登记在[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)。
 
-历史阶段中的“下一项”及“仍开放”描述保留当时范围，当前状态以缺口表和最新验收为准。GAP-13 设计器已由阶段一百零八验收；跨平台／阅读器矩阵及正式发布继续归原有独立缺口；DOCX 与 CSS 的当前状态见阶段一百零三／一百零四和缺口表，不把已验收内容重复加入后续队列，也不推断任意外部文件或完整浏览器兼容。
+历史阶段中的“下一项”及“仍开放”描述保留当时范围，当前状态以缺口表和最新验收为准。GAP-13 设计器已由阶段一百零八验收；跨平台／阅读器矩阵及稳定版发布继续归原有独立缺口；DOCX 与 CSS 的当前状态见阶段一百零三／一百零四和缺口表，不把已验收内容重复加入后续队列，也不推断任意外部文件或完整浏览器兼容。

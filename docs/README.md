@@ -2,6 +2,8 @@
 
 Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导入、编辑和转换。首次使用从[中文 README](../README.zh-CN.md)或 [English README](../README.md)开始，运行方式及输出目录见[示例索引](examples.md)。
 
+选型、运行环境、字体、转换限制和许可证见[常见问题](faq.zh-CN.md)或 [English FAQ](faq.md)。
+
 ## 按任务阅读
 
 | 任务 | 指南 |

@@ -2,7 +2,7 @@
 
 `DocumentEngine.exportPaged` 在导出时逐页交付布局、绘制和后端，返回 `PagedExportSummary`，适用于不需要保留完整布局结果的调用方。现有 `layout`／`export` 继续返回完整结果。输入可以是 `Document`、`PageDocument` 或 `SectionedDocument`。
 
-本入口属于开发源码，已发布的 `0.1.0-rc.1` 不包含它。
+本入口从 `0.1.0-rc.2` 起提供，`0.1.0-rc.1` 不包含它。版本变化与限制见 [RC2 说明](releases/0.1.0-rc.2.md)。
 
 ## 调用
 

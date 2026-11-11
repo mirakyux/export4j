@@ -4,6 +4,10 @@
 
 已发布候选的变化及已知限制见 [0.1.0-rc.2 说明](releases/0.1.0-rc.2.md)。工作流会把 `docs/releases/<版本>.md` 中的说明附入对应 GitHub Release；具体发布状态以 Central 及工作流结果为准。
 
+## 已发布候选记录
+
+`0.1.0-rc.2` 的[发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)已成功完成，`release` 与 `github-release` 任务均通过；[GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2)于 2026-11-07（北京时间）发布，标签指向构建提交 `88d2bcd81011b1b16c9461f75fb22df247dd422f`。Maven Central 已提供同版本的 16 个库与 BOM；该运行记录构建、签名、上传及远端隔离消费结果。RC 为候选版本，不表示 API 已稳定或提供生产 SLA。
+
 ## 手动 GitHub Actions 发布
 
 [Release to Maven Central](../.github/workflows/release.yml) 只接受 `workflow_dispatch`。在 GitHub 仓库的 **Actions → Release to Maven Central → Run workflow** 中选择待发布分支，输入尚未发布的新版本，例如 `0.1.0-rc.3`。点击运行会构建该分支当前提交并自动发布到 Central，远端验证成功后创建对应 GitHub Release；普通 push、PR 和标签不会触发发布。工作流需先进入默认分支，页面才显示手动入口，见 [GitHub 官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)。
@@ -63,9 +67,9 @@ python scripts/verify_capabilities.py
 
 独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，证明本地制品可消费；这不是 Maven Central、签名或远程 CI 验证。
 
-根 `check` 包含 `apiCheck`，使用从固定提交独立构建的 `0.1.0-rc.1` 候选基线，差异规则和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发在提交 `cc132e7` 已远端通过，准确运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阶段一百零六新增的安全／兼容门禁只有本地结果，不能沿用该提交的 CI 结论。上述检查使用本地构建的 Maven 仓库，不替代正式身份、Central 上传或真实远端仓库消费。
+根 `check` 包含 `apiCheck`，使用从 Maven Central 已发布的 `0.1.0-rc.2` 库 JAR 提取的基线，差异规则、逐库来源和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发在历史提交 `cc132e7` 已远端通过，准确运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阶段一百零六记录的本地安全／兼容门禁不能沿用该历史提交的 CI 结论；后续 RC2 发布及远端消费以本页的实际工作流记录为准。本地构建仓库的检查仍不替代 Central 上传或真实远端仓库消费。
 
-最新 Windows Word／PDF 实际编辑、保存、重开及最终 JAR 回读见[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)。该轮兼容修复后的字节已完成构建和隔离消费，但未重新签名；阶段一百零六的签名摘要只对应其历史批次。应用验收不引入 Office、浏览器或打印服务运行依赖，也不替代其他平台、新远端 CI 或正式发布。
+Windows Word／PDF 实际编辑、保存、重开及最终 JAR 回读见[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)。该历史批次完成构建和隔离消费时未重新签名；阶段一百零六的签名摘要只对应其历史批次，后续 RC2 的签名和远端结果独立记录。应用验收不引入 Office、浏览器或打印服务运行依赖，也不替代其他平台或其他发布批次的验收。
 
 脚本每次使用独立消费者构建目录，避免之前打开的输出文件阻塞清理。模板、受控导出、CFF 与 PDF 安全／归档／签名的附加验收见[能力记录](verification/phase-5-capabilities.md)；省略外部验证器参数时不包含归档合规或验签结论。
 

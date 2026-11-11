@@ -38,7 +38,7 @@ var document = Documents.builder()
 
 网格行可用 `.semanticTable(table, cell -> cell.rowSpan(2))` 放入语义内容，最终字段、图片链接和来源随长合并格续排。外网格与内 Table 的拆行开关独立，具体规则见[语义格指南](grid-semantic-flow-api.md)。
 
-列内 `.semanticTable(table)` 保留与顶层相同的语义单元格和最终字段／外链，并接入区域续排、逐区表头和显式完整行拆分；组件网格继续用 `.grid(...)`。固定盒仍要求单视口，本功能不增加 DOCX 嵌套表格支持，见[语义组合指南](semantic-components-api.md)。
+列内 `.semanticTable(table)` 保留与顶层相同的语义单元格和最终字段／外链，并接入区域续排、逐区表头和显式完整行拆分；组件网格继续用 `.grid(...)`。固定盒仍要求单视口；组件组合没有 DOCX 原生映射，DOCX 内表使用普通语义 `Table` 路径，见[语义组合指南](semantic-components-api.md)和[块格 API](block-cells-api.md)。
 
 ## 表格
 
@@ -56,9 +56,9 @@ var document = Document.builder()
 
 未设置列宽时，从首行推导等比例列。`.columns(ColumnWidth...)` 可设置固定、比例或有界自动列宽；`.row(TableCell...)` 可放入富文本、图片或字段。`.header(...)` 必须在正文行之前调用，至少保留一个正文行。
 
-语义列合并使用 TableCell.builder().columnSpan(n)，或 mixed(...).toBuilder().columnSpan(n)，并由 Table.Builder.headerCells(...)／row(...) 组合，见[列合并 API](column-spans-api.md)。DOCX 写标准 gridSpan；跨 Auto 列合并拒绝。
+语义列合并使用 TableCell.builder().columnSpan(n)，或 mixed(...).toBuilder().columnSpan(n)，并由 Table.Builder.headerCells(...)／row(...) 组合，见[列合并 API](column-spans-api.md)。DOCX 写标准 gridSpan；普通行内格可合并覆盖有界 Auto 列，含块格表自身的 Auto 仍拒绝，见[自动列合并](automatic-merged-columns-api.md)。
 
-语义跨行合并继续链式 `.rowSpan(n)`，全覆盖正文／表头行分别用 `.coveredRow()`／`.coveredHeaderRow()`；新锚点自动跳过上行占用。二维查询使用 `table.grid()`，纵向连通组整体分页，标准 DOCX vMerge 与静态 XML 保持同源，见[跨行合并 API](row-spans-api.md)。
+语义跨行合并继续链式 `.rowSpan(n)`，全覆盖正文／表头行分别用 `.coveredRow()`／`.coveredHeaderRow()`；新锚点自动跳过上行占用。二维查询使用 `table.grid()`，纵向连通组默认整体分页，显式 `allowRowSplit(true)` 可按原始 owner 续排；标准 DOCX vMerge 与静态 XML 保持同源，见[跨行合并 API](row-spans-api.md)。
 
 组件跨行／跨列表格使用 `GridTable.Builder`：
 
@@ -133,11 +133,11 @@ var collectionFace = FontCollectionLoader.load(new File("fonts/family.ttc"), 1);
 
 `TrueTypeFontLoader` 与 `FontCollectionLoader` 的文件入口有界读取并关闭自有流；借用 `InputStream` 的入口不关闭流，省略字节预算时使用 `TrueTypeFontLoader.DEFAULT_MAX_BYTES`（32 MiB）。集合成员索引仍显式指定，从 0 开始。已有 HTML／Markdown 读取器中的 `String` 表示正文，含义保持不变。
 
-JDK 类型按示例导入 `File`、`Path`、`OutputStream`；字体类型来自 `com.mirakyux.export4j.font`。完整隔离 Maven 调用方见 [`IoConvenienceConsumer`](../verification/consumer/src/main/java/consumer/IoConvenienceConsumer.java)，任务为 `ioConvenience`。这些便利入口已在开发源码实现，已发布的 `0.1.0-rc.1` 不包含本轮新增重载。
+JDK 类型按示例导入 `File`、`Path`、`OutputStream`；字体类型来自 `com.mirakyux.export4j.font`。完整隔离 Maven 调用方见 [`IoConvenienceConsumer`](../verification/consumer/src/main/java/consumer/IoConvenienceConsumer.java)，任务为 `ioConvenience`。这些便利入口从 `0.1.0-rc.2` 起提供，`0.1.0-rc.1` 不包含本轮新增重载。
 
 ## 常用任务的短入口
 
-以下入口属于当前开发源码，已发布的 `0.1.0-rc.1` 不包含本轮新增 API。项目类型来自对应模块；完整可执行调用方见 [`ErgonomicsConsumer`](../verification/consumer/src/main/java/consumer/ErgonomicsConsumer.java)，任务为 `ergonomics`，[验收记录](verification/api-ergonomics.md)包含验证范围与复现命令。
+以下入口从 `0.1.0-rc.2` 起提供，`0.1.0-rc.1` 不包含本轮新增 API。项目类型来自对应模块；完整可执行调用方见 [`ErgonomicsConsumer`](../verification/consumer/src/main/java/consumer/ErgonomicsConsumer.java)，任务为 `ergonomics`，[验收记录](verification/api-ergonomics.md)包含验证范围与复现命令。
 
 DOCX 直接读写支持 `Path`、`File`、字符串路径及借用流。默认读取使用严格策略，显式允许损失时返回诊断。文件输出采用同目录原子替换，并支持 `ExecutionOptions`；父目录须已存在。
 
@@ -217,15 +217,15 @@ new HtmlImporter().conversionFile("input.html")
 
 `GridTable` 新增 `minimumRowHeights`，`TextComponent` 新增 `minimumHeight`；旧构造签名保留并使用零最小高度。record 反射分量及字符串表示包含新增属性。`GridTable` 的行高顺序缺陷修复可能减少旧调用中过量分配的高度，因而影响分页；本次不更新既有视觉基线。
 
-`0.1.0-rc.1` 已发布到 Maven Central，后续源码新增 API 需等待新版本发布。隔离 Maven 调用方验证与正式发布分别记录；新增 DSL、页脚、预算、PDF 临时缓存及原子输出继续保留对应验收边界。
+`0.1.0-rc.2` 已发布到 Maven Central，当前尚无稳定版。本页注明的文件／流便利入口及常用任务短入口自该版本提供，变化见[RC2 说明](releases/0.1.0-rc.2.md)。隔离 Maven 调用方验证与正式发布分别记录；DSL、页脚、预算、PDF 临时缓存及原子输出仍遵守各自契约。
 
-模板调用见 [XML](xml-template-api.md)及 [Markdown](markdown-template-api.md)。[PDF 适配器](pdf-adapter-api.md)处理既有静态页，不恢复语义模型；它的 PdfLimits 位于 `adapter.pdf`，与 PDF 输出后端的同名限制类型属于不同契约，按所用入口显式导入。
+模板调用见 [XML](xml-template-api.md)及 [Markdown](markdown-template-api.md)。[PDF 适配器](pdf-adapter-api.md)的静态 `read`／`copy`／`merge` 不恢复语义模型；需要有损几何恢复时，显式使用 `importDocument(PdfInput)`，按[语义恢复指南](pdf-semantic-import-api.md)配置子集和损失策略，不执行 OCR。适配器的 PdfLimits 位于 `adapter.pdf`，与 PDF 输出后端的同名限制类型属于不同契约，按所用入口显式导入。
 
 ## 单向长表导出
 
 `StreamingTable.builder(id)` 只配置固定列、有限表头、页设置和 padding，不接受正文集合。`engine.export(spec, sourceFactory).backend(pageBackend).limits(...).diagnostics(...).options(...).to(target)` 在输出时才打开一次性源，返回扁平计数，应用只需实现 `TableRowSource.next()` 与自己的资源关闭。
 
-源先关闭再 finish，借用目标流不关闭；路径失败保留旧目标。具名选项在 to 入口快照，重入修改仅影响下次导出。普通 Table 及支持未来引用／交互的完整文档入口保持。初版只支持固定列普通文字整行分页，PDFBox 页树仍增长，详见[长表指南](streaming-table-api.md)与[阶段二十四](verification/phase-24-streaming-tables.md)。
+源先关闭再 finish，借用目标流不关闭；路径失败保留旧目标。具名选项在 to 入口快照，重入修改仅影响下次导出。普通单次路径支持固定列普通／富文本、显式图片／被动外链、横向合并和已知页数字段；纵向合并须显式启用有界原子连通组，不与该路径的拆行组合。递归格、跨页 owner、未知总数或未来引用使用[语义／重放入口](streaming-replay-api.md)，不自动接入 DOCX。普通 `PdfBackend` 仍累计页树，`PdfSpoolBackend` 可逐页释放对象图；各自的预算和资源边界见[长表指南](streaming-table-api.md)。初版普通文字路径的历史证据见[阶段二十四](verification/phase-24-streaming-tables.md)。
 
 语义和组件文档均可使用 `.theme(DocumentTheme)`，主题定义集中在完整格式值中，正文链保持标题／段落／表格结构。具名样式查询返回现有不可变 ParagraphFormat／InlineStyle，避免逐组件重复传参，完整优先级见[主题指南](themes-api.md)。
 

@@ -37,6 +37,6 @@ DOCX 写标准 w:gridSpan，保留 tblGrid 物理列和一个锚点一个 w:tc�
 
 ## 边界与迁移
 
-阶段二十五的列合并切面不包含语义 rowSpan；后续标准 vMerge 与二维来源见[跨行合并 API](row-spans-api.md)。递归块格见[块格 API](block-cells-api.md)。横向分页仍不支持；StreamingTable 已支持[固定列横向合并](streaming-table-api.md#固定列横向合并)，纵向合并继续拒绝。复杂 Word 表格的旧 hMerge、省略槽及未知结构仍按严格损失边界处理，不能推断几何或扁平化内容后称为无损。
+阶段二十五的列合并切面不包含语义 rowSpan；后续标准 vMerge 与二维来源见[跨行合并 API](row-spans-api.md)。递归块格见[块格 API](block-cells-api.md)。横向分页仍不支持。`StreamingTable` 支持[固定列横向合并](streaming-table-api.md#固定列横向合并)，普通单次路径还可显式启用[有界原子纵向合并](streaming-row-spans-api.md)；重复表头纵跨及该路径的纵向合并加拆行组合仍拒绝，跨页 owner 拆分另用[语义／重放入口](streaming-replay-api.md)。复杂 Word 表格的旧 hMerge、省略槽及未知结构仍按严格损失边界处理，不能推断几何或扁平化内容后称为无损。
 
 阶段二十五将 TableCell 由五项 record 变为六项，旧构造调用与 accessor 保留；后续 rowSpan 将其扩为七项。record 解构参数数目和反射 shape 改变，调用方需重新编译并调整解构模式。没有新增依赖、字体或隐式资源访问。

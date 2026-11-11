@@ -1,6 +1,6 @@
 # 研发路线与验收
 
-本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。可选 [HTML 设计器](designer.md)及四套业务样例已完成。跨平台／阅读器矩阵、正式分发及更多格式继续按原有独立缺口验收。
+本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。可选 [HTML 设计器](designer.md)及四套业务样例已完成；`0.1.0-rc.2` 已发布到 Maven Central，手动发布工作流与远端隔离消费通过，见[发布记录](releasing.md#已发布候选记录)。跨平台／阅读器矩阵、稳定 API／稳定版及更多格式继续按原有独立缺口验收。
 
 ## 阶段总览
 
@@ -92,7 +92,7 @@
 
 ## 阶段五：性能、稳定性与正式发布
 
-首批稳定性验证通过 4 线程 24 次 PDF 导出和 2,500 段落实际导出；已完成真实 Edge 表单保存重开、隔离 Maven 调用方、BOM 与 SBOM。它们不等同于长期压力容量、RSS 测量或发布完成。下一阶段依据实际文档补充缺陷回归、容量测量、公共 API 冻结与应用兼容；远程 CI 与正式发布仍需独立验证。
+首批稳定性验证通过 4 线程 24 次 PDF 导出和 2,500 段落实际导出，并完成真实 Edge 表单保存重开、隔离 Maven 调用方、BOM 与 SBOM。这些历史样例不等同于长期压力容量、RSS 测量或发布完成。后续 RC1、RC2 的远端发布及消费已有独立记录，稳定 API／稳定版和更广应用兼容仍按缺口表推进。
 
 后续补充两端对齐、可选严格中文禁则、富文本标题／列表和常用编写入口。新增 2 线程、6 份各 26 页混合报告，采样独立 JVM 的 Windows 工作集、私有字节和句柄，并验证取消／输出超限恢复。该证据仍属于有界工作负载，不代表长期泄漏或容量保证，见[阶段十三](verification/phase-13-authoring.md)。
 
@@ -177,4 +177,6 @@
 
 [阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成 GAP-13：独立 HTML 应用直接编辑既有 XML／ZIP，保留变量／条件／循环与显式资源，提供真实分页预览、8 步撤销、保存重开和六格式损失预检。四套业务样例共 24 份输出、11 页独立渲染及 11 项失败控制通过；构建 1,804 项 Java 测试、库 API 对比和隔离调用方通过。该阶段未完成独立项为 GAP-14.2、GAP-14.3、GAP-22，未执行正式发布。
 
-2026-11-05，候选版 `0.1.0-rc.1` 已使用正式身份签名并发布到 Maven Central，17 个模块的 82 个制品远端字节、签名和校验一致，16 个库与 BOM 的 Central 隔离消费及文档输出验证通过，见[发布记录与流程](releasing.md)。GAP-14.3 继续保留稳定 API 与稳定版验收；新增手动 Maven／GitHub Release 工作流尚无 GitHub 实际运行证据，不以本地演练替代远端 CI。
+2026-11-05，候选版 `0.1.0-rc.1` 使用正式身份签名并发布到 Maven Central，17 个模块的 82 个制品远端字节、签名和校验一致，16 个库与 BOM 的 Central 隔离消费及文档输出验证通过。当时新增的手动 Maven／GitHub Release 工作流尚无 GitHub 实际运行证据。
+
+2026-11-07（北京时间），`0.1.0-rc.2` 的[手动发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)与 [GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2)完成，16 个库与 BOM 已发布到 Maven Central，构建、签名、上传与远端隔离消费均有该运行的独立记录。普通文档逐页导出从 RC2 起提供，当前 API 门禁改用从 Central RC2 库 JAR 提取的[已发布基线](api-compatibility.md)。GAP-14.3 继续保留稳定 API 与稳定版验收；详见[发布记录与流程](releasing.md#已发布候选记录)。

@@ -1,0 +1,27 @@
+{
+  "name": "export4j-docs",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "prepare:content": "node ../scripts/prepare_docs_site.mjs",
+    "dev": "npm run prepare:content && vitepress dev . --host 127.0.0.1",
+    "build": "npm run prepare:content && vitepress build .",
+    "preview": "vitepress preview . --host 127.0.0.1",
+    "deploy:check": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4",
+    "vue": "3.5.45",
+    "wrangler": "4.160.0"
+  },
+  "overrides": {
+    "vitepress": {
+      "vite": "6.4.6"
+    }
+  }
+}

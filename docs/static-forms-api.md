@@ -60,6 +60,6 @@ var table = GridTable.builder().columns(1, 3).allowRowSplit(true)
 
 `InlineGraphic` 不增加语义模型类型。静态选择状态写入逻辑文字，但不等于阅读器通用搜索／选择兼容或 PDF/UA。字体和真实标签的诊断继续按原文 UTF-16 返回，不输出库内部日志。
 
-定位 `TableComponent` 仅用于单视口静态表格。它现在在构造时拒绝字段、文字／图片外链及具名字体角色，避免上下文丢失或链接静默消失。这些内容应继续使用顶层语义 `Table`。该提前拒绝属于尚未发布 API 的行为修正；普通富文本、无外链图片和单页尺寸约束保留。
+定位 `TableComponent` 仅用于单视口静态表格。它在构造时拒绝字段、文字／图片外链及具名字体角色，避免上下文丢失或链接静默消失。这些内容应继续使用顶层语义 `Table`。该提前拒绝在候选发布前引入，属于当前行为契约；普通富文本、无外链图片和单页尺寸约束保留。
 
 决策见 [ADR-0020](adr/0020-static-form-components.md)，验证见[阶段十六](verification/phase-16-static-forms.md)。

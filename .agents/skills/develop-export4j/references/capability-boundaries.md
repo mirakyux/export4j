@@ -34,7 +34,7 @@
 - 目录独立 ContentsStyle 已由[阶段三十四](../../../../docs/verification/phase-34-contents-styles.md)验收，见[指南](../../../../docs/contents-styles-api.md)：标题／页码完整排版、三色与显式意图；未声明值按当前条目重派生。行框先预留，真实页码固定48 pt且只准一行，不请求虚构探测字形。旧三参源码入口保留，record组件兼容边界单独记录。
 - XML 静态页面配置已由[阶段三十六](../../../../docs/verification/phase-36-xml-page-settings.md)验收：根首个空 `page`、静态 A4／LETTER 或成对宽高、方向与边距，严格十进制 pt／mm／cm／in；未声明项采用 Java 默认。原主源首位、引用片段／全分支拒绝、解析／展开预算与脱敏保持；page不占Block／ID，DOCX页面按整数twip量化。后续修改运行 `build sbom publishLocalBundle :examples:xmlPageSettings`、隔离调用方与 `scripts/verify_xml_page_settings.py`，回归XML／include／字段／主题；全部新页双渲染及逐页复查。
 - 固定页区字体角色已由[阶段三十七](../../../../docs/verification/phase-37-page-region-fonts.md)验收，见[指南](../../../../docs/page-region-fonts-api.md)：Renderer入口固定同次角色快照，PageComposer四参重载传入header／footer／background／foreground；旧无角色重载保留空映射。默认字体及StyleScope／FontScope保持，标准TextComponent选角色仍需自定义委托；固定多片段和SemanticTable拒绝不放宽。修改运行 `build sbom publishLocalBundle :examples:pageRegionFonts :examples:componentPdf :examples:advancedPdf :examples:production :examples:capabilities`、新调用方与 `scripts/verify_page_region_fonts.py`，并回归默认样式／主题／目录／字段；全部新页双渲染和逐页复查。完整默认角色／颜色级联及XML页区仍开放。
-- 已采用 Gradle 9.2.1、PDFBox / FontBox 3.0.8 和 JUnit 6.1.3。OpenType／静态输出使用 JDK java.desktop，DOCX 使用 JDK ZIP／安全 XML；实际依赖见版本目录和锁文件。
+- 已采用 Gradle 9.4.1、PDFBox / FontBox 3.0.8 和 JUnit 6.1.3。OpenType／静态输出使用 JDK java.desktop，DOCX 使用 JDK ZIP／安全 XML；实际依赖见 Wrapper 配置、版本目录和锁文件。
 - 阅读顺序：[README](../../../../README.md)、[立项文档](../../../../docs/project-proposal.md)、[架构设计](../../../../docs/architecture.md)、[开发规约](../../../../docs/development.md)、[研发路线](../../../../docs/roadmap.md)。
 
 ## 字体、列表与 XML 默认值

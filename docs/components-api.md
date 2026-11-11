@@ -182,6 +182,6 @@ PDF 阅读器对填写、批注面板与保存的支持不同。本次验证包�
 - `PdfLimits` 新增交互数量和文字预算，保留原六／七参数构造器。
 - `DocumentLayouter` 新增包含 `ComponentLimits` 的三参数构造器，原构造器继续有效。
 
-项目尚未正式发布；record 组件数量、反射序列化和枚举／sealed exhaustive switch 的调用方仍须重新核对。
+上述为候选发布前引入的契约变化。当前已发布 `0.1.0-rc.2`，公共声明以[已发布 API 基线](api-compatibility.md)为准；从早期开发快照迁移时，record 组件数量、反射序列化和枚举／sealed exhaustive switch 的调用方仍须重新核对。
 
 进阶能力已补齐分页约束、保持相邻、分节、纵向嵌套流、富文本、合并表格、中文表单和下拉框，见[进阶 API](advanced-api.md)。后续已实现矩形绕排、多栏、公共复杂文本和外部 CMS 签名入口，见[能力指南](capabilities-api.md)。透明水印与脚本动作尚未支持。初始架构见 [ADR-0006](adr/0006-components-and-pdf-interactions.md)，扩展见 [ADR-0007](adr/0007-advanced-layout-and-font-policy.md)，证据见[进阶验收](verification/phase-3-advanced.md)。

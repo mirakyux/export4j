@@ -61,19 +61,19 @@ var document = template.render(Map.of("title", "季度复核", "result", "通过
 
 块格内无名称的 `p` 继续使用实际格的字号、行高、对齐和断行规则，并使用零段间距。有名称的 `p` 保留完整命名缩进、间距及分页策略，格位置不会自动清零它们。格内段落仍不支持 `pageBreakBefore` 或 `keepWithNext`；选择包含这些策略的命名格式会明确失败。应定义合法的格内样式，或在既有可覆盖属性范围内显式表达意图，不把整页分页策略放进格。
 
-`span` 从完整命名 `InlineStyle` 开始，现有 `role`、`color`、`size`、`underline` 和 `strike` 属性最后逐项覆盖。显式 `role=""`、`color="#000000"`、`underline="false"` 和 `strike="false"` 均有明确含义。没有对应 XML 属性的 `baselineShift` 完整保留。普通同级文字保持所在段／格的默认字号、黑色和默认角色，不受前一个 span 影响。
+`span` 从完整命名 `InlineStyle` 开始，现有 `role`、`color`、`size`、`underline` 和 `strike` 属性最后逐项覆盖。显式 `role=""`、`color="#000000"`、`underline="false"` 和 `strike="false"` 均有明确含义。没有对应 XML 属性的 `baselineShift` 完整保留。普通同级文字保持所在段／格的默认字号、字体角色与颜色，不受前一个 span 影响；默认值与局部覆盖见[文字默认值指南](xml-text-defaults-api.md)。
 
 例如，11 pt 的命名强调放进 19 pt 标题仍为 11 pt，需要变大时显式写 `size`。固定行框须同时容纳这些运行，空间不足不会自动放大行高或缩小文字。未知角色、缺字策略和原文 UTF-16 诊断仍由既有布局路径处理。
 
-所有名称在编译阶段检查，包括未选择的 `if` 分支、运行期零次 `each`、动态 `rows` 的表头／行原型及原子内表。不能用数据分支隐藏非法名称。`heading`、`bullet`、`numbered`、`cell`、`table`、`rows`、字段、`link` 和根元素仍不接受 `style`，嵌套 span 仍拒绝。
+所有名称在编译阶段检查，包括未选择的 `if` 分支、运行期零次 `each`、动态 `rows` 的表头／行原型及嵌套内表。不能用数据分支隐藏非法名称。`heading`、`bullet`、`numbered`、`cell`、`table`、`rows`、字段、`link` 和根元素仍不接受 `style`，嵌套 span 仍拒绝。
 
-## 标题、表格与原子内表
+## 标题、表格与嵌套续排
 
 六级标题取主题的对应完整格式，再应用现有 XML 属性；未配置的级别沿用默认标题。标题级别、与后文相邻等策略保留。
 
 静态 `table` 与动态 `rows` 都从主题 `TableFormat` 开始，包括内边距、前后间距和拆行开关。显式 `row-split` 只覆盖当前表。内表重新采用编译器的主题格／表默认值，不继承外格的局部字号或外表的拆行覆盖。
 
-两层表格、原子块格及其他既有限制保持。如果主题打开拆行，含块格的父表及任何内表须分别显式写 `row-split="false"`；缺少覆盖仍在编译时失败。此能力不增加嵌套续排或合并拆行规则。
+根表计第 1 层，当前共享模型最多支持 16 层表格。主题的拆行开关可用于含块格的父表与静态内表，各层分别采用主题默认值或自己的 `row-split` 覆盖。开启后按完整段落行与内表片段续排；关闭后仍按该层的连通行组整体移动。若需要全部保持原子，应在相应表上写 `row-split="false"`，无需为通过编译统一关闭拆行。重复表头块格、格内段落分页策略和预算限制见[XML 多段格指南](xml-block-cells-api.md)与[块格 API](block-cells-api.md)。
 
 ## 输出与独立复核
 
