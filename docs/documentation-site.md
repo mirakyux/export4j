@@ -13,15 +13,15 @@ npm --prefix site run dev
 
 打开终端显示的本地地址。英文首页为 `/`，中文首页为 `/zh/`；英文指南位于 `/docs/`，中文指南位于 `/zh/docs/`。导航、侧栏、搜索与主题文案跟随页面语言。语言菜单在首页、快速开始、FAQ 和主侧栏指南间切换对应页面；仅有中文的历史记录或进阶参考切换英文时进入英文文档导航，菜单明确标注这一目的地。正文不重复语言入口。
 
-- `docs/*.md` 维护中文指南，`docs/en/` 维护英文译文；`site/.vitepress/navigation.mjs` 统一定义双语侧栏与页面配对。新增主侧栏页面必须同时提供两种语言，构建缺少译文时失败。准备脚本只复制 Git 已跟踪的文档和明确列出的新增公共指南，排除本地研究资料。
+- `docs/*.md` 维护中文指南，`docs/en/` 维护英文译文；`site/.vitepress/navigation.mjs` 按主题定义侧栏与页面配对。使用 `page(...)` 的指南必须同时提供两种语言，构建缺少译文时失败；仅有中文的进阶参考使用 `reference(...)`，英文侧栏明确标注中文。准备脚本检查所有顶层 `docs/*-api.md` 均已进入侧栏，避免页面只能通过搜索找到；只复制 Git 已跟踪的文档和明确列出的新增公共指南，排除本地研究资料。
 - 中英文快速开始由两份根 README 生成；源码、脚本和字体记录链接指向 GitHub，指南链接保留在站内。
 - `site/pages/index.md`、`site/pages/zh/index.md` 和 `site/.vitepress/theme/` 维护首页与主题。
 - 生成内容位于 `site/pages/docs/`、`site/pages/zh/docs/` 和两份 `getting-started.md`，不提交。修改原始文档后重新执行 `npm --prefix site run prepare:content`。已有英文译文使用 `/docs/*`；仅有中文的旧地址通过生成的 `_redirects` 逐页 301 跳转。英文正文中指向未翻译资料的链接明确标注中文。
-- 首页样张及来源见[样张说明](../site/pages/public/showcase/README.md)。本地输出与页面截图不能替代 Java 输出验收。
+- 首页提供周报、报价单、学术论文、履历、合同、使用说明书和会议纪要七种真实输出，配套完整 PDF 与模板／示例入口；来源及边界见[样张说明](../site/pages/public/showcase/README.md)。本地输出与页面截图不能替代 Java 输出验收。
 
 构建保留断链检查；不得以关闭 `ignoreDeadLinks` 掩盖缺失页面。
 
-构建同时从实际浏览器模块、样式和图标收集第三方原始许可，生成站点根路径下的 `THIRD-PARTY-NOTICES.txt`。缺失许可、版本偏离锁文件或补充原文摘要不符时构建失败。主题不打包字体；依赖升级须检查生成声明及[补充许可记录](../third-party/docs-site-licenses/README.md)，不能仅保留许可证名称。
+构建同时从实际浏览器模块、样式和图标收集第三方原始许可，生成站点根路径下的 `THIRD-PARTY-NOTICES.txt`。缺失许可、版本偏离锁文件或补充原文摘要不符时构建失败。主题从 VitePress 随附资源打包 Inter 拉丁字体和 OFL 许可，由本站提供；中文使用本地系统字体。依赖升级须检查生成声明及[补充许可记录](../third-party/docs-site-licenses/README.md)，不能仅保留许可证名称。
 
 ## 构建与 Cloudflare 部署
 

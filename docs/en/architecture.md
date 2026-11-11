@@ -151,7 +151,7 @@ Core `RegionFlow`/`FlowRegions` represent a finite prefix of shorter regions fol
 
 `DocumentExtras` stores resolved bookmarks, internal links, external URIs, comments, and fields without PDFBox objects. A fixed page-number column keeps contents layout independent of final numbers; resolution uses real page targets. The PDF backend only converts coordinates and creates outlines, annotations, and AcroForm fields.
 
-Comments and forms are interaction objects separate from drawing; readers usually show them above page content. Forms support text, checkboxes, dropdowns, and radio groups. Chinese fields fully embed one explicit font, preserving current/default values and appearance streams, without scripts or automatic flattening. See [components API (Chinese)](../components-api.md) and [ADR-0006 (Chinese)](../adr/0006-components-and-pdf-interactions.md).
+Comments and forms are interaction objects separate from drawing; readers usually show them above page content. Forms support text, checkboxes, dropdowns, and radio groups. Chinese fields fully embed one explicit font, preserving current/default values and appearance streams, without scripts or automatic flattening. See [components API](components-api.md) and [ADR-0006 (Chinese)](../adr/0006-components-and-pdf-interactions.md).
 
 ## Geometry and coordinates
 

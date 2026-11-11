@@ -88,13 +88,18 @@ export function thirdPartyNotices() {
         entries.push({ name: meta.name, version: meta.version, license: meta.license, texts });
       }
       entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+      const interLicense = await readFile(path.join(repository, 'third-party/docs-site-licenses/inter-OFL.txt'));
+      if (createHash('sha256').update(interLicense).digest('hex') !== '262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a') {
+        throw new Error('Inter font license digest mismatch.');
+      }
       const source = [
         'Export4j documentation website: third-party notices',
         '',
         'Original licenses for packages included in browser bundles, extracted styles and social icons.',
         'Build and deployment tools are not distributed by this static website.',
         '',
-        ...entries.map(entry => `${'='.repeat(72)}\n${entry.name} ${entry.version} (${entry.license})\n\n${entry.texts.join('\n\n')}`)
+        ...entries.map(entry => `${'='.repeat(72)}\n${entry.name} ${entry.version} (${entry.license})\n\n${entry.texts.join('\n\n')}`),
+        `${'='.repeat(72)}\nInter font, distributed with VitePress (SIL OFL-1.1)\nhttps://github.com/rsms/inter\n\n${interLicense.toString('utf8')}`
       ].join('\n\n') + '\n';
       this.emitFile({ type: 'asset', fileName: 'THIRD-PARTY-NOTICES.txt', source });
     }

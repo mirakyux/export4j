@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Prepare tracked project documentation for the public VitePress site.
 import { execFileSync } from 'node:child_process';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { translatedGuides } from '../site/.vitepress/navigation.mjs';
+import { guideGroups, translatedGuides } from '../site/.vitepress/navigation.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pagesDirectory = path.join(root, 'site', 'pages');
@@ -13,6 +13,16 @@ const tracked = new Set(execFileSync('git', ['ls-files', '-z'], {
   cwd: root, encoding: 'utf8',
 }).split('\0').filter(Boolean));
 const documents = new Set([...tracked].filter(name => name.startsWith('docs/') && name.endsWith('.md')));
+const sidebarGuides = new Set(guideGroups.flatMap(group => group.items.map(item => item.name)));
+const apiGuides = (await readdir(path.join(root, 'docs'), { withFileTypes: true }))
+  .filter(entry => entry.isFile() && entry.name.endsWith('-api.md'))
+  .map(entry => entry.name.slice(0, -3));
+const missingSidebarGuides = apiGuides.filter(name => !sidebarGuides.has(name)).sort();
+if (missingSidebarGuides.length) {
+  throw new Error(`Public API guides are missing from the sidebar: ${missingSidebarGuides.join(', ')}. ` +
+    'Add them to an appropriate guideGroups topic in site/.vitepress/navigation.mjs; ' +
+    'use reference(...) when no maintained English translation exists.');
+}
 const quickstarts = new Map([
   ['README.md', '/getting-started.md'],
   ['README.zh-CN.md', '/zh/getting-started.md'],
@@ -41,6 +51,7 @@ const documentRoutes = new Map([...documents].map(source => [source,
 ]));
 const routes = new Map([...documentRoutes, ...quickstarts, ...publicPages]);
 const publicNotices = new Set([
+  'third-party/docs-site-licenses/inter-OFL.txt',
   'third-party/docs-site-licenses/docsearch-3.8.2-LICENSE',
   'third-party/docs-site-licenses/simple-icons-16.37.0-LICENSE.md',
 ]);
@@ -118,6 +129,11 @@ function rewriteTarget(target, source) {
   if (publicNotices.has(relative)) return '/THIRD-PARTY-NOTICES.txt';
   if (routes.has(relative)) {
     const rewritten = `${routes.get(relative)}${siteSuffix(match[2], match[3], relative, source)}`;
+    return enclosed ? `<${rewritten}>` : rewritten;
+  }
+  if (relative.startsWith('site/pages/public/') && tracked.has(relative)) {
+    const asset = relative.slice('site/pages/public/'.length).split('/').map(encodeURIComponent).join('/');
+    const rewritten = `/${asset}${suffix}`;
     return enclosed ? `<${rewritten}>` : rewritten;
   }
   if (relative === 'docs/verification') {

@@ -123,7 +123,7 @@ public final class ComponentExample {
 
 `ContinuousColumns` 通过核心 `RegionFlow` 从剩余正文区域开始多栏，再使用完整续栏，最后按实际高度接续正文。支持文字、`FlowColumn` 混合流和 `GridTable` 表格；其他组件可通过混合流按整块／原有分页片段参与，详见[连续分栏 API](continuous-columns-api.md)和[混合分栏 API](mixed-columns-api.md)。
 
-正文段落通过 `InlineField` 提供当前页码、总页数、目标页码／编号和行内注释标记。字段先按固定宽度参与断行，再由编排器解析最终值；脚注跟随标记实际所在行。组件内部、表格单元格和连续栏内字段不在本批范围，见[字段 API](inline-fields-api.md)。
+正文段落通过 `InlineField` 提供当前页码、总页数、目标页码／编号和行内注释标记。字段先按固定宽度参与断行，再由编排器解析最终值；脚注跟随标记实际所在行。组件容器中的语义表格使用 `SemanticTable` 保留并解析字段；固定的 `TableComponent` 仍拒绝字段。表格、连续栏和注释标记的具体支持边界见[语义组件 API](semantic-components-api.md)与[字段 API](inline-fields-api.md)。
 
 `ComponentContext.pageCount() == 0` 表示分页前测量，`pageIndex()` 只是测量时的候选页。正文组件必须独立于页索引及最终页数；移动到下一页不会再次测量。最终页字段在页区合成阶段获得真实从 0 开始的页索引和总页数，显示数字从 1 开始。
 

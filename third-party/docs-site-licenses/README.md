@@ -10,3 +10,5 @@
 权利人分别为 Algolia, Inc. 和 Simple Icons Collaborators。Simple Icons 的 CC0 授权不授予品牌商标权；站点仅使用 GitHub 图标链接到项目仓库。图标源数据、元数据及 npm 完整性见锁定包的 `icons.json`、`info.json` 和 `site/package-lock.json`。
 
 原文随构建生成的 `THIRD-PARTY-NOTICES.txt` 发布。此目录不包含构建或部署工具二进制，不改变 Java 制品的依赖或许可。
+
+主题使用 VitePress 随附的 Inter 拉丁字符可变字体，通过站点自身提供，不请求远程字体服务。Inter Project Authors 以 SIL OFL-1.1 授权；[许可原文](inter-OFL.txt)随站点声明发布，SHA-256 为 `262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a`。中文使用本地系统字体。

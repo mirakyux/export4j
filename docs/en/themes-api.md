@@ -89,7 +89,7 @@ var document = Documents.builder()
         .build();
 ~~~
 
-Components receive only size, fixed line height, first/subsequent-line indentation, alignment and line-break policy. Paragraph spacing and adjacent-block pagination policies still belong to semantic blocks. Nested `StyleScope`, grid-cell defaults and explicit child properties follow the [style-default rules (Chinese)](../style-defaults-api.md). Methods such as `.inheritFontSize()` restore defaults from the actual measurement context without looking up theme names. Component-grid borders, backgrounds, padding and header appearance remain explicit; semantic `TableFormat` does not apply to `GridTable`.
+Components receive only size, fixed line height, first/subsequent-line indentation, alignment and line-break policy. Paragraph spacing and adjacent-block pagination policies still belong to semantic blocks. Nested `StyleScope`, grid-cell defaults and explicit child properties follow the [style-default rules](style-defaults-api.md). Methods such as `.inheritFontSize()` restore defaults from the actual measurement context without looking up theme names. Component-grid borders, backgrounds, padding and header appearance remain explicit; semantic `TableFormat` does not apply to `GridTable`.
 
 ## Output and scope
 

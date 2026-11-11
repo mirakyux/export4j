@@ -24,7 +24,8 @@ export default defineConfig({
   appearance: true,
   sitemap: siteUrl ? { hostname: siteUrl } : undefined,
   head: [
-    ['meta', { name: 'theme-color', content: '#f7f7f4' }],
+    ['meta', { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' }],
+    ['meta', { name: 'theme-color', content: '#151a17', media: '(prefers-color-scheme: dark)' }],
     ['meta', { name: 'color-scheme', content: 'light dark' }]
   ],
   markdown: {
@@ -42,7 +43,7 @@ export default defineConfig({
           { text: 'Get started', link: '/getting-started' },
           { text: 'Guides', link: '/docs/README' },
           { text: 'FAQ', link: '/docs/faq' },
-          { text: 'RC2', link: `${repository}/releases/tag/v0.1.0-rc.2` }
+          { text: 'Examples', link: '/#gallery-title' }
         ]
       }
     },
@@ -54,7 +55,7 @@ export default defineConfig({
           { text: '开始使用', link: '/zh/getting-started' },
           { text: '指南', link: '/zh/docs/README' },
           { text: '常见问题', link: '/zh/docs/faq' },
-          { text: 'RC2', link: `${repository}/releases/tag/v0.1.0-rc.2` }
+          { text: '示例', link: '/zh/#gallery-title' }
         ],
         outline: { level: [2, 3], label: '本页目录' },
         docFooter: { prev: '上一页', next: '下一页' },

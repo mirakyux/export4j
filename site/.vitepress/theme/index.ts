@@ -5,6 +5,7 @@ import type { Theme } from 'vitepress'
 import Home from './Home.vue'
 import LanguageSwitch from './LanguageSwitch.vue'
 import './custom.css'
+import './docs.css'
 
 export default {
   extends: DefaultTheme,
