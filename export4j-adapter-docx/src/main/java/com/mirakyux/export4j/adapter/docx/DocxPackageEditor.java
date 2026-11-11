@@ -14,9 +14,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -147,19 +145,8 @@ public final class DocxPackageEditor {
         }
         /** Requires an existing parent and atomic-move support; failures preserve the old destination. */
         public Result to(Path output) throws IOException {
-            Path target = Objects.requireNonNull(output, "output").toAbsolutePath();
-            Path temporary = Files.createTempFile(target.getParent(), ".export4j-docx-edit-", ".tmp");
-            try {
-                return ExecutionContext.execute(execution, () -> {
-                    Result completed;
-                    try (var stream = Files.newOutputStream(temporary)) { completed = to(stream); }
-                    ExecutionContext.checkpoint();
-                    Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                    return completed;
-                });
-            } catch (IOException | RuntimeException | Error failure) {
-                try { Files.deleteIfExists(temporary); } catch (IOException cleanup) { failure.addSuppressed(cleanup); } throw failure;
-            }
+            DocxFileIO.publish(output, execution, stream -> stream.write(encoded));
+            return result;
         }
 
         /** Local file output using the same atomic publication contract as the Path overload. */

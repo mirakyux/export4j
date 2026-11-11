@@ -6,4 +6,6 @@ dependencies {
     api(project(":export4j-adapter-template"))
     implementation(libs.pdfbox)
     implementation(libs.fontbox)
+    testImplementation(project(":export4j-adapter-web"))
+    testImplementation(project(":export4j-components"))
 }

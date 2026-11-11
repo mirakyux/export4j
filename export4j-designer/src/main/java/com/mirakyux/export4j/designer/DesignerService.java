@@ -509,8 +509,9 @@ final class DesignerService {
             try { sourceTree = DesignerXml.parse(source.source()).getDocumentElement(); }
             catch (Exception ex) { throw new IOException("cannot map designer page regions", ex); }
             var sections = new ArrayList<String>();
-            for (int index = 0; index < DesignerXml.children(sourceTree).size(); index++) {
-                if (DesignerXml.children(sourceTree).get(index).getTagName().equals("section")) { sections.add("/" + index); }
+            var sourceChildren = DesignerXml.children(sourceTree);
+            for (int index = 0; index < sourceChildren.size(); index++) {
+                if (sourceChildren.get(index).getTagName().equals("section")) { sections.add("/" + index); }
             }
             if (sections.isEmpty()) { sections.add(""); }
             var starts = new HashMap<String, Integer>();

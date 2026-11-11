@@ -179,6 +179,8 @@ public final class ParagraphLayouter {
         List<TextDiagnostic> diagnostics = new ArrayList<>();
         Map<Integer, StyledSpan> styles = new HashMap<>();
         int start = 0;
+        int firstSpan = 0;
+        int firstSpanStart = 0;
         while (true) {
             com.mirakyux.export4j.model.ExecutionContext.checkpoint();
             int end = start;
@@ -187,8 +189,13 @@ public final class ParagraphLayouter {
             }
             String part = text.substring(start, end);
             List<ShapedGlyph> glyphs = new ArrayList<>();
-            int spanStart = 0;
-            for (var span : spans) {
+            while (firstSpan < spans.size()
+                    && firstSpanStart + spans.get(firstSpan).text().length() <= start) {
+                firstSpanStart += spans.get(firstSpan++).text().length();
+            }
+            int spanStart = firstSpanStart;
+            for (int index = firstSpan; index < spans.size() && spanStart < end; index++) {
+                var span = spans.get(index);
                 int from = Math.max(start, spanStart);
                 int to = Math.min(end, spanStart + span.text().length());
                 if (from < to) {

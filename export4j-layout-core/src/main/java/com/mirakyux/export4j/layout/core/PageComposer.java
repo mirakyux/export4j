@@ -12,6 +12,7 @@ import com.mirakyux.export4j.graphics.DisplayDocument;
 import com.mirakyux.export4j.graphics.DisplayPage;
 import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.graphics.core.DisplayListBuilder;
+import com.mirakyux.export4j.graphics.core.GraphicsResources;
 import com.mirakyux.export4j.model.PageSettings;
 
 /** Composes repeating page regions after final pagination. Core depends only on its component SPI. */
@@ -163,7 +164,7 @@ public final class PageComposer {
             throw new IllegalArgumentException("page template requires uniform page sizes");
         }
         DisplayListBuilder builder = new DisplayListBuilder(source.size());
-        commands += source.commands().size();
+        commands = countCommands(source.commands(), commands);
         commands = place(builder, template.background(), pageRegion, fonts, roles, index, finalPages,
                 spec.pageNumber(), commands, traces, PageComposition.Region.BACKGROUND);
         builder.appendCommands(source.commands());
@@ -208,7 +209,7 @@ public final class PageComposer {
             if (layout.width() > Math.nextUp(viewport.width()) || layout.height() > Math.nextUp(viewport.height())) {
                 throw new IllegalArgumentException("component exceeds its viewport");
             }
-            commands += layout.commands().size() + 3L;
+            commands = countCommands(layout.commands(), commands + 3L);
             if (commands > limits.maxCommands()) {
                 throw new IllegalArgumentException("component command budget exceeded");
             }
@@ -217,6 +218,16 @@ public final class PageComposer {
             traces.add(new PageComposition.Placed(page, region, index, viewport, layout));
         }
         return commands;
+    }
+
+    private long countCommands(List<com.mirakyux.export4j.graphics.DrawCommand> source, long previous) {
+        long[] count = {previous};
+        GraphicsResources.walk(source, command -> {
+            if (++count[0] > limits.maxCommands()) {
+                throw new IllegalArgumentException("component command budget exceeded");
+            }
+        });
+        return count[0];
     }
 
     private static void requireContained(Rect child, Rect parent) {

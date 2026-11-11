@@ -16,13 +16,13 @@ test('bridge history preserves resource operations and reports the current previ
         await page.addScriptTag({content:`
             const $=id=>document.getElementById(id);
             let state,selected,selectedPaths=[],entries=[],pages=[],currentPage=0,busy=false,propertyDirty=false,nodeXmlDirty=false;
-            let previewId='',previewTimer,previewGeneration=0,previewFormats={},calls=[],server,projects=[],serverCursor=0,rejectRestore=false,pageSourceOverride;
-            const DesignerStudio={sync(){},shouldPreview(){return true;}};
+            let previewId='',previewTimer,previewGeneration=0,previewFormats={},calls=[],server,projects=[],serverCursor=0,rejectRestore=false,pageSourceOverride,previewAllowed=true,previewCalls=0;
+            const DesignerStudio={sync(){},shouldPreview(){return previewAllowed;}};
             const Editor={pageDraftSource:source=>pageSourceOverride??source};
             const sameText=(left,right)=>left.replace(/\\r\\n?/g,'\\n')===right.replace(/\\r\\n?/g,'\\n');
             const sourceChanged=()=>!sameText($('source').value,state.source),dataChanged=()=>!sameText($('data').value,state.data);
             const draftSource=()=>$('source').value;
-            function inspect(){} function markDirty(){} function refreshButtons(){} function status(){} function diagnostics(){} function schedulePreview(){}
+            function inspect(){} function markDirty(){} function refreshButtons(){} function status(){} function diagnostics(){} function schedulePreview(){previewCalls++;}
             async function run(work){if(busy)return;busy=true;try{await work();}finally{busy=false;}}
             function outline(source){const walk=(node,path='')=>({path,id:node.getAttribute('id')||'',tag:node.tagName,label:node.tagName,children:[...node.children].map((child,index)=>walk(child,path+'/'+index))});return walk(new DOMParser().parseFromString(source,'application/xml').documentElement);}
             function response(project){return {...project,outline:outline(project.source),revision:server?.revision||1,canUndo:serverCursor>0,canRedo:serverCursor<projects.length-1,historyResources:[...new Set(projects.map(value=>value.resourceIdentity))]};}
@@ -42,7 +42,7 @@ test('bridge history preserves resource operations and reports the current previ
                 server={...response(projects[serverCursor]),revision:(server?.revision||0)+1};return {...server};
             }
             const template=text=>'<document version="1"><p id="text">'+text+'</p></document>';
-            async function reset(){await DesignerStudioBridge.settled();projects=[{source:template('Original'),data:'{"name":"Ada"}',resourceIdentity:'r0'}];serverCursor=0;server={...response(projects[0]),revision:(server?.revision||0)+1};calls=[];rejectRestore=false;pageSourceOverride=undefined;install({...server},true,{session:true});ack();}
+            async function reset(){await DesignerStudioBridge.settled();projects=[{source:template('Original'),data:'{"name":"Ada"}',resourceIdentity:'r0'}];serverCursor=0;server={...response(projects[0]),revision:(server?.revision||0)+1};calls=[];rejectRestore=false;pageSourceOverride=undefined;previewAllowed=true;previewCalls=0;install({...server},true,{session:true});ack();}
             function currentIdentity(){return {source:$('source').value,data:$('data').value,resourceIdentity:state.resourceIdentity};}
             function ack(){DesignerStudioBridge.previewed($('source').value,currentIdentity());}
             async function resource(id){install(await request('resource',{source:state.source,data:state.data,resourceIdentity:id}));ack();}
@@ -88,6 +88,46 @@ test('bridge history preserves resource operations and reports the current previ
         await t.test('compile rejection reports failure and successful correction still waits for preview',async()=>{
             const result=await page.evaluate(async()=>{await reset();await DesignerStudioBridge.apply(template('BAD_COMPILE'));await DesignerStudioBridge.settled();const failed=view();await DesignerStudioBridge.apply(template('Corrected'));await DesignerStudioBridge.settled();const pending=view();ack();return {failed,pending,final:view()};});
             assert.equal(result.failed.layoutState,'failed');assert.equal(result.failed.pending,false);assert.equal(result.pending.layoutState,'pending');assert.equal(result.final.layoutState,'synced');
+        });
+        await t.test('ending an unchanged rich edit resumes its deferred inserted-paragraph preview once',async()=>{
+            const result=await page.evaluate(async()=>{
+                await reset();previewAllowed=false;
+                const source=template('Original').replace('</document>','<p id="inserted">New paragraph</p></document>');
+                await DesignerStudioBridge.apply(source);await DesignerStudioBridge.settled();
+                const deferred=view();DesignerStudioBridge.editingEnded();const whileEditing=previewCalls;
+                await DesignerStudioBridge.apply(source);await DesignerStudioBridge.settled();
+                previewAllowed=true;DesignerStudioBridge.editingEnded();const resumed=view();
+                DesignerStudioBridge.editingEnded();DesignerStudioBridge.editingEnded();const scheduled=previewCalls;
+                ack();DesignerStudioBridge.editingEnded();
+                return {deferred,whileEditing,resumed,scheduled,final:view(),afterAck:previewCalls,requests:calls.map(call=>call.path)};
+            });
+            assert.equal(result.deferred.layoutState,'stale');assert.equal(result.deferred.pending,false);
+            assert.equal(result.whileEditing,0);assert.equal(result.resumed.layoutState,'pending');assert.equal(result.resumed.pending,true);
+            assert.equal(result.scheduled,1);assert.equal(result.afterAck,1);assert.equal(result.final.layoutState,'synced');
+            assert.deepEqual(result.requests,['apply']);
+        });
+        await t.test('ending an edit leaves an outstanding server sync to schedule its own preview',async()=>{
+            const result=await page.evaluate(async()=>{
+                await reset();previewAllowed=false;
+                const applied=DesignerStudioBridge.apply(template('Inserted'));
+                previewAllowed=true;DesignerStudioBridge.editingEnded();const duringSync=previewCalls;
+                await applied;await DesignerStudioBridge.settled();DesignerStudioBridge.editingEnded();
+                return {duringSync,scheduled:previewCalls,current:view()};
+            });
+            assert.equal(result.duringSync,0);assert.equal(result.scheduled,1);assert.equal(result.current.layoutState,'pending');
+        });
+        await t.test('ending unchanged edits preserves current pending and failed previews and unsaved drafts',async()=>{
+            const result=await page.evaluate(async()=>{
+                await reset();previewAllowed=false;await DesignerStudioBridge.apply(template('Inserted'));await DesignerStudioBridge.settled();previewAllowed=true;
+                DesignerStudioBridge.previewing(currentIdentity());DesignerStudioBridge.editingEnded();const pending=view();
+                DesignerStudioBridge.previewFailed(currentIdentity());DesignerStudioBridge.editingEnded();const failed=view();
+                ack();$('source').value=template('Unsaved');DesignerStudioBridge.editingEnded();const draft=view(),beforeReset=previewCalls;
+                await reset();await DesignerStudioBridge.apply(template('BAD_COMPILE'));await DesignerStudioBridge.settled();DesignerStudioBridge.editingEnded();
+                return {pending,failed,draft,beforeReset,compile:view(),scheduled:previewCalls};
+            });
+            assert.equal(result.pending.layoutState,'pending');assert.equal(result.failed.layoutState,'failed');
+            assert.equal(result.draft.layoutState,'stale');assert.equal(result.beforeReset,0);
+            assert.equal(result.compile.layoutState,'failed');assert.equal(result.scheduled,0);
         });
         await t.test('page-setting drafts are synchronized only with the actual submitted preview source',async()=>{
             const result=await page.evaluate(async()=>{await reset();pageSourceOverride=template('Page draft');const stale=view(),submitted={...currentIdentity(),source:pageSourceOverride};DesignerStudioBridge.previewing(submitted);const pending=view(),accepted=DesignerStudioBridge.previewed(state.source,submitted),synced=view();pageSourceOverride=undefined;return {stale,pending,accepted,synced,closed:view()};});

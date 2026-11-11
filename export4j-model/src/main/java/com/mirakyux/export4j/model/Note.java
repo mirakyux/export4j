@@ -25,7 +25,8 @@ public record Note(String id, String paragraphId, String text, Kind kind) {
     /** Validates the complete note snapshot without lowering or changing the document. IDs cannot
      * collide with any body/region block. Anchors are top-level body paragraphs, lists or captions;
      * an explicit marker must occur once in the owning paragraph. Unmarked notes use legacy end markers.
-     * Traversal observes synchronous cancellation; callers retain their own source/work budgets.
+     * Traversal observes synchronous cancellation. This binding check does not impose source/work
+     * budgets; layout/export engines enforce their own cumulative source and generated-output budgets.
      */
     public static void validate(SectionedDocument document, List<Note> notes) {
         Objects.requireNonNull(document, "document"); notes = List.copyOf(notes);

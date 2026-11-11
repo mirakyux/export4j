@@ -147,6 +147,27 @@ class InlineFieldsTest {
     }
 
     @Test
+    void loweringKeepsGlobalNoteNumbersAndPerAnchorOrderAcrossSections() {
+        var first = Paragraph.mixed("first", List.of(text("FIRST"), marker("explicit")), FORMAT);
+        var source = new SectionedDocument(META, List.of(
+                new Section("a", SETTINGS, List.of(first), 0),
+                new Section("b", SETTINGS, List.of(new Caption("last", "Figure", "LAST", FORMAT)), 0)));
+        var notes = List.of(new Note("last-note", "last", "Last anchor note", Note.Kind.FOOTNOTE),
+                new Note("explicit", "first", "Inline note", Note.Kind.FOOTNOTE),
+                new Note("first-note", "first", "First appended note", Note.Kind.ENDNOTE),
+                new Note("next-note", "first", "Second appended note", Note.Kind.FOOTNOTE),
+                new Note("last-end", "last", "Last endnote", Note.Kind.ENDNOTE));
+
+        var lowered = SemanticBlocks.compile(source, notes);
+        var firstBlock = (Paragraph) lowered.document().sections().getFirst().blocks().getFirst();
+        assertEquals("FIRST\ufffc[3][4]", firstBlock.text());
+        assertEquals(List.of("explicit"), firstBlock.fields().stream().map(span -> span.field().targetId()).toList());
+        assertEquals(List.of("Figure 1. LAST[1][5]", "[3] First appended note", "[5] Last endnote"),
+                lowered.document().sections().getLast().blocks().stream().map(block -> ((Paragraph) block).text()).toList());
+        assertEquals(notes, lowered.notes());
+    }
+
+    @Test
     void fieldsCannotOverflowShrinkOrResolveUnknownTargets() {
         for (var field : List.of(field(InlineField.Kind.PAGE, "", .1), field(InlineField.Kind.REFERENCE_PAGE, "unknown", 30),
                 field(InlineField.Kind.REFERENCE_NUMBER, "p", 30))) {

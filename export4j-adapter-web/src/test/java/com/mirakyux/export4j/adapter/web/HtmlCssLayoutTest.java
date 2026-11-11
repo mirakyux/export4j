@@ -25,6 +25,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HtmlCssLayoutTest {
+    @Test void classSelectorsMatchExactCaseSensitiveTokens() throws Exception {
+        var result = new HtmlImporter().read("<!doctype html><style>.Title{color:red}.title{font-weight:bold}</style>"
+                + "<p class='Title'>Upper</p><p class='title'>Lower</p><p class='Title title'>Both</p>").execute();
+        var upper = ((Paragraph) result.document().blocks().get(0)).inlines().getFirst().style();
+        var lower = ((Paragraph) result.document().blocks().get(1)).inlines().getFirst().style();
+        var both = ((Paragraph) result.document().blocks().get(2)).inlines().getFirst().style();
+        assertEquals(0xff0000, upper.rgb()); assertEquals("", upper.fontRole());
+        assertEquals(0, lower.rgb()); assertEquals("bold", lower.fontRole());
+        assertEquals(0xff0000, both.rgb()); assertEquals("bold", both.fontRole());
+    }
+
     @Test void borderlessTablesRetainRealHtmlCssAndMarkdownCannotHideTheirLoss() throws Exception {
         var document = new HtmlImporter().read("<table><thead><tr><th style='border:none;font-weight:normal'>HEADER</th></tr></thead><tbody><tr><td style='border:none'>BODY</td></tr></tbody></table>").execute().document();
         assertFalse(((Table) document.blocks().getFirst()).format().drawBorders());

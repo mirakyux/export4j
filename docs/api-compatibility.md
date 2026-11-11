@@ -1,8 +1,8 @@
 # Java API 与版本兼容
 
-当前没有正式发布版。`0.1.0-rc.1` 的候选 API 以 `verification/api/baseline-0.1.0-rc.1.json` 固定，来源是提交 `b9c8f77b0872566614984a76bdcd1edaf2f39db9` 的独立源码构建，共 16 个库、670 个公开类型。`apiCheck` 使用该基线；候选 API 冻结不表示该版本已发布。
+当前尚无稳定版，`0.1.0-rc.2` 已发布到 Maven Central。自动兼容检查使用该版本的 [API 基线](../verification/api/baseline-0.1.0-rc.2.json)，直接从 Central 已发布的 16 个库 JAR 提取，共 733 个可访问类型，覆盖其中已有的公共／受保护声明。[来源清单](../verification/api/baseline-0.1.0-rc.2.provenance.json)记录逐库坐标、下载地址、上游 SHA-256 校验值、类型数量，以及基线摘要和提取工具；不使用当前候选构建代替已发布字节。
 
-`verification/api/baseline-0.1.0-preview.json` 保留提交 `1665cd7597609e9c7db561cea12b8ca1083e99bb` 的开发期历史快照。基线必须由记录提交的独立源码构建，不能从候选源码反推，也不能自动覆盖历史基线。
+历史 `verification/api/baseline-0.1.0-rc.1.json` 保留提交 `b9c8f77b0872566614984a76bdcd1edaf2f39db9` 独立构建的 16 库／670 类型快照；`verification/api/baseline-0.1.0-preview.json` 保留提交 `1665cd7597609e9c7db561cea12b8ca1083e99bb` 的开发期快照。新基线必须来自记录提交的独立源码构建或校验过的已发布制品，不能从当前候选源码反推，也不能自动覆盖历史基线。
 
 ## 自动检查
 
@@ -19,10 +19,20 @@ Linux／macOS 使用 `./gradlew`。`apiCheck` 同时接入根 `check` 和三平�
 
 回归夹具实际编译前后两个版本，证明缩小可见性、改变常量／泛型、新增必需抽象方法及公开返回类型泄漏第三方实现会失败，并证明保留旧入口的 record 扩展可通过。这个检查不验证方法体、运行时注解、字节码调用链、布局或阅读器行为；没有把签名相同当作行为相同。
 
+## 已发布基线的复现
+
+以下命令将 rc.2 制品重新下载到全新的忽略目录，验证各 JAR 与 Central 的 `.sha256` 一致，再用 Java 21 `javap` 提取声明。输出写入 `build/`，可与仓库基线比较；脚本拒绝覆盖已有基线、来源清单或复用下载目录。
+
+```powershell
+python scripts/create_published_api_baseline.py --version 0.1.0-rc.2 --downloads build/verification/api-rc2-recheck/downloads --baseline build/verification/api-rc2-recheck/baseline-0.1.0-rc.2.json --provenance build/verification/api-rc2-recheck/baseline-0.1.0-rc.2.provenance.json
+```
+
+来源清单绑定实际下载字节和生成的基线摘要，记录校验过的 Central 制品来源；这里的摘要比对不代替发布签名或真实调用方验收。签名演练的构建输入清单同时包含当前基线、来源清单和提取脚本，避免仍绑定历史基线。
+
 ## 兼容承诺
 
 - 当前 `0.x` 保留明确的不兼容演进空间，每次正式发布须列出差异、迁移和实际验收；不能静默刷新基线隐藏破坏项。
-- `0.1.0-rc.1` 候选固定已有公开声明；修复应保持该基线兼容。新增普通入口仍须评审行为及源码歧义；确需破坏声明时重新确定候选版本、迁移和经过审查的基线。
+- `0.1.0-rc.2` 固定已发布的公共／受保护声明；修复应保持该基线兼容。新增普通入口仍须评审行为及源码歧义；确需破坏声明时重新确定候选版本、迁移和经过审查的基线。
 - 进入 `1.x` 后，同一主版本保留已公开构造器、方法、访问器与 SPI；破坏性变更进入下一主版本。
 - 弃用使用 `@Deprecated`、Javadoc 替代入口和迁移说明；同一主版本保留弃用入口，不用仅在源码中改名的方式破坏二进制调用。
 - 单位、原文 UTF-16、资源关闭、预算、取消、异常／诊断、默认策略和声明的格式损失也属于契约，须用对应跨模块和输出验收验证。

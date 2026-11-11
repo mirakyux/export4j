@@ -148,7 +148,7 @@ tasks.register<Exec>("apiCheck") {
     description = "Rejects removed/changed API declarations and newly required abstract members against the reviewed baseline."
     dependsOn("apiSnapshot")
     commandLine(verificationPython.get(), "scripts/verify_api_compatibility.py", "compare",
-        "--baseline", "verification/api/baseline-0.1.0-rc.1.json",
+        "--baseline", "verification/api/baseline-0.1.0-rc.2.json",
         "--candidate", layout.buildDirectory.file("reports/api/current.json").get().asFile.absolutePath,
         "--report", layout.buildDirectory.file("reports/api/compatibility.json").get().asFile.absolutePath)
 }

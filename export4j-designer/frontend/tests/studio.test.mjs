@@ -38,7 +38,8 @@ test('canvas editing keeps template semantics and engine output', {timeout:48000
         const errors=[],executed=[];page.on('pageerror',error=>errors.push(error.message));
         const check=async(name,work)=>{if(scenarioFilter&&!scenarioFilter.test(name))return;executed.push(name);return t.test(name,async()=>{try{await work();}catch(error){const details=await page.evaluate(()=>{const editor=document.querySelector('.ProseMirror'),view=editor?.pmViewDesc?.view,selection=document.getSelection(),toolbar=document.querySelector('[aria-label="画布文字格式"]');let coords;try{coords=view?{from:view.coordsAtPos(view.state.selection.from),to:view.coordsAtPos(view.state.selection.to)}:null;}catch(error){coords=String(error);}return {status:$('status').textContent,busy,selection:selectedPaths,images:state.images,active:document.activeElement?.outerHTML,domSelection:selection?.toString(),pmSelection:view?.state.selection.toJSON(),editor:editor?.getBoundingClientRect().toJSON(),coords,toolbar:toolbar?.getBoundingClientRect().toJSON(),toolbarStyle:toolbar?.getAttribute('style'),canvasScroll:document.querySelector('.canvas-scroll')?.scrollTop};});await writeFile(path.join(output,'failure-state-'+name.slice(0,24).replaceAll(' ','-')+'.json'),JSON.stringify(details,null,2));console.error(name,error,details);await page.screenshot({path:path.join(output,'failure-'+name.slice(0,14).replaceAll(' ','-')+'.png')});throw error;}});};
         await page.goto(origin);await page.waitForFunction(()=>typeof state!=='undefined'&&state&&!busy&&pages.length>0);
-        const idle=async()=>{await page.waitForFunction(()=>!busy&&!DesignerStudioBridge.snapshot().pending&&(document.querySelector('#container-template-state')||pages.length>0&&document.querySelector('.page-image')?.dataset.preview===previewId));};
+        const idle=async({synced=false}={})=>{await page.waitForFunction(synced=>{const current=DesignerStudioBridge.snapshot();return !busy&&!current.pending&&(!synced||current.layoutState==='synced')&&(document.querySelector('#container-template-state')||pages.length>0&&document.querySelector('.page-image')?.dataset.preview===previewId);},synced);};
+        const setViewport=async size=>{await page.setViewportSize(size);await page.waitForFunction(width=>innerWidth===width&&document.querySelector('.workspace').classList.contains('compact-layout')===(width<=1100),size.width);};
         const load=async(xml=source,data={name:'Ada'})=>{await page.mouse.up();await page.keyboard.press('Escape');await page.evaluate(async ({xml,data})=>{$('data').value=JSON.stringify(data);await DesignerStudioBridge.apply(xml);await DesignerStudioBridge.flush();await DesignerStudioBridge.select([]);},{xml,data});await idle();await page.locator('.canvas-scroll').evaluate(node=>node.scrollTop=0);};
         const xml=()=>page.evaluate(()=>state.source);
         const object=async id=>{const item=await page.evaluate(id=>entries.find(entry=>entry.id===id),id);assert.ok(item,id);return page.locator(`.studio-object[data-studio-path="${item.path}"]`).first();};
@@ -307,7 +308,7 @@ test('canvas editing keeps template semantics and engine output', {timeout:48000
             },changed);
             assert.deepEqual(contents[0].structure,expectedFirst,'the former physical page must not receive the new content');
             assert.equal(contents[1].id,'two');assert.deepEqual(contents[1].tags,[tag]);
-            assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'synced');
+            await idle({synced:true});assert.equal(await page.evaluate(()=>DesignerStudioBridge.snapshot().layoutState),'synced');
             for(let step=0;step<4&&await xml()!==changed;step++){await page.locator('#undo').click();await idle();}
             assert.equal(await xml(),changed,'insertion into the refreshed owner must remain undoable');
         };
@@ -1047,15 +1048,17 @@ test('canvas editing keeps template semantics and engine output', {timeout:48000
         });
         await check('workflow compact panels keep the canvas usable and Escape restores focus without changing desktop preferences',async()=>{
             await load('<document version="1"><page size="A4" margin="42"/><grid id="compact-grid" tracks="2"><item id="compact-item" row="1" column-start="1" column-span="2"><p id="compact-text">COMPACT-CONTENT</p></item></grid></document>',{});await page.getByRole('button',{name:'便捷编辑',exact:true}).click();await page.getByRole('treeitem',{name:'栅格项 compact-item',exact:true}).click();const source=await xml();
-            for(const width of [1024,980,768]){
-                await page.setViewportSize({width,height:900});await page.keyboard.press('Escape');
-                assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.ok(await page.locator('.canvas-scroll').evaluate(node=>node.clientWidth)>=width-70,'compact panels must not reserve most of the canvas');
-                await page.locator('.workspace-actions [data-toggle-panel="inspector"]').click();await page.locator('#inspector-panel').waitFor({state:'visible'});await page.locator('#panel-backdrop').waitFor({state:'visible'});await page.keyboard.press('Escape');await page.locator('#panel-backdrop').waitFor({state:'hidden'});
-                assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.workspace-actions [data-toggle-panel="inspector"]')),true);assert.equal(await xml(),source);
-                await page.waitForFunction(()=>{const paper=document.querySelector('.page'),text=document.querySelector('.studio-text-preview > p');return paper&&text&&Math.abs(parseFloat(getComputedStyle(text).fontSize)-12*paper.getBoundingClientRect().width/pages[0].width)<.25;});
-                await page.screenshot({path:path.join(output,'workflow-compact-'+width+'.png'),fullPage:true});
-            }
-            await page.setViewportSize({width:1440,height:1050});await page.locator('#navigator-panel').waitFor({state:'visible'});await page.locator('#inspector-panel').waitFor({state:'visible'});assert.equal(await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'编辑此格',exact:true}).count(),0);
+            try{
+                for(const width of [1024,980,768]){
+                    await setViewport({width,height:900});await page.keyboard.press('Escape');
+                    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.ok(await page.locator('.canvas-scroll').evaluate(node=>node.clientWidth)>=width-70,'compact panels must not reserve most of the canvas');
+                    await page.locator('.workspace-actions [data-toggle-panel="inspector"]').click();await page.locator('#inspector-panel').waitFor({state:'visible'});await page.locator('#panel-backdrop').waitFor({state:'visible'});await page.keyboard.press('Escape');await page.locator('#panel-backdrop').waitFor({state:'hidden'});
+                    assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('.workspace-actions [data-toggle-panel="inspector"]')),true);assert.equal(await xml(),source);
+                    await page.waitForFunction(()=>{const paper=document.querySelector('.page'),text=document.querySelector('.studio-text-preview > p');return paper&&text&&Math.abs(parseFloat(getComputedStyle(text).fontSize)-12*paper.getBoundingClientRect().width/pages[0].width)<.25;});
+                    await page.screenshot({path:path.join(output,'workflow-compact-'+width+'.png'),fullPage:true});
+                }
+            }finally{await setViewport({width:1440,height:1050});}
+            await page.locator('#navigator-panel').waitFor({state:'visible'});await page.locator('#inspector-panel').waitFor({state:'visible'});assert.equal(await page.locator('#studio-container-inspector').getByRole('button',{name:'编辑内部内容',exact:true}).count(),1);assert.equal(await page.getByRole('button',{name:'编辑此格',exact:true}).count(),0);
         });
         await check('grid ux starts blank supports direct editing resize split merge swap and saved output',async()=>{
             await page.locator('.file-menu > summary').filter({hasText:/^文件$/}).click();await page.locator('#new-blank').click();

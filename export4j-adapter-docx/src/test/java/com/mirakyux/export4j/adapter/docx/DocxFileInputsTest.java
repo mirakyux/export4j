@@ -16,6 +16,7 @@ import com.mirakyux.export4j.model.SectionedDocument;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +34,43 @@ class DocxFileInputsTest {
     private final DocxAdapter adapter = new DocxAdapter();
     private final Document source = Document.builder().add(Paragraph.mixed("p",
             List.of(new InlineText("Body preserved", InlineStyle.of(12))), ParagraphFormat.of(12))).build();
+
+    @Test void preparedPublicationsDoNotReportCancellationAfterAtomicCommit() throws IOException {
+        var encoded = new ByteArrayOutputStream(); adapter.write(source, encoded);
+        for (boolean nativeConversion : List.of(false, true)) {
+            var file = directory.resolve(nativeConversion ? "native.docx" : "edited.docx"); Files.writeString(file, "old");
+            var options = ExecutionOptions.builder().cancelled(() -> replaced(file)).build();
+            publishPrepared(nativeConversion, encoded.toByteArray(), file, options);
+            assertTrue(replaced(file));
+            assertEquals(nativeConversion ? "Body preserved" : "Changed preserved",
+                    ((Paragraph) adapter.read(file).document().sections().getFirst().blocks().getFirst()).text());
+        }
+    }
+
+    @Test void preparedPublicationsCancelAfterStagingAndPreserveTheOldTarget() throws IOException {
+        var encoded = new ByteArrayOutputStream(); adapter.write(source, encoded);
+        for (boolean nativeConversion : List.of(false, true)) {
+            var file = directory.resolve("protected.docx"); Files.writeString(file, "old");
+            var options = ExecutionOptions.builder().cancelled(() -> {
+                try (var files = Files.list(directory)) {
+                    return files.anyMatch(path -> path.getFileName().toString().endsWith(".tmp") && replaced(path));
+                } catch (IOException failure) { throw new UncheckedIOException(failure); }
+            }).build();
+            assertThrows(ExecutionException.class, () -> publishPrepared(nativeConversion, encoded.toByteArray(), file, options));
+            assertEquals("old", Files.readString(file));
+            try (var files = Files.list(directory)) { assertEquals(List.of(file), files.toList()); }
+        }
+    }
+
+    private void publishPrepared(boolean nativeConversion, byte[] encoded, Path file, ExecutionOptions options) throws IOException {
+        if (nativeConversion) { adapter.semanticConversion(encoded).execution(options).prepare().writeTo(file); }
+        else { adapter.editPackage(encoded).replaceText("Body", "Changed").execution(options).prepare().to(file); }
+    }
+
+    private static boolean replaced(Path file) {
+        try { return Files.size(file) > 3; }
+        catch (IOException failure) { throw new UncheckedIOException(failure); }
+    }
 
     @Test void directFileReadWritePreservesDocumentsAndPageRegions() throws IOException {
         var file = directory.resolve("报告 sample.docx");

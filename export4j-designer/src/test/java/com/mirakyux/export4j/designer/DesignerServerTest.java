@@ -8,8 +8,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
@@ -218,7 +221,7 @@ class DesignerServerTest {
     }
 
     @Test @org.junit.jupiter.api.Timeout(30)
-    void cancellingDuringImageUploadPreservesSourceResourcesAndHistory() throws Exception {
+    void cancellingDuringImageUploadSurvivesQueuedStateRequestsAndPreservesTheWorkspace() throws Exception {
         try (var server = new DesignerApp.Server(0); var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             server.start();
             var home = client.send(HttpRequest.newBuilder(URI.create(server.origin() + "/")).timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString());
@@ -241,10 +244,37 @@ class DesignerServerTest {
                     assertTrue(System.nanoTime() < deadline, "server must start reading the partial upload before cancellation");
                     Thread.yield();
                 }
-                assertEquals(200, send(client, server.origin(), "cancel", token, "{}", null).statusCode());
+                var waiting = new ArrayList<CompletableFuture<HttpResponse<String>>>();
+                for (int index = 0; index < 17; index++) {
+                    waiting.add(client.sendAsync(HttpRequest.newBuilder(URI.create(server.origin() + "/api/state"))
+                            .header("X-Designer-Token", token).timeout(Duration.ofSeconds(20)).build(), HttpResponse.BodyHandlers.ofString()));
+                }
+                // The first response proves that the bounded workspace queue is full while the upload still holds it.
+                var overflow = (HttpResponse<?>) CompletableFuture.anyOf(waiting.toArray(CompletableFuture<?>[]::new)).get(5, TimeUnit.SECONDS);
+                assertEquals(503, overflow.statusCode(), overflow.body().toString());
+                var assets = List.of("/", "/studio.js", "/style.css").stream().map(path -> client.sendAsync(
+                        HttpRequest.newBuilder(URI.create(server.origin() + path)).timeout(Duration.ofSeconds(2)).build(),
+                        HttpResponse.BodyHandlers.discarding())).toList();
+                for (var asset : assets) {
+                    var response = asset.get(2, TimeUnit.SECONDS);
+                    assertEquals(200, response.statusCode(), response.uri().toString());
+                }
+                assertEquals(403, send(client, server.origin(), "cancel", null, "{}", null).statusCode());
+                assertEquals(403, send(client, server.origin(), "cancel", token, "{}", "https://foreign.invalid").statusCode());
+                var cancel = client.send(HttpRequest.newBuilder(URI.create(server.origin() + "/api/cancel"))
+                        .header("X-Designer-Token", token).timeout(Duration.ofSeconds(2))
+                        .POST(HttpRequest.BodyPublishers.ofString("{}")).build(), HttpResponse.BodyHandlers.ofString());
+                assertEquals(200, cancel.statusCode(), cancel.body());
                 socket.getOutputStream().write(body, 1, body.length - 1); socket.getOutputStream().flush();
                 String response = new String(socket.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 assertTrue(response.startsWith("HTTP/1.1 422"), response);
+                int rejected = 0;
+                for (var request : waiting) {
+                    var result = request.get(5, TimeUnit.SECONDS);
+                    if (result.statusCode() == 503) { rejected++; }
+                    else { assertEquals(200, result.statusCode(), result.body()); }
+                }
+                assertEquals(1, rejected, "excess admission must fail explicitly without discarding admitted requests");
             }
             var after = BindingJson.parse(send(client, server.origin(), "state", token, null, null).body());
             for (String key : List.of("revision", "source", "data", "resourceIdentity", "canUndo", "canRedo", "historyResources")) {

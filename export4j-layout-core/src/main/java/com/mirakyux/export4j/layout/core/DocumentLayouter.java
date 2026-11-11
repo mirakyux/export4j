@@ -16,6 +16,7 @@ import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.graphics.Point;
 import com.mirakyux.export4j.graphics.DrawCommand;
 import com.mirakyux.export4j.graphics.Rect;
+import com.mirakyux.export4j.graphics.core.GraphicsResources;
 import com.mirakyux.export4j.layout.CellFragment;
 import com.mirakyux.export4j.layout.ComponentFragment;
 import com.mirakyux.export4j.layout.ComponentLayout;
@@ -1195,11 +1196,23 @@ public final class DocumentLayouter {
                         pages.size(), -1, -1, -1, "component layout failed", cause);
             }
             for (var shaped : parts) {
-            if (shaped.staticCommands().size() > componentLimits.maxCommands() - componentCommands) {
-                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, pages.size(),
-                        -1, -1, -1, "component command budget exceeded", null);
-            }
-            componentCommands += shaped.staticCommands().size();
+            GraphicsResources.walk(shaped.staticCommands(), command -> {
+                if (++componentCommands > componentLimits.maxCommands()) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, pages.size(),
+                            -1, -1, -1, "component command budget exceeded", null);
+                }
+                long count = switch (command) {
+                    case DrawCommand.GlyphText glyph -> glyph.run().glyphs().size();
+                    case DrawCommand.Text text -> text.text().codePointCount(0, text.text().length());
+                    case DrawCommand.OutlineText text -> text.logicalText().codePointCount(0, text.logicalText().length());
+                    default -> 0;
+                };
+                if (count > limits.maxCodePoints() - codePoints) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, pages.size(),
+                            -1, -1, -1, "component text budget exceeded", null);
+                }
+                codePoints += count;
+            });
             for (var placed : shaped.semanticPlacements()) {
                 if (++semanticPlacements > componentLimits.maxPlacements()) {
                     throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, pages.size(),
@@ -1256,19 +1269,6 @@ public final class DocumentLayouter {
                 });
             }
             ComponentSemantics.locate(shaped, new Point(0, 0));
-            for (var command : shaped.staticCommands()) {
-                long count = switch (command) {
-                    case DrawCommand.GlyphText glyph -> glyph.run().glyphs().size();
-                    case DrawCommand.Text text -> text.text().codePointCount(0, text.text().length());
-                    case DrawCommand.OutlineText text -> text.logicalText().codePointCount(0, text.logicalText().length());
-                    default -> 0;
-                };
-                if (count > limits.maxCodePoints() - codePoints) {
-                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, pages.size(),
-                            -1, -1, -1, "component text budget exceeded", null);
-                }
-                codePoints += count;
-            }
             if (shaped.width() > Math.nextUp(settings.contentWidth())) {
                 throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, block, index, pages.size(),
                         -1, -1, -1, "component exceeds content width", null);
