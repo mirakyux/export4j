@@ -3,12 +3,8 @@
 .VPNavBarTranslations,
 .VPNavScreenTranslations,
 .VPNavBarExtra .group.translations { display: none !important; }
-.language-switch { display: flex; align-items: center; gap: 6px; color: var(--vp-c-text-1); }
-.language-switch select { min-height: 44px; padding: 0 4px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
-.language-switch select:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }
-.language-switch select option { background: var(--vp-c-bg); color: var(--vp-c-text-1); }
-.language-switch-desktop { margin-left: 20px; }
-.language-switch-mobile { margin-top: 24px; }
+.language-switch-desktop { margin-left: 12px; }
+.language-switch-mobile { margin-top: 16px; }
 @media (max-width: 767px) { .language-switch-desktop { display: none; } }
 
 :root {

@@ -11,12 +11,12 @@ npm --prefix site ci
 npm --prefix site run dev
 ```
 
-打开终端显示的本地地址。英文首页为 `/`，中文首页为 `/zh/`，中文指南位于 `/zh/docs/`。导航、侧栏、搜索与主题文案跟随页面语言。右上角统一切换中英首页、快速开始与 FAQ；仅有中文的详细指南切换英文时进入英文首页。正文不再重复语言入口。
+打开终端显示的本地地址。英文首页为 `/`，中文首页为 `/zh/`；英文指南位于 `/docs/`，中文指南位于 `/zh/docs/`。导航、侧栏、搜索与主题文案跟随页面语言。语言菜单在首页、快速开始、FAQ 和主侧栏指南间切换对应页面；仅有中文的历史记录或进阶参考切换英文时进入英文文档导航，菜单明确标注这一目的地。正文不重复语言入口。
 
-- `docs/` 是详细指南的唯一维护来源。准备脚本只复制 Git 已跟踪的文档和明确列出的新增公共指南，排除本地研究资料。
+- `docs/*.md` 维护中文指南，`docs/en/` 维护英文译文；`site/.vitepress/navigation.mjs` 统一定义双语侧栏与页面配对。新增主侧栏页面必须同时提供两种语言，构建缺少译文时失败。准备脚本只复制 Git 已跟踪的文档和明确列出的新增公共指南，排除本地研究资料。
 - 中英文快速开始由两份根 README 生成；源码、脚本和字体记录链接指向 GitHub，指南链接保留在站内。
 - `site/pages/index.md`、`site/pages/zh/index.md` 和 `site/.vitepress/theme/` 维护首页与主题。
-- 生成内容位于 `site/pages/docs/`、`site/pages/zh/docs/` 和两份 `getting-started.md`，不提交。修改原始文档后重新执行 `npm --prefix site run prepare:content`。旧中文 `/docs/*` 地址通过生成的 `_redirects` 逐页 301 跳转，英文 FAQ 保留 `/docs/faq`。
+- 生成内容位于 `site/pages/docs/`、`site/pages/zh/docs/` 和两份 `getting-started.md`，不提交。修改原始文档后重新执行 `npm --prefix site run prepare:content`。已有英文译文使用 `/docs/*`；仅有中文的旧地址通过生成的 `_redirects` 逐页 301 跳转。英文正文中指向未翻译资料的链接明确标注中文。
 - 首页样张及来源见[样张说明](../site/pages/public/showcase/README.md)。本地输出与页面截图不能替代 Java 输出验收。
 
 构建保留断链检查；不得以关闭 `ignoreDeadLinks` 掩盖缺失页面。
@@ -54,7 +54,7 @@ npm --prefix site run deploy
 ## 发布验证
 
 1. 执行锁文件安装和生产构建，检查构建中的断链与编译错误。
-2. 使用 `npm --prefix site run preview` 检查双语首页、指南、搜索、键盘操作、移动端和深色模式。
+2. 使用 `npm --prefix site run preview` 在浏览器实际操作：英文首页进入指南，核对正文及侧栏仍为英文；同一篇指南切换中文再切回英文；展开语言菜单并检查外观、点击外部关闭、Escape、方向键、Tab 和焦点；再检查移动端菜单、溢出、搜索和深色模式。静态链接检查不能替代这些交互。
 3. 执行 `deploy:check`，确认只上传静态站点。
 4. 部署后检查首页、深层指南、样张 PDF、未知路径的 404、canonical、`sitemap.xml`、`robots.txt` 和 `THIRD-PARTY-NOTICES.txt`。
 5. 正式域名确认后更新 GitHub About 中的 Website，以及两份 README 的文档站入口；站点公开与搜索引擎收录分别验证。

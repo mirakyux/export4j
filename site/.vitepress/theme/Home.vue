@@ -38,6 +38,7 @@ const content = computed(() => isChinese.value ? {
     { title: '常见问题', description: '字体、运行环境、格式边界与商用许可。', href: '/zh/docs/faq' }
   ],
   support: '查看完整能力矩阵',
+  supportHref: '/zh/docs/capabilities-api',
   baseline: 'Java 21 · Apache-2.0 · 无需 Office 或浏览器进程',
   candidate: '当前为候选版本，API 仍可能调整。',
   release: 'RC2 发布说明',
@@ -68,12 +69,13 @@ const content = computed(() => isChinese.value ? {
   pdf: 'Open PDF',
   guideTitle: 'Find your next step.',
   guides: [
-    { title: 'Author a report', description: 'Paragraphs, tables, images, page bands and automatic pagination.', href: '/zh/docs/authoring-api' },
-    { title: 'Use XML templates', description: 'Reuse document structures with variables, conditions and loops.', href: '/zh/docs/xml-template-api' },
-    { title: 'Import, edit and convert', description: 'Check format subsets and handle explicit conversion losses.', href: '/zh/docs/document-conversion-api' },
+    { title: 'Author a report', description: 'Paragraphs, tables, images, page bands and automatic pagination.', href: '/docs/authoring-api' },
+    { title: 'Use XML templates', description: 'Reuse document structures with variables, conditions and loops.', href: '/docs/xml-template-api' },
+    { title: 'Import, edit and convert', description: 'Check format subsets and handle explicit conversion losses.', href: '/docs/document-conversion-api' },
     { title: 'Read the FAQ', description: 'Fonts, runtime requirements, format limits and licensing.', href: '/docs/faq' }
   ],
   support: 'Explore the capability matrix',
+  supportHref: '/docs/capabilities-api',
   baseline: 'Java 21 · Apache-2.0 · No Office or browser process required',
   candidate: 'Currently a release candidate. APIs may change.',
   release: 'RC2 release notes',
@@ -179,7 +181,7 @@ async function copyCode() {
           <div><h3>{{ guide.title }}</h3><p>{{ guide.description }}</p></div><span aria-hidden="true">→</span>
         </a>
       </div>
-      <a class="text-link support-link" :href="withBase('/zh/docs/capabilities-api')">{{ content.support }} <span aria-hidden="true">→</span></a>
+      <a class="text-link support-link" :href="withBase(content.supportHref)">{{ content.support }} <span aria-hidden="true">→</span></a>
     </section>
 
     <div class="home-baseline"><p>{{ content.baseline }}</p><p>{{ content.candidate }} <a href="https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2">{{ content.release }}</a></p></div>

@@ -14,36 +14,36 @@ Import, editing and conversion apply to documented input subsets. Arbitrary PDF 
 - [快速开始](https://export4j.mirakyux.com/zh/getting-started): 中文安装说明、字体配置及完整 PDF 示例。
 - [FAQ](https://export4j.mirakyux.com/docs/faq): Runtime requirements, fonts, format limits, large documents and commercial use.
 - [常见问题](https://export4j.mirakyux.com/zh/docs/faq): 环境要求、字体、转换限制及商用许可。
-- [Documentation index](https://export4j.mirakyux.com/zh/docs/README): Task-based navigation; most detailed guides are in Chinese.
-- [Capability matrix](https://export4j.mirakyux.com/zh/docs/capabilities-api): Current entry points and supported subsets; consult the linked API guide for a specific feature.
+- [Documentation index](https://export4j.mirakyux.com/docs/README): Task-based navigation with English and Chinese primary guides; Chinese-only references are labeled.
+- [Capability matrix](https://export4j.mirakyux.com/docs/capabilities-api): Current entry points and supported subsets; consult the linked API guide for a specific feature.
 
 ## Authoring and templates
 
-- [Java authoring](https://export4j.mirakyux.com/zh/docs/authoring-api): Semantic documents, report content and export.
-- [Fluent API](https://export4j.mirakyux.com/zh/docs/fluent-api): Builders, configuration and convenience entry points.
-- [Fonts and text](https://export4j.mirakyux.com/zh/docs/text-api): Explicit font loading, fallback, shaping and missing-glyph behavior.
-- [XML templates](https://export4j.mirakyux.com/zh/docs/xml-template-api): Variables, conditions, loops, tables and registered includes.
-- [Template resource bundles](https://export4j.mirakyux.com/zh/docs/xml-template-bundle-api): Editable XML and resources in ZIP packages.
-- [Tables](https://export4j.mirakyux.com/zh/docs/table-api): Semantic tables and pagination.
-- [Page-at-a-time export](https://export4j.mirakyux.com/zh/docs/paged-document-api): Incremental layout output and block sources, with memory and replay limits.
-- [Streaming and PDF spooling](https://export4j.mirakyux.com/zh/docs/streaming-replay-api): Table-row sources, stable-snapshot replay and disk-indexed PDF output.
+- [Java authoring](https://export4j.mirakyux.com/docs/authoring-api): Semantic documents, report content and export.
+- [Fluent API](https://export4j.mirakyux.com/docs/fluent-api): Builders, configuration and convenience entry points.
+- [Fonts and text](https://export4j.mirakyux.com/docs/text-api): Explicit font loading, fallback, shaping and missing-glyph behavior.
+- [XML templates](https://export4j.mirakyux.com/docs/xml-template-api): Variables, conditions, loops, tables and registered includes.
+- [Template resource bundles](https://export4j.mirakyux.com/docs/xml-template-bundle-api): Editable XML and resources in ZIP packages.
+- [Tables](https://export4j.mirakyux.com/docs/table-api): Semantic tables and pagination.
+- [Page-at-a-time export](https://export4j.mirakyux.com/docs/paged-document-api): Incremental layout output and block sources, with memory and replay limits.
+- [Streaming and PDF spooling](https://export4j.mirakyux.com/docs/streaming-replay-api): Table-row sources, stable-snapshot replay and disk-indexed PDF output.
 
 ## Formats and conversion
 
-- [Import, edit and convert](https://export4j.mirakyux.com/zh/docs/document-conversion-api): Supported conversion paths and explicit loss policies.
-- [DOCX semantics](https://export4j.mirakyux.com/zh/docs/docx-semantic-api): Supported Word structures, semantic editing and export.
-- [HTML/CSS import](https://export4j.mirakyux.com/zh/docs/html-import-api): Offline semantic and explicit layout subsets.
-- [HTML and Markdown export](https://export4j.mirakyux.com/zh/docs/web-export-api): Semantic output, fallback policies and diagnostics.
-- [PDF processing](https://export4j.mirakyux.com/zh/docs/pdf-adapter-api): Existing-PDF operations and their boundaries.
-- [PDF semantic recovery](https://export4j.mirakyux.com/zh/docs/pdf-semantic-import-api): Editable structure recovery and uncertainty reporting.
-- [PDF standards and signing](https://export4j.mirakyux.com/zh/docs/pdf-standards-api): Supported PDF/A, PDF/UA and PAdES output paths and validation requirements.
+- [Import, edit and convert](https://export4j.mirakyux.com/docs/document-conversion-api): Supported conversion paths and explicit loss policies.
+- [DOCX semantics](https://export4j.mirakyux.com/docs/docx-semantic-api): Supported Word structures, semantic editing and export.
+- [HTML/CSS import](https://export4j.mirakyux.com/docs/html-import-api): Offline semantic and explicit layout subsets.
+- [HTML and Markdown export](https://export4j.mirakyux.com/docs/web-export-api): Semantic output, fallback policies and diagnostics.
+- [PDF processing](https://export4j.mirakyux.com/docs/pdf-adapter-api): Existing-PDF operations and their boundaries.
+- [PDF semantic recovery](https://export4j.mirakyux.com/docs/pdf-semantic-import-api): Editable structure recovery and uncertainty reporting.
+- [PDF standards and signing](https://export4j.mirakyux.com/docs/pdf-standards-api): Supported PDF/A, PDF/UA and PAdES output paths and validation requirements.
 
 ## Project and evidence
 
 - [Source repository](https://github.com/mirakyux/export4j): Source, issues and releases.
-- [RC2 release notes](https://export4j.mirakyux.com/zh/docs/releases/0.1.0-rc.2): Changes, validation scope and known limitations.
+- [RC2 release notes](https://export4j.mirakyux.com/docs/releases/0.1.0-rc.2): Changes, validation scope and known limitations.
 - [Maven Central BOM](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.2): Published module version alignment.
-- [Examples](https://export4j.mirakyux.com/zh/docs/examples): Runnable tasks and output locations.
-- [Dependencies and licenses](https://export4j.mirakyux.com/zh/docs/dependencies): Third-party dependencies and distribution obligations.
-- [Capability gaps](https://export4j.mirakyux.com/zh/docs/capability-gaps): Remaining work and acceptance boundaries.
-- [Verification records](https://export4j.mirakyux.com/zh/docs/verification/): Historical checks and evidence; each record applies to its stated version and scope.
+- [Examples](https://export4j.mirakyux.com/docs/examples): Runnable tasks and output locations.
+- [Dependencies and licenses](https://export4j.mirakyux.com/docs/dependencies): Third-party dependencies and distribution obligations.
+- [Capability gaps](https://export4j.mirakyux.com/docs/capability-gaps): Remaining work and acceptance boundaries.
+- [Verification records (Chinese)](https://export4j.mirakyux.com/zh/docs/verification/): Historical checks and evidence; each record applies to its stated version and scope.

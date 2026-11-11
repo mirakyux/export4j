@@ -17,11 +17,11 @@
 | `:examples:manuWeave` | `examples/build/manuweave/` | ManuWeave 全部 286 个学术模板配置，支持按 Profile ID 选择，输出 PDF 及实际格式／差异报告 |
 | `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | 8 类 PDF／SVG 矢量公式及 Word 原生可编辑公式 |
 | `:examples:xmlTemplateBundle` | `examples/build/xml-template-bundle/` | 编辑、保存和重开普通 ZIP 中的 XML 源码／资源，再绑定不同数据 |
-| `:examples:recoveryClosure` | `examples/build/recovery-closure/` | 导航／注释／分节／图层／表格／图片组合恢复、实际编辑及有损多轮 |
+| `:examples:recoveryClosure` | `examples/build/recovery-closure/` | 导航／脚注／尾注／分节／图层／表格／图片组合恢复、实际编辑及有损多轮 |
 | `:examples:xmlModelSaving` | `examples/build/xml-model-saving/` | 语义模型保存为 XML，再重开编辑导出；三轮无编辑控制及明确损失报告 |
 | `:examples:xmlRegionSaving` | `examples/build/xml-region-saving/` | 共享页区、变体／图层及保存／重开／编辑控制 |
 | `:examples:xmlCrossReferenceSaving` | `examples/build/xml-cross-reference-saving/` | 独立引用三轮保存、跨节页码／编号、目标改写和 Web 损失 |
-| `:examples:xmlSemanticSaving` | `examples/build/xml-semantic-saving/` | 注释／题注／文字外链完整绑定、三轮控制、实际题注编辑及 Web 损失 |
+| `:examples:xmlSemanticSaving` | `examples/build/xml-semantic-saving/` | 脚注／尾注／题注／文字外链完整绑定、三轮控制、实际题注编辑及 Web 损失 |
 | `:examples:pageOverlays` | `examples/build/page-overlays/` | XML 背景／前景、可见遮挡关系及明确转换损失 |
 | `:examples:xmlPageRegions` | `examples/build/xml-page-regions/` | XML 页眉页脚主题，以及含目录的最终页码 |
 | `:examples:xmlSections` | `examples/build/xml-sections/` | 图片／表格页区、分节纸张／页码和原生 DOCX 严格往返 |

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { translatedGuides } from '../site/.vitepress/navigation.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pagesDirectory = path.join(root, 'site', 'pages');
@@ -22,6 +23,11 @@ for (const name of ['docs/faq.md', 'docs/faq.zh-CN.md', 'docs/documentation-site
   await stat(path.join(root, name));
   documents.add(name);
 }
+for (const name of translatedGuides) {
+  const source = `docs/en/${name}.md`;
+  await stat(path.join(root, source));
+  documents.add(source);
+}
 const showcase = 'site/pages/public/showcase/README.md';
 await stat(path.join(root, showcase));
 const publicPages = new Map([
@@ -30,7 +36,8 @@ const publicPages = new Map([
 ]);
 const documentRoutes = new Map([...documents].map(source => [source,
   source === 'docs/faq.md' ? '/docs/faq.md'
-    : source === 'docs/faq.zh-CN.md' ? '/zh/docs/faq.md' : `/zh/${source}`,
+    : source === 'docs/faq.zh-CN.md' ? '/zh/docs/faq.md'
+      : source.startsWith('docs/en/') ? `/${source.replace('docs/en/', 'docs/')}` : `/zh/${source}`,
 ]));
 const routes = new Map([...documentRoutes, ...quickstarts, ...publicPages]);
 const publicNotices = new Set([
@@ -155,7 +162,7 @@ function prepareMarkdown(markdown, source, metadata = {}) {
   }).filter(line => line !== null).join('\n');
   if (rewritten.startsWith('---\n')) return rewritten;
   const frontmatter = Object.entries({
-    lang: source === 'docs/faq.md' ? 'en-US' : 'zh-CN', ...metadata,
+    lang: source === 'docs/faq.md' || source.startsWith('docs/en/') ? 'en-US' : 'zh-CN', ...metadata,
   }).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n');
   return `---\n${frontmatter}\n---\n\n${rewritten}`;
 }
@@ -207,18 +214,22 @@ for (const [source, route] of publicPages) {
 }
 
 const redirects = new Map([
-  ['/docs', '/zh/docs/README'],
-  ['/docs/', '/zh/docs/README'],
+  ['/docs', '/docs/README'],
+  ['/docs/', '/docs/README'],
   ['/docs/verification/', '/zh/docs/verification/'],
   ['/docs/verification/index', '/zh/docs/verification/'],
   ['/docs/verification/index.html', '/zh/docs/verification/'],
 ]);
+const englishRoutes = new Set([...documentRoutes].filter(([source]) => source.startsWith('docs/en/'))
+  .map(([, route]) => route.replace(/\.md$/, '')));
 for (const [source, route] of [...documentRoutes, ...publicPages]) {
+  if (source.startsWith('docs/en/')) continue;
   const oldRoute = source.startsWith('docs/') ? `/${source}`
     : source === showcase ? '/docs/showcase.md' : '/docs/site-licenses.md';
   if (oldRoute === route) continue;
   const oldClean = oldRoute.replace(/\.md$/, '');
   const newClean = route.replace(/\.md$/, '');
+  if (englishRoutes.has(oldClean)) continue;
   redirects.set(oldClean, newClean);
   redirects.set(`${oldClean}.html`, newClean);
 }
