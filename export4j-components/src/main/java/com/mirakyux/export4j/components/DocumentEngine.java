@@ -15,6 +15,8 @@ import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.font.FontSet;
 import com.mirakyux.export4j.graphics.DocumentBackend;
 import com.mirakyux.export4j.graphics.PageBackend;
+import com.mirakyux.export4j.layout.core.ComponentLimits;
+import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
 import com.mirakyux.export4j.layout.core.DocumentPainter;
 import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.layout.core.StreamingTableLayouter;
@@ -48,6 +50,8 @@ public final class DocumentEngine {
     private final PageTemplate pageTemplate;
     private final Navigation navigation;
     private final List<Note> notes;
+    private final DocumentLayoutLimits layoutLimits;
+    private final ComponentLimits componentLimits;
 
     private DocumentEngine(Builder builder) {
         fonts = Objects.requireNonNull(builder.fonts, "fonts");
@@ -55,6 +59,8 @@ public final class DocumentEngine {
         pageTemplate = builder.pageTemplate;
         navigation = builder.navigation;
         notes = List.copyOf(builder.notes);
+        layoutLimits = builder.layoutLimits;
+        componentLimits = builder.componentLimits;
     }
 
     public static Builder builder(FontGroup fonts) { return new Builder(fonts); }
@@ -73,6 +79,8 @@ public final class DocumentEngine {
         private PageTemplate pageTemplate = PageTemplate.EMPTY;
         private Navigation navigation = Navigation.EMPTY;
         private List<Note> notes = List.of();
+        private DocumentLayoutLimits layoutLimits = DocumentLayoutLimits.DEFAULT;
+        private ComponentLimits componentLimits = ComponentLimits.DEFAULT;
 
         private Builder(FontGroup fonts) { this.fonts = Objects.requireNonNull(fonts, "fonts"); }
 
@@ -83,6 +91,39 @@ public final class DocumentEngine {
         }
         public Builder navigation(Navigation value) { navigation = Objects.requireNonNull(value, "navigation"); return this; }
         public Builder notes(List<Note> values) { notes = List.copyOf(values); return this; }
+
+        /** Sets non-null structural budgets for full-document, page-at-a-time and ordinary block-source
+         * layout/export. Page and block requests may override them; table streaming has separate limits.
+         * Table row caps include source header rows; output-line caps also include repeated headers.
+         */
+        public Builder layoutLimits(DocumentLayoutLimits value) {
+            layoutLimits = Objects.requireNonNull(value, "layoutLimits"); return this;
+        }
+
+        /** Runs a non-null callback synchronously on a copy of the current structural budgets and
+         * stores its immutable result. Later changes to the supplied child builder have no effect.
+         */
+        public Builder layoutLimits(Consumer<DocumentLayoutLimits.Builder> configure) {
+            var value = layoutLimits.toBuilder();
+            Objects.requireNonNull(configure, "configure").accept(value);
+            return layoutLimits(value.build());
+        }
+
+        /** Sets non-null composition and interaction budgets for full-document, page-at-a-time and
+         * ordinary block-source layout/export. Request overrides and backend limits remain independent.
+         */
+        public Builder componentLimits(ComponentLimits value) {
+            componentLimits = Objects.requireNonNull(value, "componentLimits"); return this;
+        }
+
+        /** Runs a non-null callback synchronously on a copy of the current composition budgets and
+         * stores its immutable result. Later changes to the supplied child builder have no effect.
+         */
+        public Builder componentLimits(Consumer<ComponentLimits.Builder> configure) {
+            var value = componentLimits.toBuilder();
+            Objects.requireNonNull(configure, "configure").accept(value);
+            return componentLimits(value.build());
+        }
 
         public Builder fontRole(String name, FontGroup group) {
             if (Objects.requireNonNull(name, "name").isBlank()) { throw new IllegalArgumentException("font role is blank"); }
@@ -114,7 +155,7 @@ public final class DocumentEngine {
     }
 
     public ComponentDocumentLayout layout(SectionedDocument document, List<SectionTemplate> templates, Navigation navigation, List<Note> notes) {
-        return new ComponentDocumentRenderer().layout(document, templates, navigation, fonts, roles, notes);
+        return new ComponentDocumentRenderer(layoutLimits, componentLimits).layout(document, templates, navigation, fonts, roles, notes);
     }
 
     /** Uses each section's model regions when present, otherwise the configured Java template.
@@ -158,7 +199,8 @@ public final class DocumentEngine {
         Objects.requireNonNull(document, "document");
         return new PagedExportRequest(new SectionedDocument(document.metadata(), List.of(new Section(
                 "document", document.pageSettings(), document.blocks(), 0))),
-                List.of(SectionTemplate.uniform(pageTemplate)), navigation, notes, fonts, roles);
+                List.of(SectionTemplate.uniform(pageTemplate)), navigation, notes, fonts, roles)
+                .limits(layoutLimits).componentLimits(componentLimits);
     }
 
     /** Page-at-a-time export including semantic header/footer declarations. A nonempty configured
@@ -173,7 +215,8 @@ public final class DocumentEngine {
         var body = document.document();
         return new PagedExportRequest(new SectionedDocument(body.metadata(), List.of(new Section(
                 "document", body.pageSettings(), body.blocks(), 0))),
-                List.of(PageRegionTemplates.sectionFrom(document.pageRegions())), navigation, notes, fonts, roles);
+                List.of(PageRegionTemplates.sectionFrom(document.pageRegions())), navigation, notes, fonts, roles)
+                .limits(layoutLimits).componentLimits(componentLimits);
     }
 
     /** Page-at-a-time sectioned export with displayed numbering and first/odd/even regions.
@@ -188,7 +231,7 @@ public final class DocumentEngine {
         }
         return new PagedExportRequest(document, document.sections().stream().map(section -> hasRegions
                 ? PageRegionTemplates.sectionFrom(section.pageRegions()) : SectionTemplate.uniform(pageTemplate)).toList(),
-                navigation, notes, fonts, roles);
+                navigation, notes, fonts, roles).limits(layoutLimits).componentLimits(componentLimits);
     }
 
     /** Explicit per-section templates and navigation for page-at-a-time export. Each source section
@@ -197,7 +240,7 @@ public final class DocumentEngine {
     public PagedExportRequest exportPaged(SectionedDocument document, List<SectionTemplate> templates,
             Navigation selectedNavigation, List<Note> selectedNotes) {
         return new PagedExportRequest(Objects.requireNonNull(document, "document"), templates,
-                selectedNavigation, selectedNotes, fonts, roles);
+                selectedNavigation, selectedNotes, fonts, roles).limits(layoutLimits).componentLimits(componentLimits);
     }
 
     /** Explicit layout/backend conversion target. format is the caller's actual target key (e.g. PDF),
@@ -209,7 +252,8 @@ public final class DocumentEngine {
         Objects.requireNonNull(backend, "backend");
         if (!notes.isEmpty()) { throw new IllegalStateException("conversion notes must be supplied in conversion input"); }
         return new DocumentConversion.Target(format, (document, sourceNotes, policy, output) -> {
-            var builder = DocumentEngine.builder(fonts).pageTemplate(pageTemplate).navigation(navigation).notes(sourceNotes);
+            var builder = DocumentEngine.builder(fonts).pageTemplate(pageTemplate).navigation(navigation).notes(sourceNotes)
+                    .layoutLimits(layoutLimits).componentLimits(componentLimits);
             roles.forEach(builder::fontRole);
             var rendered = builder.build().export(document).backend(backend).to(output);
             var issues = new ArrayList<ProcessingIssue>();
@@ -284,7 +328,8 @@ public final class DocumentEngine {
         if (!navigation.equals(Navigation.EMPTY) || !notes.isEmpty()) {
             throw new IllegalStateException("ordinary block streams do not support configured navigation or notes");
         }
-        return new StreamingDocumentRequest(settings, source, fonts, roles, pageTemplate, false);
+        return new StreamingDocumentRequest(settings, source, fonts, roles, pageTemplate, false)
+                .limits(layoutLimits).componentLimits(componentLimits);
     }
 
     /** Explicit two-pass ordinary block export from a stable caller-controlled snapshot. The first pass
@@ -297,7 +342,8 @@ public final class DocumentEngine {
         if (!navigation.equals(Navigation.EMPTY) || !notes.isEmpty()) {
             throw new IllegalStateException("ordinary block replay does not support configured navigation or notes");
         }
-        return new StreamingDocumentRequest(settings, source, fonts, roles, pageTemplate, true);
+        return new StreamingDocumentRequest(settings, source, fonts, roles, pageTemplate, true)
+                .limits(layoutLimits).componentLimits(componentLimits);
     }
 
     /** Task-confined synchronous export. Keeps no full-document layout, display list or warning list.

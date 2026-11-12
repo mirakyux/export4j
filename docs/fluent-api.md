@@ -109,6 +109,21 @@ var result = engine.export(document)
 
 不需要完整布局返回值时可使用 [`exportPaged(document)`](paged-document-api.md)，通过 `PageBackend` 逐页输出并返回轻量摘要。它保留输入模型，使用规划与重放计算总页数、目录及未来引用；配合 `PdfSpoolBackend` 可同时释放完成页的布局、绘制及 PDF 格式对象。最大单块和导航等索引仍有各自内存边界。
 
+### 布局与组件预算
+
+当前源码新增引擎级预算配置（尚未包含在已发布的 `0.1.0-rc.2` 中）：
+
+~~~java
+var engine = DocumentEngine.builder(fonts)
+        .layoutLimits(limits -> limits.maxTableRows(20_000))
+        .componentLimits(limits -> limits.maxCommands(2_000_000))
+        .build();
+~~~
+
+回调从当前配置开始，只替换指定项，返回时保存不可变快照；也可直接传入 `DocumentLayoutLimits`／`ComponentLimits`。默认保护不变：每张表最多 10,000 个源行、256 列，全文共享 100,000 个物理单元格。表头也属于源行，因此 10,000 行正文加一行表头需要将 `maxTableRows` 至少设为 10,001。分页重复表头不重复计入源行数，但消耗实际输出行预算 `maxLines`；提高行数上限后，其他预算继续生效。
+
+配置用于普通 `layout`／`write`／`export`、转换输出，以及 `exportPaged` 和块源 `exportSemantic`／`exportReplay` 的默认值；后两类请求仍可用 `.limits(...)`／`.componentLimits(...)` 单独覆盖。基于 `TableRowSource` 的长表请求继续使用独立的 `StreamingTableLimits`，详见[长表指南](streaming-table-api.md)。执行时间和输出字节数仍通过请求的 `.options(...)` 配置。
+
 ## 文件与流的便利入口
 
 引擎的普通文档、单向长表、语义长表及显式重放导出均接受 `Path`、`File`、字符串路径或 `OutputStream`。`String` 与 `File` 仅转换成 `Path`，沿用相同原子输出、预算、取消和异常契约；不自动创建父目录，不展开 URL 或系统字体资源。流由调用方拥有，不由导出入口关闭。

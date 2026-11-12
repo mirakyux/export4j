@@ -113,6 +113,33 @@ class StreamingDocumentExportTest {
         assertEquals(0, opens.get()); assertEquals(0, sink.opens);
     }
 
+    @Test void blockStreamsInheritEngineBudgetsAndExplicitOverridesDoNotChangeTheEngine() throws IOException {
+        List<Block> blocks = List.of(new Paragraph("first", "A", FORMAT), new Paragraph("second", "B", FORMAT));
+        for (boolean replay : List.of(false, true)) {
+            for (boolean structural : List.of(false, true)) {
+                var builder = DocumentEngine.builder(fonts);
+                if (structural) { builder.layoutLimits(limits -> limits.maxCodePoints(1)); }
+                else { builder.componentLimits(limits -> limits.maxCommands(1)); }
+                var engine = builder.build();
+                var opened = new AtomicInteger(); var closed = new AtomicInteger();
+                var source = factory(() -> blocks, opened, closed);
+                Supplier<StreamingDocumentRequest> request = () -> replay ? engine.exportReplay(PAGE, source)
+                        : engine.exportSemantic(PAGE, source).expectedPages(1);
+                var rejected = new Sink();
+                assertThrows(IllegalArgumentException.class,
+                        () -> request.get().backend(rejected.backend()).to(new ByteArrayOutputStream()));
+                assertEquals(opened.get(), closed.get()); assertEquals(0, rejected.finishes);
+                var accepted = new Sink();
+                assertEquals(1, request.get().limits(DocumentLayoutLimits.DEFAULT).componentLimits(ComponentLimits.DEFAULT)
+                        .backend(accepted.backend()).to(new ByteArrayOutputStream()).pages());
+                assertEquals(opened.get(), closed.get()); assertEquals(1, accepted.finishes);
+                assertThrows(IllegalArgumentException.class,
+                        () -> request.get().backend(new Sink().backend()).to(new ByteArrayOutputStream()));
+                assertEquals(opened.get(), closed.get());
+            }
+        }
+    }
+
     @Test void wrongTotalsNeverFinishAndPreserveTheOldAtomicTarget() throws IOException {
         var target = temporary.resolve("total.bin");
         for (int expected : List.of(1, 3)) {

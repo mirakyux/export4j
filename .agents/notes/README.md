@@ -16,5 +16,8 @@
 ## 当前入口
 
 - [共享项目规约的组织与维护](implemented/process/2026-10-21-shared-project-rules.md)
+- [引擎级预算默认值与请求覆盖](implemented/feature/2026-11-12-engine-budget-defaults.md)
+- [文字与 PDF 优化保留资源和输出契约](implemented/simplification/2026-11-12-bounded-text-pdf-reuse.md)
+- [PDF 原文编码与字形标识分离](implemented/bug-fix/2026-11-12-pdf-unicode-glyph-aliases.md)
 
 本页可列重要入口，不要求维护逐条笔记索引。检索按主题与状态进行；[manifest.json](manifest.json) 只定义目录契约。

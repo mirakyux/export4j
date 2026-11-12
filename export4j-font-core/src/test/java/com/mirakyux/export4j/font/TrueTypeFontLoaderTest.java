@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -68,6 +69,36 @@ class TrueTypeFontLoaderTest {
         assertTrue(face.metrics().ascent() > 0);
         assertFalse(face.glyph(0x10FFFF).isPresent());
         assertEquals(face.data().id(), TrueTypeFontLoader.load(original).data().id());
+    }
+
+    @Test
+    void streamReturningCallerOwnedBytesStillProducesAnIndependentImmutableFace() throws IOException {
+        byte[] external = fontBytes();
+        byte[] original = external.clone();
+        class Input extends ByteArrayInputStream {
+            boolean closed;
+            Input() { super(external); }
+            @Override public byte[] readNBytes(int length) { return external; }
+            @Override public void close() { closed = true; }
+        }
+        var input = new Input();
+        FontFace face = TrueTypeFontLoader.load(input);
+        String identity = face.data().id();
+        var metrics = face.metrics();
+        var glyph = face.glyph('A').orElseThrow();
+        var view = face.data().readOnlyBuffer();
+        Arrays.fill(external, (byte) 0);
+        Arrays.fill(face.data().bytes(), (byte) 0);
+        byte[] visible = new byte[view.remaining()];
+        view.get(visible);
+
+        assertFalse(input.closed);
+        assertArrayEquals(original, face.data().bytes());
+        assertArrayEquals(original, visible);
+        assertEquals(identity, face.data().id());
+        assertEquals(metrics, face.metrics());
+        assertEquals(glyph, face.glyph('A').orElseThrow());
+        assertEquals(TrueTypeFontLoader.load(original).data().id(), identity);
     }
 
     @Test

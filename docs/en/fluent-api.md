@@ -109,6 +109,21 @@ Engine default page templates, navigation and notes apply to short `layout`, `wr
 
 When full layout results are unnecessary, [`exportPaged(document)`](paged-document-api.md) sends pages through `PageBackend` and returns a lightweight summary. It retains the input model and uses planning/replay for totals, contents and future references. With `PdfSpoolBackend`, completed pages' layout, drawing and PDF-format objects can all be released. The largest individual block and indices such as navigation still have their own memory boundaries.
 
+### Layout and component budgets
+
+The current source adds engine-level budget configuration (not yet included in the published `0.1.0-rc.2`):
+
+~~~java
+var engine = DocumentEngine.builder(fonts)
+        .layoutLimits(limits -> limits.maxTableRows(20_000))
+        .componentLimits(limits -> limits.maxCommands(2_000_000))
+        .build();
+~~~
+
+Callbacks start from the current configuration, replace only named fields and snapshot immutable values on return. You can also pass `DocumentLayoutLimits` / `ComponentLimits` directly. Default protections remain: 10,000 source rows and 256 columns per table, with 100,000 physical cells shared across the document. Source rows include headers, so 10,000 body rows plus one header require `maxTableRows` of at least 10,001. Repeated headers do not count again as source rows, but do consume the rendered-line budget `maxLines`. Other budgets still apply when the row limit increases.
+
+These settings apply to ordinary `layout` / `write` / `export`, conversion output, and defaults for `exportPaged` and block-source `exportSemantic` / `exportReplay`. Those requests can override them with `.limits(...)` / `.componentLimits(...)`. Long-table requests based on `TableRowSource` retain their separate `StreamingTableLimits`; see the [long-table guide](streaming-table-api.md). Time and output-byte budgets remain request `.options(...)` settings.
+
 ## File and stream convenience entry points
 
 Ordinary-document, single-pass long-table, semantic long-table and explicit-replay exports accept `Path`, `File`, string paths or `OutputStream`. `String` and `File` only convert to `Path`, preserving atomic output, budgets, cancellation and exception contracts. Parent directories are not created; URLs and system-font resources are not expanded. Streams remain caller-owned and are not closed by export.

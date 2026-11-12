@@ -5,6 +5,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
@@ -29,6 +30,7 @@ import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.graphics.RgbImage;
 import com.mirakyux.export4j.graphics.TextStyle;
+import com.mirakyux.export4j.graphics.VectorPath;
 import com.mirakyux.export4j.graphics.core.DisplayListBuilder;
 import com.mirakyux.export4j.graphics.core.PathBuilder;
 import com.mirakyux.export4j.model.DocumentMetadata;
@@ -125,6 +127,41 @@ class PdfBackendTest {
     }
 
     @Test
+    void compactsRectangularPathsOnlyWhenTheirSerializedEndpointsAndEdgeOrderStayExact() throws IOException {
+        var verticalFirst = new PathBuilder().moveTo(10, 10).lineTo(10, 40)
+                .lineTo(40, 40).lineTo(40, 10).close().build();
+        var triangle = new PathBuilder().moveTo(10, 100).lineTo(30, 100).lineTo(20, 120).close().build();
+        var page = new DisplayListBuilder(PageSize.A4)
+                .strokePath(rectangle(36.25, 36.25, 210.17667, 53.75), RgbColor.BLACK, .5)
+                .strokePath(rectangle(210.67667, 36.25, 384.60333, 53.75), RgbColor.BLACK, .5)
+                .strokePath(rectangle(100.5, 100.25, 40.25, 60.5), RgbColor.BLACK, .5)
+                .strokePath(verticalFirst, RgbColor.BLACK, .5)
+                .strokePath(triangle, RgbColor.BLACK, .5).build();
+        try (var pdf = Loader.loadPDF(render(new PdfBackend(), page))) {
+            String content = content(pdf);
+            assertEquals(2, content.lines().filter(line -> line.endsWith(" re")).count());
+            assertTrue(content.contains("36.25 36.25 173.92667 17.5 re\n"));
+            assertTrue(content.contains("100.5 100.25 -60.25 -39.75 re\n"));
+            // Reconstructing this endpoint from float width would give 384.60334 instead of 384.60333.
+            assertTrue(content.contains("210.67667 36.25 m\n384.60333 36.25 l\n384.60333 53.75 l\n210.67667 53.75 l\nh\n"));
+            assertTrue(content.contains("10 10 m\n10 40 l\n40 40 l\n40 10 l\nh\n"));
+            assertTrue(content.contains("10 100 m\n30 100 l\n20 120 l\nh\n"));
+        }
+    }
+
+    @Test
+    void preservesFiniteAbsolutePathsWhenRectangleExtentOrDecimalScalingCannotBeRepresented() throws IOException {
+        var page = new DisplayListBuilder(SIZE)
+                .strokePath(rectangle(-Float.MAX_VALUE, 10, Float.MAX_VALUE, 20), RgbColor.BLACK, 1)
+                .strokePath(rectangle(1e20, 30, 1e20 + 1e18, 40), RgbColor.BLACK, 1).build();
+        try (var pdf = Loader.loadPDF(render(new PdfBackend(), page))) {
+            String content = content(pdf);
+            assertEquals(2, content.lines().filter(line -> line.endsWith(" m")).count());
+            assertEquals(0, content.lines().filter(line -> line.endsWith(" re")).count());
+        }
+    }
+
+    @Test
     void reportsUnsupportedTextWithoutLeakingContentOrWritingOutput() {
         DisplayPage page = new DisplayListBuilder(SIZE)
                 .drawText("机密😀", new Point(10, 30), STYLE).build();
@@ -180,10 +217,22 @@ class PdfBackendTest {
         DisplayPage overflow = new DisplayListBuilder(SIZE)
                 .fillRect(new Rect(Double.MAX_VALUE, 0, 10, 10), RED).build();
         DisplayPage underflow = new DisplayListBuilder(new PageSize(Double.MIN_VALUE, 100)).build();
-        for (DisplayPage page : List.of(oversized, overflow, underflow)) {
+        DisplayPage invalidPath = new DisplayListBuilder(SIZE)
+                .strokePath(rectangle(10, 10, Double.MAX_VALUE, 20), RgbColor.BLACK, 1).build();
+        for (DisplayPage page : List.of(oversized, overflow, underflow, invalidPath)) {
             PdfRenderException failure = assertThrows(PdfRenderException.class,
                     () -> render(new PdfBackend(), page));
             assertEquals(PdfErrorCode.INVALID_GEOMETRY, failure.code());
+        }
+    }
+
+    private static VectorPath rectangle(double x0, double y0, double x1, double y1) {
+        return new PathBuilder().moveTo(x0, y0).lineTo(x1, y0).lineTo(x1, y1).lineTo(x0, y1).close().build();
+    }
+
+    private static String content(PDDocument pdf) throws IOException {
+        try (var input = pdf.getPage(0).getContents()) {
+            return new String(input.readAllBytes(), StandardCharsets.US_ASCII);
         }
     }
 

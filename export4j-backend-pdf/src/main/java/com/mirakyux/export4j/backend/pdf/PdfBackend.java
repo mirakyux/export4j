@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.util.Matrix;
+import org.apache.pdfbox.util.NumberFormatUtil;
 import com.mirakyux.export4j.graphics.AffineTransform;
 import com.mirakyux.export4j.graphics.DisplayDocument;
 import com.mirakyux.export4j.graphics.DisplayPage;
@@ -149,14 +150,16 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, document.metadata(), document.extras()); }
             Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
             Map<String, PDFont> embedded = new HashMap<>();
+            var glyphMappings = new PdfGlyphMappingCache();
             var images = new ImageCache(imagePrograms);
             var tags = options.accessibility().isPresent() ? new PdfTagWriter(document) : null;
             for (int pageIndex = 0; pageIndex < document.pages().size(); pageIndex++) {
                 com.mirakyux.export4j.model.ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, document.pages().size());
-                renderPage(pdf, document.pages().get(pageIndex), pageIndex, fonts, embedded, images, tags, programs);
+                renderPage(pdf, document.pages().get(pageIndex), pageIndex, fonts, embedded, images, tags, programs, glyphMappings);
             }
             PdfExtrasWriter.write(pdf, document.extras());
             if (tags != null) { tags.finish(pdf); }
+            finishFonts(embedded);
             protect(pdf);
             // Explicitly shield borrowed streams from implementation-specific close behavior.
             save(pdf, output);
@@ -381,6 +384,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         private final BudgetState budget;
         private final Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
         private final Map<String, PDFont> embedded = new HashMap<>();
+        private final PdfGlyphMappingCache glyphMappings = new PdfGlyphMappingCache();
         private final ImageCache images = new ImageCache();
         private WriterState state = WriterState.OPEN;
         private long interactionCount;
@@ -430,7 +434,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 interactionCount += snapshot.size();
                 budget.accept(page);
                 ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, -1);
-                renderPage(pdf, page, pageIndex, fonts, embedded, images, null, null);
+                renderPage(pdf, page, pageIndex, fonts, embedded, images, null, null, glyphMappings);
                 PdfExtrasWriter.write(pdf, new DocumentExtras(List.of(), List.of(), List.of(), List.of(), snapshot));
                 ExecutionContext.checkpoint();
             } catch (IOException failure) {
@@ -451,6 +455,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 if (budget.pages == 0) { throw new IllegalStateException("PDF output requires at least one page"); }
                 ExecutionContext.checkpoint();
                 if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, metadata, DocumentExtras.EMPTY); }
+                finishFonts(embedded);
                 protect(pdf);
                 save(pdf, output);
                 ExecutionContext.checkpoint();
@@ -479,6 +484,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             } finally {
                 fonts.clear();
                 embedded.clear();
+                glyphMappings.clear();
                 images.clear();
                 budget.fontIds.clear();
             }
@@ -525,7 +531,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
 
     private void renderPage(PDDocument pdf, DisplayPage source, int pageIndex,
             Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded, ImageCache images,
-            PdfTagWriter tags, PdfFontPrograms programs) throws IOException {
+            PdfTagWriter tags, PdfFontPrograms programs, PdfGlyphMappingCache glyphMappings) throws IOException {
         PDPage page = new PDPage(new PDRectangle(
                 checkedFloat(source.size().width(), pageIndex, -1),
                 checkedFloat(source.size().height(), pageIndex, -1)));
@@ -541,7 +547,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 try {
                     boolean marked = tags != null && tags.begin(stream, pageIndex, index);
                     renderCommand(pdf, stream, source.commands().get(index),
-                            fonts, embedded, images, pageIndex, index, page.getResources(), paintState, programs);
+                            fonts, embedded, images, pageIndex, index, page.getResources(), paintState, programs, glyphMappings);
                     if (marked) { stream.endMarkedContent(); }
                 } catch (PdfRenderException failure) {
                     throw failure;
@@ -569,10 +575,10 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     private void renderCommand(PDDocument pdf, PDPageContentStream stream, DrawCommand command,
             Map<FontFamily, PDType1Font> fonts, Map<String, PDFont> embedded, ImageCache images,
             int page, int index, org.apache.pdfbox.pdmodel.PDResources resources, PaintState paintState,
-            PdfFontPrograms programs) throws IOException {
+            PdfFontPrograms programs, PdfGlyphMappingCache glyphMappings) throws IOException {
         PdfPaintWriter.Renderer nested = (content, commands, nestedResources, initialMatrix) -> {
             var childState = new PaintState(); childState.matrix = new java.awt.geom.AffineTransform(initialMatrix); childState.baseMatrix = new java.awt.geom.AffineTransform(initialMatrix);
-            for (var child : commands) { renderCommand(pdf, content, child, fonts, embedded, images, page, index, nestedResources, childState, programs); }
+            for (var child : commands) { renderCommand(pdf, content, child, fonts, embedded, images, page, index, nestedResources, childState, programs, glyphMappings); }
         };
         switch (command) {
             case DrawCommand.OutlineText text -> {
@@ -586,6 +592,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                     var data = anchorFontData();
                     var anchorFont = embedded.get(data.id());
                     if (anchorFont == null) { anchorFont = loadPositionedFont(pdf, data, programs); embedded.put(data.id(), anchorFont); }
+                    anchorFont = ((PdfUnicodeFont) anchorFont).fontFor('x');
                     stream.saveGraphicsState();
                     stream.beginText();
                     // A small anchor avoids tall invisible glyph boxes interleaving adjacent logical lines.
@@ -605,7 +612,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 }
                 stream.endMarkedContent();
             }
-            case DrawCommand.GlyphText text -> renderGlyphs(pdf, stream, text, embedded, page, index, programs);
+            case DrawCommand.GlyphText text -> renderGlyphs(pdf, stream, text, embedded, page, index, programs, glyphMappings);
             case DrawCommand.FillRect fill -> {
                 fillColor(stream, fill.color());
                 addRect(stream, fill.bounds(), page, index);
@@ -682,7 +689,8 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private static void renderGlyphs(PDDocument pdf, PDPageContentStream stream, DrawCommand.GlyphText text,
-            Map<String, PDFont> fonts, int page, int index, PdfFontPrograms programs) throws IOException {
+            Map<String, PDFont> fonts, int page, int index, PdfFontPrograms programs,
+            PdfGlyphMappingCache glyphMappings) throws IOException {
         GlyphRun run = text.run();
         if (run.font().cffOutlines()) {
             double cursor = text.baseline().x();
@@ -711,45 +719,88 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         }
         float fontSize = checkedFloat(run.fontSize(), page, index);
         float baseline = checkedFloat(text.baseline().y(), page, index);
+        var unicodeFont = (PdfUnicodeFont) font;
+        var mappings = glyphMappings.forFont(font);
         var positioned = new java.util.ArrayList<Object>();
+        var group = new StringBuilder();
         double cursor = text.baseline().x();
+        PdfUnicodeFont chunkFont = null;
         for (int i = 0; i < run.glyphs().size(); i++) {
             ExecutionContext.checkpoint();
             PositionedGlyph glyph = run.glyphs().get(i);
             checkedFloat(cursor, page, index);
-            byte[] encoded;
-            try {
-                encoded = font.encode(glyph.text());
-            } catch (IllegalArgumentException failure) {
-                throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, page, index,
-                        "embedded font does not support a requested glyph");
+            var mapping = mappings == null ? null : mappings.get(glyph.codePoint());
+            int glyphId;
+            if (mapping == null) {
+                try {
+                    glyphId = unicodeFont.glyphId(glyph.codePoint());
+                } catch (IllegalArgumentException failure) {
+                    throw new PdfRenderException(PdfErrorCode.UNSUPPORTED_TEXT, page, index,
+                            "embedded font does not support a requested glyph");
+                }
+            } else {
+                glyphId = mapping.glyphId();
             }
-            int glyphId = encoded.length == 2
-                    ? (Byte.toUnsignedInt(encoded[0]) << 8) | Byte.toUnsignedInt(encoded[1]) : -1;
             if (glyphId != glyph.glyphId()) {
                 throw new PdfRenderException(PdfErrorCode.INVALID_FONT, page, index,
                         "embedded glyph mapping differs from the measured font mapping");
             }
+            if (mapping == null && mappings != null) { mapping = mappings.add(glyph.codePoint(), glyphId); }
+            var selectedFont = unicodeFont.fontFor(glyph.codePoint());
+            if (chunkFont != selectedFont) {
+                if (chunkFont != null) {
+                    if (!group.isEmpty()) { positioned.add(group.toString()); group.setLength(0); }
+                    renderPositionedChunk(stream, positioned);
+                    positioned.clear();
+                    stream.setFont(selectedFont, fontSize);
+                } else {
+                    stream.beginText();
+                    stream.setFont(selectedFont, fontSize);
+                    fillColor(stream, text.color());
+                    stream.setTextMatrix(new Matrix(1, 0, 0, -1, checkedFloat(text.baseline().x(), page, index), baseline));
+                }
+                chunkFont = selectedFont;
+            }
             cursor += glyph.advance();
-            positioned.add(glyph.text());
+            group.appendCodePoint(glyph.codePoint());
             if (i + 1 < run.glyphs().size()) {
                 checkedFloat(cursor, page, index);
                 // TJ advances are relative. Rounding two absolute cursors first adds origin-dependent spacing noise.
-                positioned.add(checkedFloat(font.getWidth(glyphId) - glyph.advance() * 1000 / fontSize, page, index));
+                float width = mapping == null ? unicodeFont.widthForGlyph(glyphId) : mapping.width(unicodeFont);
+                float adjustment = checkedFloat(width - glyph.advance() * 1000 / fontSize, page, index);
+                // Adjacent glyphs with their natural PDF advances share one string; nonzero adjustments
+                // remain explicit, including values too small to survive PDFBox's number serialization.
+                if (adjustment != 0) {
+                    positioned.add(group.toString());
+                    group.setLength(0);
+                    positioned.add(adjustment);
+                }
             }
         }
-        stream.beginText();
-        stream.setFont(font, fontSize);
-        fillColor(stream, text.color());
-        stream.setTextMatrix(new Matrix(1, 0, 0, -1, checkedFloat(text.baseline().x(), page, index), baseline));
+        if (!group.isEmpty()) { positioned.add(group.toString()); }
+        if (chunkFont != null) {
+            renderPositionedChunk(stream, positioned);
+            stream.endText();
+        }
+    }
+
+    private static void renderPositionedChunk(PDPageContentStream stream, java.util.ArrayList<Object> positioned) throws IOException {
+        ExecutionContext.checkpoint();
         if (!positioned.isEmpty()) { stream.showTextWithPositioning(positioned.toArray()); }
-        stream.endText();
+    }
+
+    private static void finishFonts(Map<String, PDFont> fonts) throws IOException {
+        for (var font : fonts.values()) {
+            ExecutionContext.checkpoint();
+            if (font instanceof PdfUnicodeFont unicode) { unicode.finish(); }
+        }
     }
 
     private static PDFont loadPositionedFont(PDDocument pdf, FontData data, PdfFontPrograms programs) throws IOException {
+        int[] codePointOrder = programs == null ? new int[0] : programs.subsets().codePointOrder(data);
         if (programs != null) {
             var cached = programs.subsets().create(pdf, data);
-            if (cached != null) { return cached; }
+            if (cached != null) { return new PdfUnicodeFont(pdf, cached, codePointOrder); }
         }
         TrueTypeFont parsed = programs == null ? null : programs.borrow(data);
         boolean pageOwned = parsed == null;
@@ -759,7 +810,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             // This PDFBox overload borrows the program. Cached programs remain session-owned.
             if (pageOwned) { pdf.registerTrueTypeFontForClosing(parsed); }
             if (programs != null) { programs.subsets().loaded(data, result); }
-            return result;
+            return new PdfUnicodeFont(pdf, result, codePointOrder);
         } catch (IOException | RuntimeException | Error failure) {
             if (pageOwned) {
                 try { parsed.close(); }
@@ -820,6 +871,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
 
     private static void addPath(PDPageContentStream stream, VectorPath path, int page, int index)
             throws IOException {
+        if (addRectanglePath(stream, path, page, index)) { return; }
         for (VectorPath.Segment segment : path.segments()) {
             ExecutionContext.checkpoint();
             switch (segment) {
@@ -834,6 +886,80 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 case VectorPath.Close ignored -> stream.closePath();
             }
         }
+    }
+
+    /** Keeps the original start, edge order and winding; vertical-first and compound paths stay explicit. */
+    private static boolean addRectanglePath(PDPageContentStream stream, VectorPath path, int page, int index)
+            throws IOException {
+        var segments = path.segments();
+        if (segments.size() != 5 || !(segments.get(0) instanceof VectorPath.MoveTo first)
+                || !(segments.get(1) instanceof VectorPath.LineTo second)
+                || !(segments.get(2) instanceof VectorPath.LineTo third)
+                || !(segments.get(3) instanceof VectorPath.LineTo fourth)
+                || !(segments.get(4) instanceof VectorPath.Close)
+                || first.point().y() != second.point().y() || second.point().x() != third.point().x()
+                || third.point().y() != fourth.point().y() || fourth.point().x() != first.point().x()) {
+            return false;
+        }
+        ExecutionContext.checkpoint();
+        float x0 = x(first.point(), page, index), y0 = y(first.point(), page, index);
+        ExecutionContext.checkpoint();
+        float x1 = x(second.point(), page, index), y1 = y(second.point(), page, index);
+        ExecutionContext.checkpoint();
+        float x2 = x(third.point(), page, index), y2 = y(third.point(), page, index);
+        ExecutionContext.checkpoint();
+        float x3 = x(fourth.point(), page, index), y3 = y(fourth.point(), page, index);
+        ExecutionContext.checkpoint();
+        float width = x1 - x0, height = y2 - y0;
+        if (Float.isFinite(width) && Float.isFinite(height) && width != 0 && height != 0) {
+            var buffer = new byte[32];
+            if (sameSerializedEndpoint(x0, width, x1, buffer) && sameSerializedEndpoint(y0, height, y2, buffer)) {
+                stream.addRect(x0, y0, width, height);
+                return true;
+            }
+        }
+        stream.moveTo(x0, y0);
+        stream.lineTo(x1, y1);
+        stream.lineTo(x2, y2);
+        stream.lineTo(x3, y3);
+        stream.closePath();
+        return true;
+    }
+
+    private static boolean sameSerializedEndpoint(float start, float extent, float end, byte[] buffer) {
+        long from = scaledOperand(start, buffer), distance = scaledOperand(extent, buffer), to = scaledOperand(end, buffer);
+        if (from == Long.MIN_VALUE || distance == Long.MIN_VALUE || to == Long.MIN_VALUE
+                || (distance > 0 && from > Long.MAX_VALUE - distance)
+                || (distance < 0 && from < Long.MIN_VALUE - distance)) {
+            return false;
+        }
+        return from + distance == to;
+    }
+
+    /** PDPageContentStream uses five fractional digits; retain its exact decimal endpoints, not just float equality. */
+    private static long scaledOperand(float value, byte[] buffer) {
+        // Only ordinary page coordinates enter this optional optimization. Larger values keep the
+        // original path, including PDFBox's own formatter/fallback behavior for those operands.
+        if (!Float.isFinite(value) || Math.abs(value) >= 1e9f) { return Long.MIN_VALUE; }
+        int length = NumberFormatUtil.formatFloatFast(value, 5, buffer);
+        if (length <= 0) { return Long.MIN_VALUE; }
+        boolean negative = buffer[0] == '-';
+        int fractional = -1;
+        long scaled = 0;
+        for (int at = negative ? 1 : 0; at < length; at++) {
+            byte digit = buffer[at];
+            if (digit == '.' && fractional == -1) { fractional = 0; continue; }
+            if (digit < '0' || digit > '9' || (fractional >= 0 && ++fractional > 5)
+                    || scaled > (Long.MAX_VALUE - (digit - '0')) / 10) {
+                return Long.MIN_VALUE;
+            }
+            scaled = scaled * 10 + digit - '0';
+        }
+        for (int at = Math.max(0, fractional); at < 5; at++) {
+            if (scaled > Long.MAX_VALUE / 10) { return Long.MIN_VALUE; }
+            scaled *= 10;
+        }
+        return negative ? -scaled : scaled;
     }
 
     private static float x(Point point, int page, int index) throws PdfRenderException {

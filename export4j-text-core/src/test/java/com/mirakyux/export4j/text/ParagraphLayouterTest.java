@@ -116,6 +116,26 @@ class ParagraphLayouterTest {
     }
 
     @Test
+    void oneStyledSpanRetainsFormatFallbackAndUtf16RangesAcrossSoftAndHardBreaks() {
+        var group = com.mirakyux.export4j.font.FontGroup.strict(List.of(
+                fixture(latin, cp -> cp < 128, new FontMetrics(.8, .2, 0)),
+                fixture(chinese, cp -> cp >= 128, new FontMetrics(.8, .2, 0))));
+        var span = new StyledSpan("A\uD840\uDC00B\r\nC\uD840\uDC00D", group, 10, 0x224466, 1, true, true);
+        var result = new ParagraphLayouter().layout(List.of(span), 20, STYLE);
+        assertEquals(List.of("A\uD840\uDC00", "B", "C\uD840\uDC00", "D"), texts(result));
+        assertEquals(List.of(0, 3, 6, 9), result.lines().stream().map(TextLine::sourceStart).toList());
+        assertEquals(List.of(3, 4, 9, 10), result.lines().stream().map(TextLine::sourceEnd).toList());
+        assertEquals(List.of(7.0, 22.0, 37.0, 52.0), result.lines().stream().map(TextLine::baselineY).toList());
+        var runs = result.lines().stream().flatMap(line -> line.runs().stream()).toList();
+        assertEquals(List.of(latin.data().id(), chinese.data().id(), latin.data().id(),
+                latin.data().id(), chinese.data().id(), latin.data().id()), runs.stream().map(run -> run.font().id()).toList());
+        assertTrue(runs.stream().allMatch(run -> run.fontSize() == 10 && run.rgb() == 0x224466
+                && run.baselineShift() == 1 && run.underline() && run.strikeThrough()));
+        assertEquals(List.of(new TextDiagnostic(TextDiagnostic.Code.FONT_FALLBACK, 1, 3, chinese.data().id()),
+                new TextDiagnostic(TextDiagnostic.Code.FONT_FALLBACK, 7, 9, chinese.data().id())), result.diagnostics());
+    }
+
+    @Test
     void simpleShapingStopsConsumingGlyphsAfterCancellationAndRestoresScope() {
         var lookups = new java.util.concurrent.atomic.AtomicInteger();
         var cancelled = new java.util.concurrent.atomic.AtomicBoolean();

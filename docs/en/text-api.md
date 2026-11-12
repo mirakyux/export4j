@@ -58,6 +58,8 @@ The font module provides `FontFace`, `FontData` and metrics in em units; the tex
 
 `FontData` stores immutable bytes, a SHA-256 identifier and whether subsetting is permitted. Returned byte arrays are copies too. A loaded `FontFace` retains no open handles and can be shared; custom SPI implementations must meet the thread-safety contract themselves.
 
+PDF output for ordinary TrueType glyph text records source code points separately from glyph IDs. For example, when a font maps “丢” and “丟” to the same glyph, the output retains each character's original Unicode. This applies to subset/full embedding and ordinary, page-by-page and disk-backed streaming PDFs, while preserving caller-specified advances.
+
 The first font supporting a code point is selected in group order. Selecting another font produces a `FONT_FALLBACK` / `INFO` diagnostic with the original UTF-16 range and selected font identifier. `FontGroup.strict(fonts)` fails on missing glyphs by default. `FontGroup.placeholder(fonts, 0x25a1)` explicitly enables a placeholder and `MISSING_GLYPH_REPLACED` / `WARNING`. The entire group is tried first; a missing placeholder glyph still fails. Original UTF-16 source ranges are unchanged. System fonts are not scanned. Callers must check license obligations beyond embedding flags.
 
 `FontCollectionLoader.load(bytes, memberIndex)` explicitly extracts a zero-based TTC/OTC member; both the collection and member have byte budgets. `TrueTypeFontLoader` loads static OTF/CFF. Simple glyph paragraphs preserve native glyph mapping, with Type1C/CIDFontType0C embedded in PDF; complex shaping or explicit `layoutOpenType` still uses measured outlines. CFF cannot be used for editable PDF fields.

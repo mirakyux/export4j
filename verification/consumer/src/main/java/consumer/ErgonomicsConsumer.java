@@ -26,6 +26,7 @@ import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.StreamingTable;
+import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableRow;
 import com.mirakyux.export4j.model.TableRowSources;
 import com.mirakyux.export4j.model.Units;
@@ -50,6 +51,13 @@ public final class ErgonomicsConsumer {
         var combined = FontGroup.strict(TrueTypeFontLoader.load("../../assets/fonts/LiberationSans-BoldItalic.ttf"));
         var fonts = FontSet.builder(regular).bold(bold).italic(italic).boldItalic(combined).build();
         var engine = DocumentEngine.builder(fonts).build();
+
+        // Compile and exercise the engine budget callbacks through published JARs, including the header row.
+        var budgeted = DocumentEngine.builder(fonts)
+                .layoutLimits(limits -> limits.maxTableRows(3))
+                .componentLimits(limits -> limits.maxCommands(2_000_000)).build();
+        var budgetTable = Table.builder("budget-table").header("ID").row("R1").row("R2").build();
+        budgeted.write(Document.builder().add(budgetTable).build(), new PdfBackend(), output.resolve("budgets.pdf"));
 
         var pixels = new BufferedImage(20, 10, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < 10; y++) {

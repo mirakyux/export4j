@@ -425,10 +425,21 @@ public final class DocumentLayouter {
                     }
                     case Table table -> {
                         long count = (long) table.rows().size() * table.columns().size();
-                        if (table.rows().size() > limits.maxTableRows() || table.columns().size() > limits.maxTableColumns()
-                                || count > limits.maxCells() - cells) {
+                        if (table.rows().size() > limits.maxTableRows()) {
                             throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, -1, -1, -1, -1,
-                                    "table structural budget exceeded", null);
+                                    "table row budget exceeded: actual=" + table.rows().size()
+                                            + ", maxTableRows=" + limits.maxTableRows()
+                                            + " (source rows include header rows)", null);
+                        }
+                        if (table.columns().size() > limits.maxTableColumns()) {
+                            throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, -1, -1, -1, -1,
+                                    "table column budget exceeded: actual=" + table.columns().size()
+                                            + ", maxTableColumns=" + limits.maxTableColumns(), null);
+                        }
+                        if (count > limits.maxCells() - cells) {
+                            throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, -1, -1, -1, -1,
+                                    "document cell budget exceeded: used=" + cells + ", requested=" + count
+                                            + ", maxCells=" + limits.maxCells(), null);
                         }
                         cells += count;
                         for (var row : table.grid().anchorRows()) {

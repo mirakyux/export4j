@@ -186,7 +186,7 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 | --- | --- |
 | 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、任意组件内字段、自动字段宽度重排及未支持节点的无障碍映射 |
 | 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。[变宽递归子树与组件网格续排](variable-table-continuation-api.md)、[任意轮廓与跨页浮动锚点](contour-floats-api.md)及[可选原生方向／可变字体](native-opentype-api.md)已接入；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
-| DOCX | 浮动／裁剪等复杂图像、目录／评论／表单完整模型映射；首页／奇偶语义页区已验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已验收，Word 保存兼容单独登记 |
+| DOCX | 首页／奇偶页区、浮动图片／文本框、图片变换、深表、目录、评论、修订和表单的[类型化语义子集](docx-semantic-api.md)已由[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)也已验收。未建模 OOXML 与更广 Word 兼容仍须独立验收，不承诺任意文件无损往返或 PDF 同分页 |
 | PDF | 现有编辑、恢复、PDF/UA-1、选定 PDF/A 及 PAdES 的子集见对应 API；任意外部结构、任意标准等级与通用阅读器兼容不由有限样例保证 |
 | 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。后续[磁盘索引 PDF 与重放容量](streaming-replay-api.md)另有独立验证；一般 Word／LibreOffice 外观、其他系统／JDK及跨阅读器矩阵仍按对应缺口推进。有限容量证据不证明长期无泄漏 |
 

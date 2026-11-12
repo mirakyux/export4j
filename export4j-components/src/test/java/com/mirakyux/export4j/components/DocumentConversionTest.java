@@ -5,7 +5,10 @@ import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.graphics.DocumentBackend;
 import com.mirakyux.export4j.graphics.DrawCommand;
+import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.InlineStyle;
+import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.processing.DocumentConversion;
 import com.mirakyux.export4j.model.processing.ProcessingException;
@@ -70,5 +73,23 @@ class DocumentConversionTest {
         var failure = new IOException("encoding failed");
         var target = DocumentEngine.builder(fonts()).build().conversionTarget("TEST", (document, output) -> { output.write(7); throw failure; });
         assertSame(failure, assertThrows(IOException.class, () -> DocumentConversion.from(Document.builder().paragraph("A").build()).prepare(target)));
+    }
+
+    @Test void conversionTargetRetainsEngineStructuralAndInteractionBudgets() throws Exception {
+        var writes = new AtomicInteger();
+        DocumentBackend backend = (display, output) -> writes.incrementAndGet();
+        var structuralTarget = DocumentEngine.builder(fonts()).layoutLimits(limits -> limits.maxCodePoints(1))
+                .build().conversionTarget("TEST", backend);
+        var failure = assertThrows(DocumentLayoutException.class,
+                () -> DocumentConversion.from(Document.builder().paragraph("AB").build()).prepare(structuralTarget));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
+
+        var links = Document.builder().paragraph("links", List.of(
+                new InlineText("A", InlineStyle.of(10), "https://example.com/a"),
+                new InlineText("B", InlineStyle.of(10), "https://example.com/b"))).build();
+        var interactionTarget = DocumentEngine.builder(fonts()).componentLimits(limits -> limits.maxInteractions(1))
+                .build().conversionTarget("TEST", backend);
+        assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(links).prepare(interactionTarget));
+        assertEquals(0, writes.get());
     }
 }
