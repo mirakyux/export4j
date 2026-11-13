@@ -1,0 +1,214 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Complete verified GitHub Release
+run-name: Complete GitHub Release ${{ inputs.version }} from run ${{ inputs.source_run_id }}
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      source_run_id:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Already published and verified Maven Central version'
+        required: true
+        type: string
+      source_run_id:
+        description: 'Original Release to Maven Central run ID; its release job must have succeeded'
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: github-release-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verify the original release run and select its unique artifact
+        id: source
+        run: |
+          python3 - <<'PY'
+          # release-source-validation
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          def require(value, message):
+              if not value:
+                  raise ValueError(message)
+
+          def api(path, paginated=False):
+              command = ["gh", "api"] + (["--paginate", "--slurp"] if paginated else []) + [path]
+              return json.loads(subprocess.run(command, check=True, capture_output=True, text=True, timeout=60).stdout)
+
+          version, run_id, repository = os.environ["RELEASE_VERSION"], os.environ["SOURCE_RUN_ID"], os.environ["GH_REPO"]
+          require(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?", version)
+                  and "SNAPSHOT" not in version.upper() and not version.startswith("0.0.0-verification"), "Invalid release version")
+          require(re.fullmatch(r"[1-9][0-9]*", run_id), "Invalid original run ID")
+          prefix = f"repos/{repository}/actions/runs/{run_id}"
+          source = api(prefix)
+          commit = source["head_sha"]
+          title = f"Release {version} to Maven Central and GitHub"
+          require(source["id"] == int(run_id) and source["event"] == "workflow_dispatch"
+                  and source["name"] in {"Release to Maven Central", title} and source["display_title"] == title
+                  and source["path"] == ".github/workflows/release.yml"
+                  and source["repository"]["full_name"] == repository and source["head_repository"]["full_name"] == repository
+                  and re.fullmatch(r"[0-9a-f]{40}", commit), "Original run is not this repository's release workflow")
+          jobs = [job for page in api(prefix + "/jobs?filter=latest&per_page=100", True) for job in page["jobs"]
+                  if job["name"] == "release"]
+          require(len(jobs) == 1 and jobs[0]["status"] == "completed" and jobs[0]["conclusion"] == "success"
+                  and jobs[0]["head_sha"] == commit, "Original Central release job did not succeed for this commit")
+          artifacts = [item for page in api(prefix + "/artifacts?per_page=100", True) for item in page["artifacts"]
+                       if item["name"] == "maven-central-release-" + version]
+          require(len(artifacts) == 1 and not artifacts[0]["expired"], "Expected one unexpired original release artifact")
+          artifact = artifacts[0]
+          require(artifact["workflow_run"]["id"] == int(run_id) and artifact["workflow_run"]["head_sha"] == commit,
+                  "Release artifact belongs to a different run or commit")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"artifact_id={artifact['id']}\nrelease_commit={commit}\nsource_run_id={run_id}\n")
+          print(f"Verified source run {run_id}, commit {commit}, artifact {artifact['id']}")
+          PY
+      - name: Download only the original verified batch
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.source_run_id }}
+          path: release-artifacts
+          merge-multiple: true
+      - name: Verify the original commit, signed bundle, consumers and SBOM
+        id: batch
+        env:
+          RELEASE_COMMIT: ${{ steps.source.outputs.release_commit }}
+        run: |
+          python3 - <<'PY'
+          # release-batch-validation
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          from zipfile import ZipFile
+
+          def require(value, message):
+              if not value:
+                  raise ValueError(message)
+
+          roots = list(Path("release-artifacts").rglob("build-inputs.json"))
+          require(len(roots) == 1, "Expected one unambiguous release build-inputs.json")
+          root = roots[0].parent.resolve()
+          def read(name):
+              return json.loads((root / name).read_text(encoding="utf-8"))
+          version, commit = os.environ["RELEASE_VERSION"], os.environ["RELEASE_COMMIT"]
+          inputs = read("build-inputs.json")
+          require(inputs["version"] == version and inputs["headRevision"] == commit, "Release source differs")
+          local, remote = read("distribution/distribution-report.json"), read("remote/publication-report.json")
+          bundle = root / "distribution/maven-central-bundle.zip"
+          digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+          sbom_bytes = (root / "sbom.cdx.json").read_bytes()
+          sbom_digest = hashlib.sha256(sbom_bytes).hexdigest()
+          require(local["version"] == remote["version"] == version, "Release versions differ")
+          require(local["bundleSha256"] == remote["bundleSha256"] == digest, "Release bundle differs")
+          for report in (local, remote):
+              require(report["modules"] == 17 and report["signedArtifacts"] == 82 and report["signatureTamperRejected"] is True
+                      and report["bomConstraintsVerified"] == report["sbomLibrariesVerified"] == 16, "Distribution verification is incomplete")
+              require(report["sbomSha256"] == sbom_digest, "SBOM differs from the verified publication")
+          require(remote["uploaded"] is True and remote["origin"] == "https://repo.maven.apache.org/maven2/"
+                  and remote["remoteArtifactsMatched"] == remote["remoteSignaturesVerified"] == 82, "Central verification is incomplete")
+          consumer = read("remote-consumer/consumer-report.json")
+          require(consumer["pomOnlyConsumerVerified"] is True, "POM-only consumption is incomplete")
+          for report in (consumer, consumer["pomOnlyConsumer"]):
+              require(report["remoteConsumerVerified"] is True and report["isolatedCoordinateConsumerVerified"] is True
+                      and report["consumerJarHashesVerified"] == report["consumerProjectArtifacts"] == 16
+                      and report["consumerProjectComponents"] == 17, "Remote consumer is incomplete")
+              require(report["consumerBomCoordinate"] == "com.mirakyux.export4j:export4j-bom:" + version, "Consumer version differs")
+          sbom = json.loads(sbom_bytes)
+          own = [item for item in sbom["components"] if item.get("group") == "com.mirakyux.export4j"]
+          require(len(own) == len({item["name"] for item in own}) == 16, "SBOM library scope differs")
+          with ZipFile(bundle) as archive:
+              names = archive.namelist()
+              require(len(names) == len(set(names)), "Duplicate publication paths")
+              for name in names:
+                  parts = name.split("/")
+                  require(len(parts) == 6 and parts[:3] == ["com", "mirakyux", "export4j"] and parts[4] == version
+                          and all(part not in {".", ".."} and re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in parts),
+                          "Invalid publication path")
+              publications = [name for name in names if name.endswith((".jar", ".pom", ".module"))]
+              require(len(publications) == 82, "Expected exactly 82 signed publication artifacts")
+              for name in publications:
+                  require(name + ".asc" in names and archive.read(name + ".asc"), "Missing publication signature")
+                  require(archive.read(name + ".sha256").decode("ascii").strip() == hashlib.sha256(archive.read(name)).hexdigest(),
+                          "Publication checksum differs")
+              for item in own:
+                  require(item["version"] == version, "SBOM library version differs")
+                  name = f"com/mirakyux/export4j/{item['name']}/{version}/{item['name']}-{version}.jar"
+                  hashes = [value["content"] for value in item["hashes"] if value["alg"] == "SHA-256"]
+                  require(hashes == [hashlib.sha256(archive.read(name)).hexdigest()], "SBOM JAR differs from the signed bundle")
+          require((root / "public-key.asc").is_file(), "Missing publication public key")
+          notes = (f"Java 21 document layout and generation engine.\n\n"
+                   f"Maven BOM: `com.mirakyux.export4j:export4j-bom:{version}`.\n\n"
+                   "All 16 library JARs and the BOM were verified and consumed from Maven Central "
+                   "using Gradle metadata and POM-only resolution.\n\n"
+                   f"Build commit: `{commit}`. Source release run: "
+                   f"https://github.com/{os.environ['GH_REPO']}/actions/runs/{os.environ['SOURCE_RUN_ID']}.\n\n"
+                   f"Bundle SHA-256: `{digest}`.\n\n")
+          if "-" in version:
+              notes += "This is a prerelease; APIs may change.\n\n"
+          if (root / "release-notes.md").is_file():
+              notes += (root / "release-notes.md").read_text(encoding="utf-8").rstrip() + "\n"
+          (Path(os.environ["RUNNER_TEMP"]) / "release-notes.md").write_text(notes, encoding="utf-8")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"release_root={root}\n")
+          print(f"Verified original signed publication {version} from {commit}")
+          PY
+      - name: Create the matching original tag and GitHub Release
+        env:
+          RELEASE_COMMIT: ${{ steps.source.outputs.release_commit }}
+          RELEASE_ROOT: ${{ steps.batch.outputs.release_root }}
+        run: |
+          python3 - <<'PY'
+          # release-publication
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          repository, version, commit = os.environ["GH_REPO"], os.environ["RELEASE_VERSION"], os.environ["RELEASE_COMMIT"]
+          tag = "v" + version
+          existing = subprocess.run(["gh", "api", f"repos/{repository}/releases/tags/{tag}"],
+                                    capture_output=True, text=True, timeout=60)
+          if existing.returncode == 0:
+              raise ValueError("GitHub Release already exists; inspect it instead of overwriting")
+          if "HTTP 404" not in existing.stderr:
+              raise RuntimeError("Could not check whether the GitHub Release already exists")
+          result = subprocess.run(["gh", "api", f"repos/{repository}/git/matching-refs/tags/{tag}"],
+                                  check=True, capture_output=True, text=True, timeout=60)
+          refs = [ref for ref in json.loads(result.stdout) if ref["ref"] == "refs/tags/" + tag]
+          if not refs:
+              subprocess.run(["gh", "api", "--method", "POST", f"repos/{repository}/git/refs",
+                              "-f", "ref=refs/tags/" + tag, "-f", "sha=" + commit, "--silent"], check=True, timeout=60)
+          elif len(refs) != 1 or refs[0]["object"]["type"] != "commit" or refs[0]["object"]["sha"] != commit:
+              raise ValueError("The existing release tag points to a different source commit")
+          root = Path(os.environ["RELEASE_ROOT"])
+          assets = ["distribution/maven-central-bundle.zip", "sbom.cdx.json", "public-key.asc",
+                    "distribution/distribution-report.json", "remote/publication-report.json", "remote-consumer/consumer-report.json"]
+          flags = ["--prerelease", "--latest=false"] if "-" in version else ["--latest"]
+          subprocess.run(["gh", "release", "create", tag, "--verify-tag", "--target", commit,
+                          "--title", "Export4j " + version, "--notes-file", str(Path(os.environ["RUNNER_TEMP"]) / "release-notes.md"),
+                          "--generate-notes", *flags, *(str(root / name) for name in assets)], check=True, timeout=180)
+          PY

@@ -36,6 +36,7 @@ jobs:
           python scripts/test_api_compatibility.py
           python scripts/test_dependency_audit.py
           python scripts/test_maven_central.py
+          python scripts/test_release_workflow.py
           bash ./gradlew --no-daemon --console=plain -Pexport4jNativeClassifier=${{ matrix.classifier }} build apiCheck sbom publishLocalBundle :examples:run :examples:textPdf :examples:flowPdf :examples:tablePdf :examples:componentPdf :examples:advancedPdf
       - name: Audit exact runtime dependencies against known advisories
         if: runner.os == 'Linux'

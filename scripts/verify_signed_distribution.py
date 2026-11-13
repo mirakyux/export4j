@@ -18,6 +18,7 @@ def build_inputs(root: Path):
         "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "LICENSE", "NOTICE",
         "scripts/verify_signed_distribution.py", "scripts/prepare_maven_bundle.py", "scripts/verify_api_compatibility.py",
         "scripts/verify_maven_consumer.py", "scripts/maven_central.py", ".github/workflows/release.yml",
+        ".github/workflows/github-release.yml",
         "scripts/verify_production.py", "scripts/audit_dependencies.py",
         "scripts/create_published_api_baseline.py",
         "verification/api/baseline-0.1.0-rc.2.json",

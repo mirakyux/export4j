@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'New release version, for example 0.1.0-rc.2'
+        description: 'New, unpublished release version'
         required: true
         type: string
 permissions:
@@ -118,74 +118,10 @@ jobs:
             examples/build/inline-vectors/**
   github-release:
     needs: release
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
     permissions:
       contents: write
-    env:
-      RELEASE_VERSION: ${{ inputs.version }}
-      RELEASE_COMMIT: ${{ github.sha }}
-    steps:
-      - name: Download the verified batch from this run
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          artifact-ids: ${{ needs.release.outputs.artifact_id }}
-          path: release-artifacts
-          merge-multiple: true
-      - name: Check the release commit and bundle and prepare release notes
-        run: |
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          root = Path("release-artifacts/release/central")
-          def read(name):
-              return json.loads((root / name).read_text(encoding="utf-8"))
-          version = os.environ["RELEASE_VERSION"]
-          inputs = read("build-inputs.json")
-          assert inputs["version"] == version and inputs["headRevision"] == os.environ["RELEASE_COMMIT"], "Release source differs"
-          local = read("distribution/distribution-report.json")
-          remote = read("remote/publication-report.json")
-          digest = hashlib.sha256((root / "distribution/maven-central-bundle.zip").read_bytes()).hexdigest()
-          assert local["version"] == remote["version"] == version, "Release versions differ"
-          assert local["bundleSha256"] == remote["bundleSha256"] == digest, "Release bundle differs"
-          assert remote["remoteArtifactsMatched"] == remote["remoteSignaturesVerified"] == 82, "Remote verification is incomplete"
-          consumer = read("remote-consumer/consumer-report.json")
-          assert consumer["remoteConsumerVerified"] and consumer["consumerJarHashesVerified"] == 16, "Remote consumer is incomplete"
-          assert consumer["consumerBomCoordinate"] == "com.mirakyux.export4j:export4j-bom:" + version, "Consumer version differs"
-          notes = (
-              f"Java 21 document layout and generation engine.\n\n"
-              f"Maven BOM: `com.mirakyux.export4j:export4j-bom:{version}`.\n\n"
-              "All 16 library JARs and the BOM were verified and consumed from Maven Central. "
-              "Assets include the signed Maven publication bundle, public key, SBOM and verification reports.\n\n"
-              f"Bundle SHA-256: `{digest}`.\n\n"
-          )
-          if "-" in version:
-              notes += "This is a prerelease; APIs may change.\n\n"
-          version_notes = root / "release-notes.md"
-          if version_notes.is_file():
-              notes += version_notes.read_text(encoding="utf-8").rstrip() + "\n\n"
-          (Path(os.environ["RUNNER_TEMP"]) / "release-notes.md").write_text(notes, encoding="utf-8")
-          PY
-      - name: Create the matching tag and GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          tag="v$RELEASE_VERSION"
-          existing="$(gh api "repos/$GH_REPO/git/matching-refs/tags/$tag" --jq ".[] | select(.ref == \"refs/tags/$tag\") | [.object.type, .object.sha] | @tsv")"
-          if [[ -z "$existing" ]]; then
-            gh api --method POST "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$tag" -f "sha=$RELEASE_COMMIT" --silent
-          elif [[ "$existing" != $'commit\t'"$RELEASE_COMMIT" ]]; then
-            echo 'The existing release tag points to a different source commit.' >&2
-            exit 1
-          fi
-          flags=(--latest)
-          if [[ "$RELEASE_VERSION" == *-* ]]; then flags=(--prerelease --latest=false); fi
-          root=release-artifacts/release/central
-          gh release create "$tag" --verify-tag --title "Export4j $RELEASE_VERSION" \
-            --notes-file "$RUNNER_TEMP/release-notes.md" --generate-notes "${flags[@]}" \
-            "$root/distribution/maven-central-bundle.zip" "$root/sbom.cdx.json" \
-            "$root/public-key.asc" "$root/distribution/distribution-report.json" \
-            "$root/remote/publication-report.json" "$root/remote-consumer/consumer-report.json"
+      actions: read
+    uses: ./.github/workflows/github-release.yml
+    with:
+      version: ${{ inputs.version }}
+      source_run_id: ${{ github.run_id }}
