@@ -128,6 +128,6 @@ new com.mirakyux.export4j.layout.core.DocumentLayoutLimits(
 
 `ParagraphFragment.paragraphIndex()` 是原文档块索引，混合文档中可能不连续；`blockId()` 和 `blockIndex()` 是统一入口。异常原有的 `paragraphId()`／`paragraphIndex()` 是块 ID／索引别名，表格失败也返回表格标识。
 
-上述变化在候选发布前的开发阶段引入；当前已发布 `0.1.0-rc.2`，公共声明以[已发布 API 基线](api-compatibility.md)为准。从早期快照迁移时，Record 组件与泛型类型的变化仍需核对，不能据此宣称任意反射代码或已有二进制完全兼容。设计见 [ADR-0005](adr/0005-basic-tables.md)，实际证据见[表格验收](verification/phase-3-tables.md)。
+上述变化在候选发布前的开发阶段引入；当前已发布候选版为 `0.1.0-rc.3`，公共声明继续以[已发布 API 基线](api-compatibility.md)为准。从早期快照迁移时，Record 组件与泛型类型的变化仍需核对，不能据此宣称任意反射代码或已有二进制完全兼容。设计见 [ADR-0005](adr/0005-basic-tables.md)，实际证据见[表格验收](verification/phase-3-tables.md)。
 
 行内内容内表支持父格实际宽度下的[有界自动列](nested-automatic-tables-api.md)；含块格表自身的 Auto 仍拒绝，不能把此能力扩大为任意块树首选宽度或单向源自动列。

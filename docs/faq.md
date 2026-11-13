@@ -24,7 +24,7 @@ See the [runtime architecture](en/architecture.md) and [designer guide](en/desig
 
 Import the `com.mirakyux.export4j:export4j-bom` BOM, then add `export4j-components` and `export4j-backend-pdf`.
 The [README getting started section](../README.md#getting-started) and [complete Java example](../README.md#java-example) show the Maven/Gradle dependencies, explicit font loading and PDF output.
-The published candidate is [0.1.0-rc.2](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2); there is no stable release yet, and APIs may change.
+The published candidate is [0.1.0-rc.3](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.3); there is no stable release yet, and APIs may change.
 
 For an existing runnable project, follow [AuthoringExample](../examples/src/main/java/com/mirakyux/export4j/examples/AuthoringExample.java).
 

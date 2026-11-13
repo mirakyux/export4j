@@ -97,6 +97,6 @@ var document = Documents.builder()
 
 已构建的 `Table`／`TableComponent`／`SemanticTable` 具有完整语义格式，保持原值。可编辑 AcroForm 字段、独立矢量标记、边框、背景、图片、页模板和目录不由文字默认值自动重设。DOCX 仍使用语义模型，未增加嵌套组件导出。
 
-固定行框不足、缺字、非法尺寸和无法推进的分页继续明确失败。缺字策略、真实字体变体、UTF-16 来源和结构化诊断保持原契约。`TextInheritance` 保留 `NONE`／`ALL` 和两参数构造器，增加不可变的 `overrides()` 属性集合；`style()` 表示以父样式为基底，集合中的属性使用本地值。旧组件构造调用保留源码兼容；旧 `TextInheritance` record 解构模式需要增加分量，反射分量、`toString` 和哈希也改变。上述变化在候选发布前引入，当前已发布 `0.1.0-rc.2` 的声明兼容要求见[Java API 与版本兼容](api-compatibility.md)。
+固定行框不足、缺字、非法尺寸和无法推进的分页继续明确失败。缺字策略、真实字体变体、UTF-16 来源和结构化诊断保持原契约。`TextInheritance` 保留 `NONE`／`ALL` 和两参数构造器，增加不可变的 `overrides()` 属性集合；`style()` 表示以父样式为基底，集合中的属性使用本地值。旧组件构造调用保留源码兼容；旧 `TextInheritance` record 解构模式需要增加分量，反射分量、`toString` 和哈希也改变。上述变化在候选发布前引入，当前候选版 `0.1.0-rc.3` 仍须遵循的 RC2 声明兼容要求见[Java API 与版本兼容](api-compatibility.md)。
 
 相等性比较声明结构；数值相同但继承意图不同的组件不相等。恢复继承后保留的本地值仍参与相等性；`style()`／`color()` 返回配置值，有效值在具体布局上下文中解析。

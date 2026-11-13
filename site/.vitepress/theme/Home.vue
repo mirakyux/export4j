@@ -49,7 +49,7 @@ const content = computed(() => isChinese.value ? {
   supportHref: '/zh/docs/capabilities-api',
   baseline: 'Java 21 · Apache-2.0 · 无需 Office 或浏览器进程',
   candidate: '当前为候选版本，API 仍可能调整。',
-  release: 'RC2 发布说明',
+  release: 'RC3 发布说明',
   startHref: '/zh/getting-started',
   exampleAnchor: '#java-使用示例'
 } : {
@@ -94,7 +94,7 @@ const content = computed(() => isChinese.value ? {
   supportHref: '/docs/capabilities-api',
   baseline: 'Java 21 · Apache-2.0 · No Office or browser process required',
   candidate: 'Currently a release candidate. APIs may change.',
-  release: 'RC2 release notes',
+  release: 'RC3 release notes',
   startHref: '/getting-started',
   exampleAnchor: '#java-example'
 })
@@ -197,6 +197,6 @@ async function copyCode() {
       <a class="text-link support-link" :href="withBase(content.supportHref)">{{ content.support }} <span aria-hidden="true">→</span></a>
     </section>
 
-    <div class="home-baseline"><p>{{ content.baseline }}</p><p>{{ content.candidate }} <a href="https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2">{{ content.release }}</a></p></div>
+    <div class="home-baseline"><p>{{ content.baseline }}</p><p>{{ content.candidate }} <a href="https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.3">{{ content.release }}</a></p></div>
   </div>
 </template>

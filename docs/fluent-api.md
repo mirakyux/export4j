@@ -111,7 +111,7 @@ var result = engine.export(document)
 
 ### 布局与组件预算
 
-当前源码新增引擎级预算配置（尚未包含在已发布的 `0.1.0-rc.2` 中）：
+引擎级预算配置从 `0.1.0-rc.3` 起提供，`0.1.0-rc.2` 不包含此入口：
 
 ~~~java
 var engine = DocumentEngine.builder(fonts)
@@ -232,7 +232,7 @@ new HtmlImporter().conversionFile("input.html")
 
 `GridTable` 新增 `minimumRowHeights`，`TextComponent` 新增 `minimumHeight`；旧构造签名保留并使用零最小高度。record 反射分量及字符串表示包含新增属性。`GridTable` 的行高顺序缺陷修复可能减少旧调用中过量分配的高度，因而影响分页；本次不更新既有视觉基线。
 
-`0.1.0-rc.2` 已发布到 Maven Central，当前尚无稳定版。本页注明的文件／流便利入口及常用任务短入口自该版本提供，变化见[RC2 说明](releases/0.1.0-rc.2.md)。隔离 Maven 调用方验证与正式发布分别记录；DSL、页脚、预算、PDF 临时缓存及原子输出仍遵守各自契约。
+当前已发布候选版 `0.1.0-rc.3` 已在 Maven Central 提供，尚无稳定版。本页注明的文件／流便利入口及常用任务短入口自 `0.1.0-rc.2` 起提供，变化见[RC2 说明](releases/0.1.0-rc.2.md)。隔离 Maven 调用方验证与正式发布分别记录；DSL、页脚、预算、PDF 临时缓存及原子输出仍遵守各自契约。
 
 模板调用见 [XML](xml-template-api.md)及 [Markdown](markdown-template-api.md)。[PDF 适配器](pdf-adapter-api.md)的静态 `read`／`copy`／`merge` 不恢复语义模型；需要有损几何恢复时，显式使用 `importDocument(PdfInput)`，按[语义恢复指南](pdf-semantic-import-api.md)配置子集和损失策略，不执行 OCR。适配器的 PdfLimits 位于 `adapter.pdf`，与 PDF 输出后端的同名限制类型属于不同契约，按所用入口显式导入。
 

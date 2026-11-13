@@ -11,7 +11,7 @@ Export4j is an open-source **Java PDF generation and document export library** f
 
 Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert between formats with explicit policies for incompatible features. Save reusable XML templates and reopen supported document models for further editing.
 
-**Release candidate:** [`0.1.0-rc.2` is available on Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.2). There is no stable release yet, and APIs may change. See the [release notes](docs/en/releases/0.1.0-rc.2.md), [format limits](#formats-and-limitations) and [capability matrix](docs/en/capabilities-api.md) before integrating.
+**Release candidate:** [`0.1.0-rc.3` is available on Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.3). There is no stable release yet, and APIs may change. See the [release notes](docs/en/releases/0.1.0-rc.3.md), [format limits](#formats-and-limitations) and [capability matrix](docs/en/capabilities-api.md) before integrating.
 
 ## Contents
 
@@ -57,7 +57,7 @@ Maven:
     <dependency>
       <groupId>com.mirakyux.export4j</groupId>
       <artifactId>export4j-bom</artifactId>
-      <version>0.1.0-rc.2</version>
+      <version>0.1.0-rc.3</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -80,7 +80,7 @@ Gradle Kotlin DSL:
 ```kotlin
 repositories { mavenCentral() }
 dependencies {
-    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.2"))
+    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.3"))
     implementation("com.mirakyux.export4j:export4j-components")
     implementation("com.mirakyux.export4j:export4j-backend-pdf")
 }
@@ -237,7 +237,7 @@ HTML preserves supported styles, embedded images and merged/nested tables. Markd
 The remaining work is tracked in the [capability gaps](docs/en/capability-gaps.md):
 
 - **GAP-14.2:** broader compatibility corpus and application/reader checks across platforms.
-- **GAP-14.3:** stable API and release acceptance; signed Maven Central distribution is available for `0.1.0-rc.2`.
+- **GAP-14.3:** stable API and release acceptance; signed Maven Central distribution is available for `0.1.0-rc.3`.
 - **GAP-22:** additional formats, including XLSX, PPTX, EPUB and XPS.
 
 See the [execution plan (Chinese)](docs/remaining-capabilities-plan.md) for acceptance criteria. OCR is outside the current scope.

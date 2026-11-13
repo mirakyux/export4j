@@ -1,6 +1,6 @@
 # Java API 与版本兼容
 
-当前尚无稳定版，`0.1.0-rc.2` 已发布到 Maven Central。自动兼容检查使用该版本的 [API 基线](../verification/api/baseline-0.1.0-rc.2.json)，直接从 Central 已发布的 16 个库 JAR 提取，共 733 个可访问类型，覆盖其中已有的公共／受保护声明。[来源清单](../verification/api/baseline-0.1.0-rc.2.provenance.json)记录逐库坐标、下载地址、上游 SHA-256 校验值、类型数量，以及基线摘要和提取工具；不使用当前候选构建代替已发布字节。
+当前已发布候选版为 `0.1.0-rc.3`，尚无稳定版。自动兼容检查继续使用已发布 `0.1.0-rc.2` 的 [API 基线](../verification/api/baseline-0.1.0-rc.2.json)，直接从 Central 已发布的 16 个库 JAR 提取，共 733 个可访问类型，覆盖其中已有的公共／受保护声明。[来源清单](../verification/api/baseline-0.1.0-rc.2.provenance.json)记录逐库坐标、下载地址、上游 SHA-256 校验值、类型数量，以及基线摘要和提取工具；不使用当前候选构建代替已发布字节。
 
 历史 `verification/api/baseline-0.1.0-rc.1.json` 保留提交 `b9c8f77b0872566614984a76bdcd1edaf2f39db9` 独立构建的 16 库／670 类型快照；`verification/api/baseline-0.1.0-preview.json` 保留提交 `1665cd7597609e9c7db561cea12b8ca1083e99bb` 的开发期快照。新基线必须来自记录提交的独立源码构建或校验过的已发布制品，不能从当前候选源码反推，也不能自动覆盖历史基线。
 

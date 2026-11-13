@@ -24,7 +24,7 @@ Export4j 要求 JDK 21；生成文档无需安装 Microsoft Office、启动浏�
 
 先导入 `com.mirakyux.export4j:export4j-bom`，再添加 `export4j-components` 和 `export4j-backend-pdf`。
 [快速开始](../README.zh-CN.md#快速开始)与[完整 Java 示例](../README.zh-CN.md#java-使用示例)给出 Maven／Gradle 依赖、显式字体加载及 PDF 输出方法。
-已发布候选版为 [0.1.0-rc.2](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2)；当前尚无稳定版，API 仍可能调整。
+已发布候选版为 [0.1.0-rc.3](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.3)；当前尚无稳定版，API 仍可能调整。
 
 需要现成的可运行工程时，参阅 [AuthoringExample](../examples/src/main/java/com/mirakyux/export4j/examples/AuthoringExample.java)。
 

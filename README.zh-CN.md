@@ -11,7 +11,7 @@ Export4j 是面向报告、发票、表单和结构化文档的开源 **Java PDF
 
 可导入明确子集内的 PDF、DOCX、HTML 和 Markdown 内容，编辑后转换为其他格式，并对不兼容特性执行明确策略。可保存 XML 模板，也可恢复已保存的受支持文档模型，继续编辑与导出。
 
-**候选版本 [`0.1.0-rc.2` 已发布到 Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.2)。** 当前尚无稳定版，API 仍可能调整。接入前请查看[版本说明](docs/releases/0.1.0-rc.2.md)、[格式限制](#格式支持与限制)和[能力矩阵](docs/capabilities-api.md)。
+**候选版本 [`0.1.0-rc.3` 已发布到 Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.3)。** 当前尚无稳定版，API 仍可能调整。接入前请查看[版本说明](docs/releases/0.1.0-rc.3.md)、[格式限制](#格式支持与限制)和[能力矩阵](docs/capabilities-api.md)。
 
 ## 目录
 
@@ -57,7 +57,7 @@ Maven：
     <dependency>
       <groupId>com.mirakyux.export4j</groupId>
       <artifactId>export4j-bom</artifactId>
-      <version>0.1.0-rc.2</version>
+      <version>0.1.0-rc.3</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -80,7 +80,7 @@ Gradle Kotlin DSL：
 ```kotlin
 repositories { mavenCentral() }
 dependencies {
-    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.2"))
+    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.3"))
     implementation("com.mirakyux.export4j:export4j-components")
     implementation("com.mirakyux.export4j:export4j-backend-pdf")
 }
@@ -237,7 +237,7 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 当前剩余工作由[能力缺口表](docs/capability-gaps.md)跟踪：
 
 - **GAP-14.2：** 更广兼容语料及跨平台应用／阅读器验证。
-- **GAP-14.3：** 稳定 API 与版本验收；`0.1.0-rc.2` 的签名制品已通过 Maven Central 分发。
+- **GAP-14.3：** 稳定 API 与版本验收；`0.1.0-rc.3` 的签名制品已通过 Maven Central 分发。
 - **GAP-22：** XLSX、PPTX、EPUB、XPS 等更多格式。
 
 验收条件见[执行计划](docs/remaining-capabilities-plan.md)。OCR 不在当前范围内。

@@ -1,6 +1,6 @@
 # 能力缺口与推进表
 
-更新日期：2026-11-11。依据当前源码和独立验收记录。目标是易用、可控的 Java 文档生产引擎；不以功能名称数量计算完成率。
+更新日期：2026-11-13。依据当前源码和独立验收记录。目标是易用、可控的 Java 文档生产引擎；不以功能名称数量计算完成率。
 
 状态含义：**待实现**尚无完整实现；**推进中**已有实现但未完成验收；**部分支持**只有明确子集；**已验收**所列目标及边界均有证据；**范围外**记录未提供的能力，不进入当前执行队列。每项独立关闭，不能以 Builder 或同名方法代替行为验收。父项汇总既定目标，扩展子项单独保留；父项与子项不相加统计完成数。历史阶段记录反映当时范围，当前状态以本表及对应 API 为准。
 
@@ -8,7 +8,7 @@
 
 当前未完成项共 **3 个独立条目**：GAP-14.2、GAP-14.3、GAP-22，归属 2 个父项。GAP-12 已完成；提交 `cc132e7` 的三平台构建及临时密钥签名分发远端 CI 已通过，运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。
 
-`0.1.0-rc.2` 已发布到 Maven Central，16 个库与 BOM 可按该版本消费；[手动发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)成功完成构建、签名、上传、远端验证及 GitHub Release，见[发布记录与流程](releasing.md#已发布候选记录)。当前 API 门禁使用从 Central RC2 库 JAR 提取的[已发布基线](api-compatibility.md)。GAP-14.3 继续保留稳定 API、稳定版验收和后续版本的兼容要求。下文历史阶段的未发布说明仅对应当时批次。
+当前候选版 `0.1.0-rc.3` 已发布到 Maven Central，16 个库与 BOM 可按该版本消费；[原发布运行](https://github.com/mirakyux/export4j/actions/runs/43349185087)中的 `release` 任务完成构建、签名、上传及远端消费验证；GitHub Release 的独立恢复结果见[发布记录与流程](releasing.md#已发布候选记录)。当前 API 门禁使用从 Central RC2 库 JAR 提取的[已发布基线](api-compatibility.md)。GAP-14.3 继续保留稳定 API、稳定版验收和后续版本的兼容要求。下文历史阶段的未发布说明仅对应当时批次。
 
 学术模板新增的[数学子集](docx-math-api.md)另行登记：DOCX 使用有类型 OMML，PDF／SVG 示例使用受限 TeX 矢量排版，具体证据见[ManuWeave 验收](verification/manuweave-templates.md)。[行内矢量资源](inline-vectors-api.md)进一步提供调用方生成轮廓的通用模型入口及显式 HTML／Markdown 注册；它是有界绘制资源，不是公式语义树。DOCX／Web 必须明确降为逻辑文字，XML v1 拒绝保存，不扩大 GAP-12 为任意 Word 数学、TeX↔OMML 或完整 LaTeX 执行器；新增混排的真实文献验收与既有样张分开记录。
 

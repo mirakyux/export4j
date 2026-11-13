@@ -6,7 +6,7 @@ This direction is independent of [Markdown template input](markdown-template-api
 
 ## Dependency and usage
 
-Align versions with published Maven Central `com.mirakyux.export4j:export4j-bom:0.1.0-rc.2`, then add `com.mirakyux.export4j:export4j-adapter-web`. This is a release candidate, not a stable release. See [publication](releasing.md) for build, signing and remote isolated-consumer evidence.
+Align versions with published Maven Central `com.mirakyux.export4j:export4j-bom:0.1.0-rc.3`, then add `com.mirakyux.export4j:export4j-adapter-web`. This is a release candidate, not a stable release. See [publication](releasing.md) for build, signing and remote isolated-consumer evidence.
 
 ```java
 import com.mirakyux.export4j.adapter.web.ExportFeature;

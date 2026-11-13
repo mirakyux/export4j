@@ -1,6 +1,6 @@
 # 研发路线与验收
 
-本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。可选 [HTML 设计器](designer.md)及四套业务样例已完成；`0.1.0-rc.2` 已发布到 Maven Central，手动发布工作流与远端隔离消费通过，见[发布记录](releasing.md#已发布候选记录)。跨平台／阅读器矩阵、稳定 API／稳定版及更多格式继续按原有独立缺口验收。
+本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。可选 [HTML 设计器](designer.md)及四套业务样例已完成；当前候选版 `0.1.0-rc.3` 已发布到 Maven Central，`release` 任务与远端隔离消费通过，GitHub Release 的独立恢复结果见[发布记录](releasing.md#已发布候选记录)。跨平台／阅读器矩阵、稳定 API／稳定版及更多格式继续按原有独立缺口验收。
 
 ## 阶段总览
 

@@ -2,7 +2,7 @@
 
 > Export4j is an open-source Java 21 document layout and generation engine. Use fluent Java APIs or XML templates to generate PDF, DOCX, HTML, Markdown, SVG and PNG for reports, forms and structured documents.
 
-The current published release candidate is 0.1.0-rc.2. There is no stable release yet, and APIs may change. Export4j's own code and documentation use Apache-2.0; third-party libraries, fonts and other resources retain their respective licenses.
+The current published release candidate is 0.1.0-rc.3. There is no stable release yet, and APIs may change. Export4j's own code and documentation use Apache-2.0; third-party libraries, fonts and other resources retain their respective licenses.
 
 Fonts and resources are supplied explicitly by the application. Generation does not require Office, a browser process or a printer driver. The optional visual template designer uses a browser.
 
@@ -41,8 +41,8 @@ Import, editing and conversion apply to documented input subsets. Arbitrary PDF 
 ## Project and evidence
 
 - [Source repository](https://github.com/mirakyux/export4j): Source, issues and releases.
-- [RC2 release notes](https://export4j.mirakyux.com/docs/releases/0.1.0-rc.2): Changes, validation scope and known limitations.
-- [Maven Central BOM](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.2): Published module version alignment.
+- [RC3 release notes](https://export4j.mirakyux.com/docs/releases/0.1.0-rc.3): Changes, validation scope and known limitations.
+- [Maven Central BOM](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.3): Published module version alignment.
 - [Examples](https://export4j.mirakyux.com/docs/examples): Runnable tasks and output locations.
 - [Dependencies and licenses](https://export4j.mirakyux.com/docs/dependencies): Third-party dependencies and distribution obligations.
 - [Capability gaps](https://export4j.mirakyux.com/docs/capability-gaps): Remaining work and acceptance boundaries.

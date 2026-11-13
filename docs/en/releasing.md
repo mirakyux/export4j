@@ -1,16 +1,22 @@
 # Versions and releases
 
-`0.1.0-rc.2` is published to Maven Central. There is no stable release yet. Default development coordinates remain `com.mirakyux.export4j:export4j-*:0.1.0-SNAPSHOT`. Local builds, signing, Central publication, and remote consumption are verified separately.
+`0.1.0-rc.3` is published to Maven Central. There is no stable release yet. Default development coordinates remain `com.mirakyux.export4j:export4j-*:0.1.0-SNAPSHOT`. Local builds, signing, Central publication, and remote consumption are verified separately.
 
-See the [0.1.0-rc.2 notes](releases/0.1.0-rc.2.md) for changes and known limits. The workflow attaches `docs/releases/<version>.md` to the corresponding GitHub Release. Central and workflow results determine publication state.
+See the [0.1.0-rc.3 notes](releases/0.1.0-rc.3.md) for changes and known limits. The workflow attaches `docs/releases/<version>.md` to the corresponding GitHub Release. Central and workflow results determine publication state.
 
 ## Published candidate record
+
+The `release` job in the original `0.1.0-rc.3` [publication run](https://github.com/mirakyux/export4j/actions/runs/43349185087) succeeded for build commit `7a912d9d6c4737578ad11d5c9bd4339dae0f9adf`. Maven Central provides all 16 libraries and the BOM at this version. All 82 remote artifacts matched the signed batch and passed signature checks. Both Gradle-metadata and POM-only remote isolated consumption passed. Byte/signature evidence is in `publication-report.json`; consumption is separately recorded in `consumer-report.json`.
+
+The original `github-release` job failed because it resolved the artifact directory incorrectly. A separate [GitHub publication recovery run](https://github.com/mirakyux/export4j/actions/runs/43353332394) reused the same verified artifacts and created the [GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.3) on 2026-11-13 (Beijing time), with its tag pointing to the original build commit. Recovery did not upload to Central again. An RC does not imply stable APIs or a production SLA.
+
+The published `maven-central-bundle.zip` has SHA-256 `53017f437ca2898f9ef17a2ea9a4df60f718ba92388ab2980b65a773af1d04ee`; the remote `publication-report.json` has SHA-256 `718926b477e721bfb38a87e9601ef76353002c55725e849e60f970455f1d74e1`.
 
 The `0.1.0-rc.2` [release workflow](https://github.com/mirakyux/export4j/actions/runs/42262570964) completed successfully, including `release` and `github-release`. The [GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2) was published on November 7, 2026 (Beijing time), with its tag pointing to build commit `88d2bcd81011b1b16c9461f75fb22df247dd422f`. Maven Central provides all 16 libraries and the BOM at this version. That run records building, signing, upload, and isolated remote consumption. An RC does not imply stable APIs or a production SLA.
 
 ## Manual GitHub Actions publication
 
-[Release to Maven Central](../../.github/workflows/release.yml) accepts only `workflow_dispatch`. In **Actions → Release to Maven Central → Run workflow**, select the branch and enter a new unpublished version, such as `0.1.0-rc.3`. Running it builds the selected branch's current commit and automatically publishes to Central, then creates a GitHub Release after remote verification. Ordinary pushes, PRs, and tags do not trigger publication. The workflow must exist on the default branch for the manual entry to appear; see [GitHub documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
+[Release to Maven Central](../../.github/workflows/release.yml) accepts only `workflow_dispatch`. In **Actions → Release to Maven Central → Run workflow**, select the branch and enter a new unpublished version (`<new-version>`). Running it builds the selected branch's current commit and automatically publishes to Central, then creates a GitHub Release after remote verification. Ordinary pushes, PRs, and tags do not trigger publication. The workflow must exist on the default branch for the manual entry to appear; see [GitHub documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 
 Before first use, configure **Settings → Secrets and variables → Actions**:
 
@@ -24,7 +30,7 @@ Before first use, configure **Settings → Secrets and variables → Actions**:
 
 Central uses a Portal user token, not a website password or GitHub token. See the [official authentication API](https://central.sonatype.org/publish/publish-portal-api/#authentication-authorization).
 
-GitHub Releases use the workflow-provided `GITHUB_TOKEN`, requiring no separate PAT/Secret. Build/Central jobs retain repository read-only permissions. Only the later separate job receives `contents: write`, reads public artifacts retained by the same run, and does not execute project source.
+GitHub Releases use the workflow-provided `GITHUB_TOKEN`, requiring no separate PAT/Secret. Build/Central jobs retain repository read-only permissions. Only the separate [GitHub publication workflow](../../.github/workflows/github-release.yml) receives `contents: write` and `actions: read`; it reads public artifacts retained by the specified original publication run and does not execute project source.
 
 Export a private key on your own machine into a controlled file outside the repository, then enter its complete contents as a Secret. Do not paste it into chat, commits, or logs. Replace these placeholders:
 
@@ -48,7 +54,30 @@ The same build inputs are checked before and after upload, with one publication 
 
 Central publication has a 30-minute deadline, followed by up to 10 minutes for public repository distribution. Downloads alone retry temporary absence, network failures, rate limits, and server errors within a shared deadline. After upload failure/timeout, first inspect Portal using the retained deployment ID: a failed request does not prove nonreceipt. The workflow does not automatically reupload or delete deployments. If publication completed but later verification failed, retain evidence and use a new version for fixes; do not overwrite the published version.
 
-A GitHub Release failure does not roll back Central. Check the run first. To retry only GitHub steps, use **Re-run failed jobs**, without rerunning Central upload. Existing tags must point exactly at the build commit. The workflow does not overwrite Releases or incorrect tags. Inspect and resolve any draft left by an interrupted asset upload before retrying.
+### Recover only GitHub Release
+
+A GitHub Release failure does not roll back Central. If the original publication run's `release` job succeeded and its unique, unexpired `maven-central-release-<version>` artifact contains the complete signed bundle, SBOM, and remote publication/both consumer reports, run the separate [Complete verified GitHub Release](../../.github/workflows/github-release.yml) workflow. The original run need not have succeeded overall; recovery depends on its `release` job and evidence for that same batch.
+
+In **Actions → Complete verified GitHub Release → Run workflow**, select a branch containing the recovery workflow and enter both inputs:
+
+| Input | Value | RC3 example |
+| --- | --- | --- |
+| `source_run_id` | Original `Release to Maven Central` run ID, not a recovery run ID | `43349185087` |
+| `version` | Central version already published and verified by that run | `0.1.0-rc.3` |
+
+With GitHub CLI authenticated, the same recovery can be started from the repository directory:
+
+```text
+gh workflow run github-release.yml -f source_run_id=43349185087 -f version=0.1.0-rc.3
+```
+
+Recovery reuses the original artifact without rebuilding, signing again, or uploading to Central; no Central token or signing private key is needed. GitHub writes use the workflow-provided `GITHUB_TOKEN`. The workflow checks the source run and `release` job's commit, artifact identity, version, bundle/SBOM hashes, remote verification, and both consumer results before creating the tag and GitHub Release at the original build commit. The recovery workflow's branch commit is not the artifact build commit.
+
+Creating a tag or Release for a historical build commit with the workflow token can return HTTP 403 when workflow-file differences affect GitHub's permission checks; inspect the failing request. During RC3 recovery, an existing authorized Git identity first pushed a lightweight tag at the original build SHA, but the old script still received 403 from `POST /releases` when it explicitly supplied that SHA through `--target`. Creating the tag alone was therefore insufficient. The current implementation strictly checks that the lightweight tag points to the original SHA, then creates the Release with `--verify-tag` and without the redundant `--target`; this completion path succeeded in the recovery run recorded above.
+
+If the tag is absent and API tag creation is denied, an existing authorized Git identity with tag-push access can create the exact lightweight tag first. Check any existing tag instead of overwriting it. Completion uses that verified tag and the existing workflow token, without a new PAT or expanded workflow permissions. Confirm the actual run and Release results; this is not a general fix for every HTTP 403.
+
+Do not rerun Central upload or the entire original publication flow to complete GitHub Release. Stop if the original job did not succeed, the artifact is missing/expired/ambiguous, or verification fails; do not replace the original batch with rebuilt artifacts. Existing tags must point exactly at the original build commit. The workflow refuses to overwrite Releases or incorrect tags. Inspect and resolve any draft left by an interrupted asset upload before retrying.
 
 Automation saves rendering contact sheets, but publishers still perform relevant visual/reader acceptance. The workflow does not include manual Word edit/save or built-in veraPDF; PDF/A compliance needs separate pre-release evidence.
 

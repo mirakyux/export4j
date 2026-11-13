@@ -111,7 +111,7 @@ When full layout results are unnecessary, [`exportPaged(document)`](paged-docume
 
 ### Layout and component budgets
 
-The current source adds engine-level budget configuration (not yet included in the published `0.1.0-rc.2`):
+Engine-level budget configuration is available from `0.1.0-rc.3`; `0.1.0-rc.2` does not include it:
 
 ~~~java
 var engine = DocumentEngine.builder(fonts)
@@ -232,7 +232,7 @@ New paragraph/cell formats default to 12/18 pt. Setting font size updates line h
 
 `GridTable` gained `minimumRowHeights`, and `TextComponent` gained `minimumHeight`. Old constructor signatures remain with zero minima. Record reflection components and string representations include these properties. The `GridTable` row-height ordering fix may reduce excess allocation in old calls and therefore change pagination; the original change did not refresh existing visual baselines.
 
-`0.1.0-rc.2` is on Maven Central; no stable release exists yet. File/stream conveniences and common-task short forms identified here are available from that version; see [RC2 notes (Chinese)](../releases/0.1.0-rc.2.md). Isolated Maven consumption and formal publication are recorded separately. DSLs, footers, budgets, temporary PDF storage and atomic output retain their own contracts.
+The current published candidate `0.1.0-rc.3` is on Maven Central; no stable release exists yet. File/stream conveniences and common-task short forms identified here are available from `0.1.0-rc.2`; see [RC2 notes (Chinese)](../releases/0.1.0-rc.2.md). Isolated Maven consumption and formal publication are recorded separately. DSLs, footers, budgets, temporary PDF storage and atomic output retain their own contracts.
 
 See [XML](xml-template-api.md) and [Markdown](markdown-template-api.md) for templates. Static `read` / `copy` / `merge` in the [PDF adapter](pdf-adapter-api.md) do not recover semantic models. Explicitly use `importDocument(PdfInput)` for lossy geometric recovery, configuring the subset and loss policy from the [semantic recovery guide](pdf-semantic-import-api.md); no OCR is performed. The adapter's PdfLimits lives in `adapter.pdf` and differs from the PDF output backend's same-named limit type. Import the type for the entry point used.
 

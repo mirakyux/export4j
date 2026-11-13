@@ -1,12 +1,12 @@
 # 版本与发布规范
 
-`0.1.0-rc.2` 已发布到 Maven Central，当前尚无稳定版。开发默认坐标仍为 `com.mirakyux.export4j:export4j-*:0.1.0-SNAPSHOT`。本地构建、签名、Central 发布和远端消费分别验收。
+`0.1.0-rc.3` 已发布到 Maven Central，当前尚无稳定版。开发默认坐标仍为 `com.mirakyux.export4j:export4j-*:0.1.0-SNAPSHOT`。本地构建、签名、Central 发布和远端消费分别验收。
 
-已发布候选的变化及已知限制见 [0.1.0-rc.2 说明](releases/0.1.0-rc.2.md)。工作流会把 `docs/releases/<版本>.md` 中的说明附入对应 GitHub Release；具体发布状态以 Central 及工作流结果为准。
+已发布候选的变化及已知限制见 [0.1.0-rc.3 说明](releases/0.1.0-rc.3.md)。工作流会把 `docs/releases/<版本>.md` 中的说明附入对应 GitHub Release；具体发布状态以 Central 及工作流结果为准。
 
-## RC3 候选准备
+## RC3 发布前本地准备
 
-下一候选为 `0.1.0-rc.3`，变化及已有本地证据见 [RC3 说明](releases/0.1.0-rc.3.md)。目前尚未发布；README 的已发布版本继续为 RC2，源码默认版本继续为 `0.1.0-SNAPSHOT`，API 门禁继续对照从 Central 取得的 RC2 基线。
+`0.1.0-rc.3` 的变化及发布前本地证据见 [RC3 说明](releases/0.1.0-rc.3.md)，正式发布结果见下方独立记录。源码默认版本继续为 `0.1.0-SNAPSHOT`，API 门禁继续对照从 Central 取得的 RC2 基线。
 
 候选构建通过 `-Pexport4jVersion=0.1.0-rc.3` 明确选定版本，并用 `-Pexport4jRepositoryDirectory=<本地候选仓库>` 隔离制品。本轮 `build`、`sbom`、`publishLocalBundle` 及 production／capabilities／inlineVectors 样例生成成功。Java 报告合计 2,441 项测试，失败、错误及跳过均为 0；部分任务从构建缓存恢复，并非全部测试逐例重新运行。API 检查覆盖 741 个可访问类型，相对 RC2 为 0 项不兼容、28 项新增、0 项第三方类型泄漏；407 页候选文档站生产构建通过。
 
@@ -14,15 +14,21 @@
 
 RC3 新版本的 Gradle 元数据及仅 POM 两种隔离消费均通过，每种模式的 16 个运行库 JAR 摘要与本地候选制品匹配，16 个库及 BOM 共 17 个项目组件均为 `0.1.0-rc.3`。消费者从制品编译运行新 `InlineVector` API，PDF／SVG／PNG 的真实路径、基线、逻辑文字、链接及 144 DPI 独立渲染通过；细节见 RC3 说明。production 独立验收通过，capabilities 使用临时自签测试证书完成 OpenSSL 实际验签及篡改拒绝，该测试身份不作为 Maven 正式签名身份。
 
-发布工作流已配置 inlineVectors 样例生成及独立验证，隔离消费脚本包含新 API 验证任务。正式 Maven 制品签名、Central 上传、远端重新解析及 GitHub Release 分别按下列流程记录，目前尚未完成；本地候选验收不变更已发布状态，已发布版本不得覆盖。
+发布工作流已配置 inlineVectors 样例生成及独立验证，隔离消费脚本包含新 API 验证任务。正式 Maven 制品签名、Central 上传、远端重新解析及 GitHub Release 的结果见下方独立发布记录；本地候选验收不替代这些结果，已发布版本不得覆盖。
 
 ## 已发布候选记录
+
+`0.1.0-rc.3` 的[原发布运行](https://github.com/mirakyux/export4j/actions/runs/43349185087)中，`release` 任务成功，构建提交为 `7a912d9d6c4737578ad11d5c9bd4339dae0f9adf`。Maven Central 已提供同版本的 16 个库与 BOM；同批 82 项制品的远端字节和签名均通过校验，Gradle 元数据及仅 POM 两种远端隔离消费均通过。字节与签名证据来自 `publication-report.json`，消费证据另见 `consumer-report.json`。
+
+原运行的 `github-release` 任务因制品目录定位错误失败；后续[GitHub 发布恢复运行](https://github.com/mirakyux/export4j/actions/runs/43353332394)复用同一批已校验制品，于 2026-11-13（北京时间）创建 [GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.3)，标签指向上述构建提交。恢复没有重新上传 Central。RC 为候选版本，不表示 API 已稳定或提供生产 SLA。
+
+正式分发包 `maven-central-bundle.zip` 的 SHA-256 为 `53017f437ca2898f9ef17a2ea9a4df60f718ba92388ab2980b65a773af1d04ee`，远端校验报告 `publication-report.json` 的 SHA-256 为 `718926b477e721bfb38a87e9601ef76353002c55725e849e60f970455f1d74e1`。
 
 `0.1.0-rc.2` 的[发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)已成功完成，`release` 与 `github-release` 任务均通过；[GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2)于 2026-11-07（北京时间）发布，标签指向构建提交 `88d2bcd81011b1b16c9461f75fb22df247dd422f`。Maven Central 已提供同版本的 16 个库与 BOM；该运行记录构建、签名、上传及远端隔离消费结果。RC 为候选版本，不表示 API 已稳定或提供生产 SLA。
 
 ## 手动 GitHub Actions 发布
 
-[Release to Maven Central](../.github/workflows/release.yml) 只接受 `workflow_dispatch`。在 GitHub 仓库的 **Actions → Release to Maven Central → Run workflow** 中选择待发布分支，输入尚未发布的新版本，例如 `0.1.0-rc.3`。点击运行会构建该分支当前提交并自动发布到 Central，远端验证成功后创建对应 GitHub Release；普通 push、PR 和标签不会触发发布。工作流需先进入默认分支，页面才显示手动入口，见 [GitHub 官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)。
+[Release to Maven Central](../.github/workflows/release.yml) 只接受 `workflow_dispatch`。在 GitHub 仓库的 **Actions → Release to Maven Central → Run workflow** 中选择待发布分支，输入尚未发布的新版本（`<new-version>`）。点击运行会构建该分支当前提交并自动发布到 Central，远端验证成功后创建对应 GitHub Release；普通 push、PR 和标签不会触发发布。工作流需先进入默认分支，页面才显示手动入口，见 [GitHub 官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)。
 
 首次使用前，在 **Settings → Secrets and variables → Actions** 配置：
 
@@ -36,7 +42,7 @@ RC3 新版本的 Gradle 元数据及仅 POM 两种隔离消费均通过，每种
 
 Central 凭据使用 Portal user token，不使用网页登录密码或 GitHub token。生成位置与鉴权协议见 [Central 官方 API 文档](https://central.sonatype.org/publish/publish-portal-api/#authentication-authorization)。
 
-GitHub Release 使用工作流自动提供的 `GITHUB_TOKEN`，无需另建 PAT 或 Secret。构建与 Central 发布任务保持仓库只读权限；后续独立任务才获得 `contents: write`，只读取同一运行保留的公开制品，不执行项目源码。
+GitHub Release 使用工作流自动提供的 `GITHUB_TOKEN`，无需另建 PAT 或 Secret。构建与 Central 发布任务保持仓库只读权限；后续独立的 [GitHub 发布工作流](../.github/workflows/github-release.yml)才获得 `contents: write` 与 `actions: read`，只读取指定原发布运行保留的公开制品，不执行项目源码。
 
 私钥在个人机器上导出到仓库外的受控文件，再把完整内容录入 Secret；不要粘贴到聊天、提交或构建日志。将下列占位符替换为实际路径和指纹后执行：
 
@@ -60,7 +66,30 @@ gpg --armor --output <仓库外私钥文件.asc> --export-secret-keys <完整指
 
 Central 发布等待上限为 30 分钟，公开仓库分发等待上限为 10 分钟。公开制品尚不可见、网络暂时失败、限流或服务器错误时，只重试下载读取，并共享同一截止时间。上传失败或等待超时后，先用保留的部署 ID 查看 Portal；请求失败并不证明服务器未接收，工作流不会自动重复上传或删除部署。已完成发布但后续验证失败时，保留证据并为修复选择新版本，不能覆盖原版本。
 
-GitHub Release 步骤失败不回滚已发布的 Central 制品。先核对该运行的结果；仅需重试 GitHub 步骤时使用 **Re-run failed jobs**，不要重跑 Central 上传。既有标签必须准确指向该构建提交，工作流不覆盖已存在的 Release 或错误标签。若上传附件期间留下草稿，先在 GitHub 核对并处理该草稿再重试。
+### 仅恢复 GitHub Release
+
+GitHub Release 步骤失败不回滚已发布的 Central 制品。若原发布运行的 `release` 任务已成功，且它的 `maven-central-release-<version>` Artifact 唯一、尚未过期并包含完整签名包、SBOM 及远端发布／两种消费报告，可运行独立的 [Complete verified GitHub Release](../.github/workflows/github-release.yml)。原运行整体失败并不排除恢复；判定依据是其 `release` 任务和同批制品证据。
+
+在 **Actions → Complete verified GitHub Release → Run workflow** 选择包含恢复工作流的分支，填入两个参数：
+
+| 参数 | 内容 | RC3 示例 |
+| --- | --- | --- |
+| `source_run_id` | 原 `Release to Maven Central` 运行 ID，不是恢复运行 ID | `43349185087` |
+| `version` | 原运行已发布并验证的 Central 版本 | `0.1.0-rc.3` |
+
+已登录 GitHub CLI 时也可从仓库目录执行：
+
+```text
+gh workflow run github-release.yml -f source_run_id=43349185087 -f version=0.1.0-rc.3
+```
+
+恢复只复用原 Artifact，不重建、重新签名或上传 Central，也不需要 Central token 或签名私钥；GitHub 写入使用工作流自动提供的 `GITHUB_TOKEN`。它会核对原运行与 `release` 任务的提交、制品身份、版本、签名包及 SBOM 摘要、远端校验和两种消费结果，再在原构建提交上创建标签及 GitHub Release。执行恢复工作流的分支提交不是制品的构建提交。
+
+使用工作流令牌对历史构建提交创建标签或 Release 时，工作流文件差异可能导致 GitHub 返回 403，应核对实际失败请求。RC3 恢复中，使用已有获授权的 Git 身份预建指向原构建 SHA 的轻量标签后，旧脚本显式传入 `--target` 原 SHA，仍在 `POST /releases` 返回 403；仅预建标签不足以保证成功。现行实现先严格核对标签为原 SHA 的轻量标签，再以 `--verify-tag` 创建 Release，不再传入多余的 `--target`，该收尾路径已在上述恢复运行中成功。
+
+标签不存在且 API 创建标签被拒绝时，可使用已有获授权、能够推送标签的 Git 身份预建准确轻量标签；同名标签已存在时先核对，不覆盖。收尾使用已验证标签及工作流原有令牌，无需新建 PAT 或扩大工作流权限；是否成功仍以实际运行及 Release 结果为准，不能将这一处理推广为所有 403 的通用修复。
+
+不要重新运行 Central 上传或整个原发布流程来补建 GitHub Release。原任务未成功、Artifact 缺失／过期／不唯一或校验失败时停止恢复，不用新构建制品替代原批次。既有标签必须准确指向原构建提交；工作流拒绝覆盖已存在的 Release 或错误标签。若上传附件期间留下草稿，先核对并处理该草稿再重试。
 
 自动验证会保存渲染联系表，发布者仍需按变更范围完成视觉及阅读器验收。该工作流不包含人工 Word 编辑保存，也不内置 veraPDF；PDF/A 合规仍需按发布前检查单独提供证据。
 
