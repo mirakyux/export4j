@@ -22,5 +22,6 @@
 - [自动列宽保留行内对象的原子下限](implemented/bug-fix/2026-11-12-automatic-columns-atomic-widths.md)
 
 - [行内矢量与逻辑来源契约](implemented/feature/2026-11-13-inline-vector-source-contract.md)
+- [静态文档站的模板试验台边界](implemented/feature/2026-11-12-static-template-playground.md)
 
 本页可列重要入口，不要求维护逐条笔记索引。检索按主题与状态进行；[manifest.json](manifest.json) 只定义目录契约。

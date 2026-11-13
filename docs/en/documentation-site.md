@@ -11,17 +11,32 @@ npm --prefix site ci
 npm --prefix site run dev
 ```
 
-Open the local address printed by the terminal. English home is `/`, Chinese home is `/zh/`; English guides use `/docs/`, Chinese guides `/zh/docs/`. Navigation, sidebar, search, and theme text follow the page language. The language menu switches between corresponding home, getting-started, FAQ, and primary-sidebar pages. For Chinese-only historical records or advanced references, its English option explicitly identifies the English documentation index as the destination. Body content does not repeat the language control.
+Open the local address printed by the terminal. English home is `/`, Chinese home is `/zh/`; English guides use `/docs/`, Chinese guides `/zh/docs/`. Navigation, sidebar, search, and theme text follow the page language. The language menu switches between corresponding home, getting-started, playground, FAQ, and primary-sidebar pages. For Chinese-only historical records or advanced references, its English option explicitly identifies the English documentation index as the destination. Body content does not repeat the language control.
 
 - `docs/*.md` maintains Chinese guides; `docs/en/` maintains English translations. `site/.vitepress/navigation.mjs` defines both sidebars and page pairs. New primary-sidebar pages require both languages; missing translations fail the build. Preparation copies only Git-tracked documentation and explicitly listed new public guides, excluding local research.
 - Both root READMEs generate their getting-started pages. Source, script, and font-record links point to GitHub; guide links stay on the website.
 - `site/pages/index.md`, `site/pages/zh/index.md`, and `site/.vitepress/theme/` maintain the home pages/theme.
+- `site/pages/playground.md` and `site/pages/zh/playground.md` maintain the independent template playground pages, outside generated guide directories.
 - Generated `site/pages/docs/`, `site/pages/zh/docs/`, and both `getting-started.md` files are not committed. After source edits, rerun `npm --prefix site run prepare:content`. Translated guides use `/docs/*`; Chinese-only old addresses receive per-page 301 redirects from generated `_redirects`. English links to untranslated references explicitly identify Chinese content.
 - See [showcase provenance (Chinese)](../../site/pages/public/showcase/README.md) for samples and sources. Local output/screenshots do not replace Java output acceptance.
 
 Keep dead-link checking enabled; do not hide missing pages by disabling `ignoreDeadLinks`.
 
-Builds collect original third-party licenses from actual browser modules, styles, and icons into root `THIRD-PARTY-NOTICES.txt`. Missing licenses, installed versions differing from the lockfile, or mismatched supplemental-source hashes fail the build. The theme bundles no fonts. Dependency updates must inspect generated notices and [supplemental licenses (Chinese)](../../third-party/docs-site-licenses/README.md), not merely retain license names.
+Builds collect original third-party licenses from actual browser modules, styles, and icons into root `THIRD-PARTY-NOTICES.txt`. Missing licenses, installed versions differing from the lockfile, or mismatched supplemental-source hashes fail the build. The theme bundles VitePress's Inter Latin font and its OFL license, served by this website; Chinese text uses local system fonts. Dependency updates must inspect generated notices and [supplemental licenses (Chinese)](../../third-party/docs-site-licenses/README.md), not merely retain license names.
+
+## Browser template playground
+
+Open “Playground” in the top navigation or “Template playground” in the Templates sidebar group. Its English address is `/playground`, with Chinese at `/zh/playground`. The desktop workspace places the node tree, XML/JSON source, and approximate HTML preview side by side. Mobile sections stack with an expandable structure panel. Built-in examples demonstrate variables, loops, conditions, and tables.
+
+Drag headings, paragraphs, bullets, tables, and page breaks from the component library into the tree. Drag existing nodes to reorder them or move them into an allowed container. Selecting a node locates its XML source; component buttons and move-up/down controls also work without dragging. Root, page-setting, table, and container rules restrict placement, including moves into a node's own descendants. Invalid XML retains the source and pauses structural editing.
+
+Structural operations patch the affected source ranges instead of serializing the entire document, preserving untouched attributes, comments, text, and line endings. Undo/redo covers source, data, and structure changes with `Ctrl/⌘+Z` and `Ctrl/⌘+Shift+Z`. History uses bounded session snapshots; reloading restores the draft, not the undo history.
+
+Templates and data are parsed in the current browser and are not sent to a backend. Import local XML/JSON files, download source files with your edits intact, and save a draft in the current browser. JSON downloads preserve the original source instead of reserializing its numbers. The page provides no Java compilation, exact layout, or production PDF export service.
+
+The preview supports a common subset of version 1 XML: paper and margins, headings, paragraphs, spans, bullets, static/dynamic tables, `${dot.path}` interpolation, each, Boolean if, explicit page breaks, and common text/spacing attributes. Unsupported nodes, attributes, or data produce an explicit error while retaining the source. See [XML templates](xml-template-api.md) for the full grammar and Java usage, and [the designer](designer.md) for resource bundles, advanced layout, and the complete editor.
+
+The browser uses its own text measurement and system fonts. Paper display, line wrapping, and tables assist editing; they do not reproduce the Java engine's fonts, automatic pagination, final fields, or output. Pass the downloaded template and data to the Java engine for production documents and verify the selected output format.
 
 ## Build and Cloudflare deployment
 
@@ -54,7 +69,7 @@ The target is `export4j-docs` in `site/wrangler.jsonc`, serving `site/.vitepress
 ## Publication verification
 
 1. Install from the lockfile and build production output, checking compiler/dead-link errors.
-2. Use `npm --prefix site run preview` and operate the browser: English home → Guides, confirming English body/sidebar; switch the same guide to Chinese and back; open the language menu and inspect appearance, outside click, Escape, arrows, Tab, and focus; check mobile menus, overflow, search, and dark mode. Static link checks do not replace these interactions.
+2. Use `npm --prefix site run preview` and operate the browser: English home → Guides, confirming English body/sidebar; switch the same guide to Chinese and back; open the playground and check examples, XML/JSON edits, error recovery, file import/download, drafts, and language switching between corresponding tool pages; open the language menu and inspect appearance, outside click, Escape, arrows, Tab, and focus; check mobile menus, overflow, search, and dark mode. Static link checks do not replace these interactions.
 3. Run `deploy:check`, confirming a static-only upload.
 4. After deployment, check home, deep guides, sample PDFs, unknown-path 404, canonical URLs, `sitemap.xml`, `robots.txt`, and `THIRD-PARTY-NOTICES.txt`.
 5. Once the domain is confirmed, update GitHub About's Website and both README links. Website publication and search-engine indexing are verified separately.

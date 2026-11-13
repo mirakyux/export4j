@@ -25,7 +25,7 @@ export default defineConfig({
   sitemap: siteUrl ? { hostname: siteUrl } : undefined,
   head: [
     ['meta', { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' }],
-    ['meta', { name: 'theme-color', content: '#151a17', media: '(prefers-color-scheme: dark)' }],
+    ['meta', { name: 'theme-color', content: '#17181c', media: '(prefers-color-scheme: dark)' }],
     ['meta', { name: 'color-scheme', content: 'light dark' }]
   ],
   markdown: {
@@ -42,6 +42,7 @@ export default defineConfig({
         nav: [
           { text: 'Get started', link: '/getting-started' },
           { text: 'Guides', link: '/docs/README' },
+          { text: 'Playground', link: '/playground' },
           { text: 'FAQ', link: '/docs/faq' },
           { text: 'Examples', link: '/#gallery-title' }
         ]
@@ -54,6 +55,7 @@ export default defineConfig({
         nav: [
           { text: '开始使用', link: '/zh/getting-started' },
           { text: '指南', link: '/zh/docs/README' },
+          { text: '模板编辑', link: '/zh/playground' },
           { text: '常见问题', link: '/zh/docs/faq' },
           { text: '示例', link: '/zh/#gallery-title' }
         ],

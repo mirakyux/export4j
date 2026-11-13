@@ -445,7 +445,7 @@ html { scrollbar-width: thin; scrollbar-color: var(--vp-c-border) var(--vp-c-bg)
   padding: 16px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 12px;
-  box-shadow: 0 16px 64px rgb(17 37 26 / 0.15);
+  box-shadow: var(--docs-search-shadow);
 }
 
 .VPLocalSearchBox .search-bar {

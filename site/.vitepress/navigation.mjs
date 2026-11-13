@@ -152,6 +152,8 @@ export const guideGroups = [
 export const translatedGuides = guideGroups.flatMap(group => group.items
   .filter(item => item.translated !== false).map(item => item.name));
 
+export const playgroundRoutes = { en: '/playground', zh: '/zh/playground' };
+
 export function sidebar(language) {
   const prefix = language === 'zh' ? '/zh/docs/' : '/docs/';
   return guideGroups.map((group, index) => ({
@@ -162,6 +164,9 @@ export function sidebar(language) {
         { text: language === 'zh' ? '安装与第一个 PDF' : 'Install and generate a PDF',
           link: language === 'zh' ? '/zh/getting-started' : '/getting-started' },
         { text: language === 'zh' ? '常见问题' : 'FAQ', link: `${prefix}faq` }
+      ] : []),
+      ...(group.en === 'Templates' ? [
+        { text: language === 'zh' ? '在线模板编辑' : 'Template playground', link: playgroundRoutes[language] }
       ] : []),
       ...group.items.map(item => ({
         text: language === 'en' && item.translated === false ? `${item.en} (Chinese)` : item[language],
@@ -176,6 +181,7 @@ export function translationRoutes(relative) {
   if (relative === 'getting-started.md' || relative === 'zh/getting-started.md') {
     return { en: '/getting-started', zh: '/zh/getting-started' };
   }
+  if (relative === 'playground.md' || relative === 'zh/playground.md') return { ...playgroundRoutes };
   const name = relative.replace(/^zh\//, '').replace(/^docs\//, '').replace(/\.md$/, '');
   if (name === 'faq' || translatedGuides.includes(name)) {
     return { en: `/docs/${name}`, zh: `/zh/docs/${name}` };

@@ -23,6 +23,8 @@ Import, editing and conversion apply to documented input subsets. Arbitrary PDF 
 - [Fluent API](https://export4j.mirakyux.com/docs/fluent-api): Builders, configuration and convenience entry points.
 - [Fonts and text](https://export4j.mirakyux.com/docs/text-api): Explicit font loading, fallback, shaping and missing-glyph behavior.
 - [XML templates](https://export4j.mirakyux.com/docs/xml-template-api): Variables, conditions, loops, tables and registered includes.
+- [Template playground](https://export4j.mirakyux.com/playground): Browser-only XML and JSON editing with a node tree, drag and drop, and approximate preview. Final output uses the Java engine.
+- [中文模板编辑](https://export4j.mirakyux.com/zh/playground): 节点树、拖动排序、XML 和 JSON 源码编辑与浏览器近似预览，正式输出仍使用 Java 引擎。
 - [Template resource bundles](https://export4j.mirakyux.com/docs/xml-template-bundle-api): Editable XML and resources in ZIP packages.
 - [Tables](https://export4j.mirakyux.com/docs/table-api): Semantic tables and pagination.
 - [Page-at-a-time export](https://export4j.mirakyux.com/docs/paged-document-api): Incremental layout output and block sources, with memory and replay limits.

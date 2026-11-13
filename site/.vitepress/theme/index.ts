@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import DefaultTheme from 'vitepress/theme-without-fonts'
-import { h } from 'vue'
+import { defineAsyncComponent, h } from 'vue'
 import type { Theme } from 'vitepress'
 import Home from './Home.vue'
 import LanguageSwitch from './LanguageSwitch.vue'
@@ -15,5 +15,6 @@ export default {
   }),
   enhanceApp({ app }) {
     app.component('Export4jHome', Home)
+    app.component('Export4jPlayground', defineAsyncComponent(() => import('./Playground.vue')))
   }
 } satisfies Theme
