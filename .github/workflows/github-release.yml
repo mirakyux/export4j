@@ -208,7 +208,8 @@ jobs:
           assets = ["distribution/maven-central-bundle.zip", "sbom.cdx.json", "public-key.asc",
                     "distribution/distribution-report.json", "remote/publication-report.json", "remote-consumer/consumer-report.json"]
           flags = ["--prerelease", "--latest=false"] if "-" in version else ["--latest"]
-          subprocess.run(["gh", "release", "create", tag, "--verify-tag", "--target", commit,
+          # The verified tag fixes the source; a historical --target can require unavailable workflow permissions.
+          subprocess.run(["gh", "release", "create", tag, "--verify-tag",
                           "--title", "Export4j " + version, "--notes-file", str(Path(os.environ["RUNNER_TEMP"]) / "release-notes.md"),
                           "--generate-notes", *flags, *(str(root / name) for name in assets)], check=True, timeout=180)
           PY

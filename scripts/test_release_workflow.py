@@ -174,7 +174,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
                     execute("release-publication", workspace, runner)
                 self.assertFalse(any("POST" in command or "create" in command for command in calls))
 
-    def test_publication_uses_original_commit_and_matching_tag(self):
+    def test_publication_uses_verified_original_tag_without_historical_target(self):
         for tag_exists in (True, False):
             with self.subTest(tag_exists=tag_exists), tempfile.TemporaryDirectory() as temporary:
                 workspace = Path(temporary)
@@ -190,7 +190,8 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 execute("release-publication", workspace, runner)
                 publication = [command for command in calls if command[:3] == ["gh", "release", "create"]]
                 self.assertEqual(1, len(publication))
-                self.assertEqual(COMMIT, publication[0][publication[0].index("--target") + 1])
+                self.assertEqual("v" + VERSION, publication[0][3])
+                self.assertNotIn("--target", publication[0])
                 self.assertIn("--verify-tag", publication[0])
                 self.assertIn("--prerelease", publication[0])
                 writes = [command for command in calls if "POST" in command]
