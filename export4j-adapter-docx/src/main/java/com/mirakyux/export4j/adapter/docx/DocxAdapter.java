@@ -41,6 +41,7 @@ import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineField;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.PageBreak;
 import com.mirakyux.export4j.model.PageDocument;
@@ -323,12 +324,14 @@ public final class DocxAdapter {
                 for (var row : table.rows()) {
                     for (var cell : row.cells()) {
                         if (cell.hasBlocks()) { continue; }
+                        if (!cell.vectors().isEmpty()) { throw new IOException("DOCX inline vectors require an explicit conversion loss policy"); }
                         for (var image : cell.images()) { requireUnrotated(image.image().rotation()); }
                         semanticBudget.text(cell.text()); textBytes += escapedBytes(cell.text());
                     }
                 }
             } else {
                 var paragraph = paragraph(block);
+                if (!paragraph.vectors().isEmpty()) { throw new IOException("DOCX inline vectors require an explicit conversion loss policy"); }
                 requireUnrotated(paragraph.format().rotation());
                 for (var image : paragraph.images()) { requireUnrotated(image.image().rotation()); }
                 var source = paragraph.text(); semanticBudget.text(source); textBytes += escapedBytes(source);
@@ -541,6 +544,7 @@ public final class DocxAdapter {
 
     private static void runs(StringBuilder xml, Paragraph paragraph, Map<String, String> hyperlinks, DocxImages.Writer images, DocxFields.Writer fields) throws IOException {
         for (var content : paragraph.content()) {
+            if (content instanceof InlineVector) { throw new IOException("DOCX inline vectors require an explicit conversion loss policy"); }
             if (content instanceof InlineField field) { fields.write(xml, field); continue; }
             String target = content instanceof InlineImage image ? image.hyperlink() : ((InlineText) content).hyperlink();
             String id = target.isEmpty() ? "" : hyperlinks.computeIfAbsent(target, ignored -> "rId" + (hyperlinks.size() + 3));
@@ -768,7 +772,7 @@ public final class DocxAdapter {
                 cell.inlines().forEach(inline -> { if (!inline.style().fontRole().isEmpty()) { roles.add(inline.style().fontRole()); } });
                 properties(xml, format, 0, 0, 1);
                 anchors.forEach(id -> fields.start(xml, id));
-                runs(xml, new Paragraph("cell", cell.text(), format, cell.inlines(), cell.images(), cell.fields()), hyperlinks, images, fields);
+                runs(xml, new Paragraph("cell", cell.text(), format, cell.inlines(), cell.images(), cell.fields(), cell.vectors()), hyperlinks, images, fields);
                 for (int a = anchors.size() - 1; a >= 0; a--) { fields.end(xml, anchors.get(a)); }
                 firstCell = false;
                 xml.append("</w:p></w:tc>");

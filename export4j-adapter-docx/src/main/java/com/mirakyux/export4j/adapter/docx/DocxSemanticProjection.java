@@ -87,7 +87,7 @@ final class DocxSemanticProjection {
     }
     private static TableCell portableCell(TableCell cell, String tableId, Map<Point, InlineImage> images, List<ProcessingIssue> issues, ProcessingPolicy policy) {
         if (cell.text().indexOf('\t') < 0 && cell.images().isEmpty()) { return cell; }
-        var format = cell.format(); var paragraph = new Paragraph(tableId, cell.text(), new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false), cell.inlines(), cell.images(), cell.fields());
+        var format = cell.format(); var paragraph = new Paragraph(tableId, cell.text(), new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false), cell.inlines(), cell.images(), cell.fields(), cell.vectors());
         var mapped = portableParagraph(paragraph, images, issues, policy);
         return cell.toBuilder().content(mapped.content()).format(format.toBuilder().lineHeight(mapped.format().lineHeight()).build()).build();
     }

@@ -10,10 +10,10 @@ import java.util.List;
  * Legacy inline views fail for block cells; UTF-16 offsets belong to each original leaf paragraph.
  */
 public record TableCell(String text, CellFormat format, List<InlineText> inlines, List<Paragraph.ImageSpan> images,
-        List<Paragraph.FieldSpan> fields, int columnSpan, int rowSpan, List<Block> blocks) {
+        List<Paragraph.FieldSpan> fields, List<Paragraph.VectorSpan> vectors, int columnSpan, int rowSpan, List<Block> blocks) {
     /** Task-confined builder; content replaces text and vice versa. All lists are snapshotted. */
     public static Builder builder() { return new Builder(); }
-    /** Copies content, format and both spans without flattening rich text, images or fields. */
+    /** Copies content, format and both spans without flattening rich text or atomic objects. */
     public Builder toBuilder() { return new Builder(this); }
     public static final class Builder {
         private String text = "";
@@ -22,28 +22,29 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
         private List<InlineText> inlines = List.of();
         private List<Paragraph.ImageSpan> images = List.of();
         private List<Paragraph.FieldSpan> fields = List.of();
+        private List<Paragraph.VectorSpan> vectors = List.of();
         private List<Block> blocks = List.of();
         private int columnSpan = 1;
         private int rowSpan = 1;
         private Builder() { }
         private Builder(TableCell source) {
             text = source.text; format = source.format; inlines = source.inlines;
-            images = source.images; fields = source.fields; columnSpan = source.columnSpan; rowSpan = source.rowSpan;
+            images = source.images; fields = source.fields; vectors = source.vectors; columnSpan = source.columnSpan; rowSpan = source.rowSpan;
             blocks = source.blocks;
         }
         public Builder text(String value) {
             text = Objects.requireNonNull(value, "text"); content = List.of();
-            inlines = List.of(); images = List.of(); fields = List.of(); blocks = List.of(); return this;
+            inlines = List.of(); images = List.of(); fields = List.of(); vectors = List.of(); blocks = List.of(); return this;
         }
         public Builder format(CellFormat value) { format = Objects.requireNonNull(value, "format"); return this; }
         public Builder content(List<? extends InlineContent> value) {
-            content = List.copyOf(value); text = ""; inlines = List.of(); images = List.of(); fields = List.of(); blocks = List.of(); return this;
+            content = List.copyOf(value); text = ""; inlines = List.of(); images = List.of(); fields = List.of(); vectors = List.of(); blocks = List.of(); return this;
         }
         /** Replaces inline/block content with a nonempty immutable block snapshot. */
         public Builder blocks(List<? extends Block> value) {
             var snapshot = List.<Block>copyOf(value);
             if (snapshot.isEmpty()) { throw new IllegalArgumentException("block cell content must not be empty"); }
-            blocks = snapshot; text = ""; content = List.of(); inlines = List.of(); images = List.of(); fields = List.of();
+            blocks = snapshot; text = ""; content = List.of(); inlines = List.of(); images = List.of(); fields = List.of(); vectors = List.of();
             return this;
         }
         /** Appends an explicitly identified paragraph; preserves its format, resources and source text. */
@@ -66,9 +67,9 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
         /** Covers this many consecutive physical rows, including the anchor row. Must be positive. */
         public Builder rowSpan(int value) { rowSpan = value; return this; }
         public TableCell build() {
-            if (content.isEmpty()) { return new TableCell(text, format, inlines, images, fields, columnSpan, rowSpan, blocks); }
+            if (content.isEmpty()) { return new TableCell(text, format, inlines, images, fields, vectors, columnSpan, rowSpan, blocks); }
             var mixed = InlineContents.mixed(content, format.fontSize());
-            return new TableCell(mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields(), columnSpan, rowSpan);
+            return new TableCell(mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields(), mixed.vectors(), columnSpan, rowSpan, List.of());
         }
     }
     public TableCell {
@@ -77,16 +78,17 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
         inlines = List.copyOf(inlines);
         images = List.copyOf(images);
         fields = List.copyOf(fields);
+        vectors = List.copyOf(vectors);
         blocks = List.copyOf(blocks);
         if (columnSpan <= 0) { throw new IllegalArgumentException("cell column span must be positive"); }
         if (rowSpan <= 0) { throw new IllegalArgumentException("cell row span must be positive"); }
         if (!blocks.isEmpty()) {
-            if (!text.isEmpty() || !inlines.isEmpty() || !images.isEmpty() || !fields.isEmpty()) {
+            if (!text.isEmpty() || !inlines.isEmpty() || !images.isEmpty() || !fields.isEmpty() || !vectors.isEmpty()) {
                 throw new IllegalArgumentException("inline and block cell content are mutually exclusive");
             }
             SemanticTree.validateCellBlocks(blocks);
         } else {
-            InlineContents.validate(text, inlines, images, fields, format.fontSize());
+            InlineContents.validate(text, inlines, images, fields, vectors, format.fontSize());
         }
         for (var span : fields) {
             if (span.field().kind() == InlineField.Kind.NOTE_MARKER) {
@@ -104,6 +106,8 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
     @Override public List<Paragraph.ImageSpan> images() { requireInline(); return images; }
     /** Legacy inline-field view; fails rather than hiding block descendants. */
     @Override public List<Paragraph.FieldSpan> fields() { requireInline(); return fields; }
+    /** Legacy inline-vector view; fails rather than hiding block descendants. */
+    @Override public List<Paragraph.VectorSpan> vectors() { requireInline(); return vectors; }
     private void requireInline() {
         if (hasBlocks()) { throw new IllegalStateException("block cell content requires blocks() traversal"); }
     }
@@ -127,12 +131,17 @@ public record TableCell(String text, CellFormat format, List<InlineText> inlines
             List<Paragraph.FieldSpan> fields, int columnSpan, int rowSpan) {
         this(text, format, inlines, images, fields, columnSpan, rowSpan, List.of());
     }
+    /** Compatibility constructor retaining the previous eight-component shape. */
+    public TableCell(String text, CellFormat format, List<InlineText> inlines, List<Paragraph.ImageSpan> images,
+            List<Paragraph.FieldSpan> fields, int columnSpan, int rowSpan, List<Block> blocks) {
+        this(text, format, inlines, images, fields, List.of(), columnSpan, rowSpan, blocks);
+    }
     public static TableCell rich(List<InlineText> inlines, CellFormat format) {
         return new TableCell(InlineContents.text(inlines), format, inlines);
     }
 
     public static TableCell mixed(List<? extends InlineContent> content, CellFormat format) {
         var mixed = InlineContents.mixed(content, format.fontSize());
-        return new TableCell(mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields());
+        return new TableCell(mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields(), mixed.vectors(), 1, 1, List.of());
     }
 }

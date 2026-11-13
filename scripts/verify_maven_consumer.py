@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import xml.etree.ElementTree as ET
 
 
 def execute(command, root, log, environment=None, timeout=1800):
@@ -23,7 +24,21 @@ def gradle_command(root, home=None):
     return command + (["-g", str(home.resolve())] if home else [])
 
 
-def consume(root, output, repository, version, native_classifier, gradle, central=False):
+def published(repository, group, artifact, version, extension, classifier=""):
+    directory = repository / group.replace(".", "/") / artifact / version
+    resolved = version
+    if version.endswith("-SNAPSHOT"):
+        metadata = ET.parse(directory / "maven-metadata.xml")
+        matches = [entry.findtext("value") for entry in metadata.findall("versioning/snapshotVersions/snapshotVersion")
+                   if entry.findtext("extension") == extension and (entry.findtext("classifier") or "") == classifier]
+        if len(matches) != 1:
+            raise ValueError(f"Ambiguous Maven snapshot artifact: {artifact}/{extension}/{classifier}")
+        resolved = matches[0]
+    suffix = "-" + classifier if classifier else ""
+    return directory / f"{artifact}-{resolved}{suffix}.{extension}"
+
+
+def consume_once(root, output, repository, version, native_classifier, gradle, central=False, pom_only=False):
     consumer = output / "consumer-project/verification/consumer"
     consumer.mkdir(parents=True)  # Existing runs must never supply stale classes or outputs.
     for filename in ("settings.gradle.kts", "build.gradle.kts", "gradle.lockfile"):
@@ -33,20 +48,16 @@ def consume(root, output, repository, version, native_classifier, gradle, centra
     shutil.copytree(root / "assets", isolated / "assets")
     (isolated / "gradle").mkdir()
     shutil.copy2(root / "gradle/native-platform.gradle.kts", isolated / "gradle/native-platform.gradle.kts")
-    if central:
-        (consumer / "settings.gradle.kts").write_text(
-            'dependencyResolutionManagement {\n'
-            '    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)\n'
-            '    repositories { mavenCentral() }\n'
-            '}\nrootProject.name = "central-coordinate-consumer"\n', encoding="utf-8")
     environment = os.environ.copy()
     for name in ("EXPORT4J_SIGNING_KEY", "EXPORT4J_SIGNING_PASSWORD", "CENTRAL_TOKEN_USERNAME", "CENTRAL_TOKEN_PASSWORD"):
         environment.pop(name, None)
     command = gradle + ["-p", str(consumer), f"-Pexport4jVersion={version}",
-                       f"-Pexport4jNativeClassifier={native_classifier}"]
+                       f"-Pexport4jNativeClassifier={native_classifier}",
+                       f"-Pexport4jPomOnly={str(pom_only).lower()}",
+                       f"-Pexport4jCentralOnly={str(central).lower()}"]
     if not central:
         command += [f"-Pexport4jRepositoryDirectory={repository}"]
-    execute(command + ["build", "run", "resolvedLibraries", "--write-locks", "--refresh-dependencies"],
+    execute(command + ["build", "run", "inlineVectors", "resolvedLibraries", "--write-locks", "--refresh-dependencies"],
             root, output / "signed-consumer.log", environment)
     build = consumer / "build"
     actual = {line for line in (build / "resolved-libraries.txt").read_text(encoding="utf-8").splitlines()
@@ -65,16 +76,29 @@ def consume(root, output, repository, version, native_classifier, gradle, centra
     own = [row for row in hashes if row[0].startswith("com.mirakyux.export4j:")]
     if len(own) != 16 or {row[0] for row in own} != actual:
         raise ValueError("Consumer did not report exactly 16 project JAR hashes")
+    files = [line.split("\t") for line in (build / "resolved-library-files.txt").read_text(encoding="utf-8").splitlines()]
+    own_files = [(identity, Path(filename)) for identity, filename in files if identity.startswith("com.mirakyux.export4j:")]
+    if len(own_files) != 16 or {identity for identity, path in own_files} != actual:
+        raise ValueError("Consumer did not report exactly 16 resolved project JAR files")
+    resolved = dict(own_files)
     for coordinate, filename, sha in own:
         artifact = coordinate.split(":")[1]
-        if filename != artifact + "-" + version + ".jar":
+        staged = published(repository, "com.mirakyux.export4j", artifact, version, "jar")
+        if filename != resolved[coordinate].name or filename not in {artifact + "-" + version + ".jar", staged.name}:
             raise ValueError("Consumer resolved an unexpected artifact classifier or filename")
-        staged = repository / "com/mirakyux/export4j" / artifact / version / filename
-        if hashlib.sha256(staged.read_bytes()).hexdigest() != sha:
+        if hashlib.sha256(staged.read_bytes()).hexdigest() != sha or hashlib.sha256(resolved[coordinate].read_bytes()).hexdigest() != sha:
             raise ValueError("Consumer JAR differs from the independently verified publication")
     return {"isolatedCoordinateConsumerVerified": True, "consumerProjectArtifacts": len(actual),
             "consumerJarHashesVerified": len(own), "consumerProjectComponents": len(components),
             "consumerBomCoordinate": bom, "remoteConsumerVerified": central}
+
+
+def consume(root, output, repository, version, native_classifier, gradle, central=False):
+    report = consume_once(root, output, repository, version, native_classifier, gradle, central)
+    pom_report = consume_once(root, output / "pom-only", repository, version, native_classifier,
+                              gradle, central, pom_only=True)
+    report.update(pomOnlyConsumerVerified=True, pomOnlyConsumer=pom_report)
+    return report
 
 
 def main():

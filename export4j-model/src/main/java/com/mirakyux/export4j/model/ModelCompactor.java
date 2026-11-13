@@ -63,7 +63,7 @@ final class ModelCompactor {
         }
         return replacementRuns == null ? paragraph
                 : new Paragraph(paragraph.id(), paragraph.text(), paragraph.format(), replacementRuns,
-                        paragraph.images(), paragraph.fields());
+                        paragraph.images(), paragraph.fields(), paragraph.vectors());
     }
 
     void clear() { cells.clear(); styles.clear(); }
@@ -82,14 +82,14 @@ final class ModelCompactor {
             }
         }
         var result = replacementRuns == null ? cell
-                : new TableCell(cell.text(), cell.format(), replacementRuns, cell.images(), cell.fields(),
+                : new TableCell(cell.text(), cell.format(), replacementRuns, cell.images(), cell.fields(), cell.vectors(),
                         cell.columnSpan(), cell.rowSpan(), cell.blocks());
         cells.put(result, result);
         return result;
     }
 
     private static boolean eligible(TableCell cell) {
-        if (cell.hasBlocks() || !cell.images().isEmpty() || !cell.fields().isEmpty()
+        if (cell.hasBlocks() || !cell.images().isEmpty() || !cell.fields().isEmpty() || !cell.vectors().isEmpty()
                 || cell.text().length() > MAX_SOURCE_UNITS || cell.inlines().size() > MAX_RUNS) {
             return false;
         }

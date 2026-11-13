@@ -111,6 +111,23 @@ public final class TextLayoutPainter {
                 surface.drawImage(image, bounds);
                 if (item.rotation() != 0) { surface.restore(); }
             }
+            if (!line.glyphRunBoxes().isEmpty()) {
+                var markers = line.images().stream().sorted(java.util.Comparator.comparingInt(
+                        com.mirakyux.export4j.text.ImageBox::sourceIndex)).toList();
+                int marker = 0;
+                for (var box : line.glyphRunBoxes()) {
+                    while (marker < markers.size() && markers.get(marker).sourceIndex() < box.sourceStart()) {
+                        imageMarker(surface, markers.get(marker++), x, origin.y() + line.baselineY(), color);
+                    }
+                    var run = box.run();
+                    surface.drawGlyphRun(run, new Point(x + box.x(), origin.y() + line.baselineY()
+                            + run.baselineShift()), ink(run.rgb(), color));
+                }
+                while (marker < markers.size()) {
+                    imageMarker(surface, markers.get(marker++), x, origin.y() + line.baselineY(), color);
+                }
+                continue;
+            }
             if (!line.outlines().isEmpty()) {
                 double baseline = origin.y() + line.baselineY();
                 String text = line.outlines().stream().map(com.mirakyux.export4j.text.TextOutline::logicalText)
@@ -147,6 +164,13 @@ public final class TextLayoutPainter {
                 x += run.width();
             }
         }
+    }
+
+    private static void imageMarker(DrawingSurface surface, com.mirakyux.export4j.text.ImageBox box,
+            double x, double baseline, RgbColor color) {
+        var image = box.image();
+        surface.drawOutlinedText("\ufffc", List.of(), color, new Rect(x + box.x(),
+                baseline + image.baselineShift() - image.height(), image.width(), image.height()));
     }
 
     private static RgbColor ink(int rgb, RgbColor fallback) {

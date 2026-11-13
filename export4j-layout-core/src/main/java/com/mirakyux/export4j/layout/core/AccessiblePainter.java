@@ -122,6 +122,9 @@ final class AccessiblePainter {
         requireUnlinked(inlines);
         if (block instanceof Heading heading) { return new Logical(id, Role.valueOf("H" + heading.level())); }
         if (block instanceof Paragraph paragraph) {
+            if (!paragraph.vectors().isEmpty()) {
+                throw new IllegalArgumentException("accessible inline vectors require explicit structure and alternative-text bindings");
+            }
             if (paragraph.images().stream().anyMatch(image -> !image.image().hyperlink().isEmpty())) {
                 throw new IllegalArgumentException("accessible source hyperlinks require explicit interaction and accessibility bindings");
             }
@@ -141,7 +144,7 @@ final class AccessiblePainter {
                 var row = new Logical(id + "-row" + r, Role.TR);
                 for (var anchor : grid.anchorRows().get(r)) {
                     requireUnlinked(anchor.cell().inlines());
-                    if (anchor.cell().hasBlocks() || !anchor.cell().images().isEmpty()) { throw new IllegalArgumentException("complex accessible cells require explicit bindings"); }
+                    if (anchor.cell().hasBlocks() || !anchor.cell().images().isEmpty() || !anchor.cell().vectors().isEmpty()) { throw new IllegalArgumentException("complex accessible cells require explicit bindings"); }
                     boolean header = r < table.headerRows(); var headers = new ArrayList<String>();
                     if (!header) {
                         for (int h = 0; h < table.headerRows(); h++) {

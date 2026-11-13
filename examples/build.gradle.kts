@@ -54,6 +54,15 @@ tasks.register<JavaExec>("manuWeaveMath") {
     systemProperty("java.awt.headless", "true")
 }
 
+tasks.register<JavaExec>("inlineVectors") {
+    group = "application"
+    description = "Generates baseline-preserving inline vector mathematics in paragraphs, cells and HTML imports."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.InlineVectorsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
 for (external in listOf(false, true)) {
     tasks.register<JavaExec>(if (external) "recoveryClosureExternal" else "recoveryClosure") {
         group = "application"

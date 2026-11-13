@@ -393,6 +393,9 @@ public final class DocumentLayouter {
         private long imageBytes;
         private long imagePixels;
         private final java.util.Set<String> imageIds = new java.util.HashSet<>();
+        private final java.util.Set<String> vectorIds = new java.util.HashSet<>();
+        private long vectorSegments;
+        private long vectorBytes;
 
         private void accept(SemanticTree.Visit visit) {
             com.mirakyux.export4j.model.ExecutionContext.checkpoint();
@@ -409,6 +412,7 @@ public final class DocumentLayouter {
                         codePoints = countText(paragraph.text(), codePoints, block, index,
                                 owner == null ? -1 : owner.rowIndex(), owner == null ? -1 : owner.columnIndex());
                         images(paragraph.images(), block, index, visit.cellPath());
+                        vectors(paragraph.vectors(), block, index, visit.cellPath());
                     }
                     case Heading heading -> codePoints = countText(heading.text(), codePoints, block, index, -1, -1);
                     case PageBreak ignored -> { }
@@ -450,6 +454,7 @@ public final class DocumentLayouter {
                                     codePoints = countText(anchor.cell().text(), codePoints, block, index,
                                             anchor.rowIndex(), anchor.columnIndex());
                                     images(anchor.cell().images(), block, index, path);
+                                    vectors(anchor.cell().vectors(), block, index, path);
                                 } catch (DocumentLayoutException cause) { throw cause.withSourcePath(path); }
                             }
                         }
@@ -459,6 +464,24 @@ public final class DocumentLayouter {
                             -1, -1, -1, -1, "block has no layout implementation", null);
                 }
             } catch (DocumentLayoutException cause) { throw cause.withSourcePath(visit.cellPath()); }
+        }
+
+        private void vectors(List<Paragraph.VectorSpan> spans, Block block, int index, List<CellLocation> path) {
+            for (var span : spans) {
+                ExecutionContext.checkpoint();
+                var vector = span.vector();
+                var owner = path.isEmpty() ? null : path.getLast();
+                codePoints = countText(vector.logicalText(), codePoints, block, index,
+                        owner == null ? -1 : owner.rowIndex(), owner == null ? -1 : owner.columnIndex());
+                if (vectorIds.add(vector.resource().id())) {
+                    vectorSegments += vector.resource().segmentCount();
+                    vectorBytes += vector.resource().byteSize();
+                }
+                if (vectorSegments > 5_000_000 || vectorBytes > 64L * 1024 * 1024) {
+                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, block, index, -1, -1, -1,
+                            span.sourceIndex(), "inline vector resource budget exceeded", null).withSourcePath(path);
+                }
+            }
         }
 
         private void images(List<Paragraph.ImageSpan> spans, Block block, int index, List<CellLocation> path) {
@@ -914,7 +937,7 @@ public final class DocumentLayouter {
                 for (int column = 0; column < widths.size(); column++) {
                     double width = widths.get(column);
                     double height = heights.computeIfAbsent(width, ignored -> {
-                        measure.retainedWork.accept(Math.max(1, paragraph.text().length()));
+                        measure.retainedWork.accept(Math.max(1, paragraph.text().length() + vectorWork(paragraph.vectors())));
                         var shaped = measure.shapeParagraph(paragraph, index, width);
                         return measure.minimumParagraphHeight(paragraph, shaped, 0);
                     });
@@ -1323,10 +1346,16 @@ public final class DocumentLayouter {
                     for (var placed : fragment.layout().semanticPlacements()) {
                         if (!measuredSources.add(placed.source())) { continue; }
                         SemanticTree.walk(placed.source(), visit -> {
-                            if (visit.block() instanceof Paragraph paragraph) { sourceWork[0] += paragraph.text().length(); }
+                            if (visit.block() instanceof Paragraph paragraph) {
+                                sourceWork[0] += paragraph.text().length() + vectorWork(paragraph.vectors());
+                            }
                             else if (visit.block() instanceof Table table) {
                                 for (var row : table.grid().anchorRows()) {
-                                    for (var anchor : row) { if (!anchor.cell().hasBlocks()) { sourceWork[0] += anchor.cell().text().length(); } }
+                                    for (var anchor : row) {
+                                        if (!anchor.cell().hasBlocks()) {
+                                            sourceWork[0] += anchor.cell().text().length() + vectorWork(anchor.cell().vectors());
+                                        }
+                                    }
                                 }
                             }
                         });
@@ -1418,7 +1447,7 @@ public final class DocumentLayouter {
 
         private ParagraphLayout shapeParagraph(Paragraph paragraph, int index, double width) {
                 var format = paragraph.format();
-                if (retainedLineWidths != null || !paragraph.inlines().isEmpty() || !paragraph.images().isEmpty() || !paragraph.fields().isEmpty()) {
+                if (retainedLineWidths != null || !paragraph.inlines().isEmpty() || !paragraph.images().isEmpty() || !paragraph.fields().isEmpty() || !paragraph.vectors().isEmpty()) {
                     ParagraphLayout result;
                     var sourceInlines = paragraph.inlines().isEmpty() ? List.of(new com.mirakyux.export4j.model.InlineText(paragraph.text(),
                             com.mirakyux.export4j.model.InlineStyle.of(format.fontSize()))) : paragraph.inlines();
@@ -1427,7 +1456,8 @@ public final class DocumentLayouter {
                         result = shapeRetained(paragraph, width, spans, new ParagraphStyle(format.fontSize(),
                                 format.lineHeight(), format.firstLineIndent(), format.subsequentLineIndent(), alignment(format.alignment()), format.lineBreakPolicy()),
                                 paragraph.images().stream().collect(java.util.stream.Collectors.toMap(Paragraph.ImageSpan::sourceIndex, Paragraph.ImageSpan::image)),
-                                paragraph.fields().stream().collect(java.util.stream.Collectors.toMap(Paragraph.FieldSpan::sourceIndex, Paragraph.FieldSpan::field)));
+                                paragraph.fields().stream().collect(java.util.stream.Collectors.toMap(Paragraph.FieldSpan::sourceIndex, Paragraph.FieldSpan::field)),
+                                InlineVectors.graphics(paragraph.vectors()));
                     } catch (TextLayoutException cause) {
                         DocumentLayoutException.Code code = cause.code() == TextLayoutException.Code.BUDGET_EXCEEDED
                                 ? DocumentLayoutException.Code.BUDGET_EXCEEDED : DocumentLayoutException.Code.TEXT_LAYOUT_FAILED;
@@ -1629,6 +1659,7 @@ public final class DocumentLayouter {
             double fixed = 0;
             double maxWeight = 0;
             double[] automatic = new double[table.columns().size()];
+            double[] minimums = automaticMinimums(table, grid, index);
             double autoMinimum = 0;
             double autoPreferred = 0;
             var cellPadding = table.format().padding();
@@ -1666,7 +1697,7 @@ public final class DocumentLayouter {
             }
             for (int column = 0; column < automatic.length; column++) {
                 if (table.columns().get(column) instanceof ColumnWidth.Auto auto) {
-                    double preferred = auto.minPoints();
+                    double preferred = minimums[column];
                     double measureWidth = Math.min(auto.maxPoints(), availableWidth) - cellPadding.left() - cellPadding.right();
                     for (var row : grid.anchorRows()) {
                         for (var anchor : row) {
@@ -1679,7 +1710,7 @@ public final class DocumentLayouter {
                         }
                     }
                     automatic[column] = Math.min(auto.maxPoints(), preferred);
-                    autoMinimum += auto.minPoints();
+                    autoMinimum += minimums[column];
                     autoPreferred += automatic[column];
                 }
             }
@@ -1697,7 +1728,7 @@ public final class DocumentLayouter {
             double autoUsed = 0;
             for (int column = 0; column < automatic.length; column++) {
                 if (table.columns().get(column) instanceof ColumnWidth.Auto auto) {
-                    automatic[column] = auto.minPoints() + (automatic[column] - auto.minPoints()) * ratio;
+                    automatic[column] = minimums[column] + (automatic[column] - minimums[column]) * ratio;
                     autoUsed += automatic[column];
                 }
             }
@@ -1719,6 +1750,66 @@ public final class DocumentLayouter {
                 }
             }
             return widths;
+        }
+
+        private double[] automaticMinimums(Table table, TableGrid grid, int index) {
+            double[] minimums = new double[table.columns().size()];
+            boolean fractional = false;
+            boolean hasAutomatic = false;
+            for (int column = 0; column < minimums.length; column++) {
+                switch (table.columns().get(column)) {
+                    case ColumnWidth.Fixed value -> minimums[column] = value.points();
+                    case ColumnWidth.Auto value -> { minimums[column] = value.minPoints(); hasAutomatic = true; }
+                    case ColumnWidth.Fraction ignored -> fractional = true;
+                }
+            }
+            // Fraction widths depend on the final remainder. Keep their existing weighted policy;
+            // a mixed span cannot be converted into independent automatic-column lower bounds.
+            if (fractional || !hasAutomatic) { return minimums; }
+            var anchors = grid.anchorRows().stream().flatMap(List::stream)
+                    .filter(anchor -> atomicInlineWidth(anchor.cell()) > 0)
+                    .sorted(java.util.Comparator.comparingInt((TableGrid.Anchor anchor) -> anchor.columnIndex() + anchor.cell().columnSpan())
+                            .thenComparing(java.util.Comparator.comparingInt(TableGrid.Anchor::columnIndex).reversed())
+                            .thenComparingInt(TableGrid.Anchor::rowIndex)).toList();
+            double padding = table.format().padding().left() + table.format().padding().right();
+            for (var anchor : anchors) {
+                ExecutionContext.checkpoint();
+                int start = anchor.columnIndex(), end = start + anchor.cell().columnSpan();
+                double current = 0;
+                boolean automatic = false;
+                for (int column = start; column < end; column++) {
+                    current += minimums[column];
+                    automatic |= table.columns().get(column) instanceof ColumnWidth.Auto;
+                }
+                if (!automatic) { continue; }
+                double required = atomicInlineWidth(anchor.cell()) + padding;
+                double needed = Math.max(0, required - current);
+                // Interval lower bounds must share their overlap. Filling from the right in end
+                // order minimizes the total floor; proportional span floors can reject valid tables.
+                for (int column = end - 1; column >= start && needed > 0; column--) {
+                    if (table.columns().get(column) instanceof ColumnWidth.Auto auto) {
+                        double growth = Math.min(needed, auto.maxPoints() - minimums[column]);
+                        minimums[column] += growth;
+                        needed -= growth;
+                    }
+                }
+                current = 0;
+                for (int column = start; column < end; column++) { current += minimums[column]; }
+                if (!fits(required, current)) {
+                    throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(),
+                            anchor.rowIndex(), start, -1, "atomic inline content exceeds automatic column bounds", null)
+                            .withSourcePath(cellPath(measuringPath, table, anchor.rowIndex(), start, -1));
+                }
+            }
+            return minimums;
+        }
+
+        private static double atomicInlineWidth(com.mirakyux.export4j.model.TableCell cell) {
+            double width = 0;
+            for (var span : cell.images()) { ExecutionContext.checkpoint(); width = Math.max(width, span.image().width()); }
+            for (var span : cell.fields()) { ExecutionContext.checkpoint(); width = Math.max(width, span.field().width()); }
+            for (var span : cell.vectors()) { ExecutionContext.checkpoint(); width = Math.max(width, span.vector().resource().width()); }
+            return width;
         }
 
         private void preferredMergedWidths(Table table, TableGrid grid, int index, double availableWidth, double[] automatic) {
@@ -2069,16 +2160,17 @@ public final class DocumentLayouter {
          * from that probe in a narrower region. Only explicit GLYPH_TOO_WIDE is deferred. */
         private ParagraphLayout shapeRetained(Object source, double width, List<StyledSpan> spans, ParagraphStyle style,
                 Map<Integer, com.mirakyux.export4j.model.InlineImage> images,
-                Map<Integer, com.mirakyux.export4j.model.InlineField> fields) {
+                Map<Integer, com.mirakyux.export4j.model.InlineField> fields,
+                Map<Integer, com.mirakyux.export4j.text.InlineGraphic> graphics) {
             double maximum = retainedMaximum(source, width);
-            if (retainedLineWidths == null) { return paragraphLayouter.layout(spans, maximum, style, images, fields); }
+            if (retainedLineWidths == null) { return paragraphLayouter.layout(spans, maximum, style, images, fields, graphics); }
             var accepted = retainedWidths(source, width);
             var deferred = new java.util.HashSet<Integer>();
             int[] requested = {-1};
             while (true) {
                 ExecutionContext.checkpoint();
                 try {
-                    return paragraphLayouter.layout(spans, maximum, style, images, fields, line -> {
+                    return paragraphLayouter.layout(spans, maximum, style, images, fields, graphics, line -> {
                         requested[0] = line;
                         return deferred.contains(line) ? maximum : accepted.applyAsDouble(line);
                     });
@@ -2086,7 +2178,9 @@ public final class DocumentLayouter {
                     int line = requested[0];
                     if (failure.code() != TextLayoutException.Code.GLYPH_TOO_WIDE || width >= maximum
                             || line < retainedLineWidths.getOrDefault(source, List.of()).size() || !deferred.add(line)) { throw failure; }
-                    long units = spans.stream().mapToLong(span -> span.text().length()).sum();
+                    long units = spans.stream().mapToLong(span -> span.text().length()).sum()
+                            + graphics.values().stream().mapToLong(graphic -> graphic.ink().segments().size()
+                                    + (long) graphic.ink().logicalText().length()).sum();
                     if (activeVariableWork != null) { activeVariableWork.account(Math.max(1, units), -1); }
                     else if (retainedWork != null) { retainedWork.accept(Math.max(1, units)); }
                     else { throw failure; }
@@ -2166,11 +2260,15 @@ public final class DocumentLayouter {
                 this.headersOnly = headersOnly;
                 SemanticTree.walk(List.of(table), visit -> {
                     ExecutionContext.checkpoint();
-                    if (visit.block() instanceof Paragraph paragraph) { sourceUnits += paragraph.text().length(); }
+                    if (visit.block() instanceof Paragraph paragraph) {
+                        sourceUnits += paragraph.text().length() + vectorWork(paragraph.vectors());
+                    }
                     else if (visit.block() instanceof Table nested) {
                         for (var anchors : nested.grid().anchorRows()) {
                             for (var anchor : anchors) {
-                                if (!anchor.cell().hasBlocks()) { sourceUnits += anchor.cell().text().length(); }
+                                if (!anchor.cell().hasBlocks()) {
+                                    sourceUnits += anchor.cell().text().length() + vectorWork(anchor.cell().vectors());
+                                }
                             }
                         }
                     }
@@ -2307,7 +2405,7 @@ public final class DocumentLayouter {
                         if (anchor.rowIndex() < row) { layouts.add(null); continue; }
                         var cell = anchor.cell();
                         int column = anchor.columnIndex();
-                        preparations.account(cell.text().length(), row);
+                        preparations.account(cell.text().length() + vectorWork(cell.vectors()), row);
                         var lineWidths = new CellWidths(column, cell.columnSpan(), cell.format().lineHeight(), capacities);
                         try { layouts.add(shapeCell(cell, settings.contentWidth(), table, 0, row, column, false, lineWidths)); }
                         catch (DocumentLayoutException cause) { throw cause.withSourcePath(cellPath(List.of(), table, row, column, -1)); }
@@ -3104,7 +3202,7 @@ public final class DocumentLayouter {
             if (lineWidths == null && retainedLineWidths != null) { lineWidths = retainedWidths(cell, width); }
             var format = cell.format();
             var style = new ParagraphStyle(format.fontSize(), format.lineHeight(), 0, 0, alignment(format.alignment()), format.lineBreakPolicy());
-            if (lineWidths == null && cell.inlines().isEmpty() && cell.images().isEmpty() && cell.fields().isEmpty()) { return shape(cell.text(), width, style, block, index, row, column, countLines); }
+            if (lineWidths == null && cell.inlines().isEmpty() && cell.images().isEmpty() && cell.fields().isEmpty() && cell.vectors().isEmpty()) { return shape(cell.text(), width, style, block, index, row, column, countLines); }
             ParagraphLayout result;
             var sourceInlines = cell.inlines().isEmpty() ? List.of(new com.mirakyux.export4j.model.InlineText(cell.text(),
                     com.mirakyux.export4j.model.InlineStyle.of(format.fontSize()))) : cell.inlines();
@@ -3112,8 +3210,9 @@ public final class DocumentLayouter {
             try {
                 var imageMap = cell.images().stream().collect(java.util.stream.Collectors.toMap(Paragraph.ImageSpan::sourceIndex, Paragraph.ImageSpan::image));
                 var fieldMap = cell.fields().stream().collect(java.util.stream.Collectors.toMap(Paragraph.FieldSpan::sourceIndex, Paragraph.FieldSpan::field));
-                result = retainedLineWidths != null ? shapeRetained(cell, width, spans, style, imageMap, fieldMap)
-                        : paragraphLayouter.layout(spans, width, style, imageMap, fieldMap, lineWidths == null ? line -> width : lineWidths);
+                var graphics = InlineVectors.graphics(cell.vectors());
+                result = retainedLineWidths != null ? shapeRetained(cell, width, spans, style, imageMap, fieldMap, graphics)
+                        : paragraphLayouter.layout(spans, width, style, imageMap, fieldMap, graphics, lineWidths == null ? line -> width : lineWidths);
             } catch (DocumentLayoutException cause) {
                 throw cause;
             } catch (TextLayoutException cause) {
@@ -3403,6 +3502,15 @@ public final class DocumentLayouter {
         if (lines == shaped.lines() && diagnostics == shaped.diagnostics()
                 && Double.doubleToLongBits(height) == Double.doubleToLongBits(shaped.height())) { return shaped; }
         return new ParagraphLayout(shaped.width(), height, lines, diagnostics);
+    }
+
+    private static long vectorWork(List<Paragraph.VectorSpan> vectors) {
+        long work = 0;
+        for (var span : vectors) {
+            ExecutionContext.checkpoint();
+            work += span.vector().resource().segmentCount() + (long) span.vector().logicalText().length();
+        }
+        return work;
     }
 
     private static boolean fits(double height, double available) {

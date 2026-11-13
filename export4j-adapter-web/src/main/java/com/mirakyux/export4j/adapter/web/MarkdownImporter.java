@@ -5,6 +5,7 @@ import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
@@ -24,13 +25,14 @@ import org.commonmark.parser.Parser;
 
 /** Offline CommonMark/GFM semantic import, independent of Markdown templates. Explicit UTF-8 files/streams
  * or source text only; never fetches URLs or discovers resources from linked paths.
- * Only explicitly registered images are available. Unknown model semantics default to ERROR.
+ * Only explicitly registered images and vectors are available. Unknown model semantics default to ERROR.
  * Immutable, thread-safe and owns no resources. Third-party parser types do not enter the public API.
  */
 public final class MarkdownImporter {
     final ProcessingPolicy policy;
     final ImportLimits limits;
     final Map<String, InlineImage> images;
+    final Map<String, InlineVector> vectors;
     final DocumentMetadata metadata;
     final PageSettings pageSettings;
     final ParagraphFormat format;
@@ -42,6 +44,7 @@ public final class MarkdownImporter {
     public MarkdownImporter() { this(new Builder()); }
     private MarkdownImporter(Builder builder) {
         policy = builder.policy; limits = builder.limits; images = Map.copyOf(builder.images); metadata = builder.metadata;
+        vectors = Map.copyOf(builder.vectors);
         pageSettings = builder.pageSettings; format = builder.format; strongRole = builder.strongRole;
         emphasisRole = builder.emphasisRole; combinedRole = builder.combinedRole; codeRole = builder.codeRole; baseUri = builder.baseUri;
     }
@@ -89,7 +92,7 @@ public final class MarkdownImporter {
         return com.mirakyux.export4j.model.processing.DocumentConversion.from("MARKDOWN", shared -> {
             var builder = new Builder().policy(shared).limits(limits).metadata(metadata).pageSettings(pageSettings)
                     .paragraphFormat(format).fontRoles(strongRole, emphasisRole, combinedRole, codeRole);
-            builder.images.putAll(images); builder.baseUri = baseUri;
+            builder.images.putAll(images); builder.vectors.putAll(vectors); builder.baseUri = baseUri;
             var imported = builder.build().read(source.read()).execute();
             return com.mirakyux.export4j.model.processing.DocumentConversion.Input.of(imported.document(), imported.report());
         }).policy(policy);
@@ -100,6 +103,7 @@ public final class MarkdownImporter {
         private ProcessingPolicy policy = ProcessingPolicy.STRICT;
         private ImportLimits limits = ImportLimits.DEFAULT;
         private final Map<String, InlineImage> images = new HashMap<>();
+        private final Map<String, InlineVector> vectors = new HashMap<>();
         private DocumentMetadata metadata = DocumentMetadata.EMPTY;
         private PageSettings pageSettings = PageSettings.A4;
         private ParagraphFormat format = ParagraphFormat.of(12);
@@ -114,7 +118,19 @@ public final class MarkdownImporter {
         public Builder metadata(DocumentMetadata value) { metadata = Objects.requireNonNull(value, "metadata"); return this; }
         public Builder pageSettings(PageSettings value) { pageSettings = Objects.requireNonNull(value, "pageSettings"); return this; }
         public Builder paragraphFormat(ParagraphFormat value) { format = Objects.requireNonNull(value, "format"); return this; }
-        public Builder image(String destination, InlineImage value) { images.put(key(destination), Objects.requireNonNull(value, "image")); return this; }
+        public Builder image(String destination, InlineImage value) {
+            String name = key(destination); Objects.requireNonNull(value, "image");
+            if (vectors.containsKey(name)) { throw new IllegalArgumentException("Markdown resource key already registered as a vector"); }
+            images.put(name, value); return this;
+        }
+        /** Registers an exact image destination with immutable vector paths and logical text.
+         * No TeX/SVG parsing, file access or remote fetch occurs; image/vector keys are disjoint.
+         */
+        public Builder vector(String destination, InlineVector value) {
+            String name = key(destination); Objects.requireNonNull(value, "vector");
+            if (images.containsKey(name)) { throw new IllegalArgumentException("Markdown resource key already registered as an image"); }
+            vectors.put(name, value); return this;
+        }
         public Builder fontRoles(String strong, String emphasis, String combined, String code) {
             strongRole = key(strong); emphasisRole = key(emphasis); combinedRole = key(combined); codeRole = key(code); return this;
         }

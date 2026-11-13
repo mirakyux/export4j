@@ -52,11 +52,13 @@ Vertical spans first satisfy single-row cell heights, then satisfy merged constr
 | --- | --- |
 | `ColumnWidth.Fixed(points)` | Fixed positive width in points |
 | `ColumnWidth.Fraction(weight)` | Positive weight sharing the content width left after fixed columns |
-| `ColumnWidth.Auto(minPoints, maxPoints)` | Estimates a preferred width from content and shrinks toward the minimum when space is insufficient; probing does not charge output-line budgets twice |
+| `ColumnWidth.Auto(minPoints, maxPoints)` | Estimates a preferred width from content and shrinks toward the effective minimum when space is insufficient; without proportional columns, also preserves indivisible inline-image and field widths; see [automatic-column constraints (Chinese)](../automatic-merged-columns-api.md). Probing does not charge output-line budgets twice |
 | All columns fixed | Retains their total width, aligns left and does not stretch |
 | `CellFormat(fontSize, lineHeight, alignment)` | Independent font size, fixed baseline spacing and left/center/right alignment |
 | `TableFormat(padding, spaceBefore, spaceAfter)` | Table-wide cell padding and spacing before/after the table block |
 | `TableFormat.builder().drawBorders(false)` | Disables cell outlines while preserving geometry, text, header backgrounds and semantic relationships |
+
+For tables with at least one Auto column and no Fraction columns, each real cell also requires its covered columns to fit the widest indivisible image or field plus left/right padding once. Overlapping merged spans share the widths needed to satisfy these lower bounds. Insufficient `Auto.max` or available content width fails explicitly; images and fields are not shrunk, and callers do not need to scan images to raise `Auto.min` manually. Plain text retains its existing minimum/preferred-width rules. If any proportional column exists, the existing final-remainder allocation applies without this additional lower-bound inference.
 
 The sum of fixed widths must not exceed page content width. When proportional columns exist, the remaining width must be positive. Weights are normalized before summation to avoid overflow; unrepresentably small widths fail explicitly. All lengths must be finite. Widths, weights and text dimensions are positive; padding and spacing are nonnegative.
 

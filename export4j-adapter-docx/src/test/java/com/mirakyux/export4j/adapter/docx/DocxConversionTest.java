@@ -13,6 +13,8 @@ import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.InlineVector;
+import com.mirakyux.export4j.model.VectorResource;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.PageRegion;
@@ -43,6 +45,78 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocxConversionTest {
+    private static InlineVector vector(String text) {
+        var resource = VectorResource.of(10, 8, 2, List.of(
+                new VectorResource.Segment(VectorResource.Operation.MOVE, List.of(0.0, -8.0)),
+                new VectorResource.Segment(VectorResource.Operation.LINE, List.of(10.0, 2.0))));
+        return new InlineVector(resource, text, 0x224488, "https://example.org/vector");
+    }
+
+    @Test void inlineVectorsRequireExplicitTextDegradationAndReportOriginalAtomicRanges() throws Exception {
+        var first = vector("x^{2}+y"); var second = vector("z");
+        var paragraph = Paragraph.mixed("vectors", List.of(new InlineText("😀A", InlineStyle.of(12)), first,
+                new InlineText("B", InlineStyle.of(12)), second), ParagraphFormat.of(12));
+        var document = Document.builder().add(paragraph).build();
+        var target = new DocxAdapter().conversionTarget();
+        var rejection = assertThrows(ProcessingException.class, () -> DocumentConversion.from(document).prepare(target));
+        assertEquals("INLINE_VECTOR", rejection.issue().feature());
+        assertEquals(3, rejection.issue().location().startUtf16()); assertEquals(4, rejection.issue().location().endUtf16());
+        for (var action : List.of(ProcessingPolicy.Action.WARN, ProcessingPolicy.Action.IGNORE)) {
+            var policy = ProcessingPolicy.builder().feature("INLINE_VECTOR", action, ProcessingPolicy.Treatment.DEGRADE).build();
+            var prepared = DocumentConversion.from(document).policy(policy).prepare(target);
+            var output = new ByteArrayOutputStream(); var actual = prepared.to(output);
+            assertEquals(prepared.preview().issues(), actual.report().issues());
+            assertEquals(List.of(3, 5), actual.report().losses().stream().map(issue -> issue.location().startUtf16()).toList());
+            assertEquals(List.of(4, 6), actual.report().losses().stream().map(issue -> issue.location().endUtf16()).toList());
+            assertTrue(actual.report().losses().stream().allMatch(issue -> issue.feature().equals("INLINE_VECTOR")
+                    && issue.effects().equals(List.of("VECTOR_REPLACED_WITH_LOGICAL_TEXT"))));
+            assertEquals(action == ProcessingPolicy.Action.WARN ? 2 : 0, actual.report().warnings().size());
+            var restored = new DocxAdapter().read(new ByteArrayInputStream(output.toByteArray()), DocxAdapter.Policy.STRICT).document();
+            var result = (Paragraph) restored.sections().getFirst().blocks().getFirst();
+            assertEquals("😀Ax^{2}+yBz", result.text()); assertTrue(result.vectors().isEmpty());
+            assertEquals(2, result.inlines().stream().filter(run -> run.hyperlink().equals(first.hyperlink()) && run.style().rgb() == first.rgb()).count());
+            try (var archive = new ZipInputStream(new ByteArrayInputStream(output.toByteArray()))) {
+                for (ZipEntry entry; (entry = archive.getNextEntry()) != null;) {
+                    assertTrue(!entry.getName().startsWith("word/media/"), "vector degradation must not silently rasterize");
+                    if (entry.getName().equals("word/document.xml")) {
+                        assertTrue(!new String(archive.readAllBytes(), StandardCharsets.UTF_8).contains("oMath"), "logical text is not OMML");
+                    }
+                }
+            }
+        }
+        assertEquals("😀A\ufffcB\ufffc", paragraph.text());
+        assertEquals(List.of(first, second), paragraph.vectors().stream().map(Paragraph.VectorSpan::vector).toList());
+        var preserve = ProcessingPolicy.builder().feature("INLINE_VECTOR", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.PRESERVE).build();
+        assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(document).policy(preserve).prepare(target));
+    }
+
+    @Test void vectorDegradationTraversesCellsNestedBlocksAndPageRegions() throws Exception {
+        var vector = vector("FORMULA");
+        var nested = Paragraph.mixed("nested-vector", List.of(vector), ParagraphFormat.of(12));
+        var table = Table.builder("vector-table").columns(new ColumnWidth.Fraction(1))
+                .row(TableCell.builder().content(List.of(new InlineText("CELL", InlineStyle.of(12)), vector)).build())
+                .row(TableCell.builder().blocks(List.of(nested)).build()).build();
+        var headerVector = new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), "");
+        var header = Paragraph.mixed("vector-header", List.of(headerVector), ParagraphFormat.of(12));
+        var source = new SectionedDocument(DocumentMetadata.EMPTY, List.of(new Section("s", PageSettings.A4, List.of(table), 0,
+                PageRegions.builder().header(new PageRegion(30, 0, List.of(header))).build())));
+        var policy = ProcessingPolicy.builder().feature("INLINE_VECTOR", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
+        var prepared = DocumentConversion.from(source, List.of()).policy(policy).prepare(new DocxAdapter().conversionTarget());
+        var output = new ByteArrayOutputStream(); var actual = prepared.to(output);
+        assertEquals(prepared.preview().issues(), actual.report().issues()); assertEquals(3, actual.report().losses().size());
+        var cellLoss = actual.report().losses().stream().filter(issue -> issue.location().blockId().equals("vector-table")).findFirst().orElseThrow();
+        assertEquals(1, cellLoss.location().cellPath().size());
+        assertEquals(4, cellLoss.location().startUtf16()); assertEquals(5, cellLoss.location().endUtf16());
+        assertTrue(actual.report().losses().stream().anyMatch(issue -> issue.location().blockId().equals("nested-vector") && issue.location().cellPath().size() == 1));
+        assertTrue(actual.report().losses().stream().anyMatch(issue -> issue.location().region().equals("HEADER")));
+        var restored = new DocxAdapter().read(new ByteArrayInputStream(output.toByteArray()), DocxAdapter.Policy.STRICT).document();
+        var result = (Table) restored.sections().getFirst().blocks().getFirst();
+        assertEquals("CELLFORMULA", result.rows().getFirst().cells().getFirst().text());
+        assertEquals("FORMULA", ((Paragraph) result.rows().get(1).cells().getFirst().blocks().getFirst()).text());
+        assertEquals("FORMULA", ((Paragraph) restored.sections().getFirst().pageRegions().header().blocks().getFirst()).text());
+        assertEquals(vector, table.rows().getFirst().cells().getFirst().vectors().getFirst().vector());
+    }
+
     @Test void rotatedCaptionsAndReferencesReportBothContainerAndRotationLosses() throws Exception {
         var rotated = ParagraphFormat.of(12).toBuilder().rotation(45).build();
         var source = Document.builder().add(new Caption("caption", "Figure", "Caption", rotated))

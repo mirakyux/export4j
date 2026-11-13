@@ -10,6 +10,7 @@ import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.NumberedItem;
@@ -193,7 +194,7 @@ public final class DocumentEditor {
         public Request<T> paragraphFormat(String id, ParagraphFormat value) {
             Objects.requireNonNull(value, "format");
             return paragraphOperation(id, "PARAGRAPH_FORMAT", (paragraph, location, state) -> paragraph.inlines().isEmpty()
-                    ? new Paragraph(paragraph.id(), paragraph.text(), value, List.of(), paragraph.images(), paragraph.fields())
+                    ? new Paragraph(paragraph.id(), paragraph.text(), value, List.of(), paragraph.images(), paragraph.fields(), paragraph.vectors())
                     : Paragraph.mixed(paragraph.id(), paragraph.content(), value));
         }
         /** Applies an explicit style to a nonempty text range. Existing links remain attached to their
@@ -216,6 +217,22 @@ public final class DocumentEditor {
                     offset += item instanceof com.mirakyux.export4j.model.InlineText run ? run.text().length() : 1;
                 }
                 if (!found) { throw new IllegalArgumentException("image marker target missing"); }
+                return Paragraph.mixed(paragraph.id(), content, paragraph.format());
+            });
+        }
+        /** Replaces one existing vector atom, keeping its geometry and reading text consistent. */
+        public Request<T> vector(String id, int sourceIndex, InlineVector value) {
+            Objects.requireNonNull(value, "vector");
+            if (sourceIndex < 0) { throw new IllegalArgumentException("negative vector source index"); }
+            return paragraphOperation(id, "REPLACE_VECTOR", (paragraph, location, state) -> {
+                var content = new ArrayList<InlineContent>();
+                int offset = 0; boolean found = false;
+                for (var item : paragraph.content()) {
+                    if (offset == sourceIndex && item instanceof InlineVector) { content.add(value); found = true; }
+                    else { content.add(item); }
+                    offset += item instanceof com.mirakyux.export4j.model.InlineText run ? run.text().length() : 1;
+                }
+                if (!found) { throw new IllegalArgumentException("vector marker target missing"); }
                 return Paragraph.mixed(paragraph.id(), content, paragraph.format());
             });
         }
@@ -364,7 +381,7 @@ public final class DocumentEditor {
                 "target block not found", List.of("OPERATION_NOT_APPLIED"), ProcessingPolicy.Treatment.SKIP_MATCH, ProcessingPolicy.Treatment.SKIP_REQUEST);
     }
     static Paragraph inlineCell(TableCell cell) {
-        return new Paragraph("cell", cell.text(), ParagraphFormat.of(cell.format().fontSize()), cell.inlines(), cell.images(), cell.fields());
+        return new Paragraph("cell", cell.text(), ParagraphFormat.of(cell.format().fontSize()), cell.inlines(), cell.images(), cell.fields(), cell.vectors());
     }
     static Paragraph paragraph(Block block) {
         return switch (block) {

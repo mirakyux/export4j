@@ -18,7 +18,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 19 个模块（16 个库、BOM、示例和可选设计器应用）。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
 
-[Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。PDF／SVG 的受限 TeX 矢量排版目前位于 [ManuWeave 示例](examples.md#数学公式)，通用模型尚未提供跨格式公式节点或自动 TeX↔OMML 转换。实现与实际 Word 应用动作见[专项验收](verification/manuweave-templates.md)。
+[Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。[行内矢量](inline-vectors-api.md)让调用方生成的有界轮廓进入 Paragraph／TableCell 及显式 HTML／Markdown 资源注册，PDF 保存真实轮廓和 ActualText；不内置 TeX 解析或 TeX↔OMML。DOCX／Web 仅可明确降为逻辑文字，XML v1 保存拒绝。受限 TeX 转轮廓示例仍见 [ManuWeave](examples.md#数学公式)，实际 Word 公式动作见[专项验收](verification/manuweave-templates.md)。
 
 ## 已有 PDF 处理与语义恢复
 

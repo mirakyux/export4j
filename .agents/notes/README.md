@@ -19,5 +19,8 @@
 - [引擎级预算默认值与请求覆盖](implemented/feature/2026-11-12-engine-budget-defaults.md)
 - [文字与 PDF 优化保留资源和输出契约](implemented/simplification/2026-11-12-bounded-text-pdf-reuse.md)
 - [PDF 原文编码与字形标识分离](implemented/bug-fix/2026-11-12-pdf-unicode-glyph-aliases.md)
+- [自动列宽保留行内对象的原子下限](implemented/bug-fix/2026-11-12-automatic-columns-atomic-widths.md)
+
+- [行内矢量与逻辑来源契约](implemented/feature/2026-11-13-inline-vector-source-contract.md)
 
 本页可列重要入口，不要求维护逐条笔记索引。检索按主题与状态进行；[manifest.json](manifest.json) 只定义目录契约。

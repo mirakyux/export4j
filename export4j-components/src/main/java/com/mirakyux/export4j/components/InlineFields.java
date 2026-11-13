@@ -209,7 +209,7 @@ final class InlineFields {
                     }
                 }
                 lines.add(new TextLine(line.sourceStart(), line.sourceEnd(), line.offsetX(), line.baselineY(),
-                        line.width(), line.runs(), ink, line.images()));
+                        line.width(), line.runs(), ink, line.images(), List.of(), line.glyphRunBoxes()));
             }
             return new ParagraphLayout(source.width(), source.height(), lines, source.diagnostics());
         }

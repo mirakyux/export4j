@@ -173,7 +173,8 @@ public final class ParagraphLayouter {
         }
         if (!images.isEmpty() || !fields.isEmpty() || !graphics.isEmpty() || forceOpenType || adaptive && OpenTypeParagraphLayouter.required(text)) {
             return new OpenTypeParagraphLayouter(limits).layout(spans, width, style, ascent, images, fields, graphics,
-                    line -> checkedLineWidth(lineWidths, line, width, style));
+                    line -> checkedLineWidth(lineWidths, line, width, style),
+                    !forceOpenType && !images.isEmpty() && fields.isEmpty() && graphics.isEmpty());
         }
         List<TextLine> lines = new ArrayList<>();
         List<TextDiagnostic> diagnostics = new ArrayList<>();

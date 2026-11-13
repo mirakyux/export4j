@@ -47,6 +47,23 @@ class CentralReleaseTest(unittest.TestCase):
             key.assert_not_called()
             api.assert_not_called()
 
+    def test_preflight_only_checks_our_coordinates_and_public_key(self):
+        requests = []
+        def fetch(url, missing=False):
+            requests.append(url)
+            return None if url.startswith(central.CENTRAL) else b'public key'
+        with patch.dict(os.environ, {"EXPORT4J_SIGNING_KEY": "fixture"}), \
+                patch.object(central, "fetch", side_effect=fetch), \
+                patch.object(central, "fingerprint", return_value=FINGERPRINT), \
+                patch.object(central, "temporary_keyring", return_value=nullcontext(self.output)), \
+                patch.object(central.shutil, "which", return_value="gpg"), \
+                patch.object(central.subprocess, "run", return_value=Mock(stdout="revision\n")), \
+                patch.object(central, "build_inputs", return_value={}), redirect_stdout(io.StringIO()):
+            central.preflight(self.output / "preflight", "0.1.0", FINGERPRINT)
+        repository_requests = [url for url in requests if url.startswith(central.CENTRAL)]
+        self.assertEqual(17, len(repository_requests))
+        self.assertTrue(all(url.startswith(central.CENTRAL + 'com/mirakyux/export4j/export4j-') for url in repository_requests))
+
     def test_private_identity_mismatch_and_unpublished_public_key_stop(self):
         for identity, message in (("B" * 40, "does not match"), (FINGERPRINT, "keyserver")):
             with self.subTest(identity=identity), patch.dict(os.environ, {"EXPORT4J_SIGNING_KEY": "fixture"}), \
@@ -208,6 +225,19 @@ class CentralReleaseTest(unittest.TestCase):
                     patch.object(central.subprocess, "run", return_value=Mock(stdout=revision + "\n")):
                 with self.assertRaises(ValueError):
                     central.checked_bundle(self.output, "0.1.0")
+
+    def test_export4j_bundle_rejects_artifacts_outside_its_publication_namespace(self):
+        bundle = self.output / "distribution/maven-central-bundle.zip"
+        bundle.parent.mkdir()
+        with ZipFile(bundle, "w") as archive:
+            archive.writestr("org/example/dependency/1.0/dependency-1.0.jar", b"external artifact")
+        central.save(self.output / "build-inputs.json", {"version": "0.1.0", "headRevision": "revision", "files": {}})
+        central.save(self.output / "distribution/distribution-report.json", {"version": "0.1.0", "signedArtifacts": 82,
+            "bundleSha256": hashlib.sha256(bundle.read_bytes()).hexdigest()})
+        with patch.object(central, "build_inputs", return_value={}), \
+                patch.object(central.subprocess, "run", return_value=Mock(stdout="revision\n")):
+            with self.assertRaisesRegex(ValueError, "Unexpected publication path"):
+                central.checked_bundle(self.output, "0.1.0")
 
 
 if __name__ == "__main__":

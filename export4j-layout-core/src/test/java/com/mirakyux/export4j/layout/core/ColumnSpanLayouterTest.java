@@ -6,9 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import com.mirakyux.export4j.font.FontGroup;
@@ -18,6 +21,11 @@ import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.ImageResource;
+import com.mirakyux.export4j.model.InlineContent;
+import com.mirakyux.export4j.model.InlineField;
+import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.ParagraphAlignment;
@@ -103,6 +111,95 @@ class ColumnSpanLayouterTest {
                 List.of(row(cell("MERGED", 2))), 0, new TableFormat(PageMargins.uniform(4), 0, 0));
         var cell = fragment(new DocumentLayouter().layout(document(source, 100, 100), fonts), 0).rows().getFirst().cells().getFirst();
         assertEquals(100, cell.bounds().width()); assertEquals(92, cell.layout().width());
+    }
+
+    @Test void automaticColumnsPreserveAtomicImageAndFieldWidthsWhenTextMustWrap() throws IOException {
+        for (var atomic : atomicInlines(60)) {
+            var source = new Table("atomic", List.of(new ColumnWidth.Auto(10, 200), new ColumnWidth.Auto(10, 200)),
+                    List.of(row(TableCell.mixed(List.of(atomic), CELL), cell("M".repeat(80), 1))), 0,
+                    new TableFormat(PageMargins.uniform(2), 0, 0));
+            var cells = fragment(new DocumentLayouter().layout(document(source, 100, 400), fonts), 0).rows().getFirst().cells();
+            assertEquals(100, cells.stream().mapToDouble(value -> value.bounds().width()).sum(), 1e-10);
+            assertTrue(cells.getFirst().layout().width() >= 60);
+            assertEquals(0, cells.getFirst().layout().lines().getFirst().sourceStart());
+            assertEquals(1, cells.getFirst().layout().lines().getLast().sourceEnd());
+            assertEquals(80, cells.getLast().layout().lines().getLast().sourceEnd());
+            if (atomic instanceof InlineImage) {
+                assertEquals(60, cells.getFirst().layout().lines().getFirst().images().getFirst().image().width());
+            } else {
+                assertEquals(60, cells.getFirst().layout().lines().getFirst().fields().getFirst().field().width());
+            }
+        }
+    }
+
+    @Test void mergedAutomaticColumnsReserveAtomicWidthAndOnlyOnePaddingRegion() throws IOException {
+        for (var atomic : atomicInlines(70)) {
+            for (ColumnWidth first : List.of(new ColumnWidth.Auto(10, 200), new ColumnWidth.Fixed(20))) {
+                var source = new Table("atomic-span", List.of(first, new ColumnWidth.Auto(10, 200), new ColumnWidth.Auto(10, 200)),
+                        List.of(row(TableCell.mixed(List.of(atomic), CELL).toBuilder().columnSpan(2).build(), cell("M".repeat(80), 1))), 0,
+                        new TableFormat(PageMargins.uniform(2), 0, 0));
+                var cells = fragment(new DocumentLayouter().layout(document(source, 110, 400), fonts), 0).rows().getFirst().cells();
+                assertEquals(List.of(0, 2), cells.stream().map(value -> value.columnIndex()).toList());
+                assertEquals(110, cells.stream().mapToDouble(value -> value.bounds().width()).sum(), 1e-10);
+                assertTrue(cells.getFirst().layout().width() >= 70);
+                assertEquals(cells.getFirst().bounds().width() - 4, cells.getFirst().layout().width(), 1e-10);
+                assertEquals(1, cells.getFirst().layout().lines().getLast().sourceEnd());
+            }
+        }
+    }
+
+    @Test void overlappingAtomicSpansShareTheirMinimumWithoutRejectingAFeasibleTable() throws IOException {
+        var atomic = atomicInlines(100);
+        var source = new Table("overlap", List.of(new ColumnWidth.Auto(10, 100), new ColumnWidth.Auto(10, 100), new ColumnWidth.Auto(10, 100)),
+                List.of(row(TableCell.mixed(List.of(atomic.getFirst()), CELL).toBuilder().columnSpan(2).build(), cell("A", 1)),
+                        row(cell("B", 1), TableCell.mixed(List.of(atomic.getLast()), CELL).toBuilder().columnSpan(2).build())), 0, PLAIN);
+        var exact = new DocumentLayoutLimits(1, 4, 4, 1, 2, 3, 6);
+        var table = fragment(new DocumentLayouter(new ParagraphLayouter(), exact).layout(document(source, 120, 100), fonts), 0);
+        assertTrue(table.width() <= 120);
+        assertTrue(table.rows().getFirst().cells().getFirst().layout().width() >= 100);
+        assertTrue(table.rows().getLast().cells().getLast().layout().width() >= 100);
+        assertEquals(List.of(0, 2), table.rows().getFirst().cells().stream().map(value -> value.columnIndex()).toList());
+        assertEquals(List.of(0, 1), table.rows().getLast().cells().stream().map(value -> value.columnIndex()).toList());
+    }
+
+    @Test void automaticMinimumUsesTheWidestAtomicObjectAndAllowsObjectsToWrap() throws IOException {
+        var source = new Table("atomic-wrap", List.of(new ColumnWidth.Auto(10, 200), new ColumnWidth.Auto(10, 200)),
+                List.of(row(TableCell.mixed(atomicInlines(60), CELL), cell("M".repeat(80), 1))), 0,
+                new TableFormat(PageMargins.uniform(2), 0, 0));
+        var cell = fragment(new DocumentLayouter().layout(document(source, 100, 400), fonts), 0).rows().getFirst().cells().getFirst();
+        assertTrue(cell.layout().width() >= 60 && cell.layout().width() < 120);
+        assertEquals(2, cell.layout().lines().size());
+        assertEquals(0, cell.layout().lines().getFirst().sourceStart());
+        assertEquals(2, cell.layout().lines().getLast().sourceEnd());
+    }
+
+    @Test void atomicAutomaticMinimumStillHonorsTheExplicitMaximumAndPageWidth() throws IOException {
+        for (var atomic : atomicInlines(60)) {
+            var rows = List.of(row(TableCell.mixed(List.of(atomic), CELL), cell("A", 1)));
+            var capped = new Table("capped", List.of(new ColumnWidth.Auto(10, 50), new ColumnWidth.Auto(10, 100)), rows, 0, PLAIN);
+            var capFailure = assertThrows(DocumentLayoutException.class, () -> new DocumentLayouter().layout(document(capped, 100, 100), fonts));
+            assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, capFailure.code());
+            assertEquals(0, capFailure.rowIndex()); assertEquals(0, capFailure.columnIndex());
+            var span = new Table("span-capped", List.of(new ColumnWidth.Auto(10, 20), new ColumnWidth.Auto(10, 20)),
+                    List.of(row(TableCell.mixed(List.of(atomic), CELL).toBuilder().columnSpan(2).build())), 0, PLAIN);
+            var spanFailure = assertThrows(DocumentLayoutException.class, () -> new DocumentLayouter().layout(document(span, 100, 100), fonts));
+            assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, spanFailure.code());
+            assertEquals(0, spanFailure.rowIndex()); assertEquals(0, spanFailure.columnIndex());
+            var narrow = new Table("narrow", List.of(new ColumnWidth.Auto(10, 100), new ColumnWidth.Auto(30, 100)), rows, 0, PLAIN);
+            var pageFailure = assertThrows(DocumentLayoutException.class, () -> new DocumentLayouter().layout(document(narrow, 80, 100), fonts));
+            assertEquals(DocumentLayoutException.Code.INVALID_GEOMETRY, pageFailure.code());
+        }
+    }
+
+    @Test void decimalAutomaticMaximaAtAnAtomicSpanBoundaryAbsorbOnlyArithmeticRounding() throws IOException {
+        for (var atomic : atomicInlines(51)) {
+            var source = new Table("decimal-atomic", List.of(new ColumnWidth.Auto(1.1, 1.2), new ColumnWidth.Auto(1.1, 50.4)),
+                    List.of(row(TableCell.mixed(List.of(atomic), CELL).toBuilder().columnSpan(2).build())), 0,
+                    new TableFormat(PageMargins.uniform(.3), 0, 0));
+            var cell = fragment(new DocumentLayouter().layout(document(source, 60, 100), fonts), 0).rows().getFirst().cells().getFirst();
+            assertEquals(51.6, cell.bounds().width(), 1e-12);
+            assertEquals(51, cell.layout().width(), 1e-12);
+        }
     }
 
     @Test void sourceCountsEachAnchorOnceButStructuralBudgetCountsCoveredSlots() {
@@ -196,6 +293,14 @@ class ColumnSpanLayouterTest {
     }
 
     private static TableCell cell(String value, int span) { return TableCell.builder().text(value).format(CELL).columnSpan(span).build(); }
+    private static List<InlineContent> atomicInlines(double width) throws IOException {
+        var image = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
+        var output = new ByteArrayOutputStream();
+        try { ImageIO.write(image, "png", output); }
+        finally { image.flush(); }
+        return List.of(new InlineImage(ImageResource.load(output.toByteArray()), width, 4, 0, "atomic"),
+                new InlineField(InlineField.Kind.PAGE, "", width, InlineStyle.of(8)));
+    }
     private static TableRow row(TableCell... cells) { return new TableRow(List.of(cells)); }
     private static Document document(Table table, double width, double height) {
         return new Document(DocumentMetadata.EMPTY, PageSettings.builder().size(width, height).margins(0).build(), List.of(table));

@@ -15,6 +15,7 @@ import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.LineBreakPolicy;
@@ -261,7 +262,16 @@ final class WebRenderer {
             } else if (inline instanceof InlineField field) {
                 loss(ExportFeature.INLINE_FIELD, source, "Field replaced with explicit unresolved marker");
                 escaped("[unresolved " + field.kind().name() + "]", !html); offset++;
-            }
+            } else if (inline instanceof InlineVector vector) {
+                loss(ExportFeature.INLINE_VECTOR, source, "Inline vector paths, color and geometry replaced with logical text");
+                if (!vector.hyperlink().isEmpty()) { if (html) { linkStart(vector.hyperlink()); } else { out.add("["); } }
+                escaped(vector.logicalText(), !html);
+                if (!vector.hyperlink().isEmpty()) {
+                    if (html) { out.add("</a>"); }
+                    else { out.add("](<"); out.add(destination(vector.hyperlink())); out.add(">)"); }
+                }
+                offset++;
+            } else { throw failure(ExportException.Code.UNSUPPORTED, ExportFeature.CUSTOM_BLOCK, source, "Unsupported inline content type"); }
         }
     }
 
@@ -427,7 +437,7 @@ final class WebRenderer {
     private static Paragraph cellParagraph(TableCell cell) {
         var format = new ParagraphFormat(cell.format().fontSize(), cell.format().lineHeight(), 0, 0,
                 cell.format().alignment(), 0, 0, false).withLineBreakPolicy(cell.format().lineBreakPolicy());
-        return new Paragraph("cell", cell.text(), format, cell.inlines(), cell.images(), cell.fields());
+        return new Paragraph("cell", cell.text(), format, cell.inlines(), cell.images(), cell.fields(), cell.vectors());
     }
     private void paragraphPolicy(ParagraphFormat format, ParagraphFormat normal, ExportLocation location) throws IOException {
         if (!format.toBuilder().rotation(0).build().equals(normal)) { loss(ExportFeature.PARAGRAPH_STYLE, location, "Paragraph geometry and pagination replaced with Markdown flow"); }
@@ -488,9 +498,11 @@ final class WebRenderer {
                 default -> ProcessingPolicy.Treatment.DEGRADE;
             };
             String section = location.sectionIndex() < 0 ? "" : document.sections().get(location.sectionIndex()).id();
-            var source = new ProcessingIssue.Location(section, location.region(), location.blockId(), location.cellPath(), location.sourceOffset(), location.sourceOffset());
+            int end = feature == ExportFeature.INLINE_VECTOR ? location.sourceOffset() + 1 : location.sourceOffset();
+            var source = new ProcessingIssue.Location(section, location.region(), location.blockId(), location.cellPath(), location.sourceOffset(), end);
             String effect = feature == ExportFeature.COLUMN_FLOW || feature == ExportFeature.GRID_LAYOUT
-                    ? "LAYOUT_REMOVED_CONTENT_RETAINED" : feature.name() + "_" + treatment.name();
+                    ? "LAYOUT_REMOVED_CONTENT_RETAINED" : feature == ExportFeature.INLINE_VECTOR
+                    ? "VECTOR_REPLACED_WITH_LOGICAL_TEXT" : feature.name() + "_" + treatment.name();
             var issue = new ProcessingIssue("EXPORT", "MODEL", target, feature.name(), "EXPORT", source,
                     message, rule.action(), rule.treatment(), List.of(effect));
             if (rule.action() == ProcessingPolicy.Action.ERROR) { throw new ProcessingException(issue); }
@@ -498,9 +510,9 @@ final class WebRenderer {
             if (issues.size() >= limits.maxDiagnostics()) { limit(location, "Processing report budget exceeded"); }
             issues.add(issue); return;
         }
-        if (feature == ExportFeature.COLUMN_FLOW || feature == ExportFeature.GRID_LAYOUT) {
+        if (feature == ExportFeature.COLUMN_FLOW || feature == ExportFeature.GRID_LAYOUT || feature == ExportFeature.INLINE_VECTOR) {
             throw failure(ExportException.Code.UNSUPPORTED, feature, location,
-                    "Semantic layout containers require an explicit conversion DEGRADE policy");
+                    "This feature requires an explicit conversion DEGRADE policy");
         }
         UnsupportedAction action = policy.action(feature);
         if (action == UnsupportedAction.IGNORE) { return; }
@@ -584,7 +596,9 @@ final class WebRenderer {
                 }
             } else if (item instanceof InlineField field) {
                 sourceText(field.targetId(), source); sourceText(field.style().fontRole(), source); offset++;
-            }
+            } else if (item instanceof InlineVector vector) {
+                sourceText(vector.logicalText(), source); sourceText(vector.hyperlink(), source); offset++;
+            } else { throw failure(ExportException.Code.UNSUPPORTED, ExportFeature.CUSTOM_BLOCK, source, "Unsupported inline content type"); }
         }
     }
     private void rotation(double degrees, ExportLocation location, String message) throws IOException {

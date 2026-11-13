@@ -10,6 +10,7 @@ import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.ExternalDestination;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.NumberedItem;
@@ -235,8 +236,14 @@ final class MarkdownImportMapper {
                 output.addAll(inlines(node, new Context(context.style(), destination, context.strong(), context.emphasis()), at));
             } else if (node instanceof Image image) {
                 var resource = importer.images.get(image.getDestination());
+                var vector = importer.vectors.get(image.getDestination());
                 String alt = plain(image);
-                if (resource == null) {
+                if (vector != null) {
+                    if (image.getTitle() != null && !image.getTitle().isEmpty()) { loss("IMAGE_TITLE", at, "model has no image title", "IMAGE_TITLE_REMOVED"); }
+                    String target = context.link().isEmpty() ? vector.hyperlink() : context.link();
+                    state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
+                    output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), target));
+                } else if (resource == null) {
                     if (loss("IMAGE_RESOURCE", at, "image is not explicitly registered", "IMAGE_REPLACED_WITH_ALT_TEXT") == Treatment.DEGRADE) { text(output, alt, context); }
                 } else {
                     if (image.getTitle() != null && !image.getTitle().isEmpty()) { loss("IMAGE_TITLE", at, "model has no image title", "IMAGE_TITLE_REMOVED"); }
@@ -258,6 +265,11 @@ final class MarkdownImportMapper {
             if (item instanceof InlineText run) { runs.add(run); }
             else if (item instanceof InlineImage image && loss(feature, location, "text-only model block cannot retain an image", "IMAGE_REPLACED_WITH_ALT_TEXT") == Treatment.DEGRADE) {
                 state.text(image.altText().length()); runs.add(new InlineText(image.altText(), InlineStyle.of(importer.format.fontSize()), image.hyperlink()));
+            } else if (item instanceof InlineVector vector) {
+                state.unsupported("INLINE_VECTOR", location, "heading/list cannot retain an inline vector",
+                        List.of("VECTOR_REPLACED_WITH_LOGICAL_TEXT"), Treatment.DEGRADE);
+                state.text(vector.logicalText().length());
+                runs.add(new InlineText(vector.logicalText(), InlineStyle.of(importer.format.fontSize()).toBuilder().rgb(vector.rgb()).build(), vector.hyperlink()));
             }
         }
         return runs;

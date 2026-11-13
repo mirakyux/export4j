@@ -2,6 +2,8 @@
 
 `HtmlImporter` in `export4j-adapter-web` converts an offline HTML/CSS subset into a `Document` that supports [semantic editing (Chinese)](../semantic-editing-api.md) by default. Explicit `.layoutMode(true)` compiles boxes, Flex, Grid and positioning into runtime layout components. Neither mode executes scripts or accesses files or URLs. The Export4j engine performs pagination.
 
+For input that mixes Markdown and raw HTML tables, such as MinerU output, caller code can explicitly convert it to HTML and import it strictly through this entry point. See [literature PDF integration (Chinese)](../literature-pdf-integration.md) for local image registration, merged-table widths, figure/caption pagination and mathematical-content limits.
+
 ```java
 import com.mirakyux.export4j.adapter.web.HtmlImporter;
 import com.mirakyux.export4j.model.edit.DocumentEditor;

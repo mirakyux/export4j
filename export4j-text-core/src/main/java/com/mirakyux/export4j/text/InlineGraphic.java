@@ -11,6 +11,8 @@ import java.util.Objects;
 public record InlineGraphic(double width, double ascent, double descent, TextOutline ink) {
     public InlineGraphic {
         Objects.requireNonNull(ink, "ink");
+        // The logical reading text describes this one atomic source marker.
+        if (ink.sourceLength() != 1) { ink = new TextOutline(ink.logicalText(), ink.segments(), ink.rgb(), 1); }
         if (!Double.isFinite(width) || width <= 0 || width > Float.MAX_VALUE
                 || !Double.isFinite(ascent) || ascent < 0 || ascent > Float.MAX_VALUE
                 || !Double.isFinite(descent) || descent < 0 || descent > Float.MAX_VALUE

@@ -57,6 +57,8 @@ The shared policy uses format key `MARKDOWN`, operation key `IMPORT` and precede
 
 Unknown nodes permit only DISCARD; no degradation representation is invented. Scripts or dangerous links are rejected even inside subtrees that will be discarded. Safe raw HTML is not interpreted for layout here.
 
+MinerU-style input often mixes Markdown with HTML tables. The default strict policy rejects `RAW_HTML`; DEGRADE produces literal HTML and does not preserve merged-cell semantics. When table semantics are required, caller code can explicitly render CommonMark to HTML and then import it strictly with `HtmlImporter`; see [literature PDF integration (Chinese)](../literature-pdf-integration.md). Diagnostic positions on this path refer to the generated HTML, not offsets in the original Markdown.
+
 ## Positions and Budgets
 
 Reports use half-open UTF-16 ranges in the original input, generated block IDs and physical cell paths. They do not echo body text or resource paths. Generated IDs use `markdown-N`; they are not guaranteed to be consecutive because containers also receive IDs.

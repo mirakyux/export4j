@@ -191,7 +191,7 @@ public final class DocxSemanticEditor {
         var keys = new ArrayList<>(DocxSemanticSupport.paragraphs(doc.body(), doc.drawings()).keySet()); int a = keys.indexOf(range.start().paragraphId()); int b = keys.indexOf(range.end().paragraphId());
         UnaryOperator<Paragraph> mapper = p -> {
             int at = keys.indexOf(p.id()); if (at < a || at > b) { return p; }
-            if (paragraphFormat != null) { return new Paragraph(p.id(), p.text(), paragraphFormat, p.inlines(), p.images(), p.fields()); }
+            if (paragraphFormat != null) { return new Paragraph(p.id(), p.text(), paragraphFormat, p.inlines(), p.images(), p.fields(), p.vectors()); }
             int start = at == a ? range.start().utf16() : 0; int end = at == b ? range.end().utf16() : p.text().length();
             var values = new ArrayList<InlineContent>(); int offset = 0;
             for (var content : p.content()) { int len = content instanceof InlineText text ? text.text().length() : 1;

@@ -67,7 +67,7 @@ final class TextEdits {
             if (offset < end && offset + length > start) {
                 if (!(content instanceof InlineText text)) {
                     state.unsupported("INLINE_OBJECT_BOUNDARY", "INLINE_STYLE", location.range(start, end),
-                            "style range overlaps an atomic image or field", List.of("MATCH_NOT_STYLED"),
+                            "style range overlaps an atomic inline object", List.of("MATCH_NOT_STYLED"),
                             Treatment.SKIP_MATCH, Treatment.SKIP_BLOCK, Treatment.SKIP_REQUEST);
                     return source;
                 }
@@ -100,7 +100,7 @@ final class TextEdits {
             var range = location.range(start, end);
             int matchStart = start;
             var matching = spans.stream().filter(span -> span.start() < end && span.end() > matchStart).toList();
-            // Literal text never consumes an image or a field, even under a degrading policy.
+            // Literal text never consumes an inline object, even under a degrading policy.
             boolean object = matching.stream().anyMatch(span -> !(span.content() instanceof InlineText));
             InlineText first = matching.isEmpty() || !(matching.getFirst().content() instanceof InlineText text) ? null : text;
             boolean mixed = !object && first != null && matching.stream().anyMatch(span -> {
@@ -114,7 +114,7 @@ final class TextEdits {
                         Treatment.SKIP_MATCH, Treatment.SKIP_BLOCK, Treatment.SKIP_REQUEST);
             } else if (object || mixed) {
                 treatment = object ? state.unsupported("INLINE_OBJECT_BOUNDARY", "REPLACE_TEXT", range,
-                        "literal replacement overlaps an atomic image or field", List.of("MATCH_NOT_REPLACED"),
+                        "literal replacement overlaps an atomic inline object", List.of("MATCH_NOT_REPLACED"),
                         Treatment.SKIP_MATCH, Treatment.SKIP_BLOCK, Treatment.SKIP_REQUEST)
                     : state.unsupported("MIXED_RUN_STYLE", "REPLACE_TEXT", range,
                         "replacement spans different styles or hyperlinks", List.of("REPLACEMENT_USES_FIRST_RUN_STYLE_AND_LINK"),

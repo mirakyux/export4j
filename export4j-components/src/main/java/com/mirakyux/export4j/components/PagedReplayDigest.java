@@ -138,6 +138,7 @@ final class PagedReplayDigest {
         else if (value instanceof Character character) { output.writeChar(character); }
         else if (value instanceof Enum<?> enumeration) { string(enumeration.name()); }
         else if (value instanceof ImageResource image) { string(image.id()); string(image.mediaType()); }
+        else if (value instanceof com.mirakyux.export4j.model.VectorResource vector) { string(vector.id()); }
         else if (value instanceof RgbImage image) { string(image.id()); output.writeInt(image.width()); output.writeInt(image.height()); }
         else if (value instanceof FontData font) { string(font.id()); output.writeBoolean(font.subsetAllowed()); }
         else if (value instanceof IccColor color) { string(color.id()); encode(color.components(), depth + 1); }
@@ -160,7 +161,7 @@ final class PagedReplayDigest {
             if (cell.hasBlocks()) { encode(cell.blocks(), depth + 1); }
             else {
                 encode(cell.text(), depth + 1); encode(cell.inlines(), depth + 1);
-                encode(cell.images(), depth + 1); encode(cell.fields(), depth + 1);
+                encode(cell.images(), depth + 1); encode(cell.fields(), depth + 1); encode(cell.vectors(), depth + 1);
             }
         } else if (value.getClass().isRecord() && value.getClass().getPackageName().startsWith("com.mirakyux.export4j.")) {
             var components = COMPONENTS.get(value.getClass());

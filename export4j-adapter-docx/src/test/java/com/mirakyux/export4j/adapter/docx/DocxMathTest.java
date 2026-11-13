@@ -9,11 +9,13 @@ import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
+import com.mirakyux.export4j.model.VectorResource;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -83,6 +85,26 @@ class DocxMathTest {
         assertEquals(0, xml(write(source)).getElementsByTagNameNS(M, "oMathPara").getLength());
         assertThrows(IllegalArgumentException.class, () -> document(List.of(paragraph), List.of(
                 equation("bad", "inline", 4, DocxMathDocument.Placement.DISPLAY_CENTER, run("x")))));
+    }
+
+    @Test void nativeEquationsCannotClaimVectorMarkersAndWriteRejectsTheirGeometry() {
+        var resource = VectorResource.of(10, 8, 2, List.of(
+                new VectorResource.Segment(VectorResource.Operation.MOVE, List.of(0.0, -8.0)),
+                new VectorResource.Segment(VectorResource.Operation.LINE, List.of(10.0, 2.0))));
+        var vector = new InlineVector(resource, "VECTOR");
+        var paragraph = Paragraph.mixed("vector-and-math", List.of(vector,
+                new InlineText(" \ufffc", InlineStyle.of(18))), ParagraphFormat.of(18));
+        var collision = assertThrows(IllegalArgumentException.class, () -> document(List.of(paragraph), List.of(
+                equation("collision", paragraph.id(), 0, DocxMathDocument.Placement.INLINE, run("x")))));
+        assertEquals("equation must own a unique ordinary object marker", collision.getMessage());
+        var source = document(List.of(paragraph), List.of(
+                equation("actual-math", paragraph.id(), 2, DocxMathDocument.Placement.INLINE, run("x"))));
+        var output = new ByteArrayOutputStream();
+        var failure = assertThrows(IOException.class, () -> ADAPTER.writeMath(source, output));
+        assertTrue(failure.getMessage().contains("inline vectors require an explicit conversion loss policy"));
+        assertEquals(0, output.size());
+        assertEquals(vector, ((Paragraph) source.semantic().body().sections().getFirst().blocks().getFirst())
+                .vectors().getFirst().vector());
     }
 
     @Test void nativeSettingsRunStylesAndNthRootsRemainTyped() throws IOException {

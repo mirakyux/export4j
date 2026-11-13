@@ -47,6 +47,25 @@ public final class InlineLinkGeometry {
                                     item.width(), item.height()), new ExternalDestination(item.hyperlink())), image.sourceIndex());
                 }
             }
+            if (!line.glyphRunBoxes().isEmpty()) {
+                for (var box : line.glyphRunBoxes()) {
+                    double glyphX = x + box.x();
+                    int source = box.sourceStart();
+                    for (var glyph : box.run().glyphs()) {
+                        ExecutionContext.checkpoint();
+                        int end = source + Character.charCount(text.codePointAt(source));
+                        for (var range : targets) {
+                            if (source < range.end() && end > range.start() && glyph.advance() > 0) {
+                                sink.accept(new DocumentExtras.ExternalLink(pageIndex,
+                                        new Rect(glyphX, y, glyph.advance(), lineHeight), range.target()), source);
+                            }
+                        }
+                        glyphX += glyph.advance();
+                        source = end;
+                    }
+                }
+                continue;
+            }
             int source = line.sourceStart();
             for (var run : line.runs()) {
                 for (var glyph : run.glyphs()) {
@@ -63,7 +82,7 @@ public final class InlineLinkGeometry {
             }
             for (var outline : line.outlines()) {
                 ExecutionContext.checkpoint();
-                int end = source + outline.logicalText().length();
+                int end = source + outline.sourceLength();
                 double left = Double.POSITIVE_INFINITY;
                 double right = Double.NEGATIVE_INFINITY;
                 for (var segment : outline.segments()) {

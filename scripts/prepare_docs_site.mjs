@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Prepare tracked project documentation for the public VitePress site.
+// Prepare tracked documentation and explicitly selected public guides.
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,10 +12,18 @@ const repository = 'https://github.com/mirakyux/export4j';
 const tracked = new Set(execFileSync('git', ['ls-files', '-z'], {
   cwd: root, encoding: 'utf8',
 }).split('\0').filter(Boolean));
+const available = new Set(execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+  cwd: root, encoding: 'utf8',
+}).split('\0').filter(Boolean));
+// New source files may be linked during preview, without admitting arbitrary
+// untracked notes or ignored local artifacts into the public documentation.
+const repositoryFiles = new Set([...tracked, ...[...available].filter(name =>
+  /^(?:export4j-[^/]+|examples)\/src\/(?:main|test)\/java\/.+\.java$/.test(name)
+    || /^scripts\/[^/]+\.(?:mjs|py|ps1)$/.test(name))]);
 const documents = new Set([...tracked].filter(name => name.startsWith('docs/') && name.endsWith('.md')));
 const sidebarGuides = new Set(guideGroups.flatMap(group => group.items.map(item => item.name)));
 const apiGuides = (await readdir(path.join(root, 'docs'), { withFileTypes: true }))
-  .filter(entry => entry.isFile() && entry.name.endsWith('-api.md'))
+  .filter(entry => entry.isFile() && entry.name.endsWith('-api.md') && available.has(`docs/${entry.name}`))
   .map(entry => entry.name.slice(0, -3));
 const missingSidebarGuides = apiGuides.filter(name => !sidebarGuides.has(name)).sort();
 if (missingSidebarGuides.length) {
@@ -28,15 +36,19 @@ const quickstarts = new Map([
   ['README.zh-CN.md', '/zh/getting-started.md'],
 ]);
 
-// These public guides and assets are included before their first commit as well.
-for (const name of ['docs/faq.md', 'docs/faq.zh-CN.md', 'docs/documentation-site.md']) {
-  await stat(path.join(root, name));
+// Navigation is an explicit public selection, independent of staging. Keep
+// non-navigation additions listed here, rather than copying all local notes.
+const publicGuides = new Set([
+  'docs/faq.md', 'docs/faq.zh-CN.md', 'docs/documentation-site.md',
+  'docs/literature-pdf-integration.md',
+  'docs/verification/inline-vectors.md',
+  ...[...sidebarGuides].map(name => `docs/${name}.md`),
+  ...translatedGuides.map(name => `docs/en/${name}.md`),
+]);
+for (const name of publicGuides) {
+  if (!available.has(name)) throw new Error(`Public guide is missing or ignored by Git: ${name}`);
+  if (!(await stat(path.join(root, name))).isFile()) throw new Error(`Public guide is not a file: ${name}`);
   documents.add(name);
-}
-for (const name of translatedGuides) {
-  const source = `docs/en/${name}.md`;
-  await stat(path.join(root, source));
-  documents.add(source);
 }
 const showcase = 'site/pages/public/showcase/README.md';
 await stat(path.join(root, showcase));
@@ -101,8 +113,8 @@ function within(parent, candidate) {
 }
 
 function repositoryUrl(name, fragment) {
-  const isDirectory = [...tracked].some(entry => entry.startsWith(`${name}/`));
-  if (!tracked.has(name) && !isDirectory) {
+  const isDirectory = [...repositoryFiles].some(entry => entry.startsWith(`${name}/`));
+  if (!repositoryFiles.has(name) && !isDirectory) {
     throw new Error(`Documentation references an untracked repository path: ${name}`);
   }
   const encoded = name.split('/').map(encodeURIComponent).join('/');

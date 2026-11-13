@@ -66,7 +66,7 @@ python scripts/audit_dependencies.py
 
 2026-10-16 XML 静态页面配置由项目自主实现，继续使用既有模型、JDK XML 和输出后端，没有新增直接／传递依赖、字体或第三方资源。`page-settings.xml`、合成报告数据、样例、测试与独立检查脚本采用 Apache-2.0，沿用已登记的 Liberation Sans。见[阶段三十六](verification/phase-36-xml-page-settings.md)。
 
-本文件管理候选技术、实际依赖和非代码资源。当前已采用 Gradle 9.4.1、PDFBox / FontBox 3.0.8 和 JUnit 6.1.3；实际解析坐标由各模块 `gradle.lockfile` 固定。
+本文件管理候选技术、实际依赖和非代码资源。当前已采用 Gradle 9.4.1、官方 PDFBox / FontBox 3.0.8 和 JUnit 6.1.3；实际解析坐标由各模块 `gradle.lockfile` 固定。
 
 ## 候选技术
 
@@ -103,7 +103,7 @@ python scripts/audit_dependencies.py
 
 ## 正式依赖记录
 
-完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 24 个 Maven 坐标，包含 BOM 与测试依赖；平台原生分类制品另见 `third-party/native-artifacts.csv`。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
+完整清单见[依赖坐标与证据](../third-party/dependencies.csv)，共 25 个 Maven 坐标，包含 BOM 与测试依赖；平台原生分类制品另见 `third-party/native-artifacts.csv`。原始许可证及归属文件保存在[许可证目录](../third-party/licenses)。当前未引入外部 Gradle 插件。
 
 | 依赖 | 版本 | 范围 | 许可依据与处理 |
 | --- | --- | --- | --- |

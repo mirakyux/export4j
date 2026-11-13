@@ -52,7 +52,7 @@ var source = new Document(DocumentMetadata.EMPTY, PageSettings.A4,
 | --- | --- |
 | `ColumnWidth.Fixed(points)` | 固定正宽度，单位 point |
 | `ColumnWidth.Fraction(weight)` | 正权重，按比例分配扣除固定列后的内容宽度 |
-| `ColumnWidth.Auto(minPoints, maxPoints)` | 按内容估算首选宽度，页面不足时收缩至下限；测量探测不重复计入输出行预算 |
+| `ColumnWidth.Auto(minPoints, maxPoints)` | 按内容估算首选宽度，页面不足时收缩至有效下限；无比例列时额外保留行内图片／字段原子宽度，见[自动列约束](automatic-merged-columns-api.md)；探测不重复计入输出行预算 |
 | 全部为固定列 | 保持固定总宽度，左对齐，不自动拉伸 |
 | `CellFormat(fontSize, lineHeight, alignment)` | 独立字号、固定基线间距及左／中／右对齐 |
 | `TableFormat(padding, spaceBefore, spaceAfter)` | 全表统一单元格内边距，以及表格块前后间距 |

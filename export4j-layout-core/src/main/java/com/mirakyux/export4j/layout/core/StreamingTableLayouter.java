@@ -131,6 +131,8 @@ public final class StreamingTableLayouter {
         private long sourceCells;
         private long sourceSlots;
         private long sourceCodePoints;
+        private long sourceVectorSegments;
+        private long sourceVectorBytes;
         private long outputLines;
         private long diagnosticCount;
         private long outputLinks;
@@ -314,6 +316,25 @@ public final class StreamingTableLayouter {
                     offset += Character.charCount(cell.text().codePointAt(offset));
                     cellPoints++; rowPoints++; sourceCodePoints++;
                 }
+                for (var span : cell.vectors()) {
+                    ExecutionContext.checkpoint();
+                    var vector = span.vector();
+                    int points = vector.logicalText().codePointCount(0, vector.logicalText().length());
+                    if (points > limits.maxCellCodePoints() - cellPoints || points > limits.maxRowCodePoints() - rowPoints
+                            || points > limits.document().maxCodePoints() - sourceCodePoints
+                            || coveredUntil != null && points > limits.maxBufferedCodePoints() - (sourceCodePoints - groupStartCodePoints)) {
+                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, span.sourceIndex(),
+                                "streaming vector logical text budget exceeded", null);
+                    }
+                    cellPoints += points; rowPoints += points; sourceCodePoints += points;
+                    // Count occurrences conservatively; do not retain an unbounded resource-ID set across a stream.
+                    sourceVectorSegments += vector.resource().segmentCount();
+                    sourceVectorBytes += vector.resource().byteSize();
+                    if (sourceVectorSegments > 5_000_000 || sourceVectorBytes > 64L * 1024 * 1024) {
+                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, span.sourceIndex(),
+                                "streaming vector source geometry budget exceeded", null);
+                    }
+                }
                 column += cell.columnSpan();
             }
             boolean uncovered = coveredUntil == null ? column != table.columnWidths().size() : false;
@@ -341,7 +362,7 @@ public final class StreamingTableLayouter {
                 ParagraphLayout measured;
                 try {
                     double cellWidth = columnWidth - table.padding().left() - table.padding().right();
-                    if (cell.inlines().isEmpty() && cell.images().isEmpty() && cell.fields().isEmpty()) {
+                    if (cell.inlines().isEmpty() && cell.images().isEmpty() && cell.fields().isEmpty() && cell.vectors().isEmpty()) {
                         measured = text.layout(cell.text(), fonts, cellWidth, style);
                     } else {
                         var spans = new ArrayList<StyledSpan>(cell.inlines().size());
@@ -359,7 +380,7 @@ public final class StreamingTableLayouter {
                                 java.util.stream.Collectors.toMap(com.mirakyux.export4j.model.Paragraph.ImageSpan::sourceIndex,
                                         com.mirakyux.export4j.model.Paragraph.ImageSpan::image)), cell.fields().stream().collect(
                                 java.util.stream.Collectors.toMap(com.mirakyux.export4j.model.Paragraph.FieldSpan::sourceIndex,
-                                        com.mirakyux.export4j.model.Paragraph.FieldSpan::field)));
+                                        com.mirakyux.export4j.model.Paragraph.FieldSpan::field)), InlineVectors.graphics(cell.vectors()));
                     }
                 } catch (TextLayoutException cause) {
                     var code = cause.code() == TextLayoutException.Code.BUDGET_EXCEEDED
@@ -588,7 +609,7 @@ public final class StreamingTableLayouter {
                     }
                 }
                 lines.add(new com.mirakyux.export4j.text.TextLine(line.sourceStart(), line.sourceEnd(), line.offsetX(),
-                        line.baselineY(), line.width(), line.runs(), ink, line.images()));
+                        line.baselineY(), line.width(), line.runs(), ink, line.images(), List.of(), line.glyphRunBoxes()));
             }
             return new ParagraphLayout(source.width(), source.height(), lines, source.diagnostics());
         }

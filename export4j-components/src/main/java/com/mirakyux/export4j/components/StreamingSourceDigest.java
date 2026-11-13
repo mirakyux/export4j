@@ -50,13 +50,14 @@ final class StreamingSourceDigest {
         else if (value instanceof Boolean flag) { output.writeBoolean(flag); }
         else if (value instanceof Enum<?> enumeration) { string(enumeration.name()); }
         else if (value instanceof ImageResource image) { string(image.id()); string(image.mediaType()); }
+        else if (value instanceof com.mirakyux.export4j.model.VectorResource vector) { string(vector.id()); }
         else if (value instanceof List<?> list) {
             // Implementation class names are deliberately excluded: equivalent immutable lists hash identically.
             output.writeInt(list.size()); for (var entry : list) { encode(entry, depth + 1); }
         } else if (value instanceof TableCell cell) {
             encode(cell.format(), depth + 1); output.writeInt(cell.columnSpan()); output.writeInt(cell.rowSpan()); output.writeBoolean(cell.hasBlocks());
             if (cell.hasBlocks()) { encode(cell.blocks(), depth + 1); }
-            else { encode(cell.text(), depth + 1); encode(cell.inlines(), depth + 1); encode(cell.images(), depth + 1); encode(cell.fields(), depth + 1); }
+            else { encode(cell.text(), depth + 1); encode(cell.inlines(), depth + 1); encode(cell.images(), depth + 1); encode(cell.fields(), depth + 1); encode(cell.vectors(), depth + 1); }
         } else if (value.getClass().isRecord() && value.getClass().getPackageName().equals("com.mirakyux.export4j.model")) {
             try {
                 for (var component : value.getClass().getRecordComponents()) { string(component.getName()); encode(component.getAccessor().invoke(value), depth + 1); }

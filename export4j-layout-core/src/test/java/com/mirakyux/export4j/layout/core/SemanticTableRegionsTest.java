@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,12 +36,14 @@ import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.ParagraphAlignment;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableFormat;
 import com.mirakyux.export4j.model.TableRow;
+import com.mirakyux.export4j.model.VectorResource;
 import com.mirakyux.export4j.text.GlyphRun;
 import com.mirakyux.export4j.text.ParagraphLayouter;
 import com.mirakyux.export4j.text.SimpleTextShaper;
@@ -180,6 +183,34 @@ class SemanticTableRegionsTest {
         assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, lineFailure.code());
         assertEquals(0, lineFailure.rowIndex());
         assertEquals(4, layouter(new DocumentLayoutLimits(1, 5, 8, 4)).layoutTableRegions(table, context(100, 20), regions).size());
+    }
+
+    @Test
+    void variableWidthsChargeVectorReadingTextOnEveryPreparedAlternative() {
+        var resource = VectorResource.of(1, 1, 0, List.of(new VectorResource.Segment(
+                VectorResource.Operation.MOVE, List.of(0.0, 0.0))));
+        var format = new CellFormat(10, 20, ParagraphAlignment.LEFT);
+        var shortCell = TableCell.mixed(Collections.nCopies(40, new InlineVector(resource, "x")), format);
+        var longCell = TableCell.mixed(Collections.nCopies(40, new InlineVector(resource, "x".repeat(1024))), format);
+        var shortTable = table("short-vector-work", Collections.nCopies(12, new TableRow(List.of(shortCell))), 0, WHOLE_ROWS);
+        var longTable = table("long-vector-work", Collections.nCopies(12, new TableRow(List.of(longCell))), 0, WHOLE_ROWS);
+        var context = new ComponentContext(100, 20, List.of(physical), 0, 0);
+        var regions = new FlowRegions(List.of(), 20);
+        var widths = IntStream.range(80, 92).mapToObj(value -> (double) value).toList();
+        var layouter = new DocumentLayouter();
+
+        // Identical geometry and source markers fit one complete row per distinct width.
+        assertEquals(12, layouter.layoutTableRegions(shortTable, context, regions, widths).size());
+        assertEquals(480, longTable.rows().stream().mapToInt(row -> row.cells().getFirst().text().length()).sum());
+        // One source pass fits the ordinary million-code-point limit. Repeated preparation must
+        // charge the 1,024-unit reading text even though each vector has only one MOVE segment.
+        var failure = assertThrows(DocumentLayoutException.class,
+                () -> layouter.layoutTableRegions(longTable, context, regions, widths));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
+        assertEquals("long-vector-work", failure.blockId());
+        assertEquals(8, failure.rowIndex());
+        assertEquals(0, failure.sourceIndex());
+        assertTrue(failure.getMessage().contains("variable table measurement source-unit budget exceeded"));
     }
 
     @Test

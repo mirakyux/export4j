@@ -57,6 +57,8 @@ var losses = imported.report().losses();
 
 未知节点仅允许 DISCARD，不能虚构降级表示。脚本或危险链接即使在将被丢弃的子树内也拒绝；安全原始 HTML 不在这里解释布局。
 
+MinerU 等输入常混有 HTML 表格。默认严格模式会对 `RAW_HTML` 报错；选择 DEGRADE 只得到字面 HTML，不能保留合并格。需要表格语义时，可由调用方显式将 CommonMark 渲染为 HTML，再交给 `HtmlImporter` 严格导入，见[文献 PDF 接入](literature-pdf-integration.md)。这条路径的诊断位置属于生成后的 HTML，不是原 Markdown 偏移。
+
 ## 位置与预算
 
 报告使用原始输入的半开 UTF-16 范围、生成块 ID 和物理格路径，不回显正文或资源路径。生成 ID 为 `markdown-N`；由于容器也分配 ID，不保证连续。

@@ -11,6 +11,7 @@ from zipfile import ZipFile
 from docx import Document
 from PIL import Image
 from pypdf import PdfReader
+import pypdfium2 as pdfium
 from verify_advanced_pdf import require, render_poppler, render_pdfium, difference
 from verify_production import actual_text, contact_sheet
 
@@ -65,11 +66,29 @@ def main():
             for field in ("x", "y", "width", "height"):
                 require(abs(actual[field]-wanted[field]) < .002, f"image {field} changed during rendering")
         require(any(image["alpha"] for image in images), "PNG transparency lost")
-        logical = "\n".join(actual_text(reader))
-        require(logical.count("\ufffc") == len(images), "logical image marker count differs")
+        # Safe mixed lines now contain native PDF text; complex shaping still uses ActualText.
+        # PDFium combines both representations in stream order instead of dropping native runs.
+        with pdfium.PdfDocument(path) as document:
+            parts = []
+            for index in range(len(document)):
+                page = document[index]
+                try:
+                    textpage = page.get_textpage()
+                    try:
+                        parts.append(textpage.get_text_bounded())
+                    finally:
+                        textpage.close()
+                finally:
+                    page.close()
+            logical = "\n".join(parts)
+        require("\n".join(actual_text(reader)).count("\ufffc") == len(images), "logical image marker count differs")
         for prefix, count in (("FLOW", 18), ("CELL", 12)):
             require(re.findall(rf"{prefix}-(\d{{2}})", logical) == [f"{i:02d}" for i in range(1, count+1)], "body source lost, duplicated or reordered")
         require("العربية" in logical and "a\u0301" in logical, "bidi or combining source changed")
+        ordinary = "\n".join(page.extract_text() or "" for page in reader.pages)
+        for prefix, count in (("FLOW", 18), ("CELL", 12)):
+            require(re.findall(rf"{prefix}-(\d{{2}})", ordinary) == [f"{i:02d}" for i in range(1, count+1)],
+                    "ordinary PDF extraction lost or duplicated directly mapped mixed text")
         links = [(index, ref.get_object()) for index, page in enumerate(reader.pages) for ref in page.get("/Annots", [])]
         require(len(links) == expected["links"], "image hyperlink count differs")
         for page, link in links:
@@ -79,9 +98,9 @@ def main():
                         and abs(image["y"]-(480-top)) < .002 and abs(image["width"]-(right-left)) < .002
                         and abs(image["height"]-(top-bottom)) < .002 for image in images), "image hyperlink misses image bounds")
         poppler = render_poppler(path, OUTPUT / name / "poppler")
-        pdfium = render_pdfium(path, OUTPUT / name / "pdfium")
-        require(len(poppler) == len(pdfium) == expected["pages"], "independent page counts differ")
-        metrics = [difference(a, b, 1) for a, b in zip(poppler, pdfium)]
+        pdfium_pages = render_pdfium(path, OUTPUT / name / "pdfium")
+        require(len(poppler) == len(pdfium_pages) == expected["pages"], "independent page counts differ")
+        metrics = [difference(a, b, 1) for a, b in zip(poppler, pdfium_pages)]
         require(all(m["meanAbsoluteChannelError"] < 4 and m["changedPixelFraction"] < .06 for m in metrics), "independent renderers disagree")
         rendered[name] = poppler
         contacts.extend((f"{name} page {i+1}", p) for i, p in enumerate(poppler))

@@ -13,6 +13,7 @@ from zipfile import ZipFile
 
 import verify_distributed_libraries as libraries
 import verify_embedded_png_recovery as png
+import verify_maven_consumer as consumer_verification
 import verify_streaming_replay_capacity as capacity
 import verify_xml_cross_reference_saving as references
 
@@ -95,16 +96,25 @@ class CapacityEvidenceTest(unittest.TestCase):
 
 
 class DistributedLibrariesTest(unittest.TestCase):
-    def fixture(self, root, count=16):
-        payloads = {f"export4j-fixture-{index}-0.1.0.jar": f"library-{index}".encode() for index in range(count)}
-        components = [{"group": "com.mirakyux.export4j", "name": name.removesuffix("-0.1.0.jar"),
-                       "version": "0.1.0", "hashes": [{"alg": "SHA-256", "content": hashlib.sha256(payload).hexdigest()}]}
+    def fixture(self, root, count=16, version="0.1.0", resolved_version=None):
+        filename_version = resolved_version or version
+        payloads = {f"export4j-fixture-{index}-{filename_version}.jar": f"library-{index}".encode() for index in range(count)}
+        components = [{"group": "com.mirakyux.export4j", "name": name.removesuffix(f"-{filename_version}.jar"),
+                       "version": version, "hashes": [{"alg": "SHA-256", "content": hashlib.sha256(payload).hexdigest()}]}
                       for name, payload in payloads.items()]
         sbom = root / "build/reports/sbom.cdx.json"
         sbom.parent.mkdir(parents=True)
         sbom.write_text(json.dumps({"components": components}), encoding="utf-8")
         consumer = root / "consumer"
         (consumer / "distributions").mkdir(parents=True)
+        cache = root / "cache"
+        cache.mkdir()
+        records = []
+        for component, (name, payload) in zip(components, payloads.items(), strict=True):
+            resolved = cache / name
+            resolved.write_bytes(payload)
+            records.append(f'{component["group"]}:{component["name"]}:{version}\t{resolved}')
+        (consumer / "resolved-library-files.txt").write_text("\n".join(records) + "\n", encoding="utf-8")
         self.archive(consumer, payloads)
         return consumer, sbom, payloads
 
@@ -138,6 +148,22 @@ class DistributedLibrariesTest(unittest.TestCase):
                 with patch.object(libraries, "check_bundle"), self.assertRaises(AssertionError):
                     libraries.distributed_libraries(consumer, root)
 
+    def test_canonical_and_timestamped_snapshot_names_keep_current_bytes(self):
+        for resolved in (None, "0.1.0-20261112.132841-93"):
+            with self.subTest(resolved=resolved), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                consumer, _, _ = self.fixture(root, version="0.1.0-SNAPSHOT", resolved_version=resolved)
+                with patch.object(libraries, "check_bundle"):
+                    self.assertEqual(16, libraries.distributed_libraries(consumer, root))
+
+    def test_modified_runtime_library_is_rejected_even_when_bundle_is_current(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            consumer, _, _ = self.fixture(root)
+            next((root / "cache").glob("*.jar")).write_bytes(b"stale runtime")
+            with patch.object(libraries, "check_bundle"), self.assertRaisesRegex(AssertionError, "resolved caller JARs differ"):
+                libraries.distributed_libraries(consumer, root)
+
     def test_empty_duplicate_or_malformed_current_sbom_fails(self):
         for change in ("empty", "duplicate", "hash"):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary:
@@ -149,6 +175,69 @@ class DistributedLibrariesTest(unittest.TestCase):
                 sbom.write_text(json.dumps(source), encoding="utf-8")
                 with patch.object(libraries, "check_bundle"), self.assertRaises(AssertionError):
                     libraries.distributed_libraries(consumer, root)
+
+
+class CoordinateConsumerEvidenceTest(unittest.TestCase):
+    def fixture(self, root, timestamped=False, change=None):
+        source = root / "verification/consumer"
+        (source / "src").mkdir(parents=True)
+        for name in ("settings.gradle.kts", "build.gradle.kts", "gradle.lockfile"):
+            (source / name).write_text("fixture", encoding="utf-8")
+        (root / "assets").mkdir()
+        (root / "gradle").mkdir()
+        (root / "gradle/native-platform.gradle.kts").write_text("fixture", encoding="utf-8")
+        repository = root / "repository"
+        cache = root / "cache"
+        cache.mkdir()
+        version, snapshot = "0.1.0-SNAPSHOT", "0.1.0-20261112.132841-93"
+        records, hashes = [], []
+        for index in range(16):
+            artifact = f"export4j-fixture-{index}"
+            identity = f"com.mirakyux.export4j:{artifact}:{version}"
+            directory = repository / "com/mirakyux/export4j" / artifact / version
+            directory.mkdir(parents=True)
+            payload = f"current staged library {index}".encode()
+            (directory / f"{artifact}-{snapshot}.jar").write_bytes(payload)
+            (directory / "maven-metadata.xml").write_text(
+                "<metadata><versioning><snapshotVersions><snapshotVersion><extension>jar</extension>"
+                f"<value>{snapshot}</value></snapshotVersion></snapshotVersions></versioning></metadata>", encoding="utf-8")
+            filename = f"{artifact}-{snapshot if timestamped else version}.jar"
+            if index == 0 and change == "classifier":
+                filename = f"{artifact}-{snapshot}-sources.jar"
+            path = cache / filename
+            path.write_bytes(b"stale runtime" if index == 0 and change == "runtime" else payload)
+            records.append(identity + "\t" + str(path))
+            hashes.append(identity + "\t" + filename + "\t" + hashlib.sha256(payload).hexdigest())
+        libraries_report = [row.split("\t")[0] for row in records]
+        if change == "missing":
+            records.pop()
+        if change == "duplicate":
+            hashes.append(hashes[0])
+        if change == "extra":
+            libraries_report.append(f"com.mirakyux.export4j:export4j-extra:{version}")
+        output = root / "output"
+
+        def execute(*args):
+            build = output / "consumer-project/verification/consumer/build"
+            build.mkdir()
+            for name, rows in {"resolved-libraries.txt": libraries_report,
+                               "resolved-components.txt": libraries_report + [f"com.mirakyux.export4j:export4j-bom:{version}"],
+                               "resolved-library-sha256.txt": hashes,
+                               "resolved-library-files.txt": records}.items():
+                (build / name).write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+        with patch.object(consumer_verification, "execute", side_effect=execute):
+            return consumer_verification.consume_once(root, output, repository, version, "natives-windows", ["unused-gradle"])
+
+    def test_canonical_and_timestamped_snapshots_compare_actual_resolved_bytes(self):
+        for timestamped in (False, True):
+            with self.subTest(timestamped=timestamped), tempfile.TemporaryDirectory() as temporary:
+                self.assertEqual(16, self.fixture(Path(temporary), timestamped)["consumerJarHashesVerified"])
+
+    def test_wrong_classifier_stale_runtime_and_incomplete_or_extra_evidence_fail(self):
+        for change in ("classifier", "runtime", "missing", "duplicate", "extra"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary, self.assertRaises(ValueError):
+                self.fixture(Path(temporary), True, change)
 
 
 if __name__ == "__main__":

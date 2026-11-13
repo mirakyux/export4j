@@ -95,6 +95,42 @@ class EmbeddedTextTest {
     }
 
     @Test
+    void mixedInlineImagesKeepNativeChineseTextAndOriginalGlyphPositions() throws IOException {
+        var encoded = new ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2, 2,
+                java.awt.image.BufferedImage.TYPE_INT_RGB), "png", encoded);
+        var image = new com.mirakyux.export4j.model.InlineImage(
+                com.mirakyux.export4j.model.ImageResource.load(encoded.toByteArray()), 24, 12, 0, "formula");
+        var group = com.mirakyux.export4j.font.FontGroup.strict(List.of(latin, chinese));
+        var span = new com.mirakyux.export4j.text.StyledSpan("年龄\ufffcDN病程", group, 12, 0, 0, false, false);
+        var layout = new ParagraphLayouter().layout(List.of(span), 240, ParagraphStyle.of(12), java.util.Map.of(2, image));
+        assertFalse(layout.lines().getFirst().glyphRunBoxes().isEmpty());
+        var builder = new DisplayListBuilder(SIZE);
+        TextLayoutPainter.draw(builder, layout, new Point(20, 30), RgbColor.BLACK);
+        var page = builder.build();
+        assertEquals(1, page.commands().stream().filter(DrawCommand.Image.class::isInstance).count());
+        assertEquals(List.of("\ufffc"), page.commands().stream().filter(DrawCommand.OutlineText.class::isInstance)
+                .map(DrawCommand.OutlineText.class::cast).map(DrawCommand.OutlineText::logicalText).toList());
+        assertFalse(page.commands().stream().anyMatch(DrawCommand.FillPath.class::isInstance));
+        try (var pdf = Loader.loadPDF(render(new PdfBackend(), document(page)))) {
+            var collector = new PositionCollector();
+            String extracted = collector.getText(pdf);
+            assertTrue(extracted.contains("年龄"), extracted);
+            assertTrue(extracted.contains("DN病程"), extracted);
+            for (var box : layout.lines().getFirst().glyphRunBoxes()) {
+                double x = 20 + box.x();
+                for (var glyph : box.run().glyphs()) {
+                    String character = new String(Character.toChars(glyph.codePoint()));
+                    var position = collector.positions.stream().filter(value -> value.getUnicode().equals(character))
+                            .findFirst().orElseThrow();
+                    assertEquals(x, position.getXDirAdj(), .001);
+                    x += glyph.advance();
+                }
+            }
+        }
+    }
+
+    @Test
     void honorsExplicitAdvanceWithoutRemeasuringAndReusesFontAcrossPages() throws IOException {
         PositionedGlyph a = new SimpleTextShaper().shape("A", List.of(latin), 12).glyphs().getFirst().glyph();
         GlyphRun spaced = new GlyphRun(latin.data(), 12, List.of(

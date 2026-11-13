@@ -10,7 +10,7 @@
 
 `0.1.0-rc.2` 已发布到 Maven Central，16 个库与 BOM 可按该版本消费；[手动发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)成功完成构建、签名、上传、远端验证及 GitHub Release，见[发布记录与流程](releasing.md#已发布候选记录)。当前 API 门禁使用从 Central RC2 库 JAR 提取的[已发布基线](api-compatibility.md)。GAP-14.3 继续保留稳定 API、稳定版验收和后续版本的兼容要求。下文历史阶段的未发布说明仅对应当时批次。
 
-学术模板新增的[数学子集](docx-math-api.md)另行登记：DOCX 使用有类型 OMML，PDF／SVG 示例使用受限 TeX 矢量排版，具体证据见[ManuWeave 验收](verification/manuweave-templates.md)。这不扩大 GAP-12 已验收范围为任意 Word 数学扩展，也不代表通用文档模型已有跨格式公式节点、TeX↔OMML 转换器或完整 LaTeX 执行器。
+学术模板新增的[数学子集](docx-math-api.md)另行登记：DOCX 使用有类型 OMML，PDF／SVG 示例使用受限 TeX 矢量排版，具体证据见[ManuWeave 验收](verification/manuweave-templates.md)。[行内矢量资源](inline-vectors-api.md)进一步提供调用方生成轮廓的通用模型入口及显式 HTML／Markdown 注册；它是有界绘制资源，不是公式语义树。DOCX／Web 必须明确降为逻辑文字，XML v1 拒绝保存，不扩大 GAP-12 为任意 Word 数学、TeX↔OMML 或完整 LaTeX 执行器；新增混排的真实文献验收与既有样张分开记录。
 
 [可编辑正文分栏](column-flow-api.md)另行提供 ColumnFlow／XML／设计器入口，支持 1～3 栏连续内容、中间通栏图表及恢复分栏。[语义栅格](grid-layout-api.md)进一步提供 1～12 轨、跨部分轨道的区域、项边界编辑和整行原子分页。两者可同级组合；DOCX／Web 原生映射、跨行项、自动放置和互相嵌套仍未提供。显式转换只保留顺序内容并记录布局损失；证据分别见[分栏](verification/semantic-body-columns.md)和[栅格验收](verification/editable-grid-layout.md)，不扩大既有组件分栏与 CSS Grid 范围。
 

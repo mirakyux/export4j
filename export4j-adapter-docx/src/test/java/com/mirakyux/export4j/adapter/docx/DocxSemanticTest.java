@@ -35,6 +35,8 @@ import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.InlineVector;
+import com.mirakyux.export4j.model.VectorResource;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.PageRegions;
@@ -61,6 +63,23 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
 class DocxSemanticTest {
+    @Test void paragraphRevisionAndUnrelatedTextEditPreserveAtomicVectorContent() throws IOException {
+        var resource = VectorResource.of(10, 8, 2, List.of(
+                new VectorResource.Segment(VectorResource.Operation.MOVE, List.of(0.0, -8.0)),
+                new VectorResource.Segment(VectorResource.Operation.LINE, List.of(10.0, 2.0))));
+        var vector = new InlineVector(resource, "x^{2}");
+        var paragraph = Paragraph.mixed("vector", List.of(new InlineText("A", InlineStyle.of(12)), vector), ParagraphFormat.of(12));
+        var prior = paragraph.format().toBuilder().spaceAfter(8).build();
+        var revision = new Revision("format", RevisionKind.PARAGRAPH_FORMAT, Range.of("vector", 0, 2), "Author", DATE, "", null, prior);
+        var document = new DocxSemanticDocument(body(List.of(paragraph)), List.of(), List.of(), List.of(revision), List.of(), List.of());
+        var edited = document.edit().rejectRevision("format").replaceText("vector", 0, 1, "READY").execute().document();
+        var result = (Paragraph) edited.body().sections().getFirst().blocks().getFirst();
+        assertEquals(prior, result.format()); assertEquals("READY\ufffc", result.text());
+        assertEquals(5, result.vectors().getFirst().sourceIndex()); assertEquals(vector, result.vectors().getFirst().vector());
+        assertEquals("A\ufffc", paragraph.text());
+        assertThrows(IOException.class, () -> ADAPTER.writeSemantic(edited, new ByteArrayOutputStream()));
+    }
+
     @Test void bodyEditsAndPortableProjectionPreserveEveryPageRegionGeometry() throws IOException {
         var header = new PageRegion(24, 4, 0, 3, 7, List.of(bandParagraph("header", "Header")));
         var footer = new PageRegion(20, 2, 8, 0, 9, List.of(bandParagraph("footer", "Footer")));

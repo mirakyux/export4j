@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,6 +28,7 @@ import java.util.NavigableSet;
 import java.util.TreeSet;
 import com.mirakyux.export4j.font.MissingGlyphPolicy;
 import com.mirakyux.export4j.font.FontData;
+import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.FontGroup;
 
 /** Shared JDK shaping for semantic text. No system fallback, backend objects or live font handles escape. */
@@ -96,14 +98,16 @@ final class OpenTypeParagraphLayouter {
 
     ParagraphLayout layout(List<StyledSpan> spans, double width, ParagraphStyle style, double ascent,
             Map<Integer, InlineImage> images, Map<Integer, InlineField> fields, Map<Integer, InlineGraphic> graphics,
-            java.util.function.IntToDoubleFunction lineWidths) {
+            java.util.function.IntToDoubleFunction lineWidths, boolean nativeInlineText) {
         String source = spans.stream().map(StyledSpan::text).collect(java.util.stream.Collectors.joining());
         List<TextDiagnostic> diagnostics = new ArrayList<>();
         Map<String, Font> fonts = new HashMap<>();
+        Map<Font, FontFace> fontFaces = new IdentityHashMap<>();
         double descent = 0;
         for (var span : spans) {
             for (var face : span.fonts()) {
                 Font font = fonts.computeIfAbsent(face.data().id() + ":" + span.fontSize(), ignored -> physical(face.data(), span.fontSize()));
+                fontFaces.putIfAbsent(font, face);
                 var metrics = font.getLineMetrics("Ag", FRC);
                 ascent = Math.max(ascent, metrics.getAscent() - span.baselineShift());
                 descent = Math.max(descent, Math.max(face.metrics().descent() * span.fontSize(), metrics.getDescent()) + span.baselineShift());
@@ -189,6 +193,8 @@ final class OpenTypeParagraphLayouter {
                     List<TextOutline> ink = new ArrayList<>();
                     List<ImageBox> imageBoxes = new ArrayList<>();
                     List<FieldBox> fieldBoxes = new ArrayList<>();
+                    List<GlyphRunBox> glyphRunBoxes = new ArrayList<>();
+                    boolean nativeLine = nativeInlineText;
                     double advance = 0;
                     if (limit > position) {
                         var line = measurer.getLayout(position, limit);
@@ -200,6 +206,7 @@ final class OpenTypeParagraphLayouter {
                                 ? TextJustification.of(value.substring(position, limit), line, available) : null;
                         if (expansion != null) { advance += expansion.expansion(); }
                         var bidi = paragraphBidi.createLineBidi(position, limit);
+                        nativeLine &= bidi.isLeftToRight();
                         List<Range> pieces = new ArrayList<>();
                         Map<Integer, Boolean> directions = new HashMap<>();
                         for (int run = 0; run < bidi.getRunCount(); run++) {
@@ -231,7 +238,7 @@ final class OpenTypeParagraphLayouter {
                                 }
                                 segments += paths.size();
                                 if (segments > 2_000_000) { throw failure(TextLayoutException.Code.BUDGET_EXCEEDED, prepared.source().get(piece.start())); }
-                                ink.add(new TextOutline(graphicInk.logicalText(), paths, graphicInk.rgb()));
+                                ink.add(new TextOutline(graphicInk.logicalText(), paths, graphicInk.rgb(), graphicInk.sourceLength()));
                                 continue;
                             }
                             if (piece.field() != null) {
@@ -261,6 +268,12 @@ final class OpenTypeParagraphLayouter {
                             int flags = directions.get(piece.start()) ? Font.LAYOUT_RIGHT_TO_LEFT : Font.LAYOUT_LEFT_TO_RIGHT;
                             var vector = piece.font().layoutGlyphVector(FRC, chars, piece.start(), pieces.get(lastPiece - 1).end(), flags);
                             double x = line.getLogicalHighlightShape(a, b).getBounds2D().getMinX();
+                            if (nativeLine) {
+                                var mapped = directlyMappedRuns(source, prepared, runPieces, vector, x, expansion,
+                                        fontFaces.get(piece.font()));
+                                if (mapped == null) { nativeLine = false; }
+                                else { glyphRunBoxes.addAll(mapped); }
+                            }
                             List<List<TextOutline.Segment>> runInk = new ArrayList<>();
                             for (int index = 0; index < runPieces.size(); index++) { runInk.add(new ArrayList<>()); }
                             for (int glyph = 0; glyph < vector.getNumGlyphs(); glyph++) {
@@ -293,7 +306,8 @@ final class OpenTypeParagraphLayouter {
                         case LEFT, JUSTIFY -> 0; case CENTER -> (available - advance) / 2; case RIGHT -> available - advance;
                     };
                     lines.add(new TextLine(prepared.source().get(position), prepared.source().get(consumed), offset,
-                            lines.size() * style.lineHeight() + ascent, advance, List.of(), ink, imageBoxes, fieldBoxes));
+                            lines.size() * style.lineHeight() + ascent, advance, List.of(), ink, imageBoxes, fieldBoxes,
+                            nativeLine ? glyphRunBoxes : List.of()));
                     position = consumed;
                 }
             }
@@ -302,6 +316,56 @@ final class OpenTypeParagraphLayouter {
             start = end + (source.charAt(end) == '\r' && end + 1 < source.length() && source.charAt(end + 1) == '\n' ? 2 : 1);
         }
         return new ParagraphLayout(width, lines.size() * style.lineHeight(), lines, diagnostics);
+    }
+
+    /** Reuses the already shaped vector only when its visible glyphs have a one-to-one scalar mapping.
+     * Null keeps the whole line on its existing outline path; no measurements or breaks are changed.
+     */
+    private static List<GlyphRunBox> directlyMappedRuns(String source, Prepared prepared, List<Range> pieces,
+            java.awt.font.GlyphVector vector, double x, TextJustification expansion, FontFace face) {
+        if (face == null || face.data().cffOutlines() || !Double.isFinite(x) || x < 0) { return null; }
+        int start = pieces.getFirst().start();
+        int end = pieces.getLast().end();
+        String value = prepared.value().substring(start, end);
+        if (required(value) || vector.getNumGlyphs() != value.codePointCount(0, value.length())
+                || !source.substring(prepared.source().get(start), prepared.source().get(end)).equals(value)
+                || pieces.stream().anyMatch(piece -> piece.style().underline() || piece.style().strikeThrough())) {
+            return null;
+        }
+        List<List<PositionedGlyph>> glyphs = new ArrayList<>();
+        for (int index = 0; index < pieces.size(); index++) { glyphs.add(new ArrayList<>()); }
+        double[] origins = new double[pieces.size()];
+        int cursor = start;
+        for (int glyph = 0; glyph < vector.getNumGlyphs(); glyph++) {
+            if ((glyph & 1023) == 0) { com.mirakyux.export4j.model.ExecutionContext.checkpoint(); }
+            if (vector.getGlyphCharIndex(glyph) != cursor - start || vector.getGlyphTransform(glyph) != null) { return null; }
+            int cp = prepared.value().codePointAt(cursor);
+            int gid = vector.getGlyphCode(glyph);
+            var mapping = face.glyph(cp);
+            if (gid <= 0 || gid > 65_535 || mapping.isEmpty() || mapping.get().glyphId() != gid) { return null; }
+            var position = vector.getGlyphPosition(glyph);
+            var next = vector.getGlyphPosition(glyph + 1);
+            if (position.getY() != 0 || next.getY() != 0) { return null; }
+            double from = x + position.getX();
+            double to = x + next.getX();
+            if (expansion != null) { from += expansion.shift(from); to += expansion.shift(to); }
+            if (!Double.isFinite(from) || !Double.isFinite(to) || from < 0 || to < from) { return null; }
+            int owner = pieceAt(pieces, cursor);
+            if (glyphs.get(owner).isEmpty()) { origins[owner] = from; }
+            glyphs.get(owner).add(new PositionedGlyph(cp, gid, to - from));
+            cursor += Character.charCount(cp);
+        }
+        if (cursor != end) { return null; }
+        List<GlyphRunBox> result = new ArrayList<>();
+        for (int index = 0; index < pieces.size(); index++) {
+            var piece = pieces.get(index);
+            if (glyphs.get(index).isEmpty()) { return null; }
+            var style = piece.style();
+            var run = new GlyphRun(face.data(), style.fontSize(), glyphs.get(index), style.rgb(),
+                    style.baselineShift(), false, false);
+            result.add(new GlyphRunBox(prepared.source().get(piece.start()), prepared.source().get(piece.end()), origins[index], run));
+        }
+        return result;
     }
 
     private static Prepared prepare(String source, int base, int limit, List<StyledSpan> spans,

@@ -29,14 +29,16 @@ class BlockCellModelTest {
                 new TableCell("text", CELL, List.of(run), List.of()),
                 new TableCell("text", CELL, List.of(run), List.of(), List.of()),
                 new TableCell("text", CELL, List.of(run), List.of(), List.of(), 2),
-                new TableCell("text", CELL, List.of(run), List.of(), List.of(), 2, 3));
+                new TableCell("text", CELL, List.of(run), List.of(), List.of(), 2, 3),
+                new TableCell("text", CELL, List.of(run), List.of(), List.of(), 2, 3, List.of()));
         for (var value : values) {
             assertFalse(value.hasBlocks());
             assertEquals("text", value.text());
             assertTrue(value.blocks().isEmpty());
             assertEquals(value, value.toBuilder().build());
         }
-        assertEquals(8, TableCell.class.getRecordComponents().length);
+        assertEquals(List.of("text", "format", "inlines", "images", "fields", "vectors", "columnSpan", "rowSpan", "blocks"),
+                java.util.Arrays.stream(TableCell.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName).toList());
         assertEquals(3, values.getLast().rowSpan());
     }
 
