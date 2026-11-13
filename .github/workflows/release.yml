@@ -67,7 +67,7 @@ jobs:
           EXPORT4J_SIGNING_PASSWORD: ${{ secrets.EXPORT4J_SIGNING_PASSWORD }}
         run: |
           openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=Export4j CI sample' -keyout "$RUNNER_TEMP/sample-key.pem" -out "$RUNNER_TEMP/sample-cert.pem"
-          bash ./gradlew --no-daemon --console=plain "-Pexport4jVersion=$RELEASE_VERSION" "-Pexport4jRepositoryDirectory=$RELEASE_DIR/repository" -Pexport4jSign=true -Pexport4jNativeClassifier=natives-linux "-PsignerOpenSsl=$(command -v openssl)" "-PsignerCertificate=$RUNNER_TEMP/sample-cert.pem" "-PsignerKey=$RUNNER_TEMP/sample-key.pem" build publishSignedBundle :examples:production :examples:capabilities
+          bash ./gradlew --no-daemon --console=plain "-Pexport4jVersion=$RELEASE_VERSION" "-Pexport4jRepositoryDirectory=$RELEASE_DIR/repository" -Pexport4jSign=true -Pexport4jNativeClassifier=natives-linux "-PsignerOpenSsl=$(command -v openssl)" "-PsignerCertificate=$RUNNER_TEMP/sample-cert.pem" "-PsignerKey=$RUNNER_TEMP/sample-key.pem" build publishSignedBundle :examples:production :examples:capabilities :examples:inlineVectors
           cp build/reports/sbom.cdx.json "$RELEASE_DIR/sbom.cdx.json"
       - name: Audit dependencies and independently verify the signed bundle
         run: |
@@ -78,6 +78,7 @@ jobs:
           python3 scripts/verify_maven_consumer.py --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/repository" --output "$RELEASE_DIR/local-consumer" --native-classifier natives-linux
           build/release-tools/bin/python scripts/verify_production.py --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/repository" --sbom "$RELEASE_DIR/sbom.cdx.json" --consumer-build-directory "$RELEASE_DIR/local-consumer/consumer-project/verification/consumer/build" --output "$RELEASE_DIR/local-output"
           build/release-tools/bin/python scripts/verify_capabilities.py --openssl "$(command -v openssl)"
+          build/release-tools/bin/python scripts/verify_inline_vectors.py --output-directory "$RELEASE_DIR/inline-vectors"
       - name: Upload once and wait for Central publication
         env:
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
@@ -113,6 +114,8 @@ jobs:
             build/release/central/*-output/contact-*.png
             build/release/central/remote/publication-report.json
             build/verification/capabilities/report.json
+            build/release/central/inline-vectors/**
+            examples/build/inline-vectors/**
   github-release:
     needs: release
     runs-on: ubuntu-latest

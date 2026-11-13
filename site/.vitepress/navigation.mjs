@@ -17,6 +17,7 @@ export const guideGroups = [
     page('text-api', 'Fonts and text', '字体与文字'),
     page('themes-api', 'Themes', '主题'),
     page('inline-images-api', 'Images and inline content', '图片与行内内容'),
+    page('inline-vectors-api', 'Inline vectors and formulas', '行内矢量与公式'),
     reference('native-opentype-api', 'Native OpenType', '原生 OpenType'),
     reference('text-corpus-api', 'Text and reader corpus', '文字与阅读器语料'),
     reference('vertical-text-api', 'Vertical text', '竖排文字'),
@@ -136,6 +137,7 @@ export const guideGroups = [
     page('development', 'Development', '开发规约'),
     page('dependencies', 'Dependencies and licenses', '依赖与许可证'),
     page('releasing', 'Releases', '发布'),
+    page('releases/0.1.0-rc.3', 'RC3 candidate notes', 'RC3 候选说明'),
     page('releases/0.1.0-rc.2', 'RC2 release notes', 'RC2 说明'),
     page('capability-gaps', 'Remaining capabilities', '剩余能力'),
     page('documentation-site', 'Maintain this website', '文档站维护')
