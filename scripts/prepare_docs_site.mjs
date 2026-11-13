@@ -18,7 +18,7 @@ const available = new Set(execFileSync('git', ['ls-files', '--cached', '--others
 // New source files may be linked during preview, without admitting arbitrary
 // untracked notes or ignored local artifacts into the public documentation.
 const repositoryFiles = new Set([...tracked, ...[...available].filter(name =>
-  /^(?:export4j-[^/]+|examples)\/src\/(?:main|test)\/java\/.+\.java$/.test(name)
+  /^(?:export4j-[^/]+|examples|verification\/consumer)\/src\/(?:main|test)\/java\/.+\.java$/.test(name)
     || /^scripts\/[^/]+\.(?:mjs|py|ps1)$/.test(name))]);
 const documents = new Set([...tracked].filter(name => name.startsWith('docs/') && name.endsWith('.md')));
 const sidebarGuides = new Set(guideGroups.flatMap(group => group.items.map(item => item.name)));
@@ -51,6 +51,8 @@ const publicGuides = new Set([
   'docs/adr/0116-mixed-semantic-blocks-and-static-vectors.md',
   'docs/adr/0117-single-source-math-representations.md',
   'docs/verification/rich-content.md',
+  'docs/adr/0118-configured-export-entry.md',
+  'docs/verification/easy-export.md',
   ...[...sidebarGuides].map(name => `docs/${name}.md`),
   ...translatedGuides.map(name => `docs/en/${name}.md`),
 ]);

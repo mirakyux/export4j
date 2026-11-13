@@ -59,7 +59,7 @@ def consume_once(root, output, repository, version, native_classifier, gradle, c
                        f"-Pexport4jCentralOnly={str(central).lower()}"]
     if not central:
         command += [f"-Pexport4jRepositoryDirectory={repository}"]
-    execute(command + ["build", "run", "inlineVectors", "math", "fontCache", "contentBlocks", "richContent", "resolvedLibraries", "--write-locks", "--refresh-dependencies"],
+    execute(command + ["build", "run", "inlineVectors", "math", "fontCache", "contentBlocks", "richContent", "easyExport", "resolvedLibraries", "--write-locks", "--refresh-dependencies"],
             root, output / "signed-consumer.log", environment)
     build = consumer / "build"
     actual = {line for line in (build / "resolved-libraries.txt").read_text(encoding="utf-8").splitlines()

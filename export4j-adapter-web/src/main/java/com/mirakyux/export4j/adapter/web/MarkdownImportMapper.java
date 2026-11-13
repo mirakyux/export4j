@@ -98,9 +98,12 @@ final class MarkdownImportMapper {
         if (node instanceof org.commonmark.node.Paragraph) {
             output.add(Paragraph.mixed(id, inlines(node, context(format), location), format));
         } else if (node instanceof org.commonmark.node.Heading heading) {
-            var headingFormat = indent(state.content == null ? com.mirakyux.export4j.model.Heading.defaultFormat(heading.getLevel()) : importer.format, (quoteDepth + listDepth) * 18);
+            var headingFormat = indent(state.content == null ? com.mirakyux.export4j.model.Heading.defaultFormat(heading.getLevel())
+                    : state.content.options.styles().heading(heading.getLevel()).paragraphFormat(), (quoteDepth + listDepth) * 18);
+            var headingContext = state.content == null ? context(headingFormat)
+                    : new Context(state.content.headingStyle(heading.getLevel(), headingFormat.fontSize()), "", false, false);
             output.add(com.mirakyux.export4j.model.Heading.mixed(id,
-                    inlines(node, context(headingFormat), location), heading.getLevel(), headingFormat));
+                    inlines(node, headingContext, location), heading.getLevel(), headingFormat));
         } else if (node instanceof ListBlock list) {
             list(list, output, quoteDepth, listDepth + 1, list instanceof OrderedList ? id : "", 0);
         } else if (node instanceof BlockQuote) {
@@ -310,7 +313,7 @@ final class MarkdownImportMapper {
         return state.unsupported(feature, location, reason, List.of(discard ? "CONTENT_REMOVED" : effect), Treatment.DEGRADE, Treatment.DISCARD);
     }
     private Context context(ParagraphFormat format) { return new Context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.style(format.fontSize()), "", false, false); }
-    private Context context(CellFormat format) { return new Context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.style(format.fontSize()), "", false, false); }
+    private Context context(CellFormat format) { return new Context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.cellStyle(format.fontSize()), "", false, false); }
     private static ParagraphFormat indent(ParagraphFormat format, double amount) {
         return format.toBuilder().firstLineIndent(format.firstLineIndent() + amount).subsequentLineIndent(format.subsequentLineIndent() + amount).build();
     }

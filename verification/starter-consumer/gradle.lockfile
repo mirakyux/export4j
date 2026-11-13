@@ -1,0 +1,30 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+com.mirakyux.export4j:export4j-adapter-docx:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-adapter-template:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-adapter-web:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-backend-pdf:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-components:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-font-core:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-graphics-api:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-graphics-core:0.1.0-SNAPSHOT=runtimeClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-layout-core:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-layout-model:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-math:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-model:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-starter:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.mirakyux.export4j:export4j-text-core:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+commons-logging:commons-logging:1.4.0=runtimeClasspath,testRuntimeClasspath
+org.apache.pdfbox:fontbox:3.0.8=runtimeClasspath,testRuntimeClasspath
+org.apache.pdfbox:pdfbox-io:3.0.8=runtimeClasspath,testRuntimeClasspath
+org.apache.pdfbox:pdfbox:3.0.8=runtimeClasspath,testRuntimeClasspath
+org.bouncycastle:bcpkix-jdk18on:1.86=runtimeClasspath,testRuntimeClasspath
+org.bouncycastle:bcprov-jdk18on:1.86=runtimeClasspath,testRuntimeClasspath
+org.bouncycastle:bcutil-jdk18on:1.86=runtimeClasspath,testRuntimeClasspath
+org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0=runtimeClasspath,testRuntimeClasspath
+org.commonmark:commonmark-ext-gfm-tables:0.24.0=runtimeClasspath,testRuntimeClasspath
+org.commonmark:commonmark:0.24.0=runtimeClasspath,testRuntimeClasspath
+org.jsoup:jsoup:1.23.2=runtimeClasspath,testRuntimeClasspath
+org.scilab.forge:jlatexmath:1.0.7=runtimeClasspath,testRuntimeClasspath
+empty=annotationProcessor,testAnnotationProcessor

@@ -16,6 +16,11 @@ final class DocxFontProfiles {
     private final DocxFontFamilies defaults;
 
     DocxFontProfiles(Map<DocxFontFamilies, DocxAdapter.FontRoles> profiles, DocxFontFamilies defaults) {
+        this(profiles, defaults, Map.of());
+    }
+
+    DocxFontProfiles(Map<DocxFontFamilies, DocxAdapter.FontRoles> profiles, DocxFontFamilies defaults,
+            Map<String, Role> aliases) {
         this.profiles = Map.copyOf(profiles); this.defaults = defaults;
         var mapped = new HashMap<String, Role>();
         profiles.forEach((family, keys) -> {
@@ -23,6 +28,9 @@ final class DocxFontProfiles {
             add(mapped, keys.bold(), new Role(family, true, false));
             add(mapped, keys.italic(), new Role(family, false, true));
             add(mapped, keys.boldItalic(), new Role(family, true, true));
+        });
+        aliases.forEach((name, role) -> {
+            if (mapped.putIfAbsent(name, role) != null) { throw new IllegalArgumentException("DOCX alias conflicts with a font profile role"); }
         });
         roles = Map.copyOf(mapped);
     }
@@ -35,7 +43,7 @@ final class DocxFontProfiles {
     String defaultsXml() { return defaults == null ? "" : "<w:docDefaults><w:rPrDefault><w:rPr>" + xml(defaults) + "</w:rPr></w:rPrDefault></w:docDefaults>"; }
     Role role(String name) { return roles.get(name); }
     DocxAdapter.FontRoles mapping(Element fonts) throws IOException { return profiles.get(read(fonts)); }
-    boolean empty() { return profiles.isEmpty(); }
+    boolean empty() { return roles.isEmpty(); }
 
     static String xml(DocxFontFamilies families) {
         return "<w:rFonts w:ascii=\"" + DocxAdapter.escape(families.ascii()) + "\" w:hAnsi=\"" + DocxAdapter.escape(families.highAnsi())

@@ -89,7 +89,7 @@ def write(root, name, value):
 
 class ReleaseWorkflowTest(unittest.TestCase):
     def test_new_module_batch_preserves_historical_recovery(self):
-        for library_count in (16, 17):
+        for library_count in (16, 17, 18):
             with self.subTest(library_count=library_count), tempfile.TemporaryDirectory() as temporary:
                 workspace = Path(temporary)
                 batch(workspace, library_count=library_count)

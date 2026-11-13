@@ -52,6 +52,8 @@ export const translatedGuides = ['known', 'selected-api'];
   await put('docs/adr/0116-mixed-semantic-blocks-and-static-vectors.md', '# Mixed semantic blocks and static vectors\n');
   await put('docs/adr/0117-single-source-math-representations.md', '# Single source math representations\n');
   await put('docs/verification/rich-content.md', '# Rich content verification\n');
+  await put('docs/adr/0118-configured-export-entry.md', '# Configured export entry\n');
+  await put('docs/verification/easy-export.md', '# Easy export verification\n');
   await mkdir(path.join(directory, 'scripts'), { recursive: true });
   await copyFile(path.join(project, 'scripts/prepare_docs_site.mjs'), path.join(directory, 'scripts/prepare_docs_site.mjs'));
   await symlink(path.join(project, 'site/node_modules'), path.join(directory, 'site/node_modules'), 'junction');
@@ -73,10 +75,12 @@ test('previews selected new guides and Java sources without staging local notes'
   await f.put('docs/selected-api.md', '# Selected\n\n## Selected section\n\n'
     + '[Literature](literature-pdf-integration.md) [Anchor](#selected-section)\n'
     + '[Source](../export4j-model/src/main/java/example/NewType.java)\n'
+    + '[Consumer](../verification/consumer/src/main/java/consumer/NewConsumer.java)\n'
     + '[Verifier](../scripts/verify_new.py)\n'
     + '[Existing](../tools/existing.txt)\n');
   await f.put('docs/en/selected-api.md', '# Selected\n\n[Chinese](../selected-api.md)\n');
   await f.put('export4j-model/src/main/java/example/NewType.java', 'package example;\n');
+  await f.put('verification/consumer/src/main/java/consumer/NewConsumer.java', 'package consumer;\n');
   await f.put('scripts/verify_new.py', '# Independent source verifier\n');
   await f.put('docs/local-private.md', '# Private local notes\n');
   await f.put('docs/ignored-api.md', '# Ignored local API notes\n');
@@ -87,6 +91,7 @@ test('previews selected new guides and Java sources without staging local notes'
   assert.match(chinese, /\[Literature\]\(\/zh\/docs\/literature-pdf-integration\.md\)/);
   assert.match(chinese, /\[Anchor\]\(#selected-section\)/);
   assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/export4j-model\/src\/main\/java\/example\/NewType\.java/);
+  assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/verification\/consumer\/src\/main\/java\/consumer\/NewConsumer\.java/);
   assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/scripts\/verify_new\.py/);
   assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/tools\/existing\.txt/);
   assert.match(await f.read('site/pages/docs/selected-api.md'), /\[Chinese\]\(\/zh\/docs\/selected-api\.md\)/);

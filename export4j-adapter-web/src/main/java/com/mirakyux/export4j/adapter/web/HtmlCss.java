@@ -63,6 +63,12 @@ final class HtmlCss {
         boolean contentDefaults;
         boolean explicitLine;
         boolean explicitAlignment;
+        boolean explicitRoles;
+        boolean explicitColor;
+        boolean explicitOrphans;
+        boolean explicitWidows;
+        boolean explicitBreakBefore;
+        ParagraphFormat semanticFormat;
         final Map<String, String> box = new HashMap<>();
         Computed(ParagraphFormat base) { size = base.fontSize(); line = base.lineHeight() / size; relativeLine = true; after = base.spaceAfter(); }
         Computed(Computed parent) {
@@ -71,17 +77,20 @@ final class HtmlCss {
             pre = parent.pre; hidden = parent.hidden; roles = parent.roles; color = parent.color; alignment = parent.alignment;
             orphans = parent.orphans; widows = parent.widows;
             contentDefaults = parent.contentDefaults; explicitLine = parent.explicitLine; explicitAlignment = parent.explicitAlignment;
+            explicitRoles = parent.explicitRoles; explicitColor = parent.explicitColor;
+            explicitOrphans = parent.explicitOrphans; explicitWidows = parent.explicitWidows;
         }
         double lineHeight() { return relativeLine ? size * line : line; }
         InlineStyle inline() {
             return new InlineStyle(roles.get((bold ? 1 : 0) + (italic ? 2 : 0)), size, color, 0, underline, strike);
         }
         ParagraphFormat paragraph(ParagraphFormat base, double extraIndent) {
+            if (semanticFormat != null) { base = semanticFormat; }
             return base.toBuilder().fontSize(size).lineHeight(lineHeight()).alignment(alignment)
                     .firstLineIndent(base.firstLineIndent() + indent + first + extraIndent)
                     .subsequentLineIndent(base.subsequentLineIndent() + indent + extraIndent).spaceBefore(before).spaceAfter(after)
                     .keepTogether(keepTogether).pagination(new PaginationPolicy(contentDefaults && base.pagination().keepWithNext(),
-                            contentDefaults && base.pagination().pageBreakBefore(), orphans, widows)).build();
+                            contentDefaults && !explicitBreakBefore && base.pagination().pageBreakBefore(), orphans, widows)).build();
         }
     }
     HtmlCss(HtmlImporter importer, ImportSupport.State state) { this.importer = importer; this.state = state; }
@@ -145,6 +154,7 @@ final class HtmlCss {
             }
         } else { parent = get(element.parent()); }
         var value = new Computed(parent); String tag = element.normalName();
+        value.after = importer.format.spaceAfter();
         if (state.content != null) {
             value.before = importer.format.spaceBefore(); value.keepTogether = importer.format.keepTogether();
             if (Set.of("td", "th").contains(tag)) {
@@ -152,6 +162,20 @@ final class HtmlCss {
                 if (!parent.explicitSize) { value.size = cell.fontSize(); }
                 if (!parent.explicitLine) { value.line = cell.lineHeight(); value.relativeLine = false; }
                 if (!parent.explicitAlignment) { value.alignment = cell.alignment(); }
+                var appearance = state.content.options.styles().cellText();
+                if (!parent.explicitRoles) { value.roles = List.of(appearance.fontRole(), "bold", "italic", "boldItalic"); }
+                if (!parent.explicitColor) { value.color = appearance.rgb(); }
+            } else if (tag.matches("h[1-6]")) {
+                var heading = state.content.options.styles().heading(tag.charAt(1) - '0');
+                var format = heading.paragraphFormat(); value.semanticFormat = format;
+                if (!parent.explicitSize) { value.size = format.fontSize(); }
+                if (!parent.explicitLine) { value.line = format.lineHeight(); value.relativeLine = false; }
+                if (!parent.explicitAlignment) { value.alignment = format.alignment(); }
+                if (!parent.explicitRoles) { value.roles = List.of(heading.text().fontRole(), "bold", "italic", "boldItalic"); }
+                if (!parent.explicitColor) { value.color = heading.text().rgb(); }
+                if (!parent.explicitOrphans) { value.orphans = format.pagination().minLinesBeforeBreak(); }
+                if (!parent.explicitWidows) { value.widows = format.pagination().minLinesAfterBreak(); }
+                value.before = format.spaceBefore(); value.after = format.spaceAfter(); value.keepTogether = format.keepTogether();
             }
         }
         if (state.content == null && tag.matches("h[1-6]")) {
@@ -159,7 +183,6 @@ final class HtmlCss {
         }
         value.bold |= Set.of("strong", "b", "th").contains(tag); value.italic |= Set.of("em", "i").contains(tag);
         value.underline |= tag.equals("u"); value.strike |= Set.of("s", "del", "strike").contains(tag);
-        value.after = importer.format.spaceAfter();
         if (tag.equals("pre") || tag.equals("code")) { value.pre = true; }
         var winners = new HashMap<String, Declaration>();
         for (var rule : rules) {
@@ -236,9 +259,9 @@ final class HtmlCss {
                 case "font-family" -> {
                     String family = text.replaceAll("^['\"]|['\"]$", "");
                     var roles = importer.families.get(family); if (roles == null) { unsupported(owner, "CSS_FONT_FAMILY", "CSS family is not explicitly mapped to a font role"); }
-                    else { value.roles = roles; }
+                    else { value.roles = roles; value.explicitRoles = true; }
                 }
-                case "color" -> value.color = color(text);
+                case "color" -> { value.color = color(text); value.explicitColor = true; }
                 case "text-align" -> { value.alignment = ParagraphAlignment.valueOf(text.toUpperCase(Locale.ROOT)); value.explicitAlignment = true; }
                 case "text-decoration" -> {
                     var parts = List.of(text.split("\\s+"));
@@ -266,10 +289,14 @@ final class HtmlCss {
                     }
                     else { throw new IllegalArgumentException(); }
                 }
-                case "break-before" -> { paginationContext(owner); if (!Set.of("auto", "page").contains(text)) { throw new IllegalArgumentException(); } value.breakBefore = text.equals("page"); }
+                case "break-before" -> { paginationContext(owner); if (!Set.of("auto", "page").contains(text)) { throw new IllegalArgumentException(); } value.breakBefore = text.equals("page"); value.explicitBreakBefore = true; }
                 case "break-after" -> { paginationContext(owner); if (!Set.of("auto", "page").contains(text)) { throw new IllegalArgumentException(); } value.breakAfter = text.equals("page"); }
                 case "break-inside" -> { paginationContext(owner); if (!Set.of("auto", "avoid", "avoid-page").contains(text)) { throw new IllegalArgumentException(); } value.keepTogether = !text.equals("auto"); }
-                case "orphans", "widows" -> { if (!text.matches("[1-9][0-9]{0,2}")) { throw new IllegalArgumentException(); } if (declaration.name().equals("orphans")) { value.orphans = Integer.parseInt(text); } else { value.widows = Integer.parseInt(text); } }
+                case "orphans", "widows" -> {
+                    if (!text.matches("[1-9][0-9]{0,2}")) { throw new IllegalArgumentException(); }
+                    if (declaration.name().equals("orphans")) { value.orphans = Integer.parseInt(text); value.explicitOrphans = true; }
+                    else { value.widows = Integer.parseInt(text); value.explicitWidows = true; }
+                }
                 case "border" -> { if (!Set.of("td", "th").contains(owner.normalName()) || !Set.of("none", "0", "0pt", "0px").contains(text)) { throw new IllegalArgumentException(); } value.borderless = true; }
                 default -> throw new IllegalStateException("unrecognized supported CSS property");
             }

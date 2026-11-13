@@ -47,6 +47,8 @@ Export4j 是面向报告、发票、表单和结构化文档的开源 **Java PDF
 
 当前开发版的[源内容块](docs/content-blocks-api.md)支持每块声明字体、颜色、段落属性及文本／Markdown／HTML 格式，逐项继承默认值，并独立控制公式和表格解析；本批验收结果另行登记。
 
+当前开发版的[统一导出入口](docs/easy-export-api.md) `export4j-starter` 只需配置一次字体和全局样式，即可从源内容或正文 XML 直接导出 PDF／DOCX；已发布 RC3 不包含此模块。
+
 各项能力适用于文档声明的输入子集，配置与示例见 [API 指南](docs/README.md)。
 
 ## 快速开始
@@ -116,6 +118,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | 示例 | 输出目录 | 演示内容 |
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java 编写与语义 DOCX |
+| `:examples:easyExport` | `examples/build/easy-export/` | 一次字体／样式配置，文本、Markdown、HTML 与正文 XML 直接导出 PDF／DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告与数据绑定 |
 | `:examples:manuWeave` | `examples/build/manuweave/` | ManuWeave 全部 286 个学术模板配置，各自输出 PDF 与格式差异报告 |
 | `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | PDF／SVG 矢量数学排版与 Word 原生可编辑公式 |

@@ -43,6 +43,8 @@ var adapter = DocxAdapter.builder()
 
 `defaultFonts` 输出文档默认字体和普通／粗体／斜体／粗斜体的 `""`、`bold`、`italic`、`boldItalic` 角色。多脚本 `fontFamily(DocxFontFamilies, FontRoles)` 同时用于角色输出和严格读取；每个角色只能对应一个字体族组合及一个粗斜体状态，有歧义的配置在构建时失败。原 `fontFamily(String, FontRoles)` 保留为单字体族的导入映射入口。
 
+`fontRole("body-alt", families, false, false)` 可为同一字体族组合及粗斜体状态登记多个具名角色别名。严格读取保留已登记且字体／粗斜体属性匹配的输出别名；重复别名及与既有 profile 角色冲突的配置明确拒绝，不扩大任意命名样式图的支持范围。
+
 | `LineSpacing` | Word 行框行为 |
 | --- | --- |
 | `EXACT`（默认） | 保持既有固定行距映射 |

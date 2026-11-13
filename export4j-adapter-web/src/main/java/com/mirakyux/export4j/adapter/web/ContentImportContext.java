@@ -7,6 +7,7 @@ import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.SourceContentParser;
+import com.mirakyux.export4j.model.TextAppearance;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,7 +63,10 @@ final class ContentImportContext {
         codePoints += count;
     }
     void object(int count) { pendingObjects -= Math.min(count, pendingObjects); codePoints(count); }
-    InlineStyle style(double size) { return new InlineStyle(options.fontRole(), size, options.rgb(), 0, false, false); }
+    InlineStyle style(double size) { return style(options.textAppearance(), size); }
+    InlineStyle cellStyle(double size) { return style(options.styles().cellText(), size); }
+    InlineStyle headingStyle(int level, double size) { return style(options.styles().heading(level).text(), size); }
+    private static InlineStyle style(TextAppearance text, double size) { return new InlineStyle(text.fontRole(), size, text.rgb(), 0, false, false); }
     String raw(int start, int end) {
         if (start < 0 || end < start) { throw new IllegalArgumentException("content original source range unavailable"); }
         var range = originalRange(start, end);
@@ -127,6 +131,23 @@ final class ContentImportContext {
                 if (replacement == null) { throw new IllegalArgumentException("literal formula placeholder was not preserved"); }
                 append(restored, literal.substring(cursor, at), style, link, state);
                 append(restored, replacement, style, link, state); cursor = at + found.length();
+            }
+            return List.copyOf(restored);
+        }
+        if (!formulaMarkers.isEmpty()) {
+            budget.work(literal.length());
+            int cursor = 0;
+            while (cursor < literal.length()) {
+                int at = literal.indexOf(literalPrefix, cursor);
+                if (at < 0) { append(restored, literal.substring(cursor), style, link, state); break; }
+                int end = literal.indexOf("END", at + literalPrefix.length());
+                var span = end < 0 ? null : formulaMarkers.get(literal.substring(at, end + 3));
+                if (span == null) { throw new IllegalArgumentException("formula placeholder was not preserved"); }
+                append(restored, literal.substring(cursor, at), style, link, state);
+                var vector = render(span, style.fontSize(), style.rgb());
+                state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
+                restored.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), link.isEmpty() ? vector.hyperlink() : link));
+                cursor = end + 3;
             }
             return List.copyOf(restored);
         }

@@ -1,5 +1,7 @@
 # Capability gaps and delivery tracking
 
+The development [unified export entry point](easy-export-api.md) assembles existing source content, font caching, mathematics and PDF/DOCX output as `export4j-starter`, consumable through one explicitly versioned dependency. Complete XML page regions/sections retain their dedicated APIs. The unified entry point does not expand existing boundaries for full CSS, arbitrary LaTeX or general document round-tripping. Published `0.1.0-rc.3` does not include this module.
+
 The [source-block/options](content-blocks-api.md) batch extends authoring entry points for GAP-04/GAP-07. Java/XML sources share explicit formats, property-level appearance/paragraph declarations and independent formula/table switches. The original subset passed [independent acceptance (Chinese)](../verification/content-blocks.md); the current rich-content extension has a [separate record (Chinese)](../verification/rich-content.md). This does not expand previously verified parent scopes or close full CSS, arbitrary LaTeX or a general template sandbox.
 
 Development [font caches](font-cache-api.md) add bounded repeated loading and cross-export program reuse with automatic idle release and active-lease protection. Source-byte limits do not bound total heap/RSS; format coverage and performance remain independently assessed.

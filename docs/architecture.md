@@ -1,6 +1,6 @@
 # 架构设计
 
-本文将[立项文档](project-proposal.md)整理为实现约束。当前共 19 个模块，包含 16 个库、BOM、示例和可选设计器应用。可选 `export4j-opentype` 封装原生塑形，不让核心强制依赖 JNI；生产入口仍位于组件模块。实际能力见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)，行内图片及 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)。
+本文将[立项文档](project-proposal.md)整理为实现约束。当前共 21 个模块，包含 18 个库、BOM、示例和可选设计器应用。可选 `export4j-opentype` 封装原生塑形，不让核心强制依赖 JNI；组件模块提供通用引擎，`export4j-starter` 在外围装配常用源内容、XML 模板和 PDF／DOCX 输出。实际能力见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)，行内图片及 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)。
 
 ## 分层与数据流
 
@@ -74,6 +74,8 @@ Graphics API 支持调用方直接生成 Display List。此路径用于精确绘
 | `export4j-layout-model` | Layout IR、布局片段和来源映射 | 绘制 API 的几何类型及传递的模型、字形与行数据 |
 | `export4j-layout-core` | 约束、换行、分页与绘制转换 | 布局结果、文本层与绘制层 |
 | `export4j-components` | 标准绘制组件、目录与导航编排 | 布局核心定义的组件接口与绘制核心 |
+| `export4j-math` | 可选有界 TeX／Markdown 数学编译，保留公式身份与目标表示 | 文档模型、Web／DOCX 适配器及字体／图形接口；JLaTeXMath 封装在内部 |
+| `export4j-starter` | 显式字体及全局默认值配置一次，统一源内容／XML 与 PDF／DOCX 输出 | 组件、数学、模板、PDF 后端及字体／DOCX 适配器；核心不反向依赖 |
 | `export4j-backend-pdf` | PDF 输出 | 绘制层与字体层 |
 | `export4j-backend-svg` | SVG 输出 | 绘制层 |
 | `export4j-backend-raster` | 图像输出和预览 | 绘制层 |

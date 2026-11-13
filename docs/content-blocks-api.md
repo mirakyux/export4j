@@ -48,6 +48,8 @@ var literal = importer.read("source", "**Literal** <b>text</b> $x^2$")
 
 字体角色和 RGB 分开继承。空角色表示使用导出时显式提供的默认字体组，`0` 表示显式黑色；零间距、`false`、零旋转同样是有效覆盖。不能按默认数值推断“未设置”。在局部 `ContentOptions.Builder` 上调用 `inheritRgb()`、`inheritFontRole()` 或其他 `inheritXxx()`，会清除对应声明，下一次 `resolve(parent)` 时恢复父值。
 
+`base.overlay(overrides)` 先合并两组声明，尚不解析继承；只有 `overrides` 中实际声明的属性替换 `base`。这使统一入口能够组合全局和请求配置，同时保留主题标题、单元格及词法作用域的默认值。
+
 ## 可配置属性
 
 | 属性 | Java 声明 | XML 属性 |

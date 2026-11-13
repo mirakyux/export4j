@@ -47,7 +47,9 @@ final class TexExplicitText {
 
     static TeXFormula formula(String source, MathTextFonts fonts, MathOptions options) {
         if (fonts.isEmpty() || !source.contains("\\text")) { return new TeXFormula(source); }
-        var parser = new TexExplicitText(source, fonts.parse(), options);
+        var physicalFonts = fonts.parse();
+        if (physicalFonts.isEmpty()) { return new TeXFormula(source); }
+        var parser = new TexExplicitText(source, physicalFonts, options);
         Part result = parser.sequence(Stop.END);
         var formula = new TeXFormula();
         formula.root = parser.atom(result);

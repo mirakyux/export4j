@@ -48,6 +48,8 @@ Both results expose the existing `Document` through `.document()`. `read(String)
 
 An empty font role explicitly selects the output caller's default font group. RGB `0`, zero spacing, `false` and zero rotation are also explicit declarations. Defaults are not used as omission sentinels. `inheritRgb()`, `inheritFontRole()` and the other `inheritXxx()` methods remove a declaration from a local options builder; its next `resolve(parent)` uses that parent's property.
 
+`base.overlay(overrides)` combines declarations without resolving inheritance; only properties explicitly declared in `overrides` replace `base`. The unified entry point can therefore combine global and request options while preserving theme defaults for headings, cells and lexical scopes.
+
 ## Available properties
 
 | Property | Java declaration | XML attribute |

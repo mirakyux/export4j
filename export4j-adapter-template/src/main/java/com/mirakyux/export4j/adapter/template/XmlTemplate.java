@@ -62,6 +62,7 @@ import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableFormat;
 import com.mirakyux.export4j.model.TableRow;
 import com.mirakyux.export4j.model.SourceContentParser;
+import com.mirakyux.export4j.model.TextAppearance;
 import com.mirakyux.export4j.adapter.template.TemplateException.Code;
 
 /** Immutable offline XML template compiler. Each compile owns its parser and state; instances may be shared.
@@ -138,6 +139,7 @@ public final class XmlTemplate {
     private final TextDefaults bodyText;
     private final TextDefaults cellText;
     private final Map<Integer, TextDefaults> headingText;
+    private final ContentOptions.SemanticStyles contentStyles;
     private final Map<String, ImageResource> images;
     private final Map<String, String> fragments;
     private final long fragmentInputCharacters;
@@ -158,6 +160,14 @@ public final class XmlTemplate {
             headings.put(level, builder.headingText.getOrDefault(level, defaults(theme.headingText(level))));
         }
         headingText = Map.copyOf(headings);
+        var contentHeadings = new ArrayList<ContentOptions.SemanticStyle>(6);
+        for (int level = 1; level <= 6; level++) {
+            var text = headingText.get(level);
+            contentHeadings.add(new ContentOptions.SemanticStyle(
+                    new TextAppearance(text.fontRole(), text.rgb()), theme.headingFormat(level)));
+        }
+        contentStyles = new ContentOptions.SemanticStyles(contentHeadings,
+                new TextAppearance(cellText.fontRole(), cellText.rgb()));
         images = Map.copyOf(builder.images);
         fragments = Map.copyOf(builder.fragments);
         long inputCharacters = 0;
@@ -890,7 +900,7 @@ public final class XmlTemplate {
 
         private ContentOptions.Resolved scoped(ParagraphFormat format, TextDefaults text) {
             var resolved = new ContentOptions.Resolved(text.fontRole(), text.rgb(), format,
-                    cellFormat, theme.tableFormat(), ContentOptions.Format.TEXT, false, true);
+                    cellFormat, theme.tableFormat(), ContentOptions.Format.TEXT, false, true, false, contentStyles);
             for (var options : contentScopes) { resolved = options.resolve(resolved); }
             return resolved;
         }

@@ -12,6 +12,7 @@ export const guideGroups = [
     page('examples', 'Examples', '示例')
   ]),
   group('Authoring and style', '编写与样式', [
+    page('easy-export-api', 'Configure once, export directly', '配置一次，直接导出'),
     page('authoring-api', 'Author a document', '常用编写'),
     page('content-blocks-api', 'Source content blocks', '源内容块与继承'),
     page('rich-content-api', 'Mixed content and mathematics', '混合内容与跨格式公式'),

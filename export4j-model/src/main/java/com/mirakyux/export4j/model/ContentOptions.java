@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.model;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 /** Immutable authoring declarations. Undeclared properties inherit independently; explicit zero,
@@ -59,18 +62,89 @@ public final class ContentOptions {
     public static Builder builder() { return new Builder(); }
     public Builder toBuilder() { return new Builder(this); }
 
-    /** Complete values used by one parser invocation; no member remains INHERIT. */
+    /** Combines declarations without resolving inherited values. Explicit declarations in
+     * {@code overrides} replace this value; undeclared properties keep their original intent.
+     * In particular, zero, false and the empty default-font role remain explicit overrides.
+     */
+    public ContentOptions overlay(ContentOptions overrides) {
+        Objects.requireNonNull(overrides, "overrides");
+        var result = toBuilder();
+        if (overrides.fontRole != null) { result.fontRole = overrides.fontRole; }
+        if (overrides.rgb != null) { result.rgb = overrides.rgb; }
+        if (overrides.fontSize != null) { result.fontSize = overrides.fontSize; }
+        if (overrides.lineHeight != null) { result.lineHeight = overrides.lineHeight; }
+        if (overrides.firstLineIndent != null) { result.firstLineIndent = overrides.firstLineIndent; }
+        if (overrides.subsequentLineIndent != null) { result.subsequentLineIndent = overrides.subsequentLineIndent; }
+        if (overrides.alignment != null) { result.alignment = overrides.alignment; }
+        if (overrides.spaceBefore != null) { result.spaceBefore = overrides.spaceBefore; }
+        if (overrides.spaceAfter != null) { result.spaceAfter = overrides.spaceAfter; }
+        if (overrides.keepTogether != null) { result.keepTogether = overrides.keepTogether; }
+        if (overrides.keepWithNext != null) { result.keepWithNext = overrides.keepWithNext; }
+        if (overrides.pageBreakBefore != null) { result.pageBreakBefore = overrides.pageBreakBefore; }
+        if (overrides.minLinesBeforeBreak != null) { result.minLinesBeforeBreak = overrides.minLinesBeforeBreak; }
+        if (overrides.minLinesAfterBreak != null) { result.minLinesAfterBreak = overrides.minLinesAfterBreak; }
+        if (overrides.lineBreakPolicy != null) { result.lineBreakPolicy = overrides.lineBreakPolicy; }
+        if (overrides.rotation != null) { result.rotation = overrides.rotation; }
+        if (overrides.cellFormat != null) { result.cellFormat = overrides.cellFormat; }
+        if (overrides.tableFormat != null) { result.tableFormat = overrides.tableFormat; }
+        if (overrides.format != Format.INHERIT) { result.format = overrides.format; }
+        if (overrides.formulas != Toggle.INHERIT) { result.formulas = overrides.formulas; }
+        if (overrides.tables != Toggle.INHERIT) { result.tables = overrides.tables; }
+        if (overrides.rawHtml != Toggle.INHERIT) { result.rawHtml = overrides.rawHtml; }
+        return result.build();
+    }
+
+    /** Immutable heading defaults. Geometry uses points and no resources are retained. */
+    public record SemanticStyle(TextAppearance text, ParagraphFormat paragraphFormat) {
+        public SemanticStyle {
+            Objects.requireNonNull(text, "text");
+            Objects.requireNonNull(paragraphFormat, "paragraphFormat");
+        }
+    }
+
+    /** Independent semantic defaults: exactly six heading levels and the cell text appearance.
+     * The heading list is defensively copied; instances are safe to share between parser sessions.
+     */
+    public record SemanticStyles(List<SemanticStyle> headings, TextAppearance cellText) {
+        public SemanticStyles {
+            Objects.requireNonNull(headings, "headings");
+            if (headings.size() != 6) { throw new IllegalArgumentException("exactly six heading styles are required"); }
+            headings = List.copyOf(headings);
+            Objects.requireNonNull(cellText, "cellText");
+        }
+        /** Returns the defaults for a heading level from 1 to 6, inclusive. */
+        public SemanticStyle heading(int level) {
+            if (level < 1 || level > 6) { throw new IllegalArgumentException("heading level must be between 1 and 6"); }
+            return headings.get(level - 1);
+        }
+        private static SemanticStyles uniform(String fontRole, int rgb, ParagraphFormat paragraph) {
+            var text = new TextAppearance(fontRole, rgb);
+            return new SemanticStyles(Collections.nCopies(6, new SemanticStyle(text, paragraph)), text);
+        }
+    }
+
+    /** Complete values used by one parser invocation; no member remains INHERIT.
+     * The compatibility constructors retain the historic uniform body/heading/cell appearance.
+     */
     public record Resolved(String fontRole, int rgb, ParagraphFormat paragraphFormat, CellFormat cellFormat,
-            TableFormat tableFormat, Format format, boolean formulas, boolean tables, boolean rawHtml) {
+            TableFormat tableFormat, Format format, boolean formulas, boolean tables, boolean rawHtml,
+            SemanticStyles styles) {
         public Resolved {
             new TextAppearance(fontRole, rgb);
             Objects.requireNonNull(paragraphFormat, "paragraphFormat");
             Objects.requireNonNull(cellFormat, "cellFormat");
             Objects.requireNonNull(tableFormat, "tableFormat");
             Objects.requireNonNull(format, "format");
+            Objects.requireNonNull(styles, "styles");
             if (format == Format.INHERIT) { throw new IllegalArgumentException("resolved content format cannot inherit"); }
         }
         public TextAppearance textAppearance() { return new TextAppearance(fontRole, rgb); }
+        /** Compatibility shape with uniform semantic styles. */
+        public Resolved(String fontRole, int rgb, ParagraphFormat paragraphFormat, CellFormat cellFormat,
+                TableFormat tableFormat, Format format, boolean formulas, boolean tables, boolean rawHtml) {
+            this(fontRole, rgb, paragraphFormat, cellFormat, tableFormat, format, formulas, tables, rawHtml,
+                    SemanticStyles.uniform(fontRole, rgb, paragraphFormat));
+        }
         /** Compatibility shape: Markdown HTML remains disabled unless explicitly requested. */
         public Resolved(String fontRole, int rgb, ParagraphFormat paragraphFormat, CellFormat cellFormat,
                 TableFormat tableFormat, Format format, boolean formulas, boolean tables) {
@@ -79,25 +153,54 @@ public final class ContentOptions {
     }
 
     /** Plain text, formulas disabled, tables enabled when the selected grammar supports them. */
-    public static Resolved defaults() { return fromTheme(DocumentTheme.builder().build()); }
-
-    /** Takes current body, convenience-cell and table snapshots without retaining the theme. */
-    public static Resolved fromTheme(DocumentTheme theme) {
-        Objects.requireNonNull(theme, "theme");
+    public static Resolved defaults() {
+        var theme = DocumentTheme.builder().build();
         return new Resolved(theme.bodyText().fontRole(), theme.bodyText().rgb(), theme.bodyFormat(),
                 theme.cellFormat(), theme.tableFormat(), Format.TEXT, false, true);
     }
 
+    /** Takes independent body, heading, cell and table snapshots without retaining the theme.
+     * Explicit content declarations subsequently override each applicable semantic domain.
+     */
+    public static Resolved fromTheme(DocumentTheme theme) {
+        Objects.requireNonNull(theme, "theme");
+        var headings = new ArrayList<SemanticStyle>(6);
+        for (int level = 1; level <= 6; level++) {
+            headings.add(new SemanticStyle(theme.headingText(level), theme.headingFormat(level)));
+        }
+        return new Resolved(theme.bodyText().fontRole(), theme.bodyText().rgb(), theme.bodyFormat(),
+                theme.cellFormat(), theme.tableFormat(), Format.TEXT, false, true, false,
+                new SemanticStyles(headings, theme.cellText()));
+    }
+
     public Resolved resolve(Resolved parent) {
         Objects.requireNonNull(parent, "parent");
-        var p = parent.paragraphFormat();
+        var headings = new ArrayList<SemanticStyle>(6);
+        for (var heading : parent.styles().headings()) {
+            headings.add(new SemanticStyle(resolveText(heading.text()), resolveParagraph(heading.paragraphFormat())));
+        }
+        return new Resolved(fontRole == null ? parent.fontRole() : fontRole, rgb == null ? parent.rgb() : rgb,
+                resolveParagraph(parent.paragraphFormat()), cellFormat == null ? parent.cellFormat() : cellFormat,
+                tableFormat == null ? parent.tableFormat() : tableFormat,
+                format == Format.INHERIT ? parent.format() : format,
+                formulas == Toggle.INHERIT ? parent.formulas() : formulas == Toggle.ENABLED,
+                tables == Toggle.INHERIT ? parent.tables() : tables == Toggle.ENABLED,
+                rawHtml == Toggle.INHERIT ? parent.rawHtml() : rawHtml == Toggle.ENABLED,
+                new SemanticStyles(headings, resolveText(parent.styles().cellText())));
+    }
+
+    private TextAppearance resolveText(TextAppearance parent) {
+        return new TextAppearance(fontRole == null ? parent.fontRole() : fontRole, rgb == null ? parent.rgb() : rgb);
+    }
+
+    private ParagraphFormat resolveParagraph(ParagraphFormat p) {
         var pagination = p.pagination();
         var resolvedPagination = new PaginationPolicy(
                 keepWithNext == null ? pagination.keepWithNext() : keepWithNext,
                 pageBreakBefore == null ? pagination.pageBreakBefore() : pageBreakBefore,
                 minLinesBeforeBreak == null ? pagination.minLinesBeforeBreak() : minLinesBeforeBreak,
                 minLinesAfterBreak == null ? pagination.minLinesAfterBreak() : minLinesAfterBreak);
-        var paragraph = new ParagraphFormat(
+        return new ParagraphFormat(
                 fontSize == null ? p.fontSize() : fontSize,
                 lineHeight == null ? p.lineHeight() : lineHeight,
                 firstLineIndent == null ? p.firstLineIndent() : firstLineIndent,
@@ -108,13 +211,6 @@ public final class ContentOptions {
                 keepTogether == null ? p.keepTogether() : keepTogether,
                 resolvedPagination, lineBreakPolicy == null ? p.lineBreakPolicy() : lineBreakPolicy,
                 rotation == null ? p.rotation() : rotation);
-        return new Resolved(fontRole == null ? parent.fontRole() : fontRole, rgb == null ? parent.rgb() : rgb,
-                paragraph, cellFormat == null ? parent.cellFormat() : cellFormat,
-                tableFormat == null ? parent.tableFormat() : tableFormat,
-                format == Format.INHERIT ? parent.format() : format,
-                formulas == Toggle.INHERIT ? parent.formulas() : formulas == Toggle.ENABLED,
-                tables == Toggle.INHERIT ? parent.tables() : tables == Toggle.ENABLED,
-                rawHtml == Toggle.INHERIT ? parent.rawHtml() : rawHtml == Toggle.ENABLED);
     }
 
     @Override public boolean equals(Object other) {

@@ -164,16 +164,9 @@ public final class ContentImporter implements SourceContentParser {
                     text.append(source, cursor, span.start()); int replacementStart = text.length();
                     String marker = markerPrefix + index++ + "END";
                     if (context.options.formulas()) {
-                        if (context.options.rawHtml()) {
-                            // Render after HTML style resolution so equations in raw HTML cells
-                            // use the actual cell metrics, with no Markdown image syntax in tags.
-                            context.formulaMarkers.put(marker, span); text.append(marker);
-                        } else {
-                            double size = insideTable(original, span.start(), span.end()) ? context.options.cellFormat().fontSize() : context.options.paragraphFormat().fontSize();
-                            var vector = context.render(span, size, context.options.rgb());
-                            String resource = "export4j-content:" + marker;
-                            builder.vector(resource, vector); text.append("![](").append(resource).append(')');
-                        }
+                        // Render only after the mapper resolves the actual heading, cell or CSS
+                        // host. The same placeholders serve plain and raw-HTML Markdown.
+                        context.formulaMarkers.put(marker, span); text.append(marker);
                     } else { context.literals.put(marker, source.substring(span.start(), span.end())); text.append(marker); }
                     context.replacements.add(new ContentImportContext.Replacement(span.start(), span.end(), replacementStart, text.length()));
                     cursor = span.end();
@@ -200,19 +193,6 @@ public final class ContentImporter implements SourceContentParser {
                 }
                 reservation.actual(count); return tree;
             }
-        }
-        private boolean insideTable(Node root, int start, int end) {
-            var pending = new ArrayDeque<Node>(); pending.push(root);
-            while (!pending.isEmpty()) {
-                var node = pending.pop(); budget.work(1);
-                if (node instanceof org.commonmark.ext.gfm.tables.TableBlock) {
-                    int first = Integer.MAX_VALUE, last = -1;
-                    for (var span : node.getSourceSpans()) { first = Math.min(first, span.getInputIndex()); last = Math.max(last, span.getInputIndex() + span.getLength()); }
-                    if (start >= first && end <= last) { return true; }
-                }
-                for (var child = node.getLastChild(); child != null; child = child.getPrevious()) { pending.push(child); }
-            }
-            return false;
         }
         private boolean markerCollision(String source, Node root, String marker) {
             budget.work(source.length());

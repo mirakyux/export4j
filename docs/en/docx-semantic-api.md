@@ -43,6 +43,8 @@ The two-argument `DocxFontFamilies(latin, eastAsia)` uses Latin for ASCII, high 
 
 `defaultFonts` writes document defaults and the regular/bold/italic/bold-italic role keys `""`, `bold`, `italic` and `boldItalic`. `fontFamily(DocxFontFamilies, FontRoles)` supports both role-based output and strict reading. A role must map to exactly one family profile and one bold/italic variant; ambiguous configurations fail at build time. The original `fontFamily(String, FontRoles)` remains a single-family import mapping.
 
+`fontRole("body-alt", families, false, false)` registers additional named role aliases; several aliases may use the same family profile and bold/italic variant. Strict reading preserves registered output aliases whose actual family and variant match. Duplicate aliases and collisions with existing profile roles fail explicitly; arbitrary named style graphs remain unsupported.
+
 | `LineSpacing` | Word line boxes |
 | --- | --- |
 | `EXACT` (default) | Preserve the existing fixed-height mapping |

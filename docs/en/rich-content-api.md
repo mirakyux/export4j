@@ -2,6 +2,8 @@
 
 The current development version adds `MathContent`: one explicit source compilation produces both a visual `Document` and a native `DocxMathDocument`. This API is not part of published RC3.
 
+Use the [configured-once entry](easy-export-api.md) to declare fonts and global styles once and export directly. For one target, `readVisual`/`compileVisual` return the visual document, while `readDocx`/`compileDocx` return native Word mathematics; only the selected projection executes. Existing `read`/`compile` keep their single-parse, dual-target contract. DOCX-only still uses the shared bounded TeX, outline preparation and geometry budgets; it does not accept arbitrary Word mathematics.
+
 ```java
 var compiler = MathContent.builder()
         .textFonts(MathTextFonts.of(latinFontBytes, chineseFontBytes))
@@ -40,6 +42,8 @@ Literal text is limited to BMP left-to-right Latin, Han, Kana, Hangul, Greek and
 For example, `(\bar{x} \pm s) / \text{岁}` produces actual outlines with explicit Chinese font bytes. `bar`/`overline` currently belong to the vector subset; Word requires an explicit IMAGE/TEXT candidate or fails strictly. Direct entries are `TexMath.vector(tex, options, textFonts)` and `TexMath.processor(options, textFonts)`.
 
 `MathTextFonts` retains only private encoded-byte snapshots. A vector invocation requiring text parses each supplied font at most once and releases its local parsed-font references afterward; this is not a cache across equations. `MathContent` and processors retain their configuration, whose bytes remain until those caller references are released. Expiry of the separate body-font cache does not release these snapshots.
+
+`MathTextFonts.deferred(...)` synchronously obtains explicit fonts only when a literal text group is used. It does not memoize globally and rejects another deferred configuration. Returning ordinary `EMPTY` keeps the original default mathematical text path. The configured-once entry memoizes its encoded snapshot only within the current operation, avoiding mathematical font validation and copying for ordinary text and symbol-only equations.
 
 Use `compiler.compile(importer -> ...)` to build Java templates or compile XML with that same importer. The synchronous callback is not retained. Every compiled equation must occur exactly once in the returned document. The math module does not depend on the template module. Source/work/formula/segment budgets remain cumulative and configurable; the older convenience entry's default 256 formulas is no longer an unchangeable total ceiling.
 

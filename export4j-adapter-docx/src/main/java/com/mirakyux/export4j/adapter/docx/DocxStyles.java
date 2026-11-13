@@ -44,6 +44,7 @@ final class DocxStyles {
     private String defaultParagraph = "";
     private int paragraphs;
     private boolean hasDefaults;
+    private boolean declaredProfiles;
     private long formattingWork;
 
     private DocxStyles(Map<String, DocxAdapter.FontRoles> fonts, DocxFontProfiles profiles, DocxAdapter.Policy policy, List<DocxAdapter.Diagnostic> diagnostics, DocxLimits limits) {
@@ -59,7 +60,8 @@ final class DocxStyles {
         if (!complex && fonts.isEmpty() && profiles.empty()) { return false; }
         var mapper = new DocxStyles(fonts, profiles, policy, diagnostics, limits); mapper.read(root);
         for (var style : mapper.styles.values()) { mapper.resolve(style.id(), new HashSet<>(), 0); }
-        if (complex && !profiles.declared(root)) { loss(policy, diagnostics, "word/styles.xml", "styleGraph", "named style graph is materialized into concrete semantic formatting"); }
+        mapper.declaredProfiles = complex && profiles.declared(root);
+        if (complex && !mapper.declaredProfiles) { loss(policy, diagnostics, "word/styles.xml", "styleGraph", "named style graph is materialized into concrete semantic formatting"); }
         for (var entry : parts.entrySet()) {
             if (!entry.getKey().startsWith("word/") || !entry.getKey().endsWith(".xml") || entry.getKey().equals("word/styles.xml")) { continue; }
             var document = DocxAdapter.parse(entry.getValue());
@@ -199,12 +201,23 @@ final class DocxStyles {
             Element concrete = merge(inherited, directR, false);
             if (concrete == null) { continue; }
             if (!character.isEmpty() && styles.get(character).r() != null) { remove(concrete, "rStyle"); }
-            applyFamily(concrete);
+            if (!preserveDeclaredRole(concrete, character)) { applyFamily(concrete); }
             if (directR != null) { run.removeChild(directR); } run.insertBefore(target.importNode(concrete, true), run.getFirstChild());
         }
     }
     private static Element nearestParagraph(Element run) {
         for (var node = run.getParentNode(); node instanceof Element parent; node = parent.getParentNode()) { if (W.equals(parent.getNamespaceURI()) && parent.getLocalName().equals("p")) { return parent; } } return null;
+    }
+    private boolean preserveDeclaredRole(Element properties, String name) throws IOException {
+        if (!declaredProfiles || name.isEmpty()) { return false; }
+        var role = profiles.role(name); var fonts = child(properties, "rFonts");
+        if (role == null || fonts == null || !role.families().equals(DocxFontProfiles.read(fonts))
+                || role.bold() != enabled(child(properties, "b")) || role.italic() != enabled(child(properties, "i"))) { return false; }
+        remove(properties, "rStyle");
+        var style = properties.getOwnerDocument().createElementNS(W, "w:rStyle");
+        style.setAttributeNS(W, "w:val", name); properties.appendChild(style);
+        remove(properties, "rFonts");
+        return true;
     }
     private void applyFamily(Element properties) throws IOException {
         var family = child(properties, "rFonts"); if (family == null) { return; }

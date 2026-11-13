@@ -150,7 +150,7 @@ def main():
               "resolvedRuntimeHashesVerified": len(jars) - 1,
               "productionPrintingReferences": 0, "consumers": {},
               "runtimeSha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in jars}}
-    for name in ("Consumer", "DocxSemanticCompleteConsumer", "HtmlCssLayoutConsumer", "MathConsumer", "FontCacheConsumer", "ContentBlocksConsumer", "RichContentConsumer"):
+    for name in ("Consumer", "DocxSemanticCompleteConsumer", "HtmlCssLayoutConsumer", "MathConsumer", "FontCacheConsumer", "ContentBlocksConsumer", "RichContentConsumer", "EasyExportConsumer"):
         denied = output / (name + ".denied")
         products = output / name
         run([java, "-Djava.awt.headless=true", f"-javaagent:{agent}={denied}",

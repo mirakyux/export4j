@@ -220,7 +220,9 @@ ManuWeave 学术示例的目录及排版事实取自 [jiassia/manuweave](https:/
 
 根目录 [NOTICE](../NOTICE) 汇集当前运行依赖的原始归属声明。构建出的 JAR 携带自研 LICENSE、NOTICE 和第三方许可原文；示例发行包同时携带未修改的依赖 JAR。
 
-当前 `sbom` 生成 CycloneDX 1.6 库运行清单，目标集合为 17 个自研库及 14 个第三方 Java 制品，携带实际 JAR 的 SHA-256；字段与字体资源另按本文件登记。JLaTeXMath 的原始链接例外使用完整许可名称记录，不填写未经证实的 SPDX 例外 ID。每批须重新生成并由生产验证器核对最终制品，不能沿用前一批哈希。候选清单不能替代 SBOM。
+统一入口 `export4j-starter` 装配既有组件、数学、XML 模板、PDF 后端和 DOCX 适配器，没有新增第三方坐标或字体资源。选择此模块会传递引入 `export4j-math` 及其已登记的 JLaTeXMath；需要更小依赖范围的应用继续按原模块选择。它不引入可选原生 OpenType 或 PDF 编辑适配器，也不让核心模块反向依赖输出实现。
+
+当前 `sbom` 生成 CycloneDX 1.6 库运行清单，目标集合为 18 个自研库及 14 个第三方 Java 制品，携带实际 JAR 的 SHA-256；字段与字体资源另按本文件登记。JLaTeXMath 的原始链接例外使用完整许可名称记录，不填写未经证实的 SPDX 例外 ID。每批须重新生成并由生产验证器核对最终制品，不能沿用前一批哈希。候选清单不能替代 SBOM。
 
 XML 模板源码与普通 ZIP 打包复用既有适配器及 JDK ZIP／UTF-8 API，没有增加模块或第三方依赖。示例继续使用已登记的 Liberation Sans Regular 字节，原版权及 OFL 文本随模板 ZIP 的 `licenses/` 条目保存；图片由自编样例生成。独立输入由 Python 标准库 ZIP 与既有 Pillow 生成，二者不进入 Java 运行清单。
 

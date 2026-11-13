@@ -2,6 +2,8 @@
 
 当前开发版提供 `MathContent`，将明确声明的文本、Markdown 或 HTML 编译一次，同时得到可交给 `DocumentEngine` 的视觉文档和可交给 `DocxAdapter.writeMath` 的原生 Word 数学文档。此入口不包含在已发布 RC3 中。
 
+需要字体和全局样式配置一次后直接导出时，使用 [统一入口](easy-export-api.md)。只需要一个目标时，`readVisual`／`compileVisual` 返回视觉文档，`readDocx`／`compileDocx` 返回原生 Word 数学文档，分别只执行对应目标的投影；既有 `read`／`compile` 继续一次编译双目标。DOCX 单目标仍使用共同的受限 TeX 和轮廓准备／几何预算，不等于任意 Word 数学输入。
+
 ## 一次编译，两个目标
 
 ```java
@@ -59,6 +61,8 @@ Java 的文档便利入口使用 `headingContent(content, level)`、`bulletConte
 例如 `(\bar{x} \pm s) / \text{岁}` 可通过上述显式字体生成真实轮廓；`bar`／`overline` 当前属于矢量子集，不能据此声称原生 Word 数学已支持。Word 目标需要调用方声明 IMAGE／TEXT 候选，否则严格失败。轮廓入口可直接使用 `TexMath.vector(tex, options, textFonts)`，源内容入口可使用 `TexMath.processor(options, textFonts)`。
 
 `MathTextFonts` 仅保留编码字节的私有快照，不永久保留解析字体。每次含文字组的矢量准备在调用内解析，每份至多一次，结束后局部字体即可释放；这不是跨公式解析缓存。`MathContent`／processor 会持有传入配置，其字节随配置存活，需释放这些调用方引用才可回收；正文 `FontFaceCache` 的到期不会释放该配置。
+
+`MathTextFonts.deferred(...)` 可同步延迟提供显式字体，仅在真实文字组出现时调用；供应器不做全局记忆，不接受再次返回 deferred 配置。供应器返回普通 `EMPTY` 时保持原来的默认数学文字路径。统一入口只在当前操作内记忆已准备的编码快照，不让普通文字或纯符号公式承担额外的数学字体验证及复制。
 
 ## Java 与 XML 组合
 

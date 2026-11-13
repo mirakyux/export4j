@@ -8,6 +8,7 @@ See the [FAQ](../faq.md) or [Chinese FAQ](../faq.zh-CN.md) for selection, runtim
 
 | Task | Guides |
 | --- | --- |
+| Configure once, export directly | [Unified PDF/DOCX entry](easy-export-api.md) |
 | Write reports and forms | [Authoring](authoring-api.md) · [Source blocks and inheritance](content-blocks-api.md) · [Fluent API](fluent-api.md) · [Components](components-api.md) · [Static forms](static-forms-api.md) |
 | Configure fonts and styles | [Fonts/text](text-api.md) · [Font caching](font-cache-api.md) · [Themes](themes-api.md) · [Native OpenType (Chinese)](../native-opentype-api.md) · [Font sources/licenses (Chinese)](../../assets/fonts/README.md) |
 | Adjust layout and page regions | [Layout (Chinese)](../layout-api.md) · [Editable grids](grid-layout-api.md) · [Body columns and full-width figures](column-flow-api.md) · [Continuous columns (Chinese)](../continuous-columns-api.md) · [Contour floats (Chinese)](../contour-floats-api.md) · [Page variants](page-variants-api.md) · [Background/foreground (Chinese)](../page-overlays-api.md) |

@@ -4,7 +4,7 @@
 
 已发布候选的变化及已知限制见 [0.1.0-rc.3 说明](releases/0.1.0-rc.3.md)。工作流会把 `docs/releases/<版本>.md` 中的说明附入对应 GitHub Release；具体发布状态以 Central 及工作流结果为准。
 
-当前开发构建新增可选 `export4j-math`，完整分发范围为 17 个库与 BOM；已发布 RC3 仍为其原来的 16 个库与 BOM，不包含新公共公式模块。下述历史验收记录不扩展到新增功能。
+当前开发构建新增可选 `export4j-math` 和统一导出入口 `export4j-starter`，完整分发范围为 18 个库与 BOM；已发布 RC3 仍为其原来的 16 个库与 BOM，不包含这两个模块。下述历史验收记录不扩展到新增功能。
 
 ## RC3 发布前本地准备
 
@@ -58,8 +58,8 @@ gpg --armor --output <仓库外私钥文件.asc> --export-secret-keys <完整指
 
 1. 校验明确的非 SNAPSHOT 版本，拒绝临时验证版本、Central 已存在的任一同版本模块及已存在的 `v<版本>` 标签，记录提交与构建输入。
 2. 用 Java 21、Node.js 24 和 Gradle Wrapper 构建、测试、检查 API、生成示例并在内存中签名；不导出 CI 私钥文件。
-3. 审计本批 SBOM，独立验证当前 17 个库与 BOM 的 87 个制品、签名、许可、版本和篡改拒绝，生成上传 ZIP；实际模块范围从 Gradle settings 核对。
-4. 在新调用方中解析本批签名制品，核对全部 17 个 JAR 的 SHA-256，检查生产样例的结构和双渲染，以及能力样例的 CMS 签名和篡改拒绝。数学模块须验证原生 DOCX、矢量输出、预算和明确降级。
+3. 审计本批 SBOM，独立验证当前 18 个库与 BOM 的 92 个制品、签名、许可、版本和篡改拒绝，生成上传 ZIP；实际模块范围从 Gradle settings 核对。
+4. 在新调用方中解析本批签名制品，核对全部 18 个 JAR 的 SHA-256，检查生产样例的结构和双渲染，以及能力样例的 CMS 签名和篡改拒绝。数学模块须验证原生 DOCX、矢量输出、预算和明确降级；统一入口须从单一模块依赖验证源内容／XML 与目标输出。
 5. 通过官方 API 以 `AUTOMATIC` 模式上传一次，等待 `PUBLISHED`。此步骤会对外发布指定版本。
 6. 从 Maven Central 下载准确字节、签名和校验文件，再验签、核对 SBOM，并用只配置 Maven Central 的新调用方编译、生成和检查输出。
 7. 独立任务再次核对提交、版本、发布包 SHA-256 及远端验证结果，在准确的构建提交上创建 `v<版本>` 标签和 GitHub Release。附带签名 Maven 发布包、公钥、SBOM 与验证报告，并生成提交变更说明。带版本后缀的 RC／beta 等标记为 prerelease，稳定版标记为 Latest。
@@ -104,9 +104,9 @@ python scripts/verify_production.py
 python scripts/verify_capabilities.py
 ~~~
 
-`publishLocalBundle` 将 17 个自研库和 BOM 暂存到 `build/repository`，不上传远程发布服务、不写用户 Maven 仓库；首次构建仍可能下载固定依赖。库携带源码、Javadoc、POM、Gradle 元数据和许可。SNAPSHOT 使用 Maven 时间戳制品，验证脚本通过 `maven-metadata.xml` 解析实际文件，不假设固定文件名。
+`publishLocalBundle` 将 18 个自研库和 BOM 暂存到 `build/repository`，不上传远程发布服务、不写用户 Maven 仓库；首次构建仍可能下载固定依赖。库携带源码、Javadoc、POM、Gradle 元数据和许可。SNAPSHOT 使用 Maven 时间戳制品，验证脚本通过 `maven-metadata.xml` 解析实际文件，不假设固定文件名。
 
-`sbom` 写入 `build/reports/sbom.cdx.json`，CycloneDX 1.6 库运行清单包含 17 个自研库及 14 个第三方 Java 制品的 SHA-256；按实际坐标记录 Apache-2.0、BSD-2-Clause、BSD-3-Clause、MIT 和 JLaTeXMath 的 GPL-2.0-or-later 原始链接例外名称。第三方许可白名单遇到新增坐标会失败，须先审查。数学模块二进制携带对应 JLaTeXMath sources JAR／构建 POM，分发验证器核对其摘要和字节；原文及字体条款另见[依赖记录](dependencies.md)。可选 OpenType 的 native classifier 不传递到生产 POM；应用显式选择，原生制品／内含许可另见 `third-party/native-artifacts.csv`。字体、JDK、测试工具和构建工具也单独登记，不混入 Java JAR 清单。
+`sbom` 写入 `build/reports/sbom.cdx.json`，CycloneDX 1.6 库运行清单包含 18 个自研库及 14 个第三方 Java 制品的 SHA-256；按实际坐标记录 Apache-2.0、BSD-2-Clause、BSD-3-Clause、MIT 和 JLaTeXMath 的 GPL-2.0-or-later 原始链接例外名称。第三方许可白名单遇到新增坐标会失败，须先审查。数学模块二进制携带对应 JLaTeXMath sources JAR／构建 POM，分发验证器核对其摘要和字节；原文及字体条款另见[依赖记录](dependencies.md)。可选 OpenType 的 native classifier 不传递到生产 POM；应用显式选择，原生制品／内含许可另见 `third-party/native-artifacts.csv`。字体、JDK、测试工具和构建工具也单独登记，不混入 Java JAR 清单。
 
 独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，分别验证 Gradle 元数据和仅 POM 的消费路径，并核对实际运行 JAR 的 SHA-256；这些检查证明本地制品可消费，不代表 Maven Central、签名或远程 CI 验证。
 
@@ -143,7 +143,7 @@ Windows Word／PDF 实际编辑、保存、重开及最终 JAR 回读见[阶段�
 python scripts/prepare_maven_bundle.py --repository <本地暂存目录> --version <相同版本> --public-key <公钥文件> --output build/verification/distribution
 ```
 
-命令中占位符须替换后执行；Linux／macOS 使用 `./gradlew`。启用签名的 `publishSignedBundle` 先执行 `check`（含测试和候选 API 门禁）、`publishLocalBundle` 及 `sbom`，只把当前 17 个库和 BOM 暂存到本地，不连接 Central。完整 POM 包含项目、SCM、维护者和许可；二进制、源码、Javadoc、POM 及 Gradle 元数据均须有有效签名。准备脚本使用独立 GnuPG 验签并验证篡改拒绝，核对实际 JAR 与 SBOM、许可及坐标，生成标准目录结构 ZIP 和 MD5／SHA-1／SHA-256／SHA-512 校验文件。调用前须安装 GnuPG，并准备可验证的公开密钥。
+命令中占位符须替换后执行；Linux／macOS 使用 `./gradlew`。启用签名的 `publishSignedBundle` 先执行 `check`（含测试和候选 API 门禁）、`publishLocalBundle` 及 `sbom`，只把当前 18 个库和 BOM 暂存到本地，不连接 Central。完整 POM 包含项目、SCM、维护者和许可；二进制、源码、Javadoc、POM 及 Gradle 元数据均须有有效签名。准备脚本使用独立 GnuPG 验签并验证篡改拒绝，核对实际 JAR 与 SBOM、许可及坐标，生成标准目录结构 ZIP 和 MD5／SHA-1／SHA-256／SHA-512 校验文件。调用前须安装 GnuPG，并准备可验证的公开密钥。
 
 `scripts/verify_signed_distribution.py` 可用临时密钥和 `0.0.0-verification...` 标记版本演练整个流程，随后以独立复制的消费者编译并生成输出。消费者实际解析的每个自研 JAR 必须与该批签名仓库具有相同 SHA-256；同坐标、同版本不能替代准确字节核对。构建输入清单同时绑定生产源码、构建／验证脚本、消费者源码及资源，签名与消费期间变化即失败。此测试身份不作为正式签名身份；脚本要求全新忽略目录，私钥仅存在临时 keyring 和签名进程环境，结束后清理。演练包可审查，不自动上传。
 

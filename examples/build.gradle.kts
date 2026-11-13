@@ -19,6 +19,7 @@ dependencies {
     implementation(project(":export4j-adapter-pdf"))
     implementation(project(":export4j-adapter-web"))
     implementation(project(":export4j-math"))
+    implementation(project(":export4j-starter"))
     implementation(libs.jlatexmath) {
         isTransitive = false
     }
@@ -69,6 +70,15 @@ tasks.register<JavaExec>("contentBlocks") {
     description = "Generates equivalent Java/XML source content with scoped defaults and explicit DOCX losses."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.mirakyux.export4j.examples.ContentBlocksExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("easyExport") {
+    group = "application"
+    description = "Exports source content and XML templates through one configured PDF/DOCX entry point."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.EasyExportExample")
     workingDir = rootProject.projectDir
     systemProperty("java.awt.headless", "true")
 }

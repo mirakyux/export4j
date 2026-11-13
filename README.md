@@ -47,6 +47,8 @@ The development version adds [bounded font caching and idle release](docs/en/fon
 
 Development [source content blocks](docs/en/content-blocks-api.md) add per-block fonts, color, paragraph properties and explicit text/Markdown/HTML parsing, with inherited defaults and independent formula/table switches. This batch's acceptance results are recorded separately.
 
+The development [configured-once entry](docs/en/easy-export-api.md), `export4j-starter`, combines source content or body XML with PDF/DOCX output from one font and style configuration. It is separate from published RC3.
+
 Support applies to the documented input subsets. See the [API guides](docs/en/README.md) for configuration and examples.
 
 ## Getting started
@@ -116,6 +118,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | Example | Output directory | Demonstrates |
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java authoring and semantic DOCX |
+| `:examples:easyExport` | `examples/build/easy-export/` | One font/style setup for text, Markdown, HTML and body XML to PDF/DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML reports and data binding |
 | `:examples:manuWeave` | `examples/build/manuweave/` | All 286 ManuWeave academic profiles, with individual PDF and formatting reports |
 | `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | Vector PDF/SVG mathematics and native, editable Word equations |

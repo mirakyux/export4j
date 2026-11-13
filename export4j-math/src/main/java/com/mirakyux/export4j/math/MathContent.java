@@ -84,6 +84,24 @@ public final class MathContent {
         }
     }
 
+    /** Visual output only; native Word support does not constrain this compilation. */
+    public record VisualResult(Document document, List<Formula> formulas, List<Degradation> degradations) {
+        public VisualResult {
+            Objects.requireNonNull(document, "document");
+            formulas = List.copyOf(formulas); degradations = List.copyOf(degradations);
+        }
+    }
+
+    /** Native Word output only, with occurrence-specific representation diagnostics.
+     * The shared bounded TeX and outline preparation contract still applies.
+     */
+    public record DocxResult(DocxMathDocument document, List<Formula> formulas, List<Degradation> degradations) {
+        public DocxResult {
+            Objects.requireNonNull(document, "document");
+            formulas = List.copyOf(formulas); degradations = List.copyOf(degradations);
+        }
+    }
+
     /** 可用同一个解析器编写 Java 模板或编译 XML；返回后不保留编写器及中间文档。 */
     @FunctionalInterface
     public interface Author { Document compile(MathContentSource importer) throws IOException; }
@@ -119,9 +137,50 @@ public final class MathContent {
         return compile(importer -> importer.read(source).execute().document());
     }
 
+    /** Compiles source for visual output without constructing a native Word projection. */
+    public VisualResult readVisual(String source) throws IOException {
+        Objects.requireNonNull(source, "source");
+        return compileVisual(importer -> importer.read(source).execute().document());
+    }
+
+    /** Compiles source for native Word output without constructing a final visual document.
+     * Outline preparation still checks the shared source and geometry budgets.
+     */
+    public DocxResult readDocx(String source) throws IOException {
+        Objects.requireNonNull(source, "source");
+        return compileDocx(importer -> importer.read(source).execute().document());
+    }
+
     /** 所有公式额度跨回调内的源块累计，预算与取消异常不能进入降级分支。 */
     public Result compile(Author author) throws IOException {
         var capture = new Capture();
+        var source = source(author, capture);
+        var visual = new Projection(capture, Target.VISUAL, source).document(source);
+        var docx = docx(source, capture);
+        return new Result(visual, docx, formulas(capture), capture.degradations);
+    }
+
+    /** Parses once in the shared source session and projects only visual output.
+     * The author is synchronous and is not retained; omitted or duplicated formulas still fail.
+     */
+    public VisualResult compileVisual(Author author) throws IOException {
+        var capture = new Capture();
+        var source = source(author, capture);
+        var visual = new Projection(capture, Target.VISUAL, source).document(source);
+        return new VisualResult(visual, formulas(capture), capture.degradations);
+    }
+
+    /** Parses once in the shared source session and projects only native Word output.
+     * The author is synchronous and is not retained; omitted or duplicated formulas still fail.
+     * Shared bounded TeX and outline preparation remain required for formula geometry.
+     */
+    public DocxResult compileDocx(Author author) throws IOException {
+        var capture = new Capture();
+        var source = source(author, capture);
+        return new DocxResult(docx(source, capture), formulas(capture), capture.degradations);
+    }
+
+    private Document source(Author author, Capture capture) throws IOException {
         var builder = ContentImporter.builder().defaults(defaults).limits(limits)
                 .maxFormulas(maxFormulas).maxFormulaUtf16(options.maxSourceLength())
                 .maxVectorSegments(maxSegments).pageSettings(pageSettings).metadata(metadata)
@@ -133,11 +192,17 @@ public final class MathContent {
             source = Objects.requireNonNull(Objects.requireNonNull(author, "author").compile(sources), "document");
         }
         catch (FormulaSyntax.LimitExceededException failure) { throw new MathException(MathException.Reason.LIMIT_EXCEEDED, failure); }
-        var visual = new Projection(capture, Target.VISUAL, source).document(source);
+        return source;
+    }
+
+    private DocxMathDocument docx(Document source, Capture capture) throws IOException {
         var nativeProjection = new Projection(capture, Target.DOCX, source);
         var nativeSource = nativeProjection.document(source);
-        var docx = NativeMathBinding.bind(nativeSource, nativeProjection.nativeEquations, true);
-        return new Result(visual, docx, capture.ordered.stream().map(o -> o.formula).toList(), capture.degradations);
+        return NativeMathBinding.bind(nativeSource, nativeProjection.nativeEquations, true);
+    }
+
+    private static List<Formula> formulas(Capture capture) {
+        return capture.ordered.stream().map(o -> o.formula).toList();
     }
 
     public static final class Builder {
@@ -156,6 +221,8 @@ public final class MathContent {
         private DocumentMetadata metadata = DocumentMetadata.EMPTY;
         private Builder() { }
         public Builder defaults(ContentOptions value) { defaults = Objects.requireNonNull(value, "defaults").resolve(defaults); return this; }
+        /** Uses a complete immutable source snapshot, including distinct heading and cell styles. */
+        public Builder defaults(ContentOptions.Resolved value) { defaults = Objects.requireNonNull(value, "defaults"); return this; }
         public Builder limits(ImportLimits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
         public Builder options(MathOptions value) { options = Objects.requireNonNull(value, "options"); return this; }
         /** Explicit physical fonts for text/textrm inside formulas; encoded sources are snapshotted by MathTextFonts. */

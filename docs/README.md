@@ -8,6 +8,7 @@ Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导�
 
 | 任务 | 指南 |
 | --- | --- |
+| 配置一次，直接导出 | [统一 PDF／DOCX 入口](easy-export-api.md) |
 | 编写报告与表单 | [常用编写](authoring-api.md) · [源内容块与继承](content-blocks-api.md) · [链式 API](fluent-api.md) · [组件](components-api.md) · [静态表单](static-forms-api.md) |
 | 配置字体和样式 | [字体／文字](text-api.md) · [字体缓存](font-cache-api.md) · [主题](themes-api.md) · [原生 OpenType](native-opentype-api.md) · [字体来源与许可](../assets/fonts/README.md) |
 | 调整布局与页区 | [布局](layout-api.md) · [可编辑栅格](grid-layout-api.md) · [正文分栏与通栏图表](column-flow-api.md) · [连续分栏组件](continuous-columns-api.md) · [轮廓浮动](contour-floats-api.md) · [页区变体](page-variants-api.md) · [背景／前景](page-overlays-api.md) |

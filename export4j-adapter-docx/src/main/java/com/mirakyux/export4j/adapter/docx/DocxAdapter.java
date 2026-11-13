@@ -166,6 +166,7 @@ public final class DocxAdapter {
         private RegionGeometry regionGeometry;
         private final Map<String, FontRoles> fontFamilies = new HashMap<>();
         private final Map<DocxFontFamilies, FontRoles> fontProfiles = new HashMap<>();
+        private final Map<String, DocxFontProfiles.Role> fontAliases = new HashMap<>();
         private DocxFontFamilies defaultFonts;
         private LineSpacing lineSpacing = LineSpacing.EXACT;
         private Builder() { }
@@ -193,9 +194,26 @@ public final class DocxAdapter {
             if (previous != null && !previous.equals(roles)) { throw new IllegalArgumentException("duplicate DOCX font profile"); }
             return this;
         }
+        /** Associates an additional nonblank semantic role with explicit Word script families.
+         * Several aliases may select the same family and variant; strict readback preserves each
+         * emitted alias. This does not replace a canonical import profile or discover fonts.
+         * Duplicate aliases are rejected immediately; collisions with profile roles fail at build time.
+         */
+        public Builder fontRole(String role, DocxFontFamilies families, boolean bold, boolean italic) {
+            Objects.requireNonNull(role, "role"); Objects.requireNonNull(families, "families");
+            if (role.isBlank() || role.length() > 256 || role.matches("Heading[1-6]")
+                    || role.codePoints().anyMatch(cp -> Character.isISOControl(cp) || cp >= 0xd800 && cp <= 0xdfff
+                            || cp == 0xfffe || cp == 0xffff)) {
+                throw new IllegalArgumentException("invalid DOCX font alias");
+            }
+            if (fontAliases.putIfAbsent(role, new DocxFontProfiles.Role(families, bold, italic)) != null) {
+                throw new IllegalArgumentException("duplicate DOCX font alias");
+            }
+            return this;
+        }
         /** Selects only Word's line-box mapping; it does not remeasure or alter the portable model. */
         public Builder lineSpacing(LineSpacing value) { lineSpacing = Objects.requireNonNull(value, "lineSpacing"); return this; }
-        public DocxAdapter build() { return new DocxAdapter(limits, regionGeometry, fontFamilies, new DocxFontProfiles(fontProfiles, defaultFonts), lineSpacing); }
+        public DocxAdapter build() { return new DocxAdapter(limits, regionGeometry, fontFamilies, new DocxFontProfiles(fontProfiles, defaultFonts, fontAliases), lineSpacing); }
     }
 
     public DocxAdapter() { this(DocxLimits.DEFAULT); }

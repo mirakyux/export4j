@@ -18,6 +18,7 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-web")
     implementation("com.mirakyux.export4j:export4j-opentype")
     implementation("com.mirakyux.export4j:export4j-math")
+    implementation("com.mirakyux.export4j:export4j-starter")
     val nativeClassifier = rootProject.extra["export4jNativeClassifierResolved"] as String
     runtimeOnly("org.lwjgl:lwjgl:3.4.3:$nativeClassifier")
     runtimeOnly("org.lwjgl:lwjgl-harfbuzz:3.4.3:$nativeClassifier")
@@ -67,6 +68,14 @@ tasks.register<JavaExec>("contentBlocks") {
 tasks.register<JavaExec>("richContent") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.RichContentConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("easyExport") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.EasyExportConsumer")
     workingDir = projectDir
     systemProperty("java.awt.headless", "true")
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)

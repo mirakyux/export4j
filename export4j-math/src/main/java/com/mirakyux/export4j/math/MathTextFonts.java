@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /** Explicit physical fonts for literal {@code \text{...}} and {@code \textrm{...}} groups.
  * Encoded bytes are privately snapshotted and retained for this configuration's lifetime.
@@ -24,8 +25,21 @@ public final class MathTextFonts {
     private static final int MAX_FONT_BYTES = 32 * 1024 * 1024;
     private static final long MAX_TOTAL_BYTES = 64L * 1024 * 1024;
     private final List<byte[]> encoded;
+    private final Supplier<MathTextFonts> deferred;
 
-    private MathTextFonts(List<byte[]> encoded) { this.encoded = encoded; }
+    private MathTextFonts(List<byte[]> encoded) { this.encoded = encoded; deferred = null; }
+    private MathTextFonts(Supplier<MathTextFonts> deferred) { encoded = List.of(); this.deferred = deferred; }
+
+    /** Defers obtaining explicit text fonts until a formula actually contains a supported literal
+     * text group. The synchronous supplier is not memoized and must return an ordinary font value,
+     * never another deferred value. It must provide its own immutable input snapshot and concurrency
+     * contract. Keeping this configuration keeps the supplier alive; no parsed fonts are cached.
+     * This lets an operation reuse its validated body-font snapshot without applying mathematical
+     * font restrictions to documents which never use mathematical literal text.
+     */
+    public static MathTextFonts deferred(Supplier<MathTextFonts> source) {
+        return new MathTextFonts(Objects.requireNonNull(source, "source"));
+    }
 
     /** Snapshots one to eight explicit standalone static TrueType/OpenType CFF font files, at most 32 MiB each and
      * 64 MiB in total. Empty input returns {@link #EMPTY}. Input streams remain caller-owned;
@@ -62,9 +76,16 @@ public final class MathTextFonts {
         return new MathTextFonts(List.copyOf(snapshot));
     }
 
-    public boolean isEmpty() { return encoded.isEmpty(); }
+    /** A deferred configuration is potentially nonempty and is not evaluated by this query. */
+    public boolean isEmpty() { return deferred == null && encoded.isEmpty(); }
 
     List<Font> parse() {
+        if (deferred != null) {
+            ExecutionContext.checkpoint();
+            var fonts = Objects.requireNonNull(deferred.get(), "deferred text fonts");
+            if (fonts.deferred != null) { throw new IllegalArgumentException("nested deferred text fonts"); }
+            return fonts.parse();
+        }
         var result = new ArrayList<Font>(encoded.size());
         for (byte[] bytes : encoded) {
             ExecutionContext.checkpoint();

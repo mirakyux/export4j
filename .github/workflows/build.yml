@@ -45,7 +45,7 @@ jobs:
         run: python scripts/create_compatibility_corpus.py
       - name: Consume only published coordinates and run native OpenType
         shell: bash
-        run: bash ./gradlew --no-daemon --console=plain -p verification/consumer -Pexport4jNativeClassifier=${{ matrix.classifier }} build run math ioConvenience ergonomics openType compatibilityCorpus resolvedLibraries --refresh-dependencies
+        run: bash ./gradlew --no-daemon --console=plain -p verification/consumer -Pexport4jNativeClassifier=${{ matrix.classifier }} build run math easyExport ioConvenience ergonomics openType compatibilityCorpus resolvedLibraries --refresh-dependencies
       - name: Verify generation and conversion without printing services
         shell: bash
         run: python scripts/verify_driverless.py --consumer-build-directory verification/consumer/build --output-directory build/verification/driverless
