@@ -13,7 +13,18 @@ public final class FontData {
     private final boolean subsetAllowed;
 
     FontData(byte[] bytes, boolean subsetAllowed) {
-        this.bytes = bytes.clone();
+        this(bytes, subsetAllowed, true);
+    }
+
+    /** Takes a loader-private snapshot that has never escaped and will never be modified again.
+     * Caller-owned arrays, including arrays returned by overridable stream methods, must be copied first.
+     */
+    static FontData takeOwnership(byte[] snapshot, boolean subsetAllowed) {
+        return new FontData(snapshot, subsetAllowed, false);
+    }
+
+    private FontData(byte[] bytes, boolean subsetAllowed, boolean defensiveCopy) {
+        this.bytes = defensiveCopy ? bytes.clone() : bytes;
         this.subsetAllowed = subsetAllowed;
         try {
             id = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(this.bytes));

@@ -11,6 +11,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,6 +46,8 @@ public final class DesignerApp {
     static final class Server implements AutoCloseable {
         private final HttpServer http;
         private final ThreadPoolExecutor workers;
+        private final ThreadPoolExecutor workspace;
+        private final ThreadPoolExecutor staticResponses;
         private final String token = UUID.randomUUID().toString();
         private final AtomicBoolean cancelled = new AtomicBoolean();
         private DesignerProject.History history = new DesignerProject.History(DesignerSamples.create(0));
@@ -53,16 +57,26 @@ public final class DesignerApp {
         private DocumentConversion.Prepared prepared;
         private String preparedId = "";
         private DesignerService.Format preparedFormat;
+        private record ResourceIdentity(String all, String fonts) { }
+        private final Map<XmlTemplateBundle, ResourceIdentity> resourceIdentities = new java.util.IdentityHashMap<>();
         Server(int port) throws IOException {
             http = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 16);
             workers = new ThreadPoolExecutor(2, 2, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(16));
+            workspace = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(16));
+            staticResponses = new ThreadPoolExecutor(2, 2, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(16));
             http.setExecutor(workers); http.createContext("/", this::handle);
         }
         void start() { http.start(); }
         String origin() { return "http://127.0.0.1:" + http.getAddress().getPort(); }
-        @Override public void close() { cancelled.set(true); http.stop(0); workers.shutdownNow(); }
+        @Override public void close() {
+            cancelled.set(true); http.stop(0); workers.shutdownNow();
+            for (var executor : List.of(workspace, staticResponses)) {
+                for (var pending : executor.shutdownNow()) { ((Request) pending).exchange.close(); }
+            }
+        }
         private void handle(HttpExchange exchange) throws IOException {
-            try (exchange) {
+            boolean transferred = false;
+            try {
                 exchange.getResponseHeaders().set("Cache-Control", "no-store");
                 exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
                 exchange.getResponseHeaders().set("Referrer-Policy", "no-referrer");
@@ -70,19 +84,35 @@ public final class DesignerApp {
                 try {
                     if (!("127.0.0.1:" + http.getAddress().getPort()).equals(exchange.getRequestHeaders().getFirst("Host"))) { throw new Rejected(403, "loopback Host required"); }
                     String path = exchange.getRequestURI().getPath();
-                    if (!path.startsWith("/api/")) { asset(exchange, path); return; }
-                    String supplied = exchange.getRequestHeaders().getFirst("X-Designer-Token");
-                    if (supplied == null || !MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) { throw new Rejected(403, "designer session token required"); }
-                    String origin = exchange.getRequestHeaders().getFirst("Origin");
-                    if (origin != null && !origin().equals(origin)) { throw new Rejected(403, "cross-origin request rejected"); }
-                    if (path.equals("/api/cancel")) { method(exchange, "POST"); cancelled.set(true); json(exchange, Map.of("cancelled", true)); return; }
-                    synchronized (this) { api(exchange, path); }
+                    if (path.startsWith("/api/")) {
+                        String supplied = exchange.getRequestHeaders().getFirst("X-Designer-Token");
+                        if (supplied == null || !MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) { throw new Rejected(403, "designer session token required"); }
+                        String origin = exchange.getRequestHeaders().getFirst("Origin");
+                        if (origin != null && !origin().equals(origin)) { throw new Rejected(403, "cross-origin request rejected"); }
+                        if (path.equals("/api/cancel")) { method(exchange, "POST"); cancelled.set(true); json(exchange, Map.of("cancelled", true)); return; }
+                    }
+                    // Receiving bodies, waiting for the workspace and writing large responses must not occupy cancellation receivers.
+                    (path.startsWith("/api/") ? workspace : staticResponses).execute(new Request(exchange, path)); transferred = true;
                 } catch (Rejected ex) { error(exchange, ex.status, ex.getMessage()); }
-                catch (ProcessingException ex) {
-                    error(exchange, 422, BindingJson.object("error", "当前策略拒绝不兼容内容，未生成下载文件。",
-                            "report", report(new ProcessingReport(ProcessingReport.Phase.PREVIEW, List.of(ex.issue())))));
-                }
-                catch (Exception ex) { error(exchange, 422, ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()); }
+                catch (RejectedExecutionException ex) { error(exchange, 503, "request queue is full"); }
+            } finally { if (!transferred) { exchange.close(); } }
+        }
+        private final class Request implements Runnable {
+            private final HttpExchange exchange;
+            private final String path;
+            private Request(HttpExchange exchange, String path) { this.exchange = exchange; this.path = path; }
+            @Override public void run() {
+                try (exchange) {
+                    try {
+                        if (path.startsWith("/api/")) { synchronized (Server.this) { api(exchange, path); } }
+                        else { asset(exchange, path); }
+                    } catch (Rejected ex) { error(exchange, ex.status, ex.getMessage()); }
+                    catch (ProcessingException ex) {
+                        error(exchange, 422, BindingJson.object("error", "当前策略拒绝不兼容内容，未生成下载文件。",
+                                "report", report(new ProcessingReport(ProcessingReport.Phase.PREVIEW, List.of(ex.issue())))));
+                    }
+                    catch (Exception ex) { error(exchange, 422, ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage()); }
+                } catch (IOException ex) { throw new UncheckedIOException("designer HTTP response failed", ex); }
             }
         }
         private void asset(HttpExchange exchange, String path) throws IOException {
@@ -319,12 +349,15 @@ public final class DesignerApp {
         }
         private void changed() { revision++; preview = null; previewId = ""; prepared = null; preparedId = ""; }
         private Map<String, Object> state() throws Exception {
+            var retained = history.retained().stream().map(DesignerProject::bundle).toList();
+            resourceIdentities.keySet().removeIf(bundle -> !retained.contains(bundle));
             var project = history.current(); var fonts = new ArrayList<Object>();
             project.bundle().fonts().forEach((name, bytes) -> fonts.add(BindingJson.object("name", name, "bytes", bytes.length)));
             var images = new ArrayList<Object>(); project.bundle().images().forEach((name, image) -> images.add(BindingJson.object("name", name, "width", image.pixelWidth(), "height", image.pixelHeight())));
             return BindingJson.object("revision", revision, "source", project.bundle().source(), "data", project.data(), "outline", entry(DesignerXml.outline(DesignerXml.parse(project.bundle().source()).getDocumentElement(), "")),
                     "fonts", fonts, "images", images, "fragments", project.bundle().fragments(), "licenses", project.bundle().licenses().keySet().stream().sorted().toList(),
                     "resourceIdentity", resourceIdentity(project.bundle()),
+                    "fontIdentity", identities(project.bundle()).fonts(),
                     "historyResources", historyResourceIdentities(),
                     "canUndo", history.canUndo(), "canRedo", history.canRedo(), "samples", DesignerSamples.catalog());
         }
@@ -333,14 +366,20 @@ public final class DesignerApp {
             for (var project : history.retained()) { identities.add(resourceIdentity(project.bundle())); }
             return List.copyOf(identities);
         }
-        private static String resourceIdentity(com.mirakyux.export4j.adapter.template.XmlTemplateBundle bundle) throws Exception {
+        private String resourceIdentity(XmlTemplateBundle bundle) throws Exception { return identities(bundle).all(); }
+        private ResourceIdentity identities(XmlTemplateBundle bundle) throws Exception {
+            var cached = resourceIdentities.get(bundle);
+            if (cached != null) { return cached; }
             var resources = new java.util.TreeMap<String, String>();
             var digest = java.security.MessageDigest.getInstance("SHA-256");
             bundle.fonts().forEach((name, bytes) -> resources.put("fonts/" + name, java.util.HexFormat.of().formatHex(digest.digest(bytes))));
+            String fontIdentity = java.util.HexFormat.of().formatHex(digest.digest(BindingJson.write(resources).getBytes(StandardCharsets.UTF_8)));
             bundle.images().forEach((name, image) -> resources.put("images/" + name, image.id()));
             bundle.fragments().forEach((name, source) -> resources.put("fragments/" + name, source));
             bundle.licenses().forEach((name, source) -> resources.put("licenses/" + name, source));
-            return java.util.HexFormat.of().formatHex(digest.digest(BindingJson.write(resources).getBytes(StandardCharsets.UTF_8)));
+            var identity = new ResourceIdentity(java.util.HexFormat.of().formatHex(digest.digest(BindingJson.write(resources).getBytes(StandardCharsets.UTF_8))), fontIdentity);
+            resourceIdentities.put(bundle, identity);
+            return identity;
         }
         private static Map<String, Object> entry(DesignerXml.Entry entry) { return BindingJson.object("path", entry.path(), "tag", entry.tag(), "id", entry.id(), "label", entry.label(), "children", entry.children().stream().map(Server::entry).toList()); }
         private static Object report(ProcessingReport report) {

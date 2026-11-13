@@ -11,9 +11,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -67,12 +65,7 @@ public final class DocxSemanticConversion {
         public long bytes() { return encoded.length; }
         public void writeTo(OutputStream output) throws IOException { Objects.requireNonNull(output, "output"); ExecutionContext.execute(execution, () -> { ExecutionContext.output(output).write(encoded); return null; }); }
         public void writeTo(Path target) throws IOException {
-            Objects.requireNonNull(target, "target"); ExecutionContext.execute(execution, () -> {
-                var absolute = target.toAbsolutePath(); var parent = absolute.getParent(); if (parent == null || !Files.isDirectory(parent)) { throw new IOException("native output parent directory missing"); }
-                var temporary = Files.createTempFile(parent, ".export4j-native-", ".tmp");
-                try { try (var output = Files.newOutputStream(temporary)) { ExecutionContext.output(output).write(encoded); } ExecutionContext.checkpoint(); Files.move(temporary, absolute, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
-                finally { Files.deleteIfExists(temporary); } return null;
-            });
+            DocxFileIO.publish(target, execution, stream -> stream.write(encoded));
         }
 
         /** Local filesystem path; preserves the Path overload's budgets and resource ownership. */

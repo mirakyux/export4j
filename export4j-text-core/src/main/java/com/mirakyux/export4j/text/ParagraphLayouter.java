@@ -173,12 +173,16 @@ public final class ParagraphLayouter {
         }
         if (!images.isEmpty() || !fields.isEmpty() || !graphics.isEmpty() || forceOpenType || adaptive && OpenTypeParagraphLayouter.required(text)) {
             return new OpenTypeParagraphLayouter(limits).layout(spans, width, style, ascent, images, fields, graphics,
-                    line -> checkedLineWidth(lineWidths, line, width, style));
+                    line -> checkedLineWidth(lineWidths, line, width, style),
+                    !forceOpenType && !images.isEmpty() && fields.isEmpty() && graphics.isEmpty());
         }
         List<TextLine> lines = new ArrayList<>();
         List<TextDiagnostic> diagnostics = new ArrayList<>();
-        Map<Integer, StyledSpan> styles = new HashMap<>();
+        StyledSpan uniformSpan = spans.size() == 1 ? spans.getFirst() : null;
+        Map<Integer, StyledSpan> styles = uniformSpan == null ? new HashMap<>() : Map.of();
         int start = 0;
+        int firstSpan = 0;
+        int firstSpanStart = 0;
         while (true) {
             com.mirakyux.export4j.model.ExecutionContext.checkpoint();
             int end = start;
@@ -187,21 +191,26 @@ public final class ParagraphLayouter {
             }
             String part = text.substring(start, end);
             List<ShapedGlyph> glyphs = new ArrayList<>();
-            int spanStart = 0;
-            for (var span : spans) {
+            while (firstSpan < spans.size()
+                    && firstSpanStart + spans.get(firstSpan).text().length() <= start) {
+                firstSpanStart += spans.get(firstSpan++).text().length();
+            }
+            int spanStart = firstSpanStart;
+            for (int index = firstSpan; index < spans.size() && spanStart < end; index++) {
+                var span = spans.get(index);
                 int from = Math.max(start, spanStart);
                 int to = Math.min(end, spanStart + span.text().length());
                 if (from < to) {
                     ShapedText shaped = shaper.shape(text.substring(from, to), span.fontGroup(), span.fontSize(), from);
                     diagnostics.addAll(shaped.diagnostics());
                     for (var glyph : shaped.glyphs()) {
-                        styles.put(glyph.sourceStart(), span);
+                        if (uniformSpan == null) { styles.put(glyph.sourceStart(), span); }
                         glyphs.add(glyph);
                     }
                 }
                 spanStart += span.text().length();
             }
-            appendLines(part, start, glyphs, ascent, line -> checkedLineWidth(lineWidths, line, width, style), style, lines, styles);
+            appendLines(part, start, glyphs, ascent, line -> checkedLineWidth(lineWidths, line, width, style), style, lines, styles, uniformSpan);
             if (end == text.length()) {
                 break;
             }
@@ -221,7 +230,8 @@ public final class ParagraphLayouter {
     }
 
     private void appendLines(String source, int sourceOffset, List<ShapedGlyph> glyphs,
-            double ascent, IntToDoubleFunction widths, ParagraphStyle style, List<TextLine> lines, Map<Integer, StyledSpan> styles) {
+            double ascent, IntToDoubleFunction widths, ParagraphStyle style, List<TextLine> lines,
+            Map<Integer, StyledSpan> styles, StyledSpan uniformSpan) {
         boolean[] breaks = new boolean[source.length() + 1];
         BreakIterator iterator = BreakIterator.getLineInstance(Locale.ROOT);
         iterator.setText(source);
@@ -269,13 +279,14 @@ public final class ParagraphLayouter {
                     end--;
                 }
             }
-            addLine(source, glyphs, start, end, consumed, sourceOffset, ascent, indent, available, style, lines, styles, consumed < glyphs.size());
+            addLine(source, glyphs, start, end, consumed, sourceOffset, ascent, indent, available, style, lines, styles, uniformSpan, consumed < glyphs.size());
             start = consumed;
         } while (start < glyphs.size());
     }
 
     private void addLine(String source, List<ShapedGlyph> glyphs, int start, int end, int consumed, int sourceOffset,
-            double ascent, double indent, double available, ParagraphStyle style, List<TextLine> lines, Map<Integer, StyledSpan> styles, boolean wrapped) {
+            double ascent, double indent, double available, ParagraphStyle style, List<TextLine> lines,
+            Map<Integer, StyledSpan> styles, StyledSpan uniformSpan, boolean wrapped) {
         int sourceStart = start < glyphs.size() ? glyphs.get(start).sourceStart() : sourceOffset;
         if (lines.size() >= limits.maxLines()) {
             throw new TextLayoutException(TextLayoutException.Code.BUDGET_EXCEEDED, sourceStart,
@@ -297,7 +308,7 @@ public final class ParagraphLayouter {
         int cursor = start;
         while (cursor < end) {
             ShapedGlyph first = glyphs.get(cursor);
-            StyledSpan span = styles.get(first.sourceStart());
+            StyledSpan span = uniformSpan == null ? styles.get(first.sourceStart()) : uniformSpan;
             List<PositionedGlyph> runGlyphs = new ArrayList<>();
             do {
                 ShapedGlyph glyph = glyphs.get(cursor++);
@@ -306,7 +317,7 @@ public final class ParagraphLayouter {
                 width += advance;
                 runGlyphs.add(advance == positioned.advance() ? positioned : new PositionedGlyph(positioned.codePoint(), positioned.glyphId(), advance));
             } while (cursor < end && glyphs.get(cursor).font().id().equals(first.font().id())
-                    && styles.get(glyphs.get(cursor).sourceStart()) == span);
+                    && (uniformSpan != null || styles.get(glyphs.get(cursor).sourceStart()) == span));
             runs.add(new GlyphRun(first.font(), span.fontSize(), runGlyphs, span.rgb(), span.baselineShift(), span.underline(), span.strikeThrough()));
         }
         double offset = indent + switch (style.alignment()) {

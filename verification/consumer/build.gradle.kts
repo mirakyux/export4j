@@ -39,6 +39,14 @@ tasks.register<JavaExec>("nativeMath") {
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
 }
 
+tasks.register<JavaExec>("inlineVectors") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.InlineVectorConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
 tasks.register<JavaExec>("columnFlow") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.ColumnFlowConsumer")
@@ -286,6 +294,7 @@ tasks.register("resolvedLibraries") {
     outputs.file(layout.buildDirectory.file("resolved-libraries.txt"))
     outputs.file(layout.buildDirectory.file("resolved-components.txt"))
     outputs.file(layout.buildDirectory.file("resolved-library-sha256.txt"))
+    outputs.file(layout.buildDirectory.file("resolved-library-files.txt"))
     doLast {
         val artifacts = runtime.get().resolvedConfiguration.resolvedArtifacts
         val ids = artifacts.map { it.moduleVersion.id.toString() }.distinct().sorted()
@@ -297,6 +306,8 @@ tasks.register("resolvedLibraries") {
             "${artifact.moduleVersion.id}\t${artifact.file.name}\t$sha"
         }.sorted()
         layout.buildDirectory.file("resolved-library-sha256.txt").get().asFile.writeText(hashes.joinToString("\n") + "\n")
+        val files = artifacts.map { "${it.moduleVersion.id}\t${it.file.absolutePath}" }.sorted()
+        layout.buildDirectory.file("resolved-library-files.txt").get().asFile.writeText(files.joinToString("\n") + "\n")
     }
 }
 // Named isolated acceptance entry point for recursive, grid and contour continuation.

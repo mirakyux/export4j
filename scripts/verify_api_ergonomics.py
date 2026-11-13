@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import closing
+from copy import copy
 from hashlib import sha256
 from html.parser import HTMLParser
 import json
@@ -22,14 +23,14 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw
 from pypdf import PdfReader
-from pypdf.generic import ContentStream
+from pypdf.generic import ContentStream, NameObject
 import pypdfium2 as pdfium
 
 from verify_advanced_pdf import difference
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PDF_NAMES = ("direct", "styles", "from-docx", "from-html", "from-markdown", "stream", "semantic", "replay")
+PDF_NAMES = ("direct", "styles", "from-docx", "from-html", "from-markdown", "stream", "semantic", "replay", "budgets")
 DOCX_NAMES = ("direct", "paged", "sectioned", "roundtrip", "from-html")
 IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
@@ -54,6 +55,7 @@ def image_draw_sizes(reader, page):
     current = IDENTITY
     saved = []
     sizes = []
+    placements = []
     for operands, operator in ContentStream(page.get("/Contents"), reader).operations:
         if operator == b"q":
             saved.append(current)
@@ -68,16 +70,79 @@ def image_draw_sizes(reader, page):
             image = xobjects[operands[0]].get_object()
             assert image.get("/Subtype") == "/Image", "fixture geometry checker requires direct image XObjects"
             sizes.append((hypot(current[0], current[1]), hypot(current[2], current[3])))
+            placements.append(current)
     assert not saved, "unbalanced graphics-state save in image fixture"
     expected = ((72.0, 36.0), (40.0, 20.0))
     assert len(sizes) == len(expected), sizes
     for actual, target in zip(sizes, expected):
         assert abs(actual[0] - target[0]) <= 1e-3 and abs(actual[1] - target[1]) <= 1e-3, sizes
-    return sizes
+    return sizes, placements
+
+
+def verify_mixed_text(reader, page, name, placements):
+    """Check native text and the two image anchors in actual content order, not resource order."""
+    stream = ContentStream(page["/Contents"], reader, forced_encoding="bytes")
+    native_operations, markers, saved_modes = [], [], []
+    marker = None
+    rendering_mode, font_size, horizontal_scale = 0, None, 100
+    text_matrix = IDENTITY
+    for operands, operator in stream.operations:
+        if operator == b"BDC":
+            assert marker is None and operands[0] == "/Span", (name, "unexpected marked content")
+            properties = operands[1].get_object()
+            if isinstance(properties, str):
+                properties = page["/Resources"]["/Properties"][properties].get_object()
+            assert properties.get("/ActualText") == "\ufffc", (name, properties)
+            marker = {"shows": 0}
+            continue
+        if operator == b"EMC":
+            assert marker is not None and marker["shows"] == 1, (name, marker)
+            markers.append(marker)
+            marker = None
+            continue
+        assert operator != b"BMC", (name, "unexpected marked content")
+        if marker is None:
+            native_operations.append((operands, operator))
+        if operator == b"q":
+            saved_modes.append(rendering_mode)
+        elif operator == b"Q":
+            assert saved_modes, (name, "unbalanced graphics state")
+            rendering_mode = saved_modes.pop()
+        elif operator == b"Tr":
+            rendering_mode = int(operands[0])
+        elif operator == b"Tf":
+            font_size = float(operands[1])
+        elif operator == b"Tz":
+            horizontal_scale = float(operands[0])
+        elif operator == b"Tm":
+            text_matrix = tuple(float(value) for value in operands)
+        elif operator in (b"Tj", b"TJ", b"'", b'"'):
+            if marker is None:
+                assert rendering_mode == 0, (name, "native text must remain visible")
+            else:
+                assert operator == b"Tj" and rendering_mode == 3 and font_size == 1, (name, operands)
+                marker.update(shows=marker["shows"] + 1, matrix=text_matrix, scale=horizontal_scale)
+    assert marker is None and not saved_modes and len(markers) == len(placements) == 2, (name, markers)
+    for anchor, image in zip(markers, placements, strict=True):
+        matrix = anchor["matrix"]
+        width, height = hypot(image[0], image[1]), hypot(image[2], image[3])
+        assert matrix[:4] == (1, 0, 0, -1), (name, matrix)
+        # This fixture's one-point invisible x anchor spans the image width and
+        # sits one fifth of its height above the bottom. Check each occurrence.
+        assert abs(matrix[4] - image[4]) < 1e-3, (name, matrix, image)
+        assert abs(float(page.mediabox.height) - matrix[5] - image[5] - height / 5) < 1e-3, (name, matrix, image)
+        assert abs(anchor["scale"] - width * 200) < 1e-3, (name, anchor, image)
+    stream.operations = native_operations
+    native_page = copy(page)
+    native_page[NameObject("/Contents")] = stream
+    assert native_page.extract_text() == "Ergonomics body.\nLOGO ", (name, native_page.extract_text())
+    return {"nativeText": "Ergonomics body.\nLOGO ", "imageMarkers": len(markers)}
 
 
 def verify_pdfs(source):
-    assert {path.stem for path in source.glob("*.pdf")} == set(PDF_NAMES)
+    actual_names = {path.stem for path in source.glob("*.pdf")}
+    assert actual_names == set(PDF_NAMES), {"missing": sorted(set(PDF_NAMES) - actual_names),
+                                          "unexpected": sorted(actual_names - set(PDF_NAMES))}
     pdfs = []
     drawing_sizes = {}
     for name in PDF_NAMES:
@@ -86,15 +151,13 @@ def verify_pdfs(source):
             assert len(pdf.pages) == 1, name
             page = pdf.pages[0]
             text = page.extract_text()
+            details = {}
             if name in ("direct", "from-docx"):
-                assert "Ergonomics body." in text, (name, text)
-                properties = page["/Resources"]["/Properties"].get_object()
-                actual = [value.get_object().get("/ActualText") for value in properties.values()]
-                assert actual == ["LOGO \ufffc\ufffc"], (name, actual)
+                assert text == "Ergonomics body.\nLOGO \nx\nx", (name, text)
                 with pdfium.PdfDocument(path) as document:
                     with closing(document[0]) as rendered_page, closing(rendered_page.get_textpage()) as text_page:
                         extracted = text_page.get_text_range().replace("\r\n", "\n")
-                        assert extracted == "Ergonomics body.\nLOGO \ufffc\ufffc", (name, ascii(extracted))
+                        assert extracted == "Ergonomics body.\nLOGO \ufffc\n\ufffc", (name, ascii(extracted))
                 assert abs(float(page.mediabox.width) - 841.88976) < .1, name
                 assert abs(float(page.mediabox.height) - 595.27559) < .1, name
                 images = list(page.images)
@@ -104,7 +167,8 @@ def verify_pdfs(source):
                         assert image.size == (20, 10), (name, image.size)
                         assert image.getpixel((0, 0)) == (255, 0, 0), name
                         assert image.getpixel((19, 0)) == (0, 0, 255), name
-                drawing_sizes[name] = image_draw_sizes(pdf, page)
+                drawing_sizes[name], placements = image_draw_sizes(pdf, page)
+                details["mixedText"] = verify_mixed_text(pdf, page, name, placements)
             elif name == "styles":
                 assert text.split() == ["REGULAR", "BOLD", "ITALIC", "COMBINED"], text
                 fonts = page["/Resources"]["/Font"].get_object()
@@ -114,9 +178,11 @@ def verify_pdfs(source):
                 assert text.strip() == "HTML import body.", text
             elif name == "from-markdown":
                 assert text.strip() == "Markdown import body.", text
+            elif name == "budgets":
+                assert text.splitlines() == ["ID", "R1", "R2"], (name, text)
             else:
                 assert text.splitlines() == ["ID", "R1", "R2", "R3"], (name, text)
-        pdfs.append({"file": name + ".pdf", "pages": 1})
+        pdfs.append({"file": name + ".pdf", "pages": 1, **details})
     return pdfs, drawing_sizes
 
 
@@ -189,7 +255,8 @@ def render_and_compare(source, output, pdftoppm):
 
 
 def contact_images(output):
-    with Image.new("RGB", (1440, 900), "#eeeeee") as sheet:
+    rows = (len(PDF_NAMES) + 3) // 4
+    with Image.new("RGB", (1440, 450 * rows), "#eeeeee") as sheet:
         draw = ImageDraw.Draw(sheet)
         for index, name in enumerate(PDF_NAMES):
             x, y = (index % 4) * 360, (index // 4) * 450

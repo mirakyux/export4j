@@ -30,6 +30,7 @@ import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.graphics.AffineTransform;
 import com.mirakyux.export4j.graphics.core.DisplayListBuilder;
+import com.mirakyux.export4j.graphics.core.GraphicsResources;
 import com.mirakyux.export4j.layout.DocumentLayout;
 import com.mirakyux.export4j.layout.LayoutPage;
 import com.mirakyux.export4j.layout.LayoutFragment;
@@ -82,6 +83,7 @@ public final class ComponentDocumentRenderer {
     }
 
     /** Missing-glyph policies apply consistently to body, components, contents, notes and page decorations.
+     * Footnote text and source nodes share the document limits before any notes are measured.
      * Named font groups are snapshotted per layout and preserved in fixed page-region component contexts. */
     public ComponentDocumentLayout layout(SectionedDocument source, List<SectionTemplate> templates, Navigation navigation,
             FontGroup fonts, Map<String, FontGroup> roles, List<Note> notes) {
@@ -94,8 +96,8 @@ public final class ComponentDocumentRenderer {
         roles = Map.copyOf(roles);
         var semantic = SemanticBlocks.compile(source, notes);
         SectionedDocument document = semantic.document();
-        new DocumentLayouter(new ParagraphLayouter(), layoutLimits, componentLimits).validate(new Document(document.metadata(),
-                document.sections().getFirst().pageSettings(), document.sections().stream().flatMap(section -> section.blocks().stream()).toList()));
+        new DocumentLayouter(new ParagraphLayouter(), layoutLimits, componentLimits).validate(Footnotes.validationSource(new Document(document.metadata(),
+                document.sections().getFirst().pageSettings(), document.sections().stream().flatMap(section -> section.blocks().stream()).toList()), notes, layoutLimits));
         Objects.requireNonNull(document, "document");
         templates = List.copyOf(templates);
         if (templates.size() != document.sections().size()) {
@@ -196,7 +198,8 @@ public final class ComponentDocumentRenderer {
         }
         sources.addAll(semanticSources.sources());
         // Nested sources share IDs, cells, images and source-text budgets across sections.
-        new DocumentLayouter(new ParagraphLayouter(), layoutLimits, componentLimits).validate(new Document(document.metadata(), bodySettings, sources));
+        new DocumentLayouter(new ParagraphLayouter(), layoutLimits, componentLimits).validate(
+                Footnotes.validationSource(new Document(document.metadata(), bodySettings, sources), notes, layoutLimits));
         for (var bookmark : navigation.bookmarks()) {
             requireAnchor(anchors, bookmark.blockId());
         }
@@ -298,6 +301,7 @@ public final class ComponentDocumentRenderer {
         var uncomposed = new DisplayDocument(document.metadata(), pages, extras);
         checkCombinedBudgets(uncomposed);
         var composed = new PageComposer(componentLimits).composeDetailed(uncomposed, specs, fonts, roles);
+        checkCombinedBudgets(composed.display());
         long lines = contents.traces().stream().mapToLong(com.mirakyux.export4j.layout.ComponentLayout::textLines).sum()
                 + footnotePages.stream().mapToLong(com.mirakyux.export4j.layout.ComponentLayout::textLines).sum()
                 + composed.placements().stream().mapToLong(placed -> placed.layout().textLines()).sum();
@@ -375,20 +379,21 @@ public final class ComponentDocumentRenderer {
     }
 
     private void checkCombinedBudgets(DisplayDocument display) {
-        long codePoints = 0;
-        long commands = 0;
+        long[] counts = {0, 0};
         for (var page : display.pages()) {
-            commands += page.commands().size();
-            for (var command : page.commands()) {
+            GraphicsResources.walk(page.commands(), command -> {
+                counts[0]++;
                 if (command instanceof com.mirakyux.export4j.graphics.DrawCommand.GlyphText text) {
-                    codePoints += text.run().glyphs().size();
+                    counts[1] += text.run().glyphs().size();
                 } else if (command instanceof com.mirakyux.export4j.graphics.DrawCommand.OutlineText text) {
-                    codePoints += text.logicalText().codePointCount(0, text.logicalText().length());
+                    counts[1] += text.logicalText().codePointCount(0, text.logicalText().length());
+                } else if (command instanceof com.mirakyux.export4j.graphics.DrawCommand.Text text) {
+                    counts[1] += text.text().codePointCount(0, text.text().length());
                 }
-            }
-        }
-        if (commands > componentLimits.maxCommands() || codePoints > layoutLimits.maxCodePoints()) {
-            throw new IllegalArgumentException("sectioned document combined output budget exceeded");
+                if (counts[0] > componentLimits.maxCommands() || counts[1] > layoutLimits.maxCodePoints()) {
+                    throw new IllegalArgumentException("sectioned document combined output budget exceeded");
+                }
+            });
         }
     }
 

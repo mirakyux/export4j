@@ -111,7 +111,8 @@ def preflight(output, release, expected_fingerprint):
     key = os.environ.get("EXPORT4J_SIGNING_KEY", "")
     if not key:
         raise ValueError("EXPORT4J_SIGNING_KEY is required")
-    modules = set(re.findall(r'"(export4j-[a-z-]+)"', (ROOT / "settings.gradle.kts").read_text(encoding="utf-8"))) - {"export4j-designer"}
+    includes = re.findall(r'\binclude\((.*?)\)', (ROOT / "settings.gradle.kts").read_text(encoding="utf-8"), re.DOTALL)
+    modules = {name for block in includes for name in re.findall(r'"(export4j-[a-z-]+)"', block)} - {"export4j-designer"}
     if len(modules) != 17 or "export4j-bom" not in modules:
         raise ValueError("Expected 16 published libraries and the BOM")
     def unused(name):
@@ -157,6 +158,9 @@ def checked_bundle(output, release):
     bundle = output / "distribution/maven-central-bundle.zip"
     if report["version"] != release or report["signedArtifacts"] != 82 or hashlib.sha256(bundle.read_bytes()).hexdigest() != report["bundleSha256"]:
         raise ValueError("Upload bundle differs from the independently verified batch")
+    with ZipFile(bundle) as archive:
+        for name in archive.namelist():
+            publication_path(Path("repository"), name)
     return bundle
 
 

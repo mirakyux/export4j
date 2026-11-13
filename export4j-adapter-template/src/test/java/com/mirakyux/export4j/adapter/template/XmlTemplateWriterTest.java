@@ -15,6 +15,7 @@ import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.LineBreakPolicy;
@@ -34,6 +35,7 @@ import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableFormat;
 import com.mirakyux.export4j.model.TableRow;
+import com.mirakyux.export4j.model.VectorResource;
 import com.mirakyux.export4j.model.processing.DocumentConversion;
 import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
@@ -63,6 +65,34 @@ class XmlTemplateWriterTest {
             .subsequentLineIndent(5).spaceBefore(2).spaceAfter(7).lineBreakPolicy(LineBreakPolicy.CJK_STRICT)
             .pagination(PaginationPolicy.BALANCED).build();
     private static final InlineStyle STYLE = new InlineStyle("accent", 10, 0x224488, -2, true, true);
+
+    @Test void inlineVectorsFailExplicitlyUnderEveryPolicyBeforeOldTargetsAreTouched(@TempDir Path directory) throws IOException {
+        var vector = new InlineVector(VectorResource.of(12, 6, 3, List.of(
+                new VectorResource.Segment(VectorResource.Operation.MOVE, List.of(0.0, -6.0)),
+                new VectorResource.Segment(VectorResource.Operation.LINE, List.of(12.0, 3.0)))), "x+y");
+        var paragraph = Paragraph.mixed("vector", List.of(vector), ParagraphFormat.of(12));
+        var table = Table.builder("vector-cell").columns(new ColumnWidth.Fraction(1))
+                .row(TableCell.builder().content(List.of(vector)).build()).build();
+        var blockCell = Table.builder("vector-block-cell").columns(new ColumnWidth.Fraction(1))
+                .row(TableCell.builder().blocks(List.of(paragraph)).build()).build();
+        Path target = directory.resolve("old-template.zip"); Files.writeString(target, "old");
+        for (var block : List.<Block>of(paragraph, table, blockCell)) {
+            var document = Document.builder().add(block).build();
+            for (var policy : List.of(ProcessingPolicy.STRICT,
+                    ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build(),
+                    ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.IGNORE, ProcessingPolicy.Treatment.DISCARD).build())) {
+                var failure = assertThrows(IllegalArgumentException.class,
+                        () -> XmlTemplateWriter.from(document).policy(policy).prepare().to(target));
+                assertTrue(failure.getMessage().contains("inline vectors"));
+                assertEquals("old", Files.readString(target));
+                var output = new ByteArrayOutputStream();
+                assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(document).policy(policy)
+                        .prepare(XmlTemplateWriter.conversionTarget()).to(output));
+                assertEquals(0, output.size());
+            }
+        }
+        try (var paths = Files.list(directory)) { assertEquals(List.of(target), paths.toList()); }
+    }
 
     @Test void renamedListIdsDoNotMergeIndependentListsAcrossSections() throws IOException {
         var source = new SectionedDocument(DocumentMetadata.EMPTY, List.of(

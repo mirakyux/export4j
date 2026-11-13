@@ -108,6 +108,21 @@ final class PdfFontSubsets implements AutoCloseable {
         if (outlined[0] && logicalAnchor != null) { page.remove(logicalAnchor.get().id()); }
     }
 
+    /** A bounded page-local ordering only; the renderer still validates every actual glyph. */
+    int[] codePointOrder(FontData data) {
+        var usage = page.get(data.id());
+        if (usage == null || usage.disabled || usage.glyphs.size() > PdfUnicodeFont.MAX_CODES_PER_FONT) {
+            return new int[0];
+        }
+        int[] result = new int[usage.glyphs.size()];
+        int index = 0;
+        for (int codePoint : usage.glyphs.keySet()) {
+            ExecutionContext.checkpoint();
+            result[index++] = codePoint;
+        }
+        return result;
+    }
+
     PDFont create(PDDocument document, FontData data) throws IOException {
         var usage = page.get(data.id());
         if (usage == null || usage.disabled) { return null; }

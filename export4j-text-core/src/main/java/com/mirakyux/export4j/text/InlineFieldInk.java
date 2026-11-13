@@ -38,6 +38,6 @@ public final class InlineFieldInk {
                 paths.add(new TextOutline.Segment(segment.operation(), coordinates));
             }
         }
-        return new Resolved(new TextOutline(value, paths, style.rgb()), resolved.diagnostics());
+        return new Resolved(new TextOutline(value, paths, style.rgb(), 1), resolved.diagnostics());
     }
 }

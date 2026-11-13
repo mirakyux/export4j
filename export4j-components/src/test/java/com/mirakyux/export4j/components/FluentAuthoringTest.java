@@ -23,11 +23,17 @@ import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.graphics.DrawCommand;
 import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.layout.core.ComponentContext;
+import com.mirakyux.export4j.layout.core.ComponentLimits;
+import com.mirakyux.export4j.layout.core.DocumentLayoutException;
+import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
 import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.InlineStyle;
+import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
+import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.text.ParagraphStyle;
 
 class FluentAuthoringTest {
@@ -154,6 +160,40 @@ class FluentAuthoringTest {
         assertTrue(text(result).contains("P1/2"));
         assertTrue(text(result).contains("P2/2"));
         assertEquals(60, template.bodySettings(settings).contentHeight());
+    }
+
+    @Test
+    void engineBudgetCallbacksPreservePriorSettingsAndSnapshotBuildersAndReusableEngines() throws IOException {
+        var heldLayout = new AtomicReference<DocumentLayoutLimits.Builder>();
+        var heldComponents = new AtomicReference<ComponentLimits.Builder>();
+        var builder = DocumentEngine.builder(fonts)
+                .layoutLimits(DocumentLayoutLimits.DEFAULT.toBuilder().maxTableRows(2).build())
+                .layoutLimits(limits -> { heldLayout.set(limits); limits.maxTableRows(3); })
+                .layoutLimits(limits -> limits.maxCells(20))
+                .componentLimits(limits -> { heldComponents.set(limits); limits.maxInteractions(1); })
+                .componentLimits(limits -> limits.maxCommands(1_000));
+        var engine = builder.build();
+        heldLayout.get().maxTableRows(1);
+        heldComponents.get().maxInteractions(2);
+        builder.layoutLimits(DocumentLayoutLimits.DEFAULT).componentLimits(ComponentLimits.DEFAULT);
+
+        var atLimit = Document.builder().add(Table.builder("table").header("HEADER").row("A").row("B").build()).build();
+        var overLimit = Document.builder().add(Table.builder("table").header("HEADER").row("A").row("B").row("C").build()).build();
+        assertEquals("HEADERAB", text(engine.layout(atLimit)));
+        var failure = assertThrows(DocumentLayoutException.class, () -> engine.layout(overLimit));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
+        assertEquals("table", failure.blockId());
+        assertEquals("HEADERAB", text(engine.export(atLimit).backend((display, output) -> output.write(1))
+                .to(new ByteArrayOutputStream())));
+        assertEquals("HEADERAB", text(engine.write(atLimit, (display, output) -> output.write(1), new ByteArrayOutputStream())));
+        assertEquals("HEADERABC", text(builder.build().layout(overLimit)));
+
+        var links = Document.builder().paragraph("links", List.of(
+                new InlineText("A", InlineStyle.of(10), "https://example.com/a"),
+                new InlineText("B", InlineStyle.of(10), "https://example.com/b"))).build();
+        assertThrows(IllegalArgumentException.class, () -> engine.layout(links));
+        assertEquals(2, builder.build().layout(links).display().extras().externalLinks().size());
+        assertEquals("HEADERAB", text(engine.layout(atLimit)));
     }
 
     @Test

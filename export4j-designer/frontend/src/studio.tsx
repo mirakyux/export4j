@@ -14,6 +14,7 @@ import {GridCanvas} from './gridCanvas';
 import {containerContext} from './containers';
 import {TableCanvas,TableTools} from './tableCanvas';
 import {columnInsertionTarget} from './columnInsertion';
+import {createFontLoader} from './fonts';
 export {sortGridItems} from './types';
 export {gridContext,gridEdit,gridFromSelection,gridSelectionReason} from './grid';
 export {bindingContext} from './bindings';
@@ -30,7 +31,8 @@ const subscribe=(listener:()=>void)=>{listeners.add(listener);return ()=>{listen
 export const watchCanvasState=subscribe;
 const read=()=>snapshot;
 const refresh=()=>listeners.forEach(listener=>listener());
-export function sync(){if(!bridge)return;snapshot=bridge.snapshot();refresh();}
+const loadFonts=createFontLoader(name=>bridge.font(name),error=>fail(error));
+export function sync(){if(!bridge)return;snapshot=bridge.snapshot();void loadFonts(snapshot.fontIdentity??snapshot.resourceIdentity,snapshot.session);refresh();}
 type CanvasContext=Pick<Snapshot,'source'|'data'|'resourceIdentity'|'session'|'pages'>;
 export function canvasContext(current=bridge.snapshot()):CanvasContext{return {source:current.source,data:current.data,resourceIdentity:current.resourceIdentity,session:current.session,pages:current.pages};}
 export function canvasContextMatches(context:CanvasContext,current=bridge.snapshot()):boolean {
@@ -317,7 +319,7 @@ function Rich({editing,page,scale,finish}:{editing:Editing;page:number;scale:num
       let position=1;for(let index=0;index<editing.index;index++)position+=editor.state.doc.child(index).nodeSize;
       editor.focus();editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc,position,editing.replace?position+editor.state.doc.child(editing.index).content.size:position)));
     }
-    return ()=>{activeEditors--;variableRequest.current=null;view.current=null;editor.destroy();sync();};
+    return ()=>{activeEditors--;variableRequest.current=null;view.current=null;editor.destroy();bridge.editingEnded();sync();};
   },[]);
   useLayoutEffect(()=>{view.current?.setProps({editable:()=>!bridge.snapshot().busy});},[snapshot.busy]);
   useEffect(()=>{
@@ -716,7 +718,4 @@ export function start(value:Bridge){
       void applyGeometry(current.selectedPaths.map(path=>{const placed=hitFor(current,path,current.currentPage)??hitFor(current,path);return {path,x:Math.max(0,(placed?.hit.x??0)+dx*step),y:Math.max(0,(placed?.hit.y??0)+dy*step)};}),canvasContext(current));
     }
   },true);
-  for(const [name,family,weight] of [['Regular.ttf','Export4j body','400'],['Bold.ttf','Export4j body','700'],['Chinese.ttf','Export4j Chinese','400']]){
-    void bridge.font(name).then(buffer=>new FontFace(family,buffer,{weight}).load()).then(font=>document.fonts.add(font)).catch(error=>{if(name==='Regular.ttf')fail(error);});
-  }
 }

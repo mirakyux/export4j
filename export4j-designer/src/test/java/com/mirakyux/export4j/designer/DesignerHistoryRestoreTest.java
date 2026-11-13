@@ -3,6 +3,7 @@ package com.mirakyux.export4j.designer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -75,6 +76,23 @@ class DesignerHistoryRestoreTest {
         }
     }
 
+    @Test void fontIdentityTracksFontReplacementAndUndoWithoutReloadingAfterTextOrImageEdits() throws Exception {
+        try (var workspace = new Workspace()) {
+            var original = workspace.apply("Original");
+            Object fonts = original.get("fontIdentity");
+            assertTrue(fonts instanceof String && !((String) fonts).isBlank());
+            assertEquals(fonts, workspace.apply("Edited").get("fontIdentity"));
+            var image = workspace.image("extra_image");
+            assertNotEquals(original.get("resourceIdentity"), image.get("resourceIdentity"));
+            assertEquals(fonts, image.get("fontIdentity"));
+            var replacement = workspace.accept("resource", Map.of("kind", "font", "name", "Regular.ttf", "license", "Fixture license",
+                    "bytes", java.util.Base64.getEncoder().encodeToString(DesignerService.resource("LiberationSans-Bold.ttf"))));
+            assertNotEquals(fonts, replacement.get("fontIdentity"));
+            assertEquals(fonts, workspace.restore(image).get("fontIdentity"));
+            assertEquals(replacement.get("fontIdentity"), workspace.restore(replacement).get("fontIdentity"));
+        }
+    }
+
     private static String source(String text) { return "<document version='1'><p id='text'>" + text + "</p></document>"; }
     private static List<String> images(Map<String, Object> state) {
         var names = new ArrayList<String>();
@@ -82,7 +100,7 @@ class DesignerHistoryRestoreTest {
         return names.stream().sorted().toList();
     }
     private static void assertProject(Map<String, Object> expected, Map<String, Object> actual) {
-        for (String key : List.of("source", "data", "resourceIdentity", "fonts", "images", "fragments", "licenses")) {
+        for (String key : List.of("source", "data", "resourceIdentity", "fontIdentity", "fonts", "images", "fragments", "licenses")) {
             assertEquals(expected.get(key), actual.get(key), key);
         }
     }

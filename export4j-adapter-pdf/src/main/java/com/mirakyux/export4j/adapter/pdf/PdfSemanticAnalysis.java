@@ -16,6 +16,7 @@ import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableRow;
 import com.mirakyux.export4j.model.TableCell;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -69,7 +70,7 @@ final class PdfSemanticAnalysis {
         var lines = fragments(glyphs, context);
         double body = glyphs.stream().mapToDouble(value -> value.style().fontSize()).sorted().skip(glyphs.size() / 2).findFirst().orElse(12);
         var ordered = arrangeLines(lines, body, 0); var result = new ArrayList<Item>();
-        String listId = ""; double listX = 0;
+        String listId = ""; double listX = 0; boolean numberedList = false; int numberedLevel = 0;
         for (int index = 0; index < ordered.size();) {
             context.work(); var first = ordered.get(index++); var selected = new ArrayList<Line>(); selected.add(first);
             var marker = MARKER.matcher(first.text()); boolean marked = marker.find(); boolean heading = first.size() >= body * 1.3;
@@ -86,14 +87,32 @@ final class PdfSemanticAnalysis {
             var runs = joined(selected); String id = context.id(); var format = ParagraphFormat.of(first.size()); Block block;
             if (marked) {
                 var bodyRuns = trim(runs, marker.end());
-                int level = Math.min(9, 1 + Math.max(0, (int) Math.round((first.x() - listX) / Math.max(12, first.size() * 2))));
-                if (listId.isEmpty() || Math.abs(first.x() - listX) > first.size() * 16) { listId = "pdf-list-" + id; listX = first.x(); level = 1; }
-                if (marker.group(2) != null) {
-                    int number = Integer.parseInt(marker.group(2));
-                    if (number == 0) { block = new Paragraph(id, runs, format); context.inferred("ZERO_NUMBER_MARKER_RETAINED_AS_TEXT_UNCERTAIN_LIST", page); }
-                    else { block = NumberedItem.rich(id, listId, bodyRuns, number, format, level, first.glyphs().getFirst().style()); }
-                } else { block = BulletItem.rich(id, bodyRuns, marker.group(1), level, format, first.glyphs().getFirst().style()); }
-                context.inferred("LIST_AND_INDENT_INFERRED_DECIMAL_PUNCTUATION_NORMALIZED", page);
+                boolean decimal = marker.group(2) != null; int number = decimal ? Integer.parseInt(marker.group(2)) : -1;
+                if (listId.isEmpty() || Math.abs(first.x() - listX) > first.size() * 16) {
+                    listId = "pdf-list-" + id; listX = first.x(); numberedList = decimal; numberedLevel = 0;
+                }
+                if (number == 0) {
+                    block = new Paragraph(id, runs, format); listId = "";
+                    context.inferred("ZERO_NUMBER_MARKER_RETAINED_AS_TEXT_UNCERTAIN_LIST", page);
+                } else if (decimal != numberedList && Math.abs(first.x() - listX) > Math.max(2, first.size() * .2)) {
+                    // A bullet cannot establish a numbered parent (or vice versa) in the semantic model.
+                    block = new Paragraph(id, runs, format);
+                    context.inferred("MIXED_LIST_INDENT_RETAINED_AS_TEXT_UNCERTAIN_LIST", page);
+                } else {
+                    if (decimal != numberedList) {
+                        listId = "pdf-list-" + id; listX = first.x(); numberedList = decimal; numberedLevel = 0;
+                        context.inferred("ALIGNED_MIXED_MARKERS_INFERRED_AS_INDEPENDENT_LIST", page);
+                    }
+                    int level = Math.min(9, 1 + Math.max(0, (int) Math.round((first.x() - listX) / Math.max(12, first.size() * 2))));
+                    if (decimal && level > numberedLevel + 1) {
+                        block = new Paragraph(id, runs, format);
+                        context.inferred("NUMBERED_LIST_LEVEL_GAP_RETAINED_AS_TEXT_UNCERTAIN_LIST", page);
+                    } else {
+                        if (decimal) { block = NumberedItem.rich(id, listId, bodyRuns, number, format, level, first.glyphs().getFirst().style()); numberedLevel = level; }
+                        else { block = BulletItem.rich(id, bodyRuns, marker.group(1), level, format, first.glyphs().getFirst().style()); }
+                        context.inferred("LIST_AND_INDENT_INFERRED_DECIMAL_PUNCTUATION_NORMALIZED", page);
+                    }
+                }
             } else if (heading) {
                 block = Heading.rich(id, runs, first.size() >= body * 1.6 ? 1 : 2, format); listId = "";
                 context.inferred("HEADING_LEVEL_INFERRED_FROM_RELATIVE_FONT_SIZE", page);
@@ -156,24 +175,60 @@ final class PdfSemanticAnalysis {
     static List<Item> order(List<Item> items, Context context, int page) throws IOException {
         // Paragraph construction already establishes column-local order. Apply the same gutter rule
         // to tables and images without flattening them into a row-major sort.
-        if (items.size() < 2) { return items; }
-        // Isolated spanning blocks divide the page into independent column bands.
-        double min = items.stream().mapToDouble(Item::x).min().orElse(0); double max = items.stream().mapToDouble(item -> item.x() + item.width()).max().orElse(0);
-        for (var item : items) {
-            context.work();
-            if (!(item.block() instanceof Heading) && item.width() < (max - min) * .7) { continue; }
-            var before = items.stream().filter(other -> other != item && other.y() + other.height() <= item.y()).toList();
-            var after = items.stream().filter(other -> other != item && other.y() >= item.y() + item.height()).toList();
-            if (before.size() + after.size() + 1 == items.size()) { var result = new ArrayList<>(order(before, context, page)); result.add(item); result.addAll(order(after, context, page)); return result; }
+        var pending = new ArrayDeque<List<Item>>(); pending.push(items);
+        var result = new ArrayList<Item>(items.size());
+        while (!pending.isEmpty()) {
+            var values = pending.pop();
+            if (values.size() < 2) { result.addAll(values); continue; }
+            double min = Double.POSITIVE_INFINITY, max = Double.NEGATIVE_INFINITY;
+            double commonLeft = Double.NEGATIVE_INFINITY, commonRight = Double.POSITIVE_INFINITY;
+            for (var item : values) {
+                context.work(); min = Math.min(min, item.x()); max = Math.max(max, item.x() + item.width());
+                commonLeft = Math.max(commonLeft, item.x()); commonRight = Math.min(commonRight, item.x() + item.width());
+            }
+            var byY = values.stream().sorted(Comparator.comparingDouble(Item::y).thenComparingDouble(Item::x)).toList();
+            if (commonLeft < commonRight) {
+                // One column of separate paragraphs needs no recursive separator search.
+                boolean separate = true; double bottom = Double.NEGATIVE_INFINITY;
+                for (var item : byY) {
+                    context.work();
+                    if (item.height() <= 0 || item.y() < bottom) { separate = false; break; }
+                    bottom = item.y() + item.height();
+                }
+                if (separate) { result.addAll(byY); continue; }
+            }
+            boolean divided = false;
+            // Isolated spanning blocks divide the page into independent column bands.
+            for (var item : values) {
+                context.work();
+                if (!(item.block() instanceof Heading) && item.width() < (max - min) * .7) { continue; }
+                var before = new ArrayList<Item>(); var after = new ArrayList<Item>();
+                for (var other : values) {
+                    context.work();
+                    if (other == item) { continue; }
+                    if (other.y() + other.height() <= item.y()) { before.add(other); }
+                    if (other.y() >= item.y() + item.height()) { after.add(other); }
+                }
+                if (before.size() + after.size() + 1 == values.size()) {
+                    pending.push(after); pending.push(List.of(item)); pending.push(before); divided = true; break;
+                }
+            }
+            if (divided) { continue; }
+            var sorted = values.stream().sorted(Comparator.comparingDouble(Item::x)).toList();
+            double right = sorted.getFirst().x() + sorted.getFirst().width(); double split = Double.NaN; double gap = 24;
+            for (int i = 1; i < sorted.size(); i++) { context.work(); var value = sorted.get(i); if (value.x() - right > gap) { gap = value.x() - right; split = (value.x() + right) / 2; } right = Math.max(right, value.x() + value.width()); }
+            if (Double.isFinite(split)) {
+                var left = new ArrayList<Item>(); var next = new ArrayList<Item>();
+                for (var item : values) {
+                    context.work();
+                    if (item.x() + item.width() <= split) { left.add(item); }
+                    if (item.x() >= split) { next.add(item); }
+                }
+                if (!left.isEmpty() && !next.isEmpty()) { pending.push(next); pending.push(left); continue; }
+            }
+            result.addAll(byY);
         }
-        var sorted = items.stream().sorted(Comparator.comparingDouble(Item::x)).toList();
-        double right = sorted.getFirst().x() + sorted.getFirst().width(); double split = Double.NaN; double gap = 24;
-        for (int i = 1; i < sorted.size(); i++) { context.work(); var value = sorted.get(i); if (value.x() - right > gap) { gap = value.x() - right; split = (value.x() + right) / 2; } right = Math.max(right, value.x() + value.width()); }
-        if (Double.isFinite(split)) {
-            double edge = split; var left = items.stream().filter(item -> item.x() + item.width() <= edge).toList(); var next = items.stream().filter(item -> item.x() >= edge).toList();
-            if (!left.isEmpty() && !next.isEmpty()) { var result = new ArrayList<>(order(left, context, page)); result.addAll(order(next, context, page)); return result; }
-        }
-        return items.stream().sorted(Comparator.comparingDouble(Item::y).thenComparingDouble(Item::x)).toList();
+        return List.copyOf(result);
     }
     static List<Section> finish(List<Section> sections, Context context) throws IOException {
         var boxes = new HashMap<String, PreparedPdfImport.Source>();

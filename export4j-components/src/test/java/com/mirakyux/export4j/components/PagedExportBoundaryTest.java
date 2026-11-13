@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -97,6 +98,35 @@ class PagedExportBoundaryTest {
                 .header(PageBand.builder().height(15).build()).build()).build();
         var failure = assertThrows(IllegalStateException.class, () -> engine.exportPaged(source));
         assertTrue(failure.getMessage().contains("conflicts"));
+    }
+
+    @Test
+    void everyPagedFactoryInheritsEngineBudgetsAndRequestOverridesStayLocal() throws IOException {
+        var body = document(new Paragraph("first", "A", FORMAT), new Paragraph("second", "B", FORMAT));
+        var sectioned = new SectionedDocument(body.metadata(), List.of(new Section("section", PAGE, body.blocks(), 0)));
+        for (boolean structural : List.of(true, false)) {
+            var builder = DocumentEngine.builder(fonts);
+            if (structural) { builder.layoutLimits(limits -> limits.maxCodePoints(1)); }
+            else { builder.componentLimits(limits -> limits.maxCommands(1)); }
+            var engine = builder.build();
+            List<Supplier<PagedExportRequest>> factories = List.of(() -> engine.exportPaged(body),
+                    () -> engine.exportPaged(new PageDocument(body, PageRegions.EMPTY)),
+                    () -> engine.exportPaged(sectioned),
+                    () -> engine.exportPaged(sectioned, List.of(SectionTemplate.uniform(PageTemplate.EMPTY)), Navigation.EMPTY, List.of()));
+            for (var factory : factories) {
+                var rejected = new Sink();
+                assertThrows(IllegalArgumentException.class,
+                        () -> factory.get().backend(rejected.backend()).to(new ByteArrayOutputStream()));
+                assertEquals(0, rejected.opens);
+                var accepted = new Sink();
+                assertEquals(1, factory.get().limits(DocumentLayoutLimits.DEFAULT).componentLimits(ComponentLimits.DEFAULT)
+                        .backend(accepted.backend()).to(new ByteArrayOutputStream()).pages());
+                assertEquals("AB", text(accepted.pages.getFirst()));
+                assertEquals(1, accepted.finishes);
+                assertThrows(IllegalArgumentException.class,
+                        () -> factory.get().backend(new Sink().backend()).to(new ByteArrayOutputStream()));
+            }
+        }
     }
 
     @Test

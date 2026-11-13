@@ -6,9 +6,10 @@ import java.util.List;
 import java.util.Objects;
 
 /** Immutable fixed header/footer in points. Content is ordered paragraphs and semantic tables,
- * including explicit inline images and fixed-width PAGE/PAGES fields. Links and reference fields
+ * including explicit inline images/vectors and fixed-width PAGE/PAGES fields. Links and reference fields
  * are rejected. Height/gap reserve body space; overflow fails without clipping or scaling.
- * Limits: 256 semantic blocks, 4,096 inline items, 16,384 table slots and 100,000 code points.
+ * Limits: 256 semantic blocks, 4,096 inline items, 16,384 table slots, 100,000 code points,
+ * 1,000,000 vector segments and 16 MiB canonical vector bytes (counted per occurrence).
  * Owns no resources; safe to share. Binding/layout apply additional work budgets.
  */
 public final class PageRegion {
@@ -39,7 +40,7 @@ public final class PageRegion {
                 || height == 0 && (gap != 0 || !blocks.isEmpty() || edgeOffset != -1 || leftInset != -1 || rightInset != -1)) {
             throw new IllegalArgumentException("invalid page region dimensions");
         }
-        long[] counts = new long[4];
+        long[] counts = new long[6];
         SemanticTree.walk(this.blocks, visit -> {
             if (++counts[0] > 256) { throw new IllegalArgumentException("page region block budget exceeded"); }
             if (visit.block() instanceof Paragraph paragraph) {
@@ -49,7 +50,7 @@ public final class PageRegion {
                 if (counts[1] > 16_384) { throw new IllegalArgumentException("page region table slot budget exceeded"); }
                 for (var row : table.rows()) {
                     for (var cell : row.cells()) { if (!cell.hasBlocks()) { checkContent(new Paragraph("cell", cell.text(), ParagraphFormat.of(cell.format().fontSize()),
-                                cell.inlines(), cell.images(), cell.fields()).content(), counts); } }
+                                cell.inlines(), cell.images(), cell.fields(), cell.vectors()).content(), counts); } }
                 }
             } else { throw new IllegalArgumentException("page regions accept paragraphs and tables only"); }
         });
@@ -72,6 +73,13 @@ public final class PageRegion {
                 counts[3]++;
                 if (field.kind() != InlineField.Kind.PAGE && field.kind() != InlineField.Kind.PAGES) {
                     throw new IllegalArgumentException("page regions support PAGE/PAGES fields only");
+                }
+            } else if (content instanceof InlineVector vector) {
+                counts[3] += vector.logicalText().codePointCount(0, vector.logicalText().length()) + 1L;
+                counts[4] += vector.resource().segmentCount(); counts[5] += vector.resource().byteSize();
+                if (!vector.hyperlink().isEmpty()) { throw new IllegalArgumentException("page region links are unsupported"); }
+                if (counts[4] > 1_000_000 || counts[5] > 16L * 1024 * 1024) {
+                    throw new IllegalArgumentException("page region vector budget exceeded");
                 }
             }
             if (counts[2] > 4_096 || counts[3] > 100_000) { throw new IllegalArgumentException("page region source budget exceeded"); }

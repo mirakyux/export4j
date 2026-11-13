@@ -132,7 +132,8 @@ final class PagedDocumentRenderer {
         if (templates.size() != document.sections().size()) { throw new IllegalArgumentException("one template is required per section"); }
         var sources = new ArrayList<Block>(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
         var layouter = new DocumentLayouter(new ParagraphLayouter(), limits, componentLimits);
-        layouter.validate(new Document(document.metadata(), document.sections().getFirst().pageSettings(), sources));
+        layouter.validate(Footnotes.validationSource(new Document(document.metadata(),
+                document.sections().getFirst().pageSettings(), sources), notes, limits));
         var reserved = new LinkedHashSet<String>();
         SemanticTree.walk(sources, visit -> reserved.add(visit.block().id()));
         notes.forEach(note -> reserved.add(note.id()));
@@ -190,7 +191,7 @@ final class PagedDocumentRenderer {
         }
         if (!activeSources.isEmpty()) { throw new IllegalArgumentException("semantic continuation stream is incomplete"); }
         var bodySettings = templates.getFirst().bodySettings(document.sections().getFirst().pageSettings());
-        layouter.validate(new Document(document.metadata(), bodySettings, sources));
+        layouter.validate(Footnotes.validationSource(new Document(document.metadata(), bodySettings, sources), notes, limits));
         for (var bookmark : navigation.bookmarks()) { anchor(anchors, bookmark.blockId()); }
         var partial = new Plan(document, List.copyOf(sections), navigation, semantic, fonts, roles, Map.copyOf(anchors), List.copyOf(sources),
                 ModelRotations.of(sources), new ContentsLayouter.Result(List.of(), List.of(), List.of()), bodyPages);

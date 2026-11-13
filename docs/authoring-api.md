@@ -31,7 +31,7 @@ var document = Document.builder()
 var result = engine.write(document, new PdfBackend(), "report.pdf");
 ~~~
 
-上述本地文件便利重载为当前开发源码新增 API，已发布的 `0.1.0-rc.1` 不包含。它们使用原有文件／流实现和预算；详见[文件与流的便利入口](fluent-api.md#文件与流的便利入口)。
+上述本地文件便利重载从 `0.1.0-rc.2` 起提供，`0.1.0-rc.1` 不包含。它们使用原有文件／流实现和预算；详见[文件与流的便利入口](fluent-api.md#文件与流的便利入口)。
 
 `Document.builder()` 默认使用 A4、四边 54 pt 页边距、空元数据和 12 pt 正文。正文固定行距为 18 pt，段后间距为 6 pt。标题按级别设置字号，并保持整段与下一块。`metadata(...)`、`pageSettings(...)` 修改文档设置；`bodyFormat(...)` 只影响随后添加的正文、列表和便利表格。正文样式不覆盖标题默认格式。
 
@@ -94,7 +94,7 @@ var document = Document.builder()
 
 `SectionedDocument` 也支持简短的 `layout`、流输出和路径输出，默认每节使用空页区和空导航。目录、书签、页区、注释等使用已有完整 `layout(document, templates, navigation, notes)`，再向选定后端写出结果。引擎入口不依赖具体 PDF 后端。
 
-旧构造器继续可用，新增 record 成员默认为旧策略。调用方的穷尽 `switch` 需要处理新增 `JUSTIFY` 枚举值。项目尚未发布；新增 record 成员要求重新编译调用方，本阶段不承诺二进制兼容。
+旧构造器继续可用，新增 record 成员默认为旧策略。调用方的穷尽 `switch` 需要处理新增 `JUSTIFY` 枚举值。项目尚无稳定版；新增 record 成员要求重新编译调用方，本阶段不承诺二进制兼容。
 
 当前 API 的评价是：普通报告已有短入口，精确控制仍需要理解语义、布局和输出边界。复杂组件组合的参数较多，仍属于进阶 API。验证证据和剩余范围见[阶段十三验收](verification/phase-13-authoring.md)。
 

@@ -36,6 +36,7 @@ public final class SimpleTextShaper implements TextShaper {
         List<ShapedGlyph> glyphs = new ArrayList<>();
         List<TextDiagnostic> diagnostics = new ArrayList<>();
         for (int offset = 0; offset < text.length();) {
+            com.mirakyux.export4j.model.ExecutionContext.checkpoint();
             int codePoint = text.codePointAt(offset);
             int sourceCodePoint = codePoint;
             int start = sourceOffset + offset;

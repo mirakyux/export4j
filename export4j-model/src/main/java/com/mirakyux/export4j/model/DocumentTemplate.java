@@ -682,10 +682,11 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                     var children = cell.blocks().stream().map(block -> bind(block, scope, suffix, relocations, depth + 1)).toList();
                     return new TableCell("", format, List.of(), List.of(), List.of(), cell.columnSpan(), cell.rowSpan(), children);
                 }
-                var prototype = new Paragraph("cell", cell.text(), new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false), cell.inlines(), cell.images(), cell.fields());
+                var original = cell.format();
+                var prototype = new Paragraph("cell", cell.text(), new ParagraphFormat(original.fontSize(), original.lineHeight(), 0, 0, original.alignment(), 0, 0, false), cell.inlines(), cell.images(), cell.fields(), cell.vectors());
                 var bound = bindParagraph(prototype, "cell", scope, relocations);
                 if (active.isEmpty()) {
-                    return new TableCell(bound.text(), format, bound.inlines(), bound.images(), bound.fields(), cell.columnSpan(), cell.rowSpan());
+                    return new TableCell(bound.text(), format, bound.inlines(), bound.images(), bound.fields(), bound.vectors(), cell.columnSpan(), cell.rowSpan(), List.of());
                 }
                 var content = new ArrayList<InlineContent>();
                 for (var part : bound.content()) {
@@ -738,7 +739,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             };
         }
         private Paragraph bindParagraph(Paragraph p, String id, Scope scope, Map<String, String> relocations) {
-            if (p.images().isEmpty() && p.fields().isEmpty()) {
+            if (p.images().isEmpty() && p.fields().isEmpty() && p.vectors().isEmpty()) {
                 return p.inlines().isEmpty() ? new Paragraph(id, text(p.text(), scope), p.format())
                         : new Paragraph(id, p.inlines().stream().map(run -> {
                             visit("inlines");
@@ -752,6 +753,14 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 case InlineImage image -> new InlineImage(image.resource(), image.width(), image.height(), image.baselineShift(),
                         text(image.altText(), scope), hyperlink(image.hyperlink(), scope), image.rotation());
                 case InlineField field -> new InlineField(field.kind(), fieldTarget(field.targetId(), scope, relocations), field.width(), field.style());
+                case InlineVector vector -> {
+                    // Reading text and geometry form one value; never bind text into stale ink.
+                    consume(vector.logicalText());
+                    int segments = vector.resource().segmentCount();
+                    if (segments > limits.maxVisitedNodes() - visited) { throw error(BindingException.Code.BUDGET_EXCEEDED, "vectors"); }
+                    visited += segments;
+                    yield new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), hyperlink(vector.hyperlink(), scope));
+                }
                 };
             }).toList();
             return Paragraph.mixed(id, content, p.format());

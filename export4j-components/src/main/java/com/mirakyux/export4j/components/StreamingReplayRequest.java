@@ -415,7 +415,7 @@ public final class StreamingReplayRequest {
                                 for (var diagnostic : resolved.diagnostics()) { diagnostic(leaf, page.pageIndex(), "INLINE_FIELD:" + box.sourceIndex(), diagnostic); }
                             } catch (IllegalArgumentException cause) { throw failure(leaf, page.pageIndex(), box.sourceIndex(), "streaming field resolution failed", cause); }
                         }
-                        lines.add(new TextLine(line.sourceStart(), line.sourceEnd(), line.offsetX(), line.baselineY(), line.width(), line.runs(), outlines, line.images()));
+                        lines.add(new TextLine(line.sourceStart(), line.sourceEnd(), line.offsetX(), line.baselineY(), line.width(), line.runs(), outlines, line.images(), List.of(), line.glyphRunBoxes()));
                     }
                     return new ParagraphLayout(source.width(), source.height(), lines, source.diagnostics());
                 }));
@@ -478,12 +478,12 @@ public final class StreamingReplayRequest {
             if (cell.hasBlocks()) {
                 for (var block : cell.blocks()) {
                     if (++counts[2] > limits.document().maxParagraphs()) { throw new IllegalArgumentException("streaming source node budget exceeded before digest"); }
-                    if (block instanceof Paragraph paragraph) { precheckText(paragraph.text(), paragraph.inlines().size(), counts); }
+                    if (block instanceof Paragraph paragraph) { precheckText(paragraph.text(), paragraph.inlines().size(), paragraph.vectors(), counts); }
                     else { for (var row : ((Table) block).rows()) { for (var child : row.cells()) { precheckCell(child, counts); } } }
                 }
-            } else { precheckText(cell.text(), cell.inlines().size(), counts); }
+            } else { precheckText(cell.text(), cell.inlines().size(), cell.vectors(), counts); }
         }
-        private void precheckText(String value, int runs, long[] counts) {
+        private void precheckText(String value, int runs, List<Paragraph.VectorSpan> vectors, long[] counts) {
             counts[1] += Math.max(1, runs);
             if (Math.max(1, runs) > limits.maxCellInlines() || counts[1] > limits.maxRowInlines()) {
                 throw new IllegalArgumentException("streaming source run budget exceeded before digest");
@@ -495,6 +495,15 @@ public final class StreamingReplayRequest {
                     throw new IllegalArgumentException("streaming source text budget exceeded before digest");
                 }
                 offset += Character.charCount(value.codePointAt(offset));
+            }
+            for (var vector : vectors) {
+                ExecutionContext.checkpoint();
+                String logical = vector.vector().logicalText();
+                int extra = logical.codePointCount(0, logical.length());
+                if (extra > limits.maxCellCodePoints() - points || extra > limits.maxRowCodePoints() - counts[0]) {
+                    throw new IllegalArgumentException("streaming vector logical text budget exceeded before digest");
+                }
+                points += extra; counts[0] += extra;
             }
         }
         private long lineCount(LayoutPage page) {

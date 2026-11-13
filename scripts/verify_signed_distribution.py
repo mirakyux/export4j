@@ -19,7 +19,9 @@ def build_inputs(root: Path):
         "scripts/verify_signed_distribution.py", "scripts/prepare_maven_bundle.py", "scripts/verify_api_compatibility.py",
         "scripts/verify_maven_consumer.py", "scripts/maven_central.py", ".github/workflows/release.yml",
         "scripts/verify_production.py", "scripts/audit_dependencies.py",
-        "verification/api/baseline-0.1.0-rc.1.json",
+        "scripts/create_published_api_baseline.py",
+        "verification/api/baseline-0.1.0-rc.2.json",
+        "verification/api/baseline-0.1.0-rc.2.provenance.json",
         "verification/consumer/build.gradle.kts", "verification/consumer/settings.gradle.kts",
         "verification/consumer/gradle.lockfile"
     )}

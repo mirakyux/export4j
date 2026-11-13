@@ -95,5 +95,18 @@ test('table dividers follow preview state and discard invalidated drags',{timeou
             await page.evaluate(()=>TableCanvasFixture.show({...TableCanvasFixture.snapshot(),layoutState:'failed'},false));
             await page.mouse.up();assert.equal(await page.evaluate(()=>TableCanvasFixture.changes()),0);
         });
+        await t.test('a replaced page layout rejects stale pointer and keyboard geometry before React rerenders',async()=>{
+            await page.evaluate(()=>TableCanvasFixture.show({...TableCanvasFixture.snapshot(),layoutState:'synced'}));
+            const bounds=await divider.boundingBox();assert.ok(bounds);
+            await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();await page.mouse.move(bounds.x+bounds.width/2+30,bounds.y+bounds.height/2);
+            await page.locator('.studio-table-drag-label').waitFor();
+            await page.evaluate(()=>TableCanvasFixture.show({...TableCanvasFixture.snapshot(),pages:structuredClone(TableCanvasFixture.snapshot().pages)},false));
+            await page.mouse.up();assert.equal(await page.evaluate(()=>TableCanvasFixture.changes()),0);
+            await divider.focus();await page.keyboard.press('ArrowRight');
+            assert.equal(await page.evaluate(()=>TableCanvasFixture.changes()),0);
+            await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();
+            assert.equal(await page.locator('.studio-table-drag-label').count(),0);
+            await page.mouse.up();assert.equal(await page.evaluate(()=>TableCanvasFixture.changes()),0);
+        });
     }finally{await browser.close();}
 });

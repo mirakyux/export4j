@@ -13,10 +13,12 @@ import java.security.cert.X509CRL;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -36,9 +38,12 @@ import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder;
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder;
 import org.bouncycastle.tsp.TimeStampToken;
 import com.mirakyux.export4j.model.ExecutionContext;
+import com.mirakyux.export4j.model.ExecutionException;
 
 /** Explicit offline trust inputs for PDF signatures. Neither AIA, OCSP/CRL URLs, system trust stores nor
  * network discovery are consulted. DER collections are bounded, immutable snapshots.
+ * Alternative paths are checked within 16 certificates per path and 4096 shared search/evidence steps;
+ * exhausting the budget fails without returning a partial trust result.
  */
 public final class PdfTrust {
     private PdfTrust() { }
@@ -98,12 +103,39 @@ public final class PdfTrust {
 
     static Chain validate(X509Certificate leaf, List<X509Certificate> supplied, Material material, Evidence evidence, Instant at, boolean revocation) throws IOException {
         ExecutionContext.checkpoint();
-        var pool = new ArrayList<>(supplied); pool.addAll(certificates(material.intermediates)); pool.addAll(certificates(evidence.certificates));
-        var anchors = certificates(material.anchors); pool.addAll(anchors);
-        List<X509Certificate> path = path(leaf, pool, anchors, new ArrayList<>(), new int[1]);
-        if (path == null) { throw new ValidationException(Failure.UNTRUSTED_CHAIN); }
+        var candidates = new LinkedHashSet<>(supplied); candidates.addAll(certificates(material.intermediates)); candidates.addAll(certificates(evidence.certificates));
+        var anchors = certificates(material.anchors); candidates.addAll(anchors);
+        var pool = List.copyOf(candidates); var path = new ArrayList<X509Certificate>(); path.add(leaf);
+        var pending = new ArrayDeque<PathFrame>(); pending.push(new PathFrame());
+        var budget = new PathBudget(); ValidationException firstFailure = null;
+        while (!pending.isEmpty()) {
+            ExecutionContext.checkpoint();
+            var frame = pending.peek(); var current = path.getLast();
+            if (!frame.entered) {
+                budget.work(); frame.entered = true;
+                if (anchors.contains(current)) {
+                    try { return validatePath(path, material, evidence, at, revocation, budget); }
+                    catch (ValidationException failure) { if (firstFailure == null) { firstFailure = failure; } }
+                    pending.pop(); path.removeLast(); continue;
+                }
+            }
+            if (path.size() >= 16 || frame.nextIssuer >= pool.size()) { pending.pop(); path.removeLast(); continue; }
+            budget.work();
+            var issuer = pool.get(frame.nextIssuer++);
+            if (!current.getIssuerX500Principal().equals(issuer.getSubjectX500Principal()) || path.contains(issuer)) { continue; }
+            try { current.verify(issuer.getPublicKey()); }
+            catch (GeneralSecurityException failure) { continue; }
+            path.add(issuer); pending.push(new PathFrame());
+        }
+        // Preserve the first complete path's diagnostic when none of the alternatives is valid.
+        if (firstFailure != null) { throw firstFailure; }
+        throw new ValidationException(Failure.UNTRUSTED_CHAIN);
+    }
+
+    private static Chain validatePath(List<X509Certificate> path, Material material, Evidence evidence, Instant at,
+                                      boolean revocation, PathBudget budget) throws IOException {
         try {
-            for (var cert : path) { cert.checkValidity(Date.from(at)); key(cert); }
+            for (var cert : path) { budget.work(); cert.checkValidity(Date.from(at)); key(cert); }
             var trusted = path.getLast();
             var parameters = new PKIXParameters(Set.of(new TrustAnchor(trusted, null))); parameters.setRevocationEnabled(false); parameters.setDate(Date.from(at));
             var certPath = CertificateFactory.getInstance("X.509").generateCertPath(path.subList(0, path.size() - 1));
@@ -111,25 +143,27 @@ public final class PdfTrust {
         } catch (java.security.cert.CertificateExpiredException | java.security.cert.CertificateNotYetValidException failure) { throw new ValidationException(Failure.EXPIRED_CERTIFICATE, failure); }
         catch (GeneralSecurityException failure) { throw new ValidationException(Failure.UNTRUSTED_CHAIN, failure); }
         boolean checked = revocation || !evidence.ocspResponses.isEmpty() || !evidence.crls.isEmpty();
-        if (checked) { for (int index = 0; index < path.size() - 1; index++) { revocation(path.get(index), path.get(index + 1), material, evidence, at); } }
+        if (checked) { for (int index = 0; index < path.size() - 1; index++) { budget.work(); revocation(path.get(index), path.get(index + 1), material, evidence, at, budget); } }
         var fingerprints = new ArrayList<String>();
         try { for (var cert : path) { fingerprints.add(HexFormat.of().formatHex(digest(cert.getEncoded()))); } }
         catch (GeneralSecurityException failure) { throw new IOException("certificate fingerprint failed", failure); }
         return new Chain(fingerprints, at, checked);
     }
 
-    private static List<X509Certificate> path(X509Certificate current, List<X509Certificate> pool, List<X509Certificate> anchors,
-                                             List<X509Certificate> previous, int[] attempts) throws IOException {
-        ExecutionContext.checkpoint(); if (++attempts[0] > 4096) { throw new IOException("certificate path search budget exceeded"); } if (previous.size() >= 16 || previous.contains(current)) { return null; }
-        var candidate = new ArrayList<>(previous); candidate.add(current);
-        if (anchors.contains(current)) { return candidate; }
-        for (var issuer : pool) {
-            if (!current.getIssuerX500Principal().equals(issuer.getSubjectX500Principal()) || current.equals(issuer)) { continue; }
-            try { current.verify(issuer.getPublicKey()); }
-            catch (GeneralSecurityException failure) { continue; }
-            var result = path(issuer, pool, anchors, candidate, attempts); if (result != null) { return result; }
+    private static final class PathFrame {
+        private boolean entered;
+        private int nextIssuer;
+    }
+    private static final class PathBudget {
+        private int work;
+        void work() throws PathSearchLimitException {
+            ExecutionContext.checkpoint();
+            if (++work > 4096) { throw new PathSearchLimitException(); }
         }
-        return null;
+    }
+    private static final class PathSearchLimitException extends IOException {
+        private static final long serialVersionUID = 1L;
+        PathSearchLimitException() { super("certificate path search budget exceeded"); }
     }
 
     static void key(X509Certificate certificate) throws ValidationException {
@@ -157,20 +191,22 @@ public final class PdfTrust {
             token.validate(new JcaSimpleSignerInfoVerifierBuilder().setProvider(PROVIDER).build(cert));
             var certificates = new ArrayList<X509Certificate>(); for (var value : token.getCertificates().getMatches(null)) { certificates.add(certificate(value.getEncoded())); }
             return new Timestamp(time, validate(cert, certificates, trust, evidence, time, revocation));
-        } catch (ValidationException failure) { throw failure; }
+        } catch (ExecutionException | PathSearchLimitException failure) { throw failure; }
+        catch (ValidationException failure) { throw failure; }
         catch (Exception failure) { throw new ValidationException(Failure.INVALID_TIMESTAMP, failure); }
     }
 
-    private static void revocation(X509Certificate certificate, X509Certificate issuer, Material material, Evidence evidence, Instant at) throws IOException {
+    private static void revocation(X509Certificate certificate, X509Certificate issuer, Material material, Evidence evidence, Instant at, PathBudget budget) throws IOException {
         boolean good = false, stale = false, invalid = false;
         try {
             var calculators = new JcaDigestCalculatorProviderBuilder().setProvider(PROVIDER).build(); var issuerHolder = new JcaX509CertificateHolder(issuer);
             for (var encoded : evidence.ocspResponses) {
-                ExecutionContext.checkpoint();
+                budget.work();
                 var response = new OCSPResp(encoded); if (!Arrays.equals(response.getEncoded(), encoded) || response.getStatus() != OCSPResp.SUCCESSFUL || !(response.getResponseObject() instanceof BasicOCSPResp basic)) { invalid = true; continue; }
                 for (var single : basic.getResponses()) {
+                    budget.work();
                     if (!single.getCertID().getSerialNumber().equals(certificate.getSerialNumber()) || !single.getCertID().matchesIssuer(issuerHolder, calculators)) { continue; }
-                    if (!strongSignature(basic.getSignatureAlgOID().getId()) || !authorized(basic, issuer, at) || !basic.getCriticalExtensionOIDs().isEmpty() || basic.getProducedAt().toInstant().isAfter(material.validationTime.plus(material.clockSkew))
+                    if (!strongSignature(basic.getSignatureAlgOID().getId()) || !authorized(basic, issuer, at, budget) || !basic.getCriticalExtensionOIDs().isEmpty() || basic.getProducedAt().toInstant().isAfter(material.validationTime.plus(material.clockSkew))
                             || basic.getProducedAt().toInstant().isBefore(single.getThisUpdate().toInstant().minus(material.clockSkew))) { invalid = true; continue; }
                     var status = single.getCertStatus();
                     if (status instanceof RevokedStatus revoked && !revoked.getRevocationTime().toInstant().isAfter(at)) { throw new ValidationException(Failure.REVOKED_CERTIFICATE); }
@@ -179,7 +215,7 @@ public final class PdfTrust {
                 }
             }
             for (var encoded : evidence.crls) {
-                ExecutionContext.checkpoint(); var input = new ByteArrayInputStream(encoded);
+                budget.work(); var input = new ByteArrayInputStream(encoded);
                 var crl = (X509CRL) CertificateFactory.getInstance("X.509").generateCRL(input);
                 if (!crl.getIssuerX500Principal().equals(issuer.getSubjectX500Principal())) { continue; }
                 if (input.available() != 0 || !Arrays.equals(crl.getEncoded(), encoded) || crl.getExtensionValue("2.5.29.27") != null || crl.getExtensionValue("2.5.29.28") != null || crl.hasUnsupportedCriticalExtension() || !strongSignature(crl.getSigAlgOID())) { invalid = true; continue; }
@@ -188,7 +224,8 @@ public final class PdfTrust {
                 var entry = crl.getRevokedCertificate(certificate); if (entry != null && !entry.getRevocationDate().toInstant().isAfter(at)) { throw new ValidationException(Failure.REVOKED_CERTIFICATE); }
                 if (!fresh(crl.getThisUpdate(), crl.getNextUpdate(), at, material)) { stale = true; continue; } good = true;
             }
-        } catch (ValidationException failure) { throw failure; }
+        } catch (ExecutionException | PathSearchLimitException failure) { throw failure; }
+        catch (ValidationException failure) { throw failure; }
         catch (Exception failure) { throw new ValidationException(Failure.INVALID_REVOCATION_EVIDENCE, failure); }
         if (!good) { throw new ValidationException(invalid ? Failure.INVALID_REVOCATION_EVIDENCE : stale ? Failure.STALE_REVOCATION_EVIDENCE : Failure.MISSING_REVOCATION_EVIDENCE); }
     }
@@ -199,11 +236,12 @@ public final class PdfTrust {
     }
     private static boolean strongSignature(String oid) { return Set.of("1.2.840.113549.1.1.11", "1.2.840.113549.1.1.12", "1.2.840.113549.1.1.13", "1.2.840.10045.4.3.2", "1.2.840.10045.4.3.3", "1.2.840.10045.4.3.4").contains(oid); }
 
-    private static boolean authorized(BasicOCSPResp response, X509Certificate issuer, Instant at) throws Exception {
+    private static boolean authorized(BasicOCSPResp response, X509Certificate issuer, Instant at, PathBudget budget) throws Exception {
         var candidates = new ArrayList<X509Certificate>(); candidates.add(issuer);
         var converter = new JcaX509CertificateConverter().setProvider(PROVIDER);
-        for (var cert : response.getCerts()) { candidates.add(converter.getCertificate(cert)); }
+        for (var cert : response.getCerts()) { budget.work(); candidates.add(converter.getCertificate(cert)); }
         for (var cert : candidates) {
+            budget.work();
             var holder = new JcaX509CertificateHolder(cert);
             var byName = new RespID(holder.getSubject());
             var calculator = new JcaDigestCalculatorProviderBuilder().setProvider(PROVIDER).build().get(RespID.HASH_SHA1);

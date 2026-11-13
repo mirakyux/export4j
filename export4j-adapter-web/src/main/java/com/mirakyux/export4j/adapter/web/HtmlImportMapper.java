@@ -11,6 +11,7 @@ import com.mirakyux.export4j.model.ExternalDestination;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.Paragraph;
@@ -288,7 +289,7 @@ final class HtmlImportMapper {
             if (block instanceof Heading heading) { block = heading.paragraph(); }
             if (block instanceof Paragraph paragraph) {
                 var format = paragraph.format().toBuilder().spaceBefore(0).spaceAfter(0).firstLineIndent(paragraph.format().firstLineIndent() - computed.indent).subsequentLineIndent(paragraph.format().subsequentLineIndent() - computed.indent).build();
-                blocks.add(new Paragraph(paragraph.id(), paragraph.text(), format, paragraph.inlines(), paragraph.images(), paragraph.fields()));
+                blocks.add(new Paragraph(paragraph.id(), paragraph.text(), format, paragraph.inlines(), paragraph.images(), paragraph.fields(), paragraph.vectors()));
             } else if (block instanceof Table) { blocks.add(block); }
             else { throw new IllegalArgumentException("CSS layout leaf supports paragraphs, headings and semantic tables"); }
         }
@@ -340,7 +341,15 @@ final class HtmlImportMapper {
                 for (var child : element.childNodes()) { inline(child, element, context, target, output, space); }
             } else if (tag.equals("img")) {
                 var image = importer.images.get(element.attr("src"));
-                if (image == null) {
+                var vector = importer.vectors.get(element.attr("src"));
+                if (vector != null) {
+                    vectorDimensions(element, vector);
+                    pendingSpace(space, output);
+                    String target = link.isEmpty() ? vector.hyperlink() : link;
+                    output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), target));
+                    state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
+                    space.beginning = false;
+                } else if (image == null) {
                     if (loss(element, "IMAGE_RESOURCE", "HTML image is not explicitly registered", "IMAGE_REPLACED_WITH_ALT_TEXT", context.block(), context.cells()) == Treatment.DEGRADE) {
                         inline(new TextNode(element.attr("alt")), parent, context, link, output, space);
                     }
@@ -370,6 +379,20 @@ final class HtmlImportMapper {
     private void append(List<InlineContent> output, String literal, HtmlCss.Computed style, String link) {
         state.text(literal.length()); output.add(new InlineText(literal, style.inline(), link));
     }
+    private void vectorDimensions(Element element, InlineVector vector) {
+        double width = vector.resource().width(), height = vector.resource().ascent() + vector.resource().descent();
+        if (element.hasAttr("width")) { vectorDimension(dimension(element.attr("width")), width); }
+        if (element.hasAttr("height")) { vectorDimension(dimension(element.attr("height")), height); }
+        var declarations = css.get(element).box;
+        for (String name : List.of("width", "height")) {
+            if (declarations.containsKey(name) && !declarations.get(name).equals("auto")) {
+                vectorDimension(HtmlCss.length(declarations.get(name)), name.equals("width") ? width : height);
+            }
+        }
+    }
+    private static void vectorDimension(double actual, double intrinsic) {
+        if (Double.compare(actual, intrinsic) != 0) { throw new IllegalArgumentException("HTML vector dimensions conflict with the registered resource"); }
+    }
     private void pendingSpace(Space space, List<InlineContent> output) {
         if (space.pending) { append(output, " ", space.style, space.link); space.pending = false; }
     }
@@ -379,6 +402,11 @@ final class HtmlImportMapper {
             if (value instanceof InlineText run) { runs.add(run); }
             else if (value instanceof InlineImage image && loss(source, "TEXT_BLOCK_IMAGE", "heading/list cannot hold an inline image", "IMAGE_REPLACED_WITH_ALT_TEXT", context.block(), context.cells()) == Treatment.DEGRADE) {
                 state.text(image.altText().length()); runs.add(new InlineText(image.altText(), css.get(source).inline(), image.hyperlink()));
+            } else if (value instanceof InlineVector vector) {
+                state.unsupported("INLINE_VECTOR", location(source, context.block(), context.cells()),
+                        "heading/list cannot retain an inline vector", List.of("VECTOR_REPLACED_WITH_LOGICAL_TEXT"), Treatment.DEGRADE);
+                state.text(vector.logicalText().length());
+                runs.add(new InlineText(vector.logicalText(), css.get(source).inline().toBuilder().rgb(vector.rgb()).build(), vector.hyperlink()));
             }
         }
         return runs;

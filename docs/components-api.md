@@ -123,7 +123,7 @@ public final class ComponentExample {
 
 `ContinuousColumns` 通过核心 `RegionFlow` 从剩余正文区域开始多栏，再使用完整续栏，最后按实际高度接续正文。支持文字、`FlowColumn` 混合流和 `GridTable` 表格；其他组件可通过混合流按整块／原有分页片段参与，详见[连续分栏 API](continuous-columns-api.md)和[混合分栏 API](mixed-columns-api.md)。
 
-正文段落通过 `InlineField` 提供当前页码、总页数、目标页码／编号和行内注释标记。字段先按固定宽度参与断行，再由编排器解析最终值；脚注跟随标记实际所在行。组件内部、表格单元格和连续栏内字段不在本批范围，见[字段 API](inline-fields-api.md)。
+正文段落通过 `InlineField` 提供当前页码、总页数、目标页码／编号和行内注释标记。字段先按固定宽度参与断行，再由编排器解析最终值；脚注跟随标记实际所在行。组件容器中的语义表格使用 `SemanticTable` 保留并解析字段；固定的 `TableComponent` 仍拒绝字段。表格、连续栏和注释标记的具体支持边界见[语义组件 API](semantic-components-api.md)与[字段 API](inline-fields-api.md)。
 
 `ComponentContext.pageCount() == 0` 表示分页前测量，`pageIndex()` 只是测量时的候选页。正文组件必须独立于页索引及最终页数；移动到下一页不会再次测量。最终页字段在页区合成阶段获得真实从 0 开始的页索引和总页数，显示数字从 1 开始。
 
@@ -166,6 +166,8 @@ PDF 阅读器对填写、批注面板与保存的支持不同。本次验证包�
 
 ## 预算、诊断与兼容性
 
+当前源码可通过 `DocumentEngine.Builder.layoutLimits(...)`／`componentLimits(...)` 配置引擎预算，详见[链式 API](fluent-api.md#布局与组件预算)；该入口尚未包含在已发布的 `0.1.0-rc.2` 中。
+
 `DocumentLayoutLimits` 继续约束正文块、原文码点、文字行、表格结构及页面。正文组件生成的 GlyphText 字形码点和 Text 码点加入同一文本预算，组件报告的行数加入行预算；这些统计发生在自定义组件返回之后。
 
 目录标题与条目共用一份独立的 `maxCodePoints` 预算，在测量条目前检查；目录输出行数使用独立的 `maxLines` 预算，计入重复标题与页码行。正文和目录共享总页数及最终绘制命令预算。
@@ -182,6 +184,6 @@ PDF 阅读器对填写、批注面板与保存的支持不同。本次验证包�
 - `PdfLimits` 新增交互数量和文字预算，保留原六／七参数构造器。
 - `DocumentLayouter` 新增包含 `ComponentLimits` 的三参数构造器，原构造器继续有效。
 
-项目尚未正式发布；record 组件数量、反射序列化和枚举／sealed exhaustive switch 的调用方仍须重新核对。
+上述为候选发布前引入的契约变化。当前已发布 `0.1.0-rc.2`，公共声明以[已发布 API 基线](api-compatibility.md)为准；从早期开发快照迁移时，record 组件数量、反射序列化和枚举／sealed exhaustive switch 的调用方仍须重新核对。
 
 进阶能力已补齐分页约束、保持相邻、分节、纵向嵌套流、富文本、合并表格、中文表单和下拉框，见[进阶 API](advanced-api.md)。后续已实现矩形绕排、多栏、公共复杂文本和外部 CMS 签名入口，见[能力指南](capabilities-api.md)。透明水印与脚本动作尚未支持。初始架构见 [ADR-0006](adr/0006-components-and-pdf-interactions.md)，扩展见 [ADR-0007](adr/0007-advanced-layout-and-font-policy.md)，证据见[进阶验收](verification/phase-3-advanced.md)。

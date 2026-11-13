@@ -23,7 +23,7 @@ TableCell.mixed 中的富文本、行内图片、PAGE／PAGES、页码引用和�
 
 ## 长表和分栏
 
-`SemanticTable` 实现 `RegionFlow`。上面的 `.semanticTable(table)` 会使用当前页剩余高度，并按完整行自然续排；包含语义 rowSpan 时以传递连通行组为单位整体移动，见[跨行 API](row-spans-api.md)。每个占用区域都重复完整表头。过短初始区只在放不下表头和最小正文行／组时跳过，不生成空白片段。完整续区必须推进，否则明确失败。
+`SemanticTable` 实现 `WidthAwareRegionFlow`，也可用于等宽 `RegionFlow`。上面的 `.semanticTable(table)` 会使用当前页剩余高度，默认按完整行自然续排；包含语义 rowSpan 时默认以传递连通行组为单位整体移动，显式拆行规则见下文及[跨行 API](row-spans-api.md)。每个占用区域都重复完整表头。过短初始区只在放不下表头和最小正文行／组时跳过，不生成空白片段。完整续区必须推进，否则明确失败。
 
 ```java
 var content = ContinuousColumns.builder(FlowColumn.builder()
@@ -36,7 +36,9 @@ var content = ContinuousColumns.builder(FlowColumn.builder()
 
 同一物理页的两栏表头 PAGE 相同；后续物理页、目录偏移及分节重启按实际页面解析。书签和页码引用定位表格的首个实际片段。固定的 RowComponent、BoxComponent 和默认整组网格仍调用单视口 `layout()`，长表放不下就失败。显式拆行网格可在长合并格中准备语义流，见[长合并格语义 API](grid-semantic-flow-api.md)。
 
-无语义 rowSpan 时，显式 `table.format().allowRowSplit()` 允许按单元格完整文字行拆分超长正文行；与 rowSpan 的组合明确拒绝。字段、行内图片、文字外链、图片外链与原文 UTF-16 位置随实际行移动。固定行框仍须容纳图像。自动列宽沿用顶层测量，合并覆盖 Auto 列仍拒绝；分配区域时不重新塑形或换行。
+显式 `table.format().allowRowSplit()` 允许按完整文字行拆分正文格，也支持纵向 owner 和有界 Paragraph／Table 块格递归续排；各层内表独立声明拆行开关。字段、行内图片、文字外链、图片外链与原文 UTF-16 位置随实际行移动。固定行框仍须容纳图像，图片和字段不可拆。普通行内格可合并覆盖有界 Auto 列，见[自动列合并](automatic-merged-columns-api.md)；含块格表自身的 Auto、块格重复表头和格内注释标记仍拒绝，表深最多 16 层，详见[块格 API](block-cells-api.md)。等宽分配复用已测量的完整行。
+
+不同栏宽下，列宽、表头和剩余正文按实际区域宽度准备，支持行内格纵向 owner、递归块格和完整行续排，不缩放或裁切旧宽度的结果。宽度序列最多 16 项，累计准备工作最多 4,000,000 个源 UTF-16 单位，其他来源、行和片段预算仍生效；完整续区无法推进时明确失败。调用及限制见[变宽语义表格](variable-tables-api.md)和[变宽拆行](variable-table-continuation-api.md)。
 
 ## 组合与来源
 
@@ -55,7 +57,7 @@ FlowColumn、RowComponent、BoxComponent、GridTable、MultiColumn、ContinuousC
 - 语义表格不用于页眉、页脚或前景／背景装饰；这些路径尚无最终语义解析上下文。
 - 表格外部段前、段后间距由父容器的 gap、padding 或 Spacer 控制。
 - 旧 TableComponent 仍是静态单视口包装，拒绝字段、外链和字体角色；不自动改变既有契约。
-- 本功能不增加 DOCX 嵌套表格支持，不保证任意 Word 文档无损互转。
+- 组件组合没有 DOCX 原生映射；DOCX 的递归语义格和内表使用普通 `Table` 路径，见[块格 API](block-cells-api.md)。不保证任意 Word 文档无损互转或与 PDF 同分页。
 
 结构、源文字及图片预算与顶层正文合并检查，每个源计一次；实际片段、输出行、重复表头、字段生成和交互逐次计入。`maxParagraphs` 包括顶层块和嵌套语义源。最终绘制文字仍受组合输出预算限制。组件先在内层默认限额内准备，再统一检查调用方配置的更小全局限额；这不等于测量前已继承全部全局限额。
 

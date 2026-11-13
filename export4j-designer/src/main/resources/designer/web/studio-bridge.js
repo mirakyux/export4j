@@ -145,6 +145,15 @@ const DesignerStudioBridge = (() => {
             return Promise.resolve();
         }catch(error){$('source').value=source;markDirty();return Promise.reject(error);}
     }
+    function editingEnded(){
+        const current=identity();
+        if(!DesignerStudio.shouldPreview()||busy||syncing||synchronized!==sequence||failure||!current
+                ||!sameText(current.source,state.source)||!sameText(current.data,state.data)
+                ||sameIdentity(renderedIdentity,current)||sameIdentity(failedIdentity,current)||sameIdentity(syncFailureIdentity,current)
+                ||layoutPending&&sameIdentity(pendingIdentity,current))return;
+        // Server acceptance may have deferred the preview while the rich editor was still open.
+        pendingIdentity=current;layoutPending=true;schedulePreview();DesignerStudio.sync();
+    }
     async function flush(commitDraft=true){
         if(!state)return;
         if(commitDraft&&(sourceChanged()||dataChanged()))await apply($('source').value);
@@ -258,7 +267,7 @@ const DesignerStudioBridge = (() => {
             }
             const current=identity(),pending=syncing||layoutPending&&sameIdentity(pendingIdentity,current);
             const hasDraft=!!state&&(!sameText(source,state.source)||!sameText($('data').value,state.data));
-            return {source,data:$('data').value,resourceIdentity:state?.resourceIdentity,revision:state?.revision||0,layoutState:sameIdentity(syncFailureIdentity,current)||sameIdentity(failedIdentity,current)?'failed':pending?'pending':sameIdentity(renderedIdentity,current)?'synced':'stale',historyBoundary:cursor===0?historyBoundary:undefined,
+            return {source,data:$('data').value,resourceIdentity:state?.resourceIdentity,fontIdentity:state?.fontIdentity,revision:state?.revision||0,layoutState:sameIdentity(syncFailureIdentity,current)||sameIdentity(failedIdentity,current)?'failed':pending?'pending':sameIdentity(renderedIdentity,current)?'synced':'stale',historyBoundary:cursor===0?historyBoundary:undefined,
             selectedPaths:[...selectedPaths],entries:source===state?.source?entries:projectedEntries,pages:remappedPages(source),currentPage,busy,formats:previewFormats,session,pending,
             canUndo:hasDraft||(localHistory?cursor>0:!!state?.canUndo),canRedo:!hasDraft&&(localHistory?cursor<history.length-1:!!state?.canRedo)};},
         choose:async(path,event,groupLists=false)=>{
@@ -268,7 +277,7 @@ const DesignerStudioBridge = (() => {
         },
         select:navigate,
         draft:source=>{draftBase??=capture();propertyDirty=false;nodeXmlDirty=false;$('source').value=source;markDirty();if(DesignerStudio.shouldPreview())schedulePreview();else {$('preview-status').textContent='便捷编辑 · 完成后校验精确版式';clearTimeout(previewTimer);++previewGeneration;}DesignerStudio.sync();},
-        apply,flush,history:historyStep,preview:()=>schedulePreview(),
+        apply,flush,editingEnded,history:historyStep,preview:()=>schedulePreview(),
         paste:(file,page,x,y,path)=>{
             const context=DesignerStudio.canvasContext(),check=()=>{
                 const current=DesignerStudioBridge.snapshot();

@@ -87,7 +87,7 @@ def annotations(reader):
 
 
 def table_borders(reader):
-    """Read closed four-edge strokes, including the half-stroke inset, from final PDF CTMs."""
+    """Read closed four-edge/rectangle strokes, including the half-stroke inset, from final PDF CTMs."""
     result = []
     for index, page in enumerate(reader.pages):
         matrix, stroke, stack, vertices = (1, 0, 0, 1, 0, 0), 1, [], []
@@ -105,6 +105,11 @@ def table_borders(reader):
                 vertices, closed = [point(matrix, *map(float, operands))], False
             elif operator == b"l":
                 vertices.append(point(matrix, *map(float, operands)))
+            elif operator == b"re":
+                x, y, width, height = map(float, operands)
+                vertices = [point(matrix, px, py) for px, py in
+                            ((x, y), (x + width, y), (x + width, y + height), (x, y + height))]
+                closed = True
             elif operator == b"h":
                 closed = True
             elif operator == b"S":

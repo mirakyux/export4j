@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.util.List;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
+import org.w3c.dom.Element;
 import com.mirakyux.export4j.graphics.DisplayDocument;
 import com.mirakyux.export4j.graphics.DisplayPage;
 import com.mirakyux.export4j.graphics.DrawCommand;
@@ -17,10 +18,30 @@ import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.graphics.RgbColor;
 import com.mirakyux.export4j.graphics.DocumentExtras;
 import com.mirakyux.export4j.graphics.Point;
+import com.mirakyux.export4j.graphics.Paint;
+import com.mirakyux.export4j.graphics.VectorPath;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.PageSize;
 
 class SvgBackendTest {
+    @Test void acuteStrokesKeepTheSameMiterLimitAsPdfAndRaster() throws Exception {
+        var path = new VectorPath(List.of(new VectorPath.MoveTo(new Point(28, 100)),
+                new VectorPath.LineTo(new Point(40, 40)), new VectorPath.LineTo(new Point(52, 100))));
+        var page = new DisplayPage(new PageSize(100, 120), List.of(
+                new DrawCommand.StrokePath(path, RgbColor.BLACK, 10),
+                new DrawCommand.PaintStroke(path, new Paint.Solid(RgbColor.BLACK), 10)));
+        var output = new ByteArrayOutputStream();
+        new SvgBackend().writePage(page, output);
+        var xml = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new ByteArrayInputStream(output.toByteArray()));
+        var paths = xml.getElementsByTagName("path");
+        assertEquals(2, paths.getLength());
+        for (int index = 0; index < paths.getLength(); index++) {
+            assertEquals("10", ((Element) paths.item(index)).getAttribute("stroke-miterlimit"),
+                    "SVG's default limit of 4 cuts off this supported acute join");
+        }
+    }
+
     @Test void outputIsXmlWithClippedPagesAndEscapedLogicalText() throws Exception {
         var page = new DisplayPage(new PageSize(60, 40), List.of(new DrawCommand.Save(), new DrawCommand.Clip(new Rect(0, 0, 10, 10)),
                 new DrawCommand.FillRect(new Rect(0, 0, 30, 30), new RgbColor(1, 0, 0)), new DrawCommand.Restore(),

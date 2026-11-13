@@ -97,6 +97,62 @@ class ParagraphLayouterTest {
     private static FontFace chinese;
     private static final ParagraphStyle STYLE = new ParagraphStyle(10, 15, 0, 0, TextAlignment.LEFT);
 
+    @Test
+    void hardBreaksAcrossStyledAndEmptySpansRetainStylesAndUtf16Ranges() {
+        var font = fixture(latin, cp -> true, new FontMetrics(.8, .2, 0));
+        var group = com.mirakyux.export4j.font.FontGroup.strict(List.of(font));
+        var spans = List.of(
+                new StyledSpan("", group, 10, 0, 0, false, false),
+                new StyledSpan("A\r", group, 10, 0xff0000, 0, false, false),
+                new StyledSpan("\nB\n", group, 10, 0x0000ff, 0, false, false),
+                new StyledSpan("", group, 10, 0, 0, false, false),
+                new StyledSpan("\n\uD83D\uDE00C\r\n", group, 10, 0x008000, 0, false, false));
+        var layout = new ParagraphLayouter().layout(spans, 100, STYLE);
+        assertEquals(List.of("A", "B", "", "\uD83D\uDE00C", ""), texts(layout));
+        assertEquals(List.of(0, 3, 5, 6, 11), layout.lines().stream().map(TextLine::sourceStart).toList());
+        assertEquals(List.of(1, 4, 5, 9, 11), layout.lines().stream().map(TextLine::sourceEnd).toList());
+        assertEquals(List.of(0xff0000, 0x0000ff, 0x008000), layout.lines().stream()
+                .flatMap(line -> line.runs().stream()).map(GlyphRun::rgb).toList());
+    }
+
+    @Test
+    void oneStyledSpanRetainsFormatFallbackAndUtf16RangesAcrossSoftAndHardBreaks() {
+        var group = com.mirakyux.export4j.font.FontGroup.strict(List.of(
+                fixture(latin, cp -> cp < 128, new FontMetrics(.8, .2, 0)),
+                fixture(chinese, cp -> cp >= 128, new FontMetrics(.8, .2, 0))));
+        var span = new StyledSpan("A\uD840\uDC00B\r\nC\uD840\uDC00D", group, 10, 0x224466, 1, true, true);
+        var result = new ParagraphLayouter().layout(List.of(span), 20, STYLE);
+        assertEquals(List.of("A\uD840\uDC00", "B", "C\uD840\uDC00", "D"), texts(result));
+        assertEquals(List.of(0, 3, 6, 9), result.lines().stream().map(TextLine::sourceStart).toList());
+        assertEquals(List.of(3, 4, 9, 10), result.lines().stream().map(TextLine::sourceEnd).toList());
+        assertEquals(List.of(7.0, 22.0, 37.0, 52.0), result.lines().stream().map(TextLine::baselineY).toList());
+        var runs = result.lines().stream().flatMap(line -> line.runs().stream()).toList();
+        assertEquals(List.of(latin.data().id(), chinese.data().id(), latin.data().id(),
+                latin.data().id(), chinese.data().id(), latin.data().id()), runs.stream().map(run -> run.font().id()).toList());
+        assertTrue(runs.stream().allMatch(run -> run.fontSize() == 10 && run.rgb() == 0x224466
+                && run.baselineShift() == 1 && run.underline() && run.strikeThrough()));
+        assertEquals(List.of(new TextDiagnostic(TextDiagnostic.Code.FONT_FALLBACK, 1, 3, chinese.data().id()),
+                new TextDiagnostic(TextDiagnostic.Code.FONT_FALLBACK, 7, 9, chinese.data().id())), result.diagnostics());
+    }
+
+    @Test
+    void simpleShapingStopsConsumingGlyphsAfterCancellationAndRestoresScope() {
+        var lookups = new java.util.concurrent.atomic.AtomicInteger();
+        var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        var font = fixture(latin, cp -> {
+            if (lookups.incrementAndGet() == 16) { cancelled.set(true); }
+            return true;
+        }, new FontMetrics(.8, .2, 0));
+        var failure = assertThrows(com.mirakyux.export4j.model.ExecutionException.class,
+                () -> com.mirakyux.export4j.model.ExecutionContext.execute(
+                        com.mirakyux.export4j.model.ExecutionOptions.builder().cancelled(cancelled::get).build(),
+                        () -> new SimpleTextShaper().shape("A".repeat(4096), List.of(font), 10)));
+        assertEquals(com.mirakyux.export4j.model.ExecutionException.Code.CANCELLED, failure.code());
+        assertTrue(lookups.get() < 32, "cancelled shaping must stop before processing the remaining source");
+        com.mirakyux.export4j.model.ExecutionContext.checkpoint();
+        assertEquals(1, new SimpleTextShaper().shape("A", List.of(font), 10).glyphs().size());
+    }
+
     @BeforeAll
     static void loadFonts() throws IOException {
         latin = load("LiberationSans-Regular.ttf");

@@ -21,6 +21,7 @@ public sealed interface DrawCommand permits DrawCommand.FillRect, DrawCommand.Fi
         public PaintFill(VectorPath path, Paint paint) { this(path, paint, FillRule.NONZERO); }
     }
 
+    /** Strokes with butt caps, miter joins and a miter limit of 10, matching StrokePath. */
     record PaintStroke(VectorPath path, Paint paint, double width) implements DrawCommand {
         public PaintStroke {
             Objects.requireNonNull(path, "path"); Objects.requireNonNull(paint, "paint");
@@ -99,7 +100,7 @@ public sealed interface DrawCommand permits DrawCommand.FillRect, DrawCommand.Fi
         }
     }
 
-    /** Strokes a path with a positive finite width; butt caps and miter joins are used. */
+    /** Strokes a path with a positive finite width; butt caps, miter joins and a miter limit of 10 are used. */
     record StrokePath(VectorPath path, RgbColor color, double width) implements DrawCommand {
         public StrokePath {
             Objects.requireNonNull(path, "path");

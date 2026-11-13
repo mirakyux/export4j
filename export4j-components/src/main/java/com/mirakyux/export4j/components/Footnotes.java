@@ -15,11 +15,16 @@ import com.mirakyux.export4j.layout.ComponentLayout;
 import com.mirakyux.export4j.layout.DocumentLayout;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
+import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.layout.core.DocumentLayouter;
+import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.Document;
+import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
+import com.mirakyux.export4j.model.Paragraph;
+import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.text.ParagraphLayout;
 import com.mirakyux.export4j.text.ParagraphLayouter;
 import com.mirakyux.export4j.text.ParagraphStyle;
@@ -33,6 +38,24 @@ final class Footnotes {
     private record Measured(String id, String paragraph, ParagraphLayout text) { }
 
     private Footnotes() { }
+
+    /** Validation-only projection: endnotes are already lowered into the body, while each footnote
+     * contributes its original text and one source node before any note is shaped. Never render it.
+     */
+    static Document validationSource(Document document, List<Note> notes, DocumentLayoutLimits limits) {
+        ArrayList<Block> blocks = null;
+        for (var note : notes) {
+            ExecutionContext.checkpoint();
+            if (note.kind() != Note.Kind.FOOTNOTE) { continue; }
+            if (blocks == null) { blocks = new ArrayList<>(document.blocks()); }
+            if (blocks.size() >= limits.maxParagraphs()) {
+                throw new DocumentLayoutException(DocumentLayoutException.Code.BUDGET_EXCEEDED, note.id(),
+                        -1, -1, -1, -1, -1, "footnote source block budget exceeded", null);
+            }
+            blocks.add(new Paragraph(note.id(), note.text(), ParagraphFormat.of(9)));
+        }
+        return blocks == null ? document : new Document(document.metadata(), document.pageSettings(), blocks);
+    }
 
     /** Compact replay plan: source and shaped note slices only, never completed body-page IR or display lists.
      * Shaped note storage grows with the supplied footnote text; the caller's semantic source remains retained.

@@ -4,11 +4,15 @@ package com.mirakyux.export4j.model;
 import java.util.Objects;
 import java.util.List;
 
-/** Immutable semantic paragraph with styled text and explicit U+FFFC image/field markers.
+/** Immutable semantic paragraph with styled text and explicit U+FFFC image/field/vector markers.
  * Nonblank ID is unique within its document; empty text is valid. Legacy constructors retain text-only behavior.
  */
 public record Paragraph(String id, String text, ParagraphFormat format, List<InlineText> inlines, List<ImageSpan> images,
-        List<FieldSpan> fields) implements Block {
+        List<FieldSpan> fields, List<VectorSpan> vectors) implements Block {
+    /** Original UTF-16 position of an atomic vector's single U+FFFC marker. */
+    public record VectorSpan(int sourceIndex, InlineVector vector) {
+        public VectorSpan { Objects.requireNonNull(vector, "vector"); if (sourceIndex < 0) { throw new IllegalArgumentException("invalid vector source index"); } }
+    }
     /** Original UTF-16 position of an atomic field's single U+FFFC marker. */
     public record FieldSpan(int sourceIndex, InlineField field) {
         public FieldSpan { Objects.requireNonNull(field, "field"); if (sourceIndex < 0) { throw new IllegalArgumentException("invalid field source index"); } }
@@ -25,7 +29,8 @@ public record Paragraph(String id, String text, ParagraphFormat format, List<Inl
         inlines = List.copyOf(inlines);
         images = List.copyOf(images);
         fields = List.copyOf(fields);
-        InlineContents.validate(text, inlines, images, fields, format.fontSize());
+        vectors = List.copyOf(vectors);
+        InlineContents.validate(text, inlines, images, fields, vectors, format.fontSize());
         if (id.isBlank()) {
             throw new IllegalArgumentException("paragraph ID must not be blank");
         }
@@ -43,17 +48,24 @@ public record Paragraph(String id, String text, ParagraphFormat format, List<Inl
         this(id, text, format, inlines, images, List.of());
     }
 
-    /** Combines styled text and atomic images, assigning deterministic UTF-16 marker positions. */
-    public static Paragraph mixed(String id, List<? extends InlineContent> content, ParagraphFormat format) {
-        var mixed = InlineContents.mixed(content, format.fontSize());
-        return new Paragraph(id, mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields());
+    /** Compatibility constructor retaining the previous six-component shape. */
+    public Paragraph(String id, String text, ParagraphFormat format, List<InlineText> inlines, List<ImageSpan> images,
+            List<FieldSpan> fields) {
+        this(id, text, format, inlines, images, fields, List.of());
     }
 
-    /** Returns original logical content, retaining styled text and image marker order. */
+    /** Combines styled text and atomic objects, assigning deterministic UTF-16 marker positions. */
+    public static Paragraph mixed(String id, List<? extends InlineContent> content, ParagraphFormat format) {
+        var mixed = InlineContents.mixed(content, format.fontSize());
+        return new Paragraph(id, mixed.text(), format, mixed.inlines(), mixed.images(), mixed.fields(), mixed.vectors());
+    }
+
+    /** Returns original logical content, retaining styled text and atomic object order. */
     public List<InlineContent> content() {
         var result = new java.util.ArrayList<InlineContent>();
         var byIndex = images.stream().collect(java.util.stream.Collectors.toMap(ImageSpan::sourceIndex, ImageSpan::image));
         var fieldIndex = fields.stream().collect(java.util.stream.Collectors.toMap(FieldSpan::sourceIndex, FieldSpan::field));
+        var vectorIndex = vectors.stream().collect(java.util.stream.Collectors.toMap(VectorSpan::sourceIndex, VectorSpan::vector));
         var sourceRuns = inlines.isEmpty() ? List.of(new InlineText(text, InlineStyle.of(format.fontSize()))) : inlines;
         int base = 0;
         for (var run : sourceRuns) {
@@ -61,6 +73,7 @@ public record Paragraph(String id, String text, ParagraphFormat format, List<Inl
             for (int i = 0; i < run.text().length(); i++) {
                 InlineContent item = byIndex.get(base + i);
                 if (item == null) { item = fieldIndex.get(base + i); }
+                if (item == null) { item = vectorIndex.get(base + i); }
                 if (item == null) { continue; }
                 if (i > chunk) { result.add(new InlineText(run.text().substring(chunk, i), run.style(), run.hyperlink())); }
                 result.add(item); chunk = i + 1;

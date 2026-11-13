@@ -112,7 +112,7 @@ public final class TrueTypeFontLoader {
             if (mappings.isEmpty()) {
                 throw new FontLoadException(FontLoadException.Code.INVALID_FONT, "no Unicode glyph mappings");
             }
-            FontData data = new FontData(snapshot,
+            FontData data = FontData.takeOwnership(snapshot,
                     (flags & OS2WindowsMetricsTable.FSTYPE_NO_SUBSETTING) == 0);
             return new LoadedFace(data, metrics, Map.copyOf(mappings));
         } catch (FontLoadException failure) {

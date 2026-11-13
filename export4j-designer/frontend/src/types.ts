@@ -2,7 +2,7 @@
 export interface Entry {path:string;id:string;tag:string;label:string;depth:number}
 export interface Hit {id:string;path:string;x:number;y:number;width:number;height:number;images:{x:number;y:number;width:number;height:number}[];tableCell?:{x:number;y:number;width:number;height:number;column:number;columnSpan:number}}
 export interface Page {width:number;height:number;ownerPath?:string|null;hits:Hit[];imageSpaces?:{path:string;width:number;height:number}[]}
-export interface Snapshot {source:string;data:string;resourceIdentity?:string;revision:number;session:number;pending:boolean;layoutState:'pending'|'failed'|'stale'|'synced';historyBoundary?:string;canUndo:boolean;canRedo:boolean;selectedPaths:string[];entries:Entry[];pages:Page[];currentPage:number;busy:boolean;formats:Record<string,Record<string,string>>}
+export interface Snapshot {source:string;data:string;resourceIdentity?:string;fontIdentity?:string;revision:number;session:number;pending:boolean;layoutState:'pending'|'failed'|'stale'|'synced';historyBoundary?:string;canUndo:boolean;canRedo:boolean;selectedPaths:string[];entries:Entry[];pages:Page[];currentPage:number;busy:boolean;formats:Record<string,Record<string,string>>}
 export interface Bridge {
   snapshot():Snapshot;
   choose(path:string,event?:{ctrlKey?:boolean;metaKey?:boolean;shiftKey?:boolean},groupLists?:boolean):Promise<void>;
@@ -12,6 +12,7 @@ export interface Bridge {
   flush():Promise<void>;
   history(direction:'undo'|'redo'):Promise<void>;
   preview():void;
+  editingEnded():void;
   paste(file:File,page:number,x:number,y:number,path?:string):Promise<void>;
   font(name:string):Promise<ArrayBuffer>;
   error(message:string):void;

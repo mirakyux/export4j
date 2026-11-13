@@ -1,12 +1,28 @@
 # 版本与发布规范
 
-`0.1.0-rc.1` 已于 2026-11-05 发布到 Maven Central，并完成正式签名、远端字节及隔离调用方验证；当前尚无稳定版。开发默认坐标仍为 `com.mirakyux.export4j:export4j-*:0.1.0-SNAPSHOT`。本地构建、签名、Central 发布和远端消费分别验收。
+`0.1.0-rc.2` 已发布到 Maven Central，当前尚无稳定版。开发默认坐标仍为 `com.mirakyux.export4j:export4j-*:0.1.0-SNAPSHOT`。本地构建、签名、Central 发布和远端消费分别验收。
 
-待发布候选的变化及已知限制见 [0.1.0-rc.2 说明](releases/0.1.0-rc.2.md)。工作流会把 `docs/releases/<版本>.md` 中的说明附入对应 GitHub Release；具体发布状态以 Central 及工作流结果为准。
+已发布候选的变化及已知限制见 [0.1.0-rc.2 说明](releases/0.1.0-rc.2.md)。工作流会把 `docs/releases/<版本>.md` 中的说明附入对应 GitHub Release；具体发布状态以 Central 及工作流结果为准。
+
+## RC3 候选准备
+
+下一候选为 `0.1.0-rc.3`，变化及已有本地证据见 [RC3 说明](releases/0.1.0-rc.3.md)。目前尚未发布；README 的已发布版本继续为 RC2，源码默认版本继续为 `0.1.0-SNAPSHOT`，API 门禁继续对照从 Central 取得的 RC2 基线。
+
+候选构建通过 `-Pexport4jVersion=0.1.0-rc.3` 明确选定版本，并用 `-Pexport4jRepositoryDirectory=<本地候选仓库>` 隔离制品。本轮 `build`、`sbom`、`publishLocalBundle` 及 production／capabilities／inlineVectors 样例生成成功。Java 报告合计 2,441 项测试，失败、错误及跳过均为 0；部分任务从构建缓存恢复，并非全部测试逐例重新运行。API 检查覆盖 741 个可访问类型，相对 RC2 为 0 项不兼容、28 项新增、0 项第三方类型泄漏；407 页候选文档站生产构建通过。
+
+本批新 SBOM 中的 13 项第三方 Java 运行依赖在 2026-11-13 的 OSV 查询中没有已知公告命中，该时点结果不构成安全保证。16 个库二进制 JAR 与先前 17 页文献验收批次逐项字节相同，覆盖 2,151 个 ZIP 条目、1,287 个类，因此复用该批结构、提取及双引擎渲染证据，没有重新生成文献或重新测量性能。
+
+RC3 新版本的 Gradle 元数据及仅 POM 两种隔离消费均通过，每种模式的 16 个运行库 JAR 摘要与本地候选制品匹配，16 个库及 BOM 共 17 个项目组件均为 `0.1.0-rc.3`。消费者从制品编译运行新 `InlineVector` API，PDF／SVG／PNG 的真实路径、基线、逻辑文字、链接及 144 DPI 独立渲染通过；细节见 RC3 说明。production 独立验收通过，capabilities 使用临时自签测试证书完成 OpenSSL 实际验签及篡改拒绝，该测试身份不作为 Maven 正式签名身份。
+
+发布工作流已配置 inlineVectors 样例生成及独立验证，隔离消费脚本包含新 API 验证任务。正式 Maven 制品签名、Central 上传、远端重新解析及 GitHub Release 分别按下列流程记录，目前尚未完成；本地候选验收不变更已发布状态，已发布版本不得覆盖。
+
+## 已发布候选记录
+
+`0.1.0-rc.2` 的[发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)已成功完成，`release` 与 `github-release` 任务均通过；[GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2)于 2026-11-07（北京时间）发布，标签指向构建提交 `88d2bcd81011b1b16c9461f75fb22df247dd422f`。Maven Central 已提供同版本的 16 个库与 BOM；该运行记录构建、签名、上传及远端隔离消费结果。RC 为候选版本，不表示 API 已稳定或提供生产 SLA。
 
 ## 手动 GitHub Actions 发布
 
-[Release to Maven Central](../.github/workflows/release.yml) 只接受 `workflow_dispatch`。在 GitHub 仓库的 **Actions → Release to Maven Central → Run workflow** 中选择待发布分支，输入新版本，例如 `0.1.0-rc.2`。点击运行会构建该分支当前提交并自动发布到 Central，远端验证成功后创建对应 GitHub Release；普通 push、PR 和标签不会触发发布。工作流需先进入默认分支，页面才显示手动入口，见 [GitHub 官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)。
+[Release to Maven Central](../.github/workflows/release.yml) 只接受 `workflow_dispatch`。在 GitHub 仓库的 **Actions → Release to Maven Central → Run workflow** 中选择待发布分支，输入尚未发布的新版本，例如 `0.1.0-rc.3`。点击运行会构建该分支当前提交并自动发布到 Central，远端验证成功后创建对应 GitHub Release；普通 push、PR 和标签不会触发发布。工作流需先进入默认分支，页面才显示手动入口，见 [GitHub 官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)。
 
 首次使用前，在 **Settings → Secrets and variables → Actions** 配置：
 
@@ -57,15 +73,15 @@ python scripts/verify_production.py
 python scripts/verify_capabilities.py
 ~~~
 
-`publishLocalBundle` 发布 16 个库和 BOM 到 `build/repository`，不访问远程发布服务、不写用户 Maven 仓库。库携带源码、Javadoc、POM、Gradle 元数据和许可。SNAPSHOT 使用 Maven 时间戳制品，验证脚本通过 `maven-metadata.xml` 解析实际文件，不假设固定文件名。
+`publishLocalBundle` 将 16 个自研库和 BOM 暂存到 `build/repository`，不上传远程发布服务、不写用户 Maven 仓库；首次构建仍可能下载固定依赖。库携带源码、Javadoc、POM、Gradle 元数据和许可。SNAPSHOT 使用 Maven 时间戳制品，验证脚本通过 `maven-metadata.xml` 解析实际文件，不假设固定文件名。
 
 `sbom` 写入 `build/reports/sbom.cdx.json`，CycloneDX 1.6 库运行清单包含 16 个自研库及 13 个第三方 Java 制品的 SHA-256；按实际坐标记录 Apache-2.0、BSD-2-Clause、BSD-3-Clause 和 MIT。第三方许可白名单遇到新增坐标会失败，须先审查。可选 OpenType 的 native classifier 不传递到生产 POM；应用显式选择，原生制品／内含许可另见 `third-party/native-artifacts.csv`。字体、JDK、测试工具和构建工具也单独登记，不混入 Java JAR 清单。
 
-独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，证明本地制品可消费；这不是 Maven Central、签名或远程 CI 验证。
+独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，分别验证 Gradle 元数据和仅 POM 的消费路径，并核对实际运行 JAR 的 SHA-256；这些检查证明本地制品可消费，不代表 Maven Central、签名或远程 CI 验证。
 
-根 `check` 包含 `apiCheck`，使用从固定提交独立构建的 `0.1.0-rc.1` 候选基线，差异规则和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发在提交 `cc132e7` 已远端通过，准确运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阶段一百零六新增的安全／兼容门禁只有本地结果，不能沿用该提交的 CI 结论。上述检查使用本地构建的 Maven 仓库，不替代正式身份、Central 上传或真实远端仓库消费。
+根 `check` 包含 `apiCheck`，使用从 Maven Central 已发布的 `0.1.0-rc.2` 库 JAR 提取的基线，差异规则、逐库来源和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发在历史提交 `cc132e7` 已远端通过，准确运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阶段一百零六记录的本地安全／兼容门禁不能沿用该历史提交的 CI 结论；后续 RC2 发布及远端消费以本页的实际工作流记录为准。本地构建仓库的检查仍不替代 Central 上传或真实远端仓库消费。
 
-最新 Windows Word／PDF 实际编辑、保存、重开及最终 JAR 回读见[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)。该轮兼容修复后的字节已完成构建和隔离消费，但未重新签名；阶段一百零六的签名摘要只对应其历史批次。应用验收不引入 Office、浏览器或打印服务运行依赖，也不替代其他平台、新远端 CI 或正式发布。
+Windows Word／PDF 实际编辑、保存、重开及最终 JAR 回读见[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)。该历史批次完成构建和隔离消费时未重新签名；阶段一百零六的签名摘要只对应其历史批次，后续 RC2 的签名和远端结果独立记录。应用验收不引入 Office、浏览器或打印服务运行依赖，也不替代其他平台或其他发布批次的验收。
 
 脚本每次使用独立消费者构建目录，避免之前打开的输出文件阻塞清理。模板、受控导出、CFF 与 PDF 安全／归档／签名的附加验收见[能力记录](verification/phase-5-capabilities.md)；省略外部验证器参数时不包含归档合规或验签结论。
 

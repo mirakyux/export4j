@@ -6,6 +6,7 @@ import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.ExternalDestination;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
@@ -20,7 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.jsoup.parser.Parser;
 
-/** Offline HTML/CSS semantic subset. Accepts source text or explicit UTF-8 files/streams, and registered images only;
+/** Offline HTML/CSS semantic subset. Accepts source text or explicit UTF-8 files/streams, and registered images/vectors only;
  * never executes scripts, fetches resources or asks a browser to paginate.
  * Immutable, thread-safe and owns no resources. Dimensions in the model are points.
  */
@@ -33,6 +34,7 @@ public final class HtmlImporter {
     final PageSettings pageSettings;
     final ParagraphFormat format;
     final Map<String, InlineImage> images;
+    final Map<String, InlineVector> vectors;
     final Map<String, java.util.List<String>> families;
     final URI baseUri;
     final boolean layoutMode;
@@ -42,6 +44,7 @@ public final class HtmlImporter {
     private HtmlImporter(Builder builder) {
         policy = builder.policy; limits = builder.limits; metadata = builder.metadata;
         pageSettings = builder.pageSettings; format = builder.format; images = Map.copyOf(builder.images);
+        vectors = Map.copyOf(builder.vectors);
         families = Map.copyOf(builder.families); baseUri = builder.baseUri;
         layoutMode = builder.layoutMode; media = builder.media; viewport = builder.viewport == null ? pageSettings.size() : builder.viewport;
     }
@@ -87,7 +90,7 @@ public final class HtmlImporter {
     private com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(TextImportIO.Source source) {
         return com.mirakyux.export4j.model.processing.DocumentConversion.from("HTML", shared -> {
             var builder = new Builder().policy(shared).limits(limits).metadata(metadata).pageSettings(pageSettings).paragraphFormat(format);
-            builder.images.putAll(images); builder.families.putAll(families); builder.baseUri = baseUri;
+            builder.images.putAll(images); builder.vectors.putAll(vectors); builder.families.putAll(families); builder.baseUri = baseUri;
             builder.layoutMode = layoutMode; builder.media = media; builder.viewport = viewport;
             var imported = builder.build().read(source.read()).execute();
             return com.mirakyux.export4j.model.processing.DocumentConversion.Input.of(imported.document(), imported.report());
@@ -101,6 +104,7 @@ public final class HtmlImporter {
         private PageSettings pageSettings = PageSettings.A4;
         private ParagraphFormat format = ParagraphFormat.of(12);
         private final Map<String, InlineImage> images = new HashMap<>();
+        private final Map<String, InlineVector> vectors = new HashMap<>();
         private final Map<String, java.util.List<String>> families = new HashMap<>();
         private URI baseUri;
         private boolean layoutMode;
@@ -124,7 +128,20 @@ public final class HtmlImporter {
          */
         public Builder viewport(com.mirakyux.export4j.model.PageSize value) { viewport = Objects.requireNonNull(value, "viewport"); return this; }
         /** Registers exact src text with explicit encoded bytes and point dimensions. No I/O occurs. */
-        public Builder image(String source, InlineImage value) { images.put(key(source), Objects.requireNonNull(value, "image")); return this; }
+        public Builder image(String source, InlineImage value) {
+            String name = key(source); Objects.requireNonNull(value, "image");
+            if (vectors.containsKey(name)) { throw new IllegalArgumentException("HTML resource key already registered as a vector"); }
+            images.put(name, value); return this;
+        }
+        /** Registers an exact img src with an immutable, caller-built vector. No TeX/SVG parsing or I/O
+         * occurs. Declared HTML/CSS dimensions must equal its intrinsic point dimensions.
+         * An image and a vector cannot share the same source key.
+         */
+        public Builder vector(String source, InlineVector value) {
+            String name = key(source); Objects.requireNonNull(value, "vector");
+            if (images.containsKey(name)) { throw new IllegalArgumentException("HTML resource key already registered as an image"); }
+            vectors.put(name, value); return this;
+        }
         /** Maps one CSS family to a semantic font role; the output caller supplies its physical fonts.
          * Weight/style variants require separate registered roles in the output engine.
          */

@@ -18,6 +18,16 @@ venv/
 *.log
 *.hprof
 *.jfr
+site/node_modules/
+site/.vitepress/cache/
+site/.vitepress/dist/
+site/.wrangler/
+.wrangler/
+site/pages/docs/
+site/pages/zh/docs/
+site/pages/public/_redirects
+site/pages/getting-started.md
+site/pages/zh/getting-started.md
 
 # Local configuration and signing credentials
 .env

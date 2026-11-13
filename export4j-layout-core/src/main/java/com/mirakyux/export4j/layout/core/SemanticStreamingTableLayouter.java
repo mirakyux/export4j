@@ -62,6 +62,8 @@ public final class SemanticStreamingTableLayouter {
         private long cells;
         private long slots;
         private long points;
+        private long vectorSegments;
+        private long vectorBytes;
         private long nodes = 1;
         private long lines;
         private final java.util.Set<String> sourceIds = new java.util.HashSet<>();
@@ -234,14 +236,14 @@ public final class SemanticStreamingTableLayouter {
             slots += coverage; cells++;
             if (cell.hasBlocks()) {
                 for (var block : cell.blocks()) { countBlock(block, row, runs); }
-            } else { countText(cell.text(), cell.inlines().size(), row, runs); }
+            } else { countText(cell.text(), cell.inlines().size(), cell.vectors(), row, runs); }
         }
 
         private void countBlock(Block block, int row, long[] runs) {
             ExecutionContext.checkpoint();
             if (++nodes > limits.document().maxParagraphs()) { throw fail("streaming semantic node budget exceeded", row); }
             if (!sourceIds.add(block.id())) { throw new IllegalArgumentException("streaming semantic block IDs must be unique"); }
-            if (block instanceof Paragraph paragraph) { countText(paragraph.text(), paragraph.inlines().size(), row, runs); }
+            if (block instanceof Paragraph paragraph) { countText(paragraph.text(), paragraph.inlines().size(), paragraph.vectors(), row, runs); }
             else if (block instanceof Table nested) {
                 if (nested.rows().size() > limits.document().maxTableRows() || nested.columns().size() > limits.document().maxTableColumns()) {
                     throw fail("streaming nested grid budget exceeded", row);
@@ -250,8 +252,19 @@ public final class SemanticStreamingTableLayouter {
             } else { throw new IllegalArgumentException("unsupported streaming cell block"); }
         }
 
-        private void countText(String text, int explicitRuns, int row, long[] runs) {
-            int count = text.codePointCount(0, text.length());
+        private void countText(String text, int explicitRuns, List<Paragraph.VectorSpan> vectors, int row, long[] runs) {
+            long count = text.codePointCount(0, text.length());
+            for (var span : vectors) {
+                ExecutionContext.checkpoint();
+                var vector = span.vector();
+                count += vector.logicalText().codePointCount(0, vector.logicalText().length());
+                // No resource identity set is retained across unbounded source groups.
+                vectorSegments += vector.resource().segmentCount();
+                vectorBytes += vector.resource().byteSize();
+                if (vectorSegments > 5_000_000 || vectorBytes > 64L * 1024 * 1024) {
+                    throw fail("streaming vector source geometry budget exceeded", row);
+                }
+            }
             if (count > limits.maxCellCodePoints() || count > limits.document().maxCodePoints() - points
                     || Math.max(1, explicitRuns) > limits.maxCellInlines()) { throw fail("streaming leaf text budget exceeded", row); }
             points += count; runs[0] += Math.max(1, explicitRuns);

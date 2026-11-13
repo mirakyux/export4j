@@ -82,7 +82,7 @@ final class CssSelector {
             char kind = source.charAt(i++);
             if (kind == '.' || kind == '#') {
                 int end = nameEnd(source, i); String name = source.substring(i, end); i = end;
-                tests.add(kind == '.' ? e -> e.hasClass(name) : e -> e.id().equals(name)); weight += kind == '#' ? 1_000_000 : 1_000;
+                tests.add(kind == '.' ? e -> e.classNames().contains(name) : e -> e.id().equals(name)); weight += kind == '#' ? 1_000_000 : 1_000;
             } else if (kind == '[') {
                 int end = closing(source, i, ']'); String expression = source.substring(i, end).trim(); i = end + 1;
                 var matcher = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_-]*)(?:\\s*([~|^$*]?=)\\s*(?:'([^']*)'|\"([^\"]*)\"|([a-zA-Z0-9_-]+)))?").matcher(expression);

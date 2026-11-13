@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "export4j-docs",
+  "compatibility_date": "2026-11-11",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "export4j.mirakyux.com", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./.vitepress/dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

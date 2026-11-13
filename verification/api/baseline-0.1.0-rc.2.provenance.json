@@ -1,0 +1,154 @@
+{
+  "artifacts": {
+    "export4j-adapter-docx": {
+      "accessibleTypes": 74,
+      "bytes": 532656,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-docx/0.1.0-rc.2/export4j-adapter-docx-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-adapter-docx:0.1.0-rc.2",
+      "sha256": "644be2d477e07f5ea7aa8f920c1c5f733fa208059db4e33ae2123bfcb69c8a3f",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-docx/0.1.0-rc.2/export4j-adapter-docx-0.1.0-rc.2.jar"
+    },
+    "export4j-adapter-pdf": {
+      "accessibleTypes": 67,
+      "bytes": 621076,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-pdf/0.1.0-rc.2/export4j-adapter-pdf-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-adapter-pdf:0.1.0-rc.2",
+      "sha256": "9357de234f60f0863e639a2184d8b8e05885e120538c7eb49f5afccb566a36b9",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-pdf/0.1.0-rc.2/export4j-adapter-pdf-0.1.0-rc.2.jar"
+    },
+    "export4j-adapter-template": {
+      "accessibleTypes": 28,
+      "bytes": 297805,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-template/0.1.0-rc.2/export4j-adapter-template-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-adapter-template:0.1.0-rc.2",
+      "sha256": "cf479e379a60113478d5034b1062871ce8d616e862d54019a482ff61beec9e73",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-template/0.1.0-rc.2/export4j-adapter-template-0.1.0-rc.2.jar"
+    },
+    "export4j-adapter-web": {
+      "accessibleTypes": 27,
+      "bytes": 300537,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-web/0.1.0-rc.2/export4j-adapter-web-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-adapter-web:0.1.0-rc.2",
+      "sha256": "9189ca5bcfd571b22c7b3982ee0cfe171dcb0b3ff97be1b65c138001d725cbbd",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-adapter-web/0.1.0-rc.2/export4j-adapter-web-0.1.0-rc.2.jar"
+    },
+    "export4j-backend-pdf": {
+      "accessibleTypes": 51,
+      "bytes": 421638,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-backend-pdf/0.1.0-rc.2/export4j-backend-pdf-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-backend-pdf:0.1.0-rc.2",
+      "sha256": "843b0f8d306dce167c1f41423e0a01e798656022bf27612c539a36edf4267aea",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-backend-pdf/0.1.0-rc.2/export4j-backend-pdf-0.1.0-rc.2.jar"
+    },
+    "export4j-backend-raster": {
+      "accessibleTypes": 2,
+      "bytes": 134572,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-backend-raster/0.1.0-rc.2/export4j-backend-raster-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-backend-raster:0.1.0-rc.2",
+      "sha256": "b4a31109dc5ae503ffee822a61a7c70ee4ea61e61d5b08b9719604df5e6c7a55",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-backend-raster/0.1.0-rc.2/export4j-backend-raster-0.1.0-rc.2.jar"
+    },
+    "export4j-backend-svg": {
+      "accessibleTypes": 1,
+      "bytes": 141083,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-backend-svg/0.1.0-rc.2/export4j-backend-svg-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-backend-svg:0.1.0-rc.2",
+      "sha256": "1f51a8700eab70628ac145925cf8f1cba0642139698812fb7cef3af78677aaac",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-backend-svg/0.1.0-rc.2/export4j-backend-svg-0.1.0-rc.2.jar"
+    },
+    "export4j-components": {
+      "accessibleTypes": 121,
+      "bytes": 697385,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-components/0.1.0-rc.2/export4j-components-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-components:0.1.0-rc.2",
+      "sha256": "3adec5ff62822afb21df163ceafd92226f0e114bec4d2b5331e11b25b15aed22",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-components/0.1.0-rc.2/export4j-components-0.1.0-rc.2.jar"
+    },
+    "export4j-font-core": {
+      "accessibleTypes": 13,
+      "bytes": 149528,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-font-core/0.1.0-rc.2/export4j-font-core-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-font-core:0.1.0-rc.2",
+      "sha256": "d18ef65c1139388e01692c70191b7f3e550bcf6c802a8d255a2d1df5f4d9dc91",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-font-core/0.1.0-rc.2/export4j-font-core-0.1.0-rc.2.jar"
+    },
+    "export4j-graphics-api": {
+      "accessibleTypes": 72,
+      "bytes": 228662,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-graphics-api/0.1.0-rc.2/export4j-graphics-api-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-graphics-api:0.1.0-rc.2",
+      "sha256": "00edfa815cb900135e57aa9a407fbc0d49fc04aab60381d9f51b151fd68e8231",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-graphics-api/0.1.0-rc.2/export4j-graphics-api-0.1.0-rc.2.jar"
+    },
+    "export4j-graphics-core": {
+      "accessibleTypes": 9,
+      "bytes": 179029,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-graphics-core/0.1.0-rc.2/export4j-graphics-core-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-graphics-core:0.1.0-rc.2",
+      "sha256": "3f534f532d229a91e57fee9b76ce8bd7ac4a33abb1995d8965ac89bea2729e7f",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-graphics-core/0.1.0-rc.2/export4j-graphics-core-0.1.0-rc.2.jar"
+    },
+    "export4j-layout-core": {
+      "accessibleTypes": 53,
+      "bytes": 388831,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-layout-core/0.1.0-rc.2/export4j-layout-core-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-layout-core:0.1.0-rc.2",
+      "sha256": "b11c529d82fc238385d8bc6a5b8c1d1f37d26a508205e346449dc67577148037",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-layout-core/0.1.0-rc.2/export4j-layout-core-0.1.0-rc.2.jar"
+    },
+    "export4j-layout-model": {
+      "accessibleTypes": 13,
+      "bytes": 149397,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-layout-model/0.1.0-rc.2/export4j-layout-model-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-layout-model:0.1.0-rc.2",
+      "sha256": "493b9b12df71639178525925504a7d8701e1ebd65a685f6218fd56feb188d316",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-layout-model/0.1.0-rc.2/export4j-layout-model-0.1.0-rc.2.jar"
+    },
+    "export4j-model": {
+      "accessibleTypes": 156,
+      "bytes": 459101,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-model/0.1.0-rc.2/export4j-model-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-model:0.1.0-rc.2",
+      "sha256": "38eb6aff1f9431fe21c01a47c81482bb788f6da0d65fb9c07331f9fb1f6fffad",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-model/0.1.0-rc.2/export4j-model-0.1.0-rc.2.jar"
+    },
+    "export4j-opentype": {
+      "accessibleTypes": 16,
+      "bytes": 201684,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-opentype/0.1.0-rc.2/export4j-opentype-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-opentype:0.1.0-rc.2",
+      "sha256": "0b18de0722d53007c4c881532966764a1974ed658615ed98368f4876519ff928",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-opentype/0.1.0-rc.2/export4j-opentype-0.1.0-rc.2.jar"
+    },
+    "export4j-text-core": {
+      "accessibleTypes": 30,
+      "bytes": 208440,
+      "checksumUrl": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-text-core/0.1.0-rc.2/export4j-text-core-0.1.0-rc.2.jar.sha256",
+      "coordinate": "com.mirakyux.export4j:export4j-text-core:0.1.0-rc.2",
+      "sha256": "15ecf59a0092990d6c7df982fbd9d4d7e53ac487b01d5e3d45e9509463f6c6a5",
+      "url": "https://repo.maven.apache.org/maven2/com/mirakyux/export4j/export4j-text-core/0.1.0-rc.2/export4j-text-core-0.1.0-rc.2.jar"
+    }
+  },
+  "baseline": {
+    "file": "baseline-0.1.0-rc.2.json",
+    "sha256": "982e6dfff3094b0f06356ccdfc9c16d589f3777a1098bd3953c34e442fb66194"
+  },
+  "extraction": {
+    "jdk": "21.0.13.0.2",
+    "options": [
+      "-protected",
+      "-s",
+      "-constants"
+    ],
+    "scripts": {
+      "scripts/create_published_api_baseline.py": "fdb7bc5c74aa1c641f816da56d14a80105e8576cd481e0f10a0882ecfe165e31",
+      "scripts/verify_api_compatibility.py": "bfe8f58493b90a5117483fdcd617c4942c13f65d5d235ab07ff3a3ab6ccf3d1c"
+    },
+    "tool": "javap"
+  },
+  "group": "com.mirakyux.export4j",
+  "repository": "https://repo.maven.apache.org/maven2/",
+  "schema": 1,
+  "source": "published Maven Central binary JARs",
+  "version": "0.1.0-rc.2"
+}

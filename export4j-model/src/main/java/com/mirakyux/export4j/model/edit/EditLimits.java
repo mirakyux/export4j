@@ -2,7 +2,8 @@
 package com.mirakyux.export4j.model.edit;
 
 /** Positive per-request editing limits. Work counts visited nodes, UTF-16 units and emitted replacements,
- * including repeated operation passes. Limits are cooperative, not an RSS limit or a hostile-code sandbox.
+ * including repeated operation passes and canonical vector bytes per occurrence.
+ * Limits are cooperative, not an RSS limit or a hostile-code sandbox.
  */
 public record EditLimits(int maxOperations, int maxNodes, int maxTextUtf16, int maxReplacements,
         int maxIssues, long maxWork) {

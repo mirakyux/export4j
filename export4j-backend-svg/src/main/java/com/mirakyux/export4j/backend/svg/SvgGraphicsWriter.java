@@ -40,9 +40,9 @@ final class SvgGraphicsWriter {
                 case DrawCommand.ClipPath c -> { String id = id(); xml.append("<defs><clipPath id=\"").append(id).append("\">"); path(c.path(), "clip-rule=\"" + rule(c.rule()) + "\""); xml.append("</clipPath></defs><g clip-path=\"url(#").append(id).append(")\">"); groups.push(groups.pop() + 1); }
                 case DrawCommand.FillRect f -> xml.append("<rect ").append(rect(f.bounds())).append(" fill=\"").append(color(f.color())).append('"').append(alpha("fill-opacity", state.fill())).append(style).append("/>");
                 case DrawCommand.FillPath f -> path(f.path(), "fill=\"" + color(f.color()) + "\"" + alpha("fill-opacity", state.fill()) + style);
-                case DrawCommand.StrokePath s -> path(s.path(), "fill=\"none\" stroke=\"" + color(s.color()) + "\" stroke-width=\"" + s.width() + "\"" + alpha("stroke-opacity", state.stroke()) + style);
+                case DrawCommand.StrokePath s -> path(s.path(), "fill=\"none\" stroke=\"" + color(s.color()) + "\" stroke-width=\"" + s.width() + "\" stroke-miterlimit=\"10\"" + alpha("stroke-opacity", state.stroke()) + style);
                 case DrawCommand.PaintFill f -> { String paint = paint(f.paint()); path(f.path(), "fill=\"" + paint + "\" fill-rule=\"" + rule(f.rule()) + "\"" + alpha("fill-opacity", state.fill()) + style); }
-                case DrawCommand.PaintStroke s -> { String paint = paint(s.paint()); path(s.path(), "fill=\"none\" stroke=\"" + paint + "\" stroke-width=\"" + s.width() + "\"" + alpha("stroke-opacity", state.stroke()) + style); }
+                case DrawCommand.PaintStroke s -> { String paint = paint(s.paint()); path(s.path(), "fill=\"none\" stroke=\"" + paint + "\" stroke-width=\"" + s.width() + "\" stroke-miterlimit=\"10\"" + alpha("stroke-opacity", state.stroke()) + style); }
                 case DrawCommand.Group group -> {
                     String id = id(); xml.append("<defs><clipPath id=\"").append(id).append("\"><rect ").append(rect(group.bounds())).append("/></clipPath></defs>");
                     xml.append("<g clip-path=\"url(#").append(id).append(")\" opacity=\"").append(state.fill() * group.opacity()).append("\" style=\"isolation:isolate;mix-blend-mode:").append(blend(group.blend())).append("\">"); commands(group.commands()); xml.append("</g>");

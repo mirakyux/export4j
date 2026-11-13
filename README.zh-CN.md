@@ -1,15 +1,17 @@
-# Export4j
+# Export4j — Java PDF 生成与文档导出
 
 Java 文档排版与生成引擎  
 A Java Document Layout and Generation Engine
 
 [English](README.md) | **简体中文**
 
-Export4j 是面向报告、表单和结构化文档的开源 **Java PDF 生成与文档导出库**。通过链式 Java API 或 XML 模板生成 PDF、DOCX、HTML、Markdown、SVG 和 PNG。
+[文档站](https://export4j.mirakyux.com/zh/) · [快速开始](https://export4j.mirakyux.com/zh/getting-started) · [常见问题](https://export4j.mirakyux.com/zh/docs/faq)
+
+Export4j 是面向报告、发票、表单和结构化文档的开源 **Java PDF 生成与文档导出库**。通过链式 Java API 或 XML 模板编写文字与表格、配置显式字体，生成自动分页的 PDF，也可将受支持的内容导出为 DOCX、HTML、Markdown、SVG 和 PNG。
 
 可导入明确子集内的 PDF、DOCX、HTML 和 Markdown 内容，编辑后转换为其他格式，并对不兼容特性执行明确策略。可保存 XML 模板，也可恢复已保存的受支持文档模型，继续编辑与导出。
 
-**候选版本 [`0.1.0-rc.1` 已发布到 Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.1)。** 当前尚无稳定版，API 仍可能调整。接入前请查看[格式限制](#格式支持与限制)和[能力矩阵](docs/capabilities-api.md)。
+**候选版本 [`0.1.0-rc.2` 已发布到 Maven Central](https://central.sonatype.com/artifact/com.mirakyux.export4j/export4j-bom/0.1.0-rc.2)。** 当前尚无稳定版，API 仍可能调整。接入前请查看[版本说明](docs/releases/0.1.0-rc.2.md)、[格式限制](#格式支持与限制)和[能力矩阵](docs/capabilities-api.md)。
 
 ## 目录
 
@@ -20,6 +22,7 @@ Export4j 是面向报告、表单和结构化文档的开源 **Java PDF 生成�
 - [XML 模板](#xml-模板)
 - [HTML 与 Markdown 导出](#html-与-markdown-导出)
 - [格式支持与限制](#格式支持与限制)
+- [常见问题](docs/faq.zh-CN.md)
 - [待完成与路线图](#待完成与路线图)
 - [文档导航](#文档导航)
 - [构建与验证](#构建与验证)
@@ -54,7 +57,7 @@ Maven：
     <dependency>
       <groupId>com.mirakyux.export4j</groupId>
       <artifactId>export4j-bom</artifactId>
-      <version>0.1.0-rc.1</version>
+      <version>0.1.0-rc.2</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -77,7 +80,7 @@ Gradle Kotlin DSL：
 ```kotlin
 repositories { mavenCentral() }
 dependencies {
-    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.1"))
+    implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-rc.2"))
     implementation("com.mirakyux.export4j:export4j-components")
     implementation("com.mirakyux.export4j:export4j-backend-pdf")
 }
@@ -234,19 +237,22 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 当前剩余工作由[能力缺口表](docs/capability-gaps.md)跟踪：
 
 - **GAP-14.2：** 更广兼容语料及跨平台应用／阅读器验证。
-- **GAP-14.3：** 稳定 API 与版本验收；`0.1.0-rc.1` 的签名制品已通过 Maven Central 分发。
+- **GAP-14.3：** 稳定 API 与版本验收；`0.1.0-rc.2` 的签名制品已通过 Maven Central 分发。
 - **GAP-22：** XLSX、PPTX、EPUB、XPS 等更多格式。
 
 验收条件见[执行计划](docs/remaining-capabilities-plan.md)。OCR 不在当前范围内。
 
 ## 文档导航
 
-[文档索引](docs/README.md)按使用任务组织指南，详细文档目前主要使用中文。
+先从[常见问题](docs/faq.zh-CN.md)确认 Java 环境、模块选择、字体、转换限制和许可证。[文档索引](docs/README.md)按使用任务组织详细指南。
 
 | 任务 | 阅读入口 |
 | --- | --- |
-| 编写文档 | [编写指南](docs/authoring-api.md) · [链式 API](docs/fluent-api.md) · [主题](docs/themes-api.md) |
-| 使用模板 | [XML](docs/xml-template-api.md) · [模板资源包](docs/xml-template-bundle-api.md) |
+| 用 Java 生成 PDF 报告与发票 | [完整 Java 示例](#java-使用示例) · [编写指南](docs/authoring-api.md) · [表格与分页](docs/table-api.md) |
+| 从 XML 模板生成报告 | [模板示例](#xml-模板) · [XML 指南](docs/xml-template-api.md) · [模板资源包](docs/xml-template-bundle-api.md) |
+| 导出 Word 文档 | [DOCX 语义与编辑](docs/docx-semantic-api.md) · [页区](docs/docx-page-regions-api.md) |
+| 配置中文与多语言字体 | [字体和文本](docs/text-api.md) · [字体来源与许可](assets/fonts/README.md) |
+| 导出长表与大文档 | [流式长表](docs/streaming-table-api.md) · [逐页导出](docs/paged-document-api.md) · [重放与磁盘索引 PDF](docs/streaming-replay-api.md) |
 | 导入、编辑与转换 | [统一转换](docs/document-conversion-api.md) · [DOCX 语义](docs/docx-semantic-api.md) · [HTML/CSS](docs/html-import-api.md) |
 | 处理 PDF | [PDF 适配器](docs/pdf-adapter-api.md) · [恢复](docs/pdf-semantic-import-api.md) · [标准](docs/pdf-standards-api.md) |
 | 查看示例与实现 | [示例](docs/examples.md) · [架构](docs/architecture.md) · [ADR](docs/adr/README.md) |

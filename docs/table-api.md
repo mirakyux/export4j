@@ -52,7 +52,7 @@ var source = new Document(DocumentMetadata.EMPTY, PageSettings.A4,
 | --- | --- |
 | `ColumnWidth.Fixed(points)` | 固定正宽度，单位 point |
 | `ColumnWidth.Fraction(weight)` | 正权重，按比例分配扣除固定列后的内容宽度 |
-| `ColumnWidth.Auto(minPoints, maxPoints)` | 按内容估算首选宽度，页面不足时收缩至下限；测量探测不重复计入输出行预算 |
+| `ColumnWidth.Auto(minPoints, maxPoints)` | 按内容估算首选宽度，页面不足时收缩至有效下限；无比例列时额外保留行内图片／字段原子宽度，见[自动列约束](automatic-merged-columns-api.md)；探测不重复计入输出行预算 |
 | 全部为固定列 | 保持固定总宽度，左对齐，不自动拉伸 |
 | `CellFormat(fontSize, lineHeight, alignment)` | 独立字号、固定基线间距及左／中／右对齐 |
 | `TableFormat(padding, spaceBefore, spaceAfter)` | 全表统一单元格内边距，以及表格块前后间距 |
@@ -128,6 +128,6 @@ new com.mirakyux.export4j.layout.core.DocumentLayoutLimits(
 
 `ParagraphFragment.paragraphIndex()` 是原文档块索引，混合文档中可能不连续；`blockId()` 和 `blockIndex()` 是统一入口。异常原有的 `paragraphId()`／`paragraphIndex()` 是块 ID／索引别名，表格失败也返回表格标识。
 
-这是尚未发布的 `0.1.0-SNAPSHOT` 公共契约演进。Record 组件与泛型类型发生变化，不能据此宣称任意反射代码或已有二进制完全兼容。设计见 [ADR-0005](adr/0005-basic-tables.md)，实际证据见[表格验收](verification/phase-3-tables.md)。
+上述变化在候选发布前的开发阶段引入；当前已发布 `0.1.0-rc.2`，公共声明以[已发布 API 基线](api-compatibility.md)为准。从早期快照迁移时，Record 组件与泛型类型的变化仍需核对，不能据此宣称任意反射代码或已有二进制完全兼容。设计见 [ADR-0005](adr/0005-basic-tables.md)，实际证据见[表格验收](verification/phase-3-tables.md)。
 
 行内内容内表支持父格实际宽度下的[有界自动列](nested-automatic-tables-api.md)；含块格表自身的 Auto 仍拒绝，不能把此能力扩大为任意块树首选宽度或单向源自动列。

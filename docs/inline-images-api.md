@@ -17,7 +17,7 @@ var cell = TableCell.mixed(paragraph.content(),
         new CellFormat(12, 36, ParagraphAlignment.LEFT));
 ~~~
 
-`InlineContent` 是 `InlineText` 与 `InlineImage` 的公共接口。图像宽高和基线偏移单位为 pt；正偏移将图像底边移到基线下方。指定矩形决定图片缩放，若需保持原始比例，由调用方计算宽高。尺寸须为正且不超过 14,400 pt；替代文字不超过 4,096 个 UTF-16 单元，不接受控制字符或非法 Unicode。URI 使用与文字外链相同的 HTTP／HTTPS／mailto 白名单。
+`InlineContent` 是文字、图片、动态字段和[显式矢量](inline-vectors-api.md)的公共接口。图像宽高和基线偏移单位为 pt；正偏移将图像底边移到基线下方。指定矩形决定图片缩放，若需保持原始比例，由调用方计算宽高。尺寸须为正且不超过 14,400 pt；替代文字不超过 4,096 个 UTF-16 单元，不接受控制字符或非法 Unicode。URI 使用与文字外链相同的 HTTP／HTTPS／mailto 白名单。
 
 `ImageResource.load(byte[])` 复制并验证编码字节；`bytes()` 返回副本，资源以 SHA-256 标识且不保留打开句柄。只接受静态 PNG／JPEG，拒绝 APNG、多图资源、其他格式、损坏输入和超限声明尺寸。单资源限制为 32 MiB 编码字节、2,000 万像素；单个 `Document` 布局输入中的不同资源合计不超过 64 MiB、5,000 万像素，DOCX 也对整个包的图片实施此合计限制。分节渲染的布局检查按节进行，不等于整个进程的内存上限。使用 JDK ImageIO／java.desktop，可 headless 运行；不读取文件、URL 或系统资源。
 
@@ -30,6 +30,10 @@ var cell = TableCell.mixed(paragraph.content(),
 分页只移动完整行，`TextLine.atBaseline()` 同时保留轮廓和图片矩形。可拆表格行按单元格完整行续页；正文图片只出现一次，重复表头的图片及链接随表头重复。自动列宽的测量包含图片。图片链接使用最终图片矩形；后端不重新换行或分页。
 
 模板替换文字后重新计算图片来源位置，并绑定替代文字和 URI，保留显式资源及尺寸。给混排段落附加脚注标记不会丢失图片。替代文字目前在模型与 DOCX 保留；PDF 尚无 PDF/UA 图片标签与替代文字树，不能据此声称无障碍合规。
+
+默认图文混排仍以同一塑形结果决定换行与位置。仅含图片的安全混排行可将普通文字保留为原生 TTF 字形：要求从左到右、静态 TrueType、实际 GID 与原文码点一一对应，无下划线／删除线、动态字段及矢量对象；不会重新测量或猜测映射。任一条件不满足时，整行继续绘制原有轮廓并用 PDF `ActualText` 保存逻辑原文和 U+FFFC。复杂脚本、组合簇、双向文字、连字和 CFF 等仍走各自原路径，不能将安全子集扩大为通用原生混排。
+
+历史中文表头样张中，PDFium 能搜索“年龄”和“DN病程”，而 pypdf／pdfplumber 普通提取不能恢复当时的轮廓文字；该历史结论不代表当前安全子集仍一律轮廓化。对保留轮廓的路径，忽略 `ActualText` 的提取器仍可能只返回不可见锚点 `x`，无法提供普通字形的逐字坐标。图片替代文字不会自动成为可检索的数学公式，矢量及最新文献验收范围见[文献 PDF 接入](literature-pdf-integration.md)。
 
 ## DOCX 范围
 

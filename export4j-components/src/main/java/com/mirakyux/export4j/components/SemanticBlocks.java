@@ -78,6 +78,10 @@ final class SemanticBlocks {
             }
         }
         var noteById = notes.stream().collect(java.util.stream.Collectors.toMap(Note::id, note -> note));
+        var notesByParagraph = new HashMap<String, List<Integer>>();
+        for (int index = 0; index < notes.size(); index++) {
+            notesByParagraph.computeIfAbsent(notes.get(index).paragraphId(), ignored -> new ArrayList<>()).add(index);
+        }
         var explicitNotes = new HashSet<String>();
         for (var section : document.sections()) {
             for (var block : section.blocks()) {
@@ -138,20 +142,18 @@ final class SemanticBlocks {
                         return new com.mirakyux.export4j.layout.ComponentLayout(context.width(), maxLines * format.lineHeight(), maxLines, List.of(), List.of());
                     }, reference.format().spaceBefore(), reference.format().spaceAfter());
                 }
-                for (int index = 0; index < notes.size(); index++) {
+                for (int index : notesByParagraph.getOrDefault(block.id(), List.of())) {
                     var note = notes.get(index);
-                    if (note.paragraphId().equals(block.id())) {
-                        if (!(block instanceof Paragraph p)) {
-                            throw new IllegalArgumentException("notes require a paragraph or list/caption anchor");
-                        }
-                        attached.add(note.id());
-                        if (explicitNotes.contains(note.id())) { continue; }
-                        var sourceInlines = p.inlines().isEmpty() && !p.images().isEmpty() ? Paragraph.mixed(p.id(), p.content(), p.format()).inlines() : p.inlines();
-                        var inlines = new ArrayList<>(sourceInlines.isEmpty() ? List.of(new InlineText(p.text(), InlineStyle.of(p.format().fontSize()))) : sourceInlines);
-                        inlines.add(new InlineText("[" + (index + 1) + "]", new InlineStyle("", p.format().fontSize() * 0.65,
-                                0x285080, -p.format().fontSize() * 0.3, false, false)));
-                        block = new Paragraph(p.id(), inlines.stream().map(InlineText::text).collect(java.util.stream.Collectors.joining()), p.format(), inlines, p.images(), p.fields());
+                    if (!(block instanceof Paragraph p)) {
+                        throw new IllegalArgumentException("notes require a paragraph or list/caption anchor");
                     }
+                    attached.add(note.id());
+                    if (explicitNotes.contains(note.id())) { continue; }
+                    var sourceInlines = p.inlines().isEmpty() && (!p.images().isEmpty() || !p.vectors().isEmpty()) ? Paragraph.mixed(p.id(), p.content(), p.format()).inlines() : p.inlines();
+                    var inlines = new ArrayList<>(sourceInlines.isEmpty() ? List.of(new InlineText(p.text(), InlineStyle.of(p.format().fontSize()))) : sourceInlines);
+                    inlines.add(new InlineText("[" + (index + 1) + "]", new InlineStyle("", p.format().fontSize() * 0.65,
+                            0x285080, -p.format().fontSize() * 0.3, false, false)));
+                    block = new Paragraph(p.id(), inlines.stream().map(InlineText::text).collect(java.util.stream.Collectors.joining()), p.format(), inlines, p.images(), p.fields(), p.vectors());
                 }
                 blocks.add(block);
             }

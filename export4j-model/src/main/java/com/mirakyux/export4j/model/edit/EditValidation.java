@@ -99,6 +99,12 @@ final class EditValidation {
         for (var run : paragraph.inlines()) {
             state.work(1); EditSupport.unicode(run.text(), state);
         }
+        for (var span : paragraph.vectors()) {
+            var vector = span.vector();
+            EditSupport.unicode(vector.logicalText(), state);
+            count(counts, 1, vector.logicalText().length(), state);
+            state.work(vector.resource().byteSize());
+        }
         for (var span : paragraph.fields()) {
             state.work(1); var field = span.field();
             if (field.kind() == InlineField.Kind.NOTE_MARKER) {

@@ -1,0 +1,18 @@
+Resume sample photograph
+
+Photographer: Joon Tae Kim
+Title: Man in White Crew Neck Shirt
+Source: https://www.pexels.com/photo/man-in-white-crew-neck-shirt-8586504/
+Original image: https://images.pexels.com/photos/8586504/pexels-photo-8586504.png
+License: Pexels License, https://www.pexels.com/license/
+
+This bundled derivative is cropped to a 4:5 frame, converted to RGB and
+resized to 384 x 480 pixels. It is used only as a layout illustration.
+The person pictured is not the fictional resume subject. The photograph
+does not imply endorsement of Export4j or any fictional employer.
+
+Pexels permits free use and modification, including use in templates.
+The Pexels License applies to this photograph, not Apache-2.0. In particular,
+do not imply endorsement, depict identifiable people offensively, sell
+unaltered copies, redistribute it on stock-photo or wallpaper platforms,
+or use it as part of a trademark. See the linked license for full terms.

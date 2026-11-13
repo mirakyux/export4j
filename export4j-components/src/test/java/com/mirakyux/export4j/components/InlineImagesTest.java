@@ -93,4 +93,23 @@ class InlineImagesTest {
         assertEquals(1, withNote.display().extras().externalLinks().size());
         assertEquals(1, withNote.display().pages().stream().flatMap(p -> p.commands().stream()).filter(DrawCommand.Image.class::isInstance).count());
     }
+
+    @Test void nativeTextLinksOnEitherSideNeverIncludeTheImageAdvance() throws IOException {
+        var paragraph = Paragraph.mixed("linked", List.of(
+                new InlineText("Left", InlineStyle.of(12), "https://example.com/text"), image(),
+                new InlineText("Right", InlineStyle.of(12), "https://example.com/text")), FORMAT);
+        var result = engine().layout(new Document(DocumentMetadata.EMPTY, PAGE, List.of(paragraph)));
+        var commands = result.display().pages().getFirst().commands();
+        var imageBounds = commands.stream().filter(DrawCommand.Image.class::isInstance).map(DrawCommand.Image.class::cast)
+                .findFirst().orElseThrow().bounds();
+        var links = result.display().extras().externalLinks().stream()
+                .filter(link -> link.destination().uri().equals("https://example.com/text")).toList();
+        assertEquals(2, links.size());
+        assertEquals(imageBounds.x(), links.getFirst().bounds().x() + links.getFirst().bounds().width(), .001);
+        assertEquals(imageBounds.x() + imageBounds.width(), links.getLast().bounds().x(), .001);
+        var runs = commands.stream().filter(DrawCommand.GlyphText.class::isInstance).map(DrawCommand.GlyphText.class::cast).toList();
+        assertEquals(List.of("Left", "Right"), runs.stream().map(value -> value.run().text()).toList());
+        assertEquals(runs.getFirst().run().width(), links.getFirst().bounds().width(), .001);
+        assertEquals(runs.getLast().run().width(), links.getLast().bounds().width(), .001);
+    }
 }

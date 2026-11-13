@@ -15,6 +15,7 @@ import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.PageRegions;
 import com.mirakyux.export4j.model.Paragraph;
@@ -162,7 +163,7 @@ final class DocxConversions {
                             if (cell.hasBlocks()) { cells.add(cell.toBuilder().blocks(blocks(cell.blocks(), section, region, List.copyOf(cellsPath))).build()); }
                             else {
                                 var format = cell.format();
-                                var p = new Paragraph(table.id(), cell.text(), new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false), cell.inlines(), cell.images(), cell.fields());
+                                var p = new Paragraph(table.id(), cell.text(), new ParagraphFormat(format.fontSize(), format.lineHeight(), 0, 0, format.alignment(), 0, 0, false), cell.inlines(), cell.images(), cell.fields(), cell.vectors());
                                 cells.add(cell.toBuilder().content(paragraph(p, new ProcessingIssue.Location(section, region, table.id(), cellsPath, -1, -1)).content()).build());
                             }
                         }
@@ -189,6 +190,11 @@ final class DocxConversions {
                 if (value instanceof InlineText run) {
                     var location = new ProcessingIssue.Location(at.sectionId(), at.region(), at.blockId(), at.cellPath(), offset, offset + run.text().length());
                     content.add(new InlineText(run.text(), style(run.style(), location), run.hyperlink())); offset += run.text().length();
+                } else if (value instanceof InlineVector vector) {
+                    add(issues, policy, "EXPORT", "MODEL", "DOCX", "INLINE_VECTOR", at.range(offset, offset + 1),
+                            "DOCX has no portable inline vector mapping", "VECTOR_REPLACED_WITH_LOGICAL_TEXT", ProcessingPolicy.Treatment.DEGRADE);
+                    var replacementStyle = InlineStyle.of(source.format().fontSize()).toBuilder().rgb(vector.rgb()).build();
+                    content.add(new InlineText(vector.logicalText(), replacementStyle, vector.hyperlink())); offset++;
                 } else if (value instanceof InlineField field && field.kind() == InlineField.Kind.NOTE_MARKER) {
                     add(issues, policy, "EXPORT", "MODEL", "DOCX", "NOTES", at.range(offset, offset + 1),
                             "inline note marker has no DOCX export mapping", "NOTE_MARKER_REMOVED", ProcessingPolicy.Treatment.DISCARD);

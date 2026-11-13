@@ -18,6 +18,7 @@ import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.Note;
@@ -57,6 +58,7 @@ import java.util.Objects;
  * Uses the existing XML compiler/binder; unsupported runtime components require an explicit
  * discard policy. Fonts/licenses are provided by the caller, never discovered. Requests are task-confined;
  * prepared values are immutable except for caller execution callbacks. No layout or implicit I/O occurs.
+ * Version 1 rejects inline vectors under every policy: it has no lossless vector resource encoding.
  */
 public final class XmlTemplateWriter {
     public static final String FORMAT = "XML_TEMPLATE";
@@ -407,6 +409,7 @@ public final class XmlTemplateWriter {
             var owner = location; int offset = 0;
             for (var value : values) {
                 ExecutionContext.checkpoint();
+                if (value instanceof InlineVector) { throw new IllegalArgumentException("XML template version 1 does not support inline vectors"); }
                 int length = value instanceof InlineText text ? text.text().length() : 1;
                 location = owner.range(offset, offset + length); offset += length;
                 String link = value instanceof InlineText text ? text.hyperlink() : value instanceof InlineImage image ? image.hyperlink() : "";
@@ -423,7 +426,7 @@ public final class XmlTemplateWriter {
                         case REFERENCE_PAGE -> "page-reference"; case REFERENCE_NUMBER -> "number-reference"; case NOTE_MARKER -> "note-marker"; };
                     add("<" + tag); attr("width", field.width()); style(field.style());
                     if (!field.targetId().isEmpty()) { attr("target", identifier(field.targetId())); } add("/>");
-                }
+                } else { throw new IllegalArgumentException("XML template does not support this inline content type"); }
                 if (!link.isEmpty()) { add("</link>"); }
             }
             location = owner;
@@ -459,7 +462,7 @@ public final class XmlTemplateWriter {
                             block(cell.blocks().get(index), childPath);
                         }
                     } else {
-                        inline(new Paragraph("cell", cell.text(), ParagraphFormat.of(cell.format().fontSize()), cell.inlines(), cell.images(), cell.fields()).content());
+                        inline(new Paragraph("cell", cell.text(), ParagraphFormat.of(cell.format().fontSize()), cell.inlines(), cell.images(), cell.fields(), cell.vectors()).content());
                     }
                     add("</cell>"); location = owner;
                 }

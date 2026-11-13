@@ -6,7 +6,7 @@
 
 ## 依赖与调用
 
-本地 BOM 对齐后添加 `com.mirakyux.export4j:export4j-adapter-web`。当前仍为未正式发布的开发快照，构建与隔离消费见[发布规范](releasing.md)。
+使用 Maven Central 已发布的 `com.mirakyux.export4j:export4j-bom:0.1.0-rc.2` 对齐版本后，添加 `com.mirakyux.export4j:export4j-adapter-web`。当前为候选版本，尚无稳定版；构建、签名及远端隔离消费见[发布规范](releasing.md)。
 
 ```java
 import com.mirakyux.export4j.adapter.web.ExportFeature;

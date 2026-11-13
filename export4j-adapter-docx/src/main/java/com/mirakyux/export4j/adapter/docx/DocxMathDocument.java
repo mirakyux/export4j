@@ -37,7 +37,8 @@ public record DocxMathDocument(DocxSemanticDocument semantic, List<Equation> equ
             if (!ids.add(equation.id()) || !occupied.add(anchor) || paragraph == null
                     || anchor.utf16() >= paragraph.text().length() || paragraph.text().charAt(anchor.utf16()) != '\ufffc'
                     || paragraph.images().stream().anyMatch(image -> image.sourceIndex() == anchor.utf16())
-                    || paragraph.fields().stream().anyMatch(field -> field.sourceIndex() == anchor.utf16())) {
+                    || paragraph.fields().stream().anyMatch(field -> field.sourceIndex() == anchor.utf16())
+                    || paragraph.vectors().stream().anyMatch(vector -> vector.sourceIndex() == anchor.utf16())) {
                 throw new IllegalArgumentException("equation must own a unique ordinary object marker");
             }
             if (equation.placement() != Placement.INLINE && !paragraph.text().equals("\ufffc")) { throw new IllegalArgumentException("display equation requires an otherwise empty paragraph"); }
@@ -59,7 +60,8 @@ public record DocxMathDocument(DocxSemanticDocument semantic, List<Equation> equ
                 int position = index;
                 if (!occupied.contains(new DocxSemanticDocument.Point(paragraph.id(), index))
                         && paragraph.images().stream().noneMatch(image -> image.sourceIndex() == position)
-                        && paragraph.fields().stream().noneMatch(field -> field.sourceIndex() == position)) {
+                        && paragraph.fields().stream().noneMatch(field -> field.sourceIndex() == position)
+                        && paragraph.vectors().stream().noneMatch(vector -> vector.sourceIndex() == position)) {
                     throw new IllegalArgumentException("unbound mathematical object marker");
                 }
             }

@@ -207,15 +207,22 @@ class TableLayouterTest {
     void enforcesRowColumnCellAndAggregateCodePointBudgetsBeforeLayout() {
         Table table = new Table("t", List.of(new ColumnWidth.Fraction(1), new ColumnWidth.Fraction(1)),
                 List.of(row("A", "B"), row("C", "D")), 1, PLAIN);
-        for (DocumentLayoutLimits limits : List.of(
+        var structuralLimits = List.of(
                 new DocumentLayoutLimits(10, 100, 100, 10, 1, 2, 4),
                 new DocumentLayoutLimits(10, 100, 100, 10, 2, 1, 4),
-                new DocumentLayoutLimits(10, 100, 100, 10, 2, 2, 3),
-                new DocumentLayoutLimits(10, 3, 100, 10, 2, 2, 4))) {
-            var failure = fail(100, 30, table, limits);
+                new DocumentLayoutLimits(10, 100, 100, 10, 2, 2, 3));
+        // A caller must identify the failed protection without inspecting source or document text.
+        var messages = List.of(
+                "table row budget exceeded: actual=2, maxTableRows=1 (source rows include header rows)",
+                "table column budget exceeded: actual=2, maxTableColumns=1",
+                "document cell budget exceeded: used=0, requested=4, maxCells=3");
+        for (int i = 0; i < structuralLimits.size(); i++) {
+            var failure = fail(100, 30, table, structuralLimits.get(i));
             assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
             assertEquals("t", failure.blockId());
+            assertEquals(0, failure.blockIndex());
             assertEquals(-1, failure.pageIndex());
+            assertEquals(messages.get(i), failure.getMessage());
         }
         var failure = fail(100, 30, table, new DocumentLayoutLimits(10, 3, 100, 10));
         assertEquals(1, failure.rowIndex());
@@ -287,6 +294,7 @@ class TableLayouterTest {
                         .layout(document(100, 40, first, second), List.of(font)));
         assertEquals("second", failure.blockId());
         assertEquals(1, failure.blockIndex());
+        assertEquals("document cell budget exceeded: used=2, requested=2, maxCells=3", failure.getMessage());
         Table unicode = new Table("unicode", first.columns(), List.of(row("A\uD83D\uDE00")), 0, PLAIN);
         var result = new DocumentLayouter(new ParagraphLayouter(), new DocumentLayoutLimits(1, 2, 10, 1))
                 .layout(document(100, 30, unicode), List.of(font));

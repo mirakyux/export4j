@@ -53,7 +53,7 @@ export function TableTools({state,path,bridge,onError,finish}:{state:Snapshot;pa
   </>;
 }
 
-interface Drag {pointer:number;source:string;session:number;target:HTMLElement;startX:number;boundary:number;left:number;layout:TableGeometry}
+interface Drag {pointer:number;source:string;session:number;pages:Snapshot['pages'];target:HTMLElement;startX:number;boundary:number;left:number;layout:TableGeometry}
 export function TableCanvas({state,page,paper,bridge,editing,onError}:{state:Snapshot;page:number;paper:HTMLElement;bridge:Bridge;editing:boolean;onError:(error:unknown)=>void}){
   const [drag,setDrag]=useState<Drag|null>(null),active=useRef<Drag|null>(null),selected=state.selectedPaths.length===1?state.selectedPaths[0]:undefined;
   const layout=useMemo(()=>{try{return selected===undefined?null:tableGeometry(state,selected,page);}catch{return null;}},[state.source,state.pages,state.layoutState,selected,page]);
@@ -68,7 +68,7 @@ export function TableCanvas({state,page,paper,bridge,editing,onError}:{state:Sna
       return {...current,left:Math.max(minimum,Math.min(total-minimum,current.layout.widths[current.boundary-1]+(event.clientX-current.startX)/scale))};};
     const move=(event:PointerEvent)=>{const value=next(event);if(value){event.preventDefault();active.current=value;setDrag(value);}};
     const stop=(event:PointerEvent)=>{const value=next(event);if(!value)return;event.preventDefault();event.stopPropagation();cancel();
-      const current=bridge.snapshot();if(current.source!==value.source||current.session!==value.session||current.busy||current.pending||current.layoutState!=='synced')return;
+      const current=bridge.snapshot();if(current.source!==value.source||current.session!==value.session||current.pages!==value.pages||current.busy||current.pending||current.layoutState!=='synced')return;
       if(Math.abs(value.left-value.layout.widths[value.boundary-1])<.01)return;
       try{void bridge.apply(resizeTableColumns(current,value.layout.path,value.layout.widths,value.boundary,value.left),undefined,current.selectedPaths).catch(onError);}catch(error){onError(error);}
     };
@@ -83,12 +83,12 @@ export function TableCanvas({state,page,paper,bridge,editing,onError}:{state:Sna
     offset+=width;const boundary=index+1,moving=drag?.boundary===boundary,x=offset+(moving?drag.left-width:0),total=width+layout.widths[boundary],minimum=Math.min(24,total/4);
     return <button key={layout.path+':'+boundary} className="studio-table-divider" role="separator" aria-orientation="vertical" aria-label={`调整表格第 ${boundary}、${boundary+1} 列宽`} aria-valuemin={minimum} aria-valuemax={total-minimum} aria-valuenow={moving?drag.left:width} aria-valuetext={`${(moving?drag.left:width).toFixed(1)} pt`} title="拖动调整相邻列宽；方向键微调，Esc 取消。调整后保存为固定 pt。" style={{left:x*scale,top:layout.top*scale,height:Math.max(12,layout.height*scale)}}
       onClick={event=>event.stopPropagation()} onPointerDown={event=>{
-        const current=bridge.snapshot();if(event.button!==0||current.source!==state.source||current.session!==state.session||current.busy||current.pending||current.layoutState!=='synced')return;event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
-        const value:Drag={pointer:event.pointerId,source:state.source,session:state.session,target:event.currentTarget,startX:event.clientX,boundary,left:width,layout};
+        const current=bridge.snapshot();if(event.button!==0||current.source!==state.source||current.session!==state.session||current.pages!==state.pages||current.busy||current.pending||current.layoutState!=='synced')return;event.preventDefault();event.stopPropagation();event.currentTarget.focus({preventScroll:true});
+        const value:Drag={pointer:event.pointerId,source:state.source,session:state.session,pages:state.pages,target:event.currentTarget,startX:event.clientX,boundary,left:width,layout};
         event.currentTarget.setPointerCapture(event.pointerId);active.current=value;setDrag(value);
       }} onLostPointerCapture={event=>{if(active.current?.pointer===event.pointerId)cancel();}} onKeyDown={event=>{
         if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();event.stopPropagation();
-        const current=bridge.snapshot();if(current.source!==state.source||current.session!==state.session||current.busy||current.pending||current.layoutState!=='synced')return;
+        const current=bridge.snapshot();if(current.source!==state.source||current.session!==state.session||current.pages!==state.pages||current.busy||current.pending||current.layoutState!=='synced')return;
         const value=Math.max(minimum,Math.min(total-minimum,width+(event.key==='ArrowLeft'?-1:1)*(event.shiftKey?10:1)));
         try{void bridge.apply(resizeTableColumns(current,layout.path,layout.widths,boundary,value),undefined,state.selectedPaths).catch(onError);}catch(error){onError(error);}
       }}>{moving&&<span className="studio-table-drag-label" role="status">{drag.left.toFixed(1)} / {(total-drag.left).toFixed(1)} pt</span>}</button>;

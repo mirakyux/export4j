@@ -99,31 +99,33 @@ SVG 自包含，文字为已确定的轮廓，图片以内嵌 PNG 保存。多�
 
 ## DOCX 语义子集
 
-`DocxAdapter` 位于 `com.mirakyux.export4j.adapter.docx`。`write(Document/PageDocument/SectionedDocument, OutputStream)` 导出 OOXML，`read(InputStream, Policy)` 返回 `ReadResult`，含 `SectionedDocument` 和损失诊断。
+`DocxAdapter` 位于 `com.mirakyux.export4j.adapter.docx`。本节描述通用模型入口：`write(Document/PageDocument/SectionedDocument, OutputStream)` 导出 OOXML，`read(InputStream, Policy)` 返回 `ReadResult`，含 `SectionedDocument` 和损失诊断。Word 专有对象通过独立的 `readSemantic`／`writeSemantic`／`semanticConversion` 入口处理，见[DOCX 原生语义与编辑](docx-semantic-api.md)。
 
 | 结构 | 当前范围 |
 | --- | --- |
 | 段落与行内 | 文本、字号、RGB、角色、单线下划线、删除线、基线偏移、换行、tab、嵌入 PNG／JPEG 与 HTTP／HTTPS／mailto 超链接 |
-| 标题 | 1～6 级，导入 Heading 样式；不支持继承 Word 默认样式格式 |
+| 标题与样式 | 1～6 级标题；有限 docDefaults、默认段落样式、段落／字符 basedOn 链及直接格式可展开为具体格式，样式图身份按策略报损 |
 | 列表 | 自有多级十进制／符号列表往返；外部自定义十进制标签、起始值及覆盖明确报损或拒绝 |
-| 表格 | 矩形文本／富文本／行内图片单元格、固定／比例／自动列宽、统一内边距、表头、拆行设置；支持矩形列／跨行合并及两层原子 Paragraph／Table 块格；递归续排仍独立 |
-| 分页与分节 | 显式分页、nextPage 分节、不同纸张与页边距、起始页码，以及[默认页眉页脚](docx-page-regions-api.md)的图文／表格／原生字段 |
+| 表格 | 矩形文本／富文本／行内图片单元格、固定／比例／受限自动列宽、四边内边距、表头与拆行设置；支持矩形列／跨行合并及最多 16 层 Paragraph／Table 块格，含块格的表仍拒绝 Auto 列和块格重复表头 |
+| 分页与分节 | 显式分页、nextPage 分节、不同纸张与页边距、起始页码，以及[默认／首页／奇偶页页眉页脚](docx-page-regions-api.md)的图文／表格／原生字段 |
 | 元数据 | 标题和作者 |
 | 行内字段 | PAGE／NUMPAGES／PAGEREF／编号 REF，含正文与普通单元格；显式宽度导入，重复表头 PAGE 拒绝导出 |
 
 自有 `od:*` 忽略命名空间保留 ID、列表身份与重启、比例列宽等模型信息；常规 OOXML 编号、样式、关系与内容类型仍写入文件，独立 python-docx 已验证可读取。Word 重新保存可能丢弃扩展信息，不能据此承诺自有 ID 永久保留。
 
-`STRICT` 拒绝未知标记、未知文档部件和不能保留的格式；`ALLOW_LOSS` 返回有界诊断。未知段落继承、样式默认值、非支持对齐、行距规则及外部编号覆盖不能静默变成默认值。当前针对标准 `word/document.xml` 路径，未实现任意包关系重定位或完整 Word 样式级联；一般 Word 文档常需损失模式和诊断审查。
+`STRICT` 拒绝未知标记、未知文档部件和不能保留的格式；`ALLOW_LOSS` 返回有界诊断。支持的样式级联先物化为具体字体／颜色／段落属性；命名身份和继承图不再保留，普通严格读取因此拒绝，损失模式通过 `styleGraph` 诊断报告。字体族须由调用方显式映射，完整规则见[DOCX 样式导入](docx-style-import-api.md)。未支持的样式、对齐、行距规则及外部编号覆盖仍不能静默变成默认值。当前针对标准 `word/document.xml` 路径，未实现任意包关系重定位或完整 Word 样式级联；一般 Word 文档常需损失模式和诊断审查。
 
-宏内容类型和 VBA 部件在两种模式都拒绝。外部超链接关系映射为被动 URI，其他外部关系报损或拒绝，不加载目标；DTD、实体、路径穿越与重复 ZIP 名拒绝。默认限制：压缩输入 32 MiB、每条目 32 MiB、总展开 128 MiB、4,096 条目、100,000 块、XML 深度 128；可用 `DocxLimits` 收紧。损失诊断最多 10,000 条。直接 `DocxAdapter.write` 遇到不支持的组件块、题注或块级交叉引用时，在写流前失败；[统一转换目标](document-conversion-api.md)另提供题注／独立引用的显式文本降级，以及注释／标记的显式丢弃，默认仍拒绝。
+宏内容类型和 VBA 部件在两种模式都拒绝。外部超链接关系映射为被动 URI，其他外部关系报损或拒绝，不加载目标；DTD、实体、路径穿越与重复 ZIP 名拒绝。默认限制：压缩输入 32 MiB、每条目 32 MiB、总展开 128 MiB、4,096 条目、100,000 个语义块、1,000,000 个表格覆盖槽及 4,000,000 个源文字码点；可用 `DocxLimits` 收紧。XML 深度另有 128 的上限，语义表深最多 16 层。损失诊断最多 10,000 条。直接 `DocxAdapter.write` 遇到不支持的组件块、题注或块级交叉引用时，在写流前失败；[统一转换目标](document-conversion-api.md)另提供题注／独立引用的显式文本降级，以及注释／标记的显式丢弃，默认仍拒绝。
 
-本地 Word 16.0 已验证字段样例更新、另存和 PDF 导出；一般 Word／LibreOffice 的视觉兼容尚未验证。页眉页脚以本节所列子集为准；不支持复杂图片变换、原生目录、评论、表单、修订、嵌套字段或任意 Word 无损互转。行内图像与媒体范围见[图像 API](inline-images-api.md)。导入后的模型由项目自身布局，不复现 Word 排版算法。
+早期字段样例已在 Word 16.0 验证更新、另存和 PDF 导出；后续有类型原生语义组合的应用证据见[原生语义验收](verification/phase-103-native-docx-semantic-editing.md)与[Windows 阅读器验收](verification/phase-107-windows-reader-compatibility.md)。这些样例不证明一般 Word／LibreOffice 的完整视觉兼容。
+
+普通 `read`／`write` 子集不保存浮动图片变换、原生目录、评论、表单和修订行为；需要这些已映射的 Word 对象时使用原生语义入口，再按显式策略投影到通用模型。原生数学另用 `readMath`／`writeMath`，普通及原生语义入口都不能静默丢弃 OMML 公式。嵌套字段与任意 Word 无损互转仍未提供。行内图像与媒体范围见[图像 API](inline-images-api.md)。导入后的通用模型由项目自身布局，不复现 Word 排版算法。
 
 `InlineField` 原生字段映射、复杂字段导入、宽度与书签约束见[DOCX 字段 API](docx-fields-api.md)。导出初始缓存为空，由 Word 更新；不把 PDF 解析值写成 Word 页码。
 
 ## 本地制品验证
 
-`export4j-bom` 对齐 12 个库；`publishLocalBundle` 只写入 `build/repository`，包含二进制、源码、Javadoc、POM 和 Gradle 元数据。`sbom` 生成 `build/reports/sbom.cdx.json`，记录实际运行制品与 SHA-256；不包含测试工具、JDK 或示例字体，资源另见[字体记录](../assets/fonts/README.md)。
+`export4j-bom` 当前对齐 16 个库；约束由实际子项目生成，不包含 BOM 自身、示例和 designer。`publishLocalBundle` 只写入 `build/repository`，包含二进制、源码、Javadoc、POM 和 Gradle 元数据。`sbom` 生成 `build/reports/sbom.cdx.json`，记录实际运行制品与 SHA-256；不包含测试工具、JDK 或示例字体，资源另见[字体记录](../assets/fonts/README.md)。
 
 [`verify_local_consumer.ps1`](../scripts/verify_local_consumer.ps1) 在独立 Gradle 工程中仅通过 Maven 坐标与 BOM 编译运行，不使用 project 依赖。完整命令、验证数值和范围见[验收记录](verification/phase-4-production.md)。
 

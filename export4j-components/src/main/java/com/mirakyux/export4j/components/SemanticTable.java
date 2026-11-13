@@ -20,7 +20,8 @@ import com.mirakyux.export4j.text.ParagraphLayouter;
  * A semantic table that continues across component regions. All dimensions are points.
  * Retains source cells, explicit font policy, fields and hyperlinks until final document pagination.
  * Use with DocumentEngine or ComponentDocumentRenderer; raw commands cannot represent unresolved semantics.
- * Region flow repeats headers and preserves complete rows, or complete cell lines when row splitting is explicit.
+ * Region flow repeats headers and preserves complete rows/groups by default. Explicit row splitting
+ * continues inline cells, vertical-span owners and recursive paragraph/table cells within layout budgets.
  * Direct {@link #layout(ComponentContext)} still requires one fixed viewport. Outer spacing belongs to the parent.
  * Its ID must be unique among all document blocks and nested semantic tables. Immutable; owns no resources.
  */
@@ -55,7 +56,7 @@ public record SemanticTable(Table table) implements WidthAwareRegionFlow {
 
     /**
      * Reflows complete rows/groups at their actual cyclic region widths. Explicit row splitting
-     * also supports inline cells across unequal widths; split vertical spans/block cells remain unsupported.
+     * also continues inline cells, vertical-span owners and recursive paragraph/table cells across unequal widths.
      * Preparation is bounded to 16 widths and 4,000,000 cumulative source UTF-16 units, including split-cell work.
      * Source identity, fields, links and font policy are retained for final pagination.
      */

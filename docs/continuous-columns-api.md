@@ -2,7 +2,7 @@
 
 XML 模板、可保存语义模型和设计器的正文分栏使用 [ColumnFlow](column-flow-api.md)，支持中间通栏表格／图片后恢复分栏。本文说明 Java 组件 `ContinuousColumns` 的独立 API。
 
-`ContinuousColumns` 从当前页的剩余正文区域开始分栏，续页使用完整正文高度，先从上到下、再从左到右填充。默认等宽栏每次试排只塑形／换行一次；显式权重提供变宽文字栏，最低多行策略可触发有界重测。`FlowColumn` 混合流与等宽 `GridTable` 表格见[混合分栏 API](mixed-columns-api.md)。PDF、SVG 和 PNG 消费同一份绘制结果。
+`ContinuousColumns` 从当前页的剩余正文区域开始分栏，续页使用完整正文高度，先从上到下、再从左到右填充。默认等宽栏每次试排只塑形／换行一次；显式权重提供变宽区域，文字最低多行策略可触发有界重测。`FlowColumn` 混合流与表格的等宽组合见[混合分栏 API](mixed-columns-api.md)，变宽语义表格及 `GridTable` 见下文。PDF、SVG 和 PNG 消费同一份绘制结果。
 
 ## 调用方式
 
@@ -28,7 +28,7 @@ python scripts/verify_continuous_columns.py
 
 | 参数／行为 | 契约 |
 | --- | --- |
-| `content` | 实现核心 `RegionFlow` 的组件；标准实现为 `FlowText`、`OpenTypeText`、`FlowColumn` 和 `GridTable` |
+| `content` | 实现核心 `RegionFlow` 的组件；标准实现包括 `FlowText`、`OpenTypeText`、`FlowColumn`、`SemanticTable` 和 `GridTable`；不同宽度还须实现 `WidthAwareRegionFlow` |
 | `columns` | 2～16 栏 |
 | `gap` | 栏间距，单位 point，有限且非负；扣除全部间距后必须有正栏宽 |
 | `columnWeights` | 可选 2～16 个有限正权重，按扣除间距后的正文宽度分配；非空时设置栏数，逐页重复 |
@@ -57,9 +57,9 @@ python scripts/verify_continuous_columns.py
 
 显式字体组的严格报错／占位警告策略保留。诊断仍使用原文 UTF-16 范围，合并到对应物理片段，再由文档布局器附加块 ID 与最终页索引。首行缩进只作用于整个原文第一行，不在每栏或续页重新应用。
 
-连续分栏保留各文字实现已有的换行规则。普通段落路径在换行处消耗的 ASCII 空格不属于绘制文字；显式 `OpenTypeText` 保留逻辑行内容。新分栏不会重新塑形或改变这两种规则。验证同时比较相同栏宽下的未分页绘制结果、非空格字符顺序，以及显式轮廓原文。
+连续分栏保留各文字实现已有的换行规则。普通段落路径在换行处消耗的 ASCII 空格不属于绘制文字；显式 `OpenTypeText` 保留逻辑行内容。等宽区域复用既定行结果，变宽区域按实际宽度准备行，保留上述文字规则。验证同时比较相同栏宽下的未分页绘制结果、非空格字符顺序，以及显式轮廓原文。
 
-文字首版证据见[验收记录](verification/phase-8-continuous-columns.md)；后续混合组件、嵌套流与表格已接入等宽区域 SPI，见[混合分栏验收](verification/phase-9-mixed-columns.md)。任意普通组件通过 `FlowColumn` 按整块参与，旧 `PageableComponent` 保留其已测量片段为原子单位。`.balanced(true)` 以最多 24 次确定性试排缩短各页公共栏高，不增加页数，不移入原来跳过的首页。自定义组件须可重复测量；试排返回的非法片段仍直接失败。默认构造保持不平衡；跨页浮动锚点、语义节栏或 DOCX 多栏映射仍未实现，不代表 PDF/UA 结构化阅读顺序。
+文字首版证据见[验收记录](verification/phase-8-continuous-columns.md)；后续混合组件、嵌套流与表格已接入等宽区域 SPI，见[混合分栏验收](verification/phase-9-mixed-columns.md)。任意普通组件通过 `FlowColumn` 按整块参与，旧 `PageableComponent` 保留其已测量片段为原子单位。`.balanced(true)` 以最多 24 次确定性试排缩短各页公共栏高，不增加页数，不移入原来跳过的首页。自定义组件须可重复测量；试排返回的非法片段仍直接失败。默认构造保持不平衡。可保存的正文分栏使用 [ColumnFlow](column-flow-api.md)，跨区域浮动锚点使用独立的[轮廓浮动入口](contour-floats-api.md)；它们不自动成为本组件的任意嵌套能力。本组件没有 DOCX 原生分栏映射，也不代表 PDF/UA 结构化阅读顺序。
 
 ## 变栏宽
 
@@ -70,7 +70,7 @@ var columns = ContinuousColumns.builder(FlowText.builder(text).lineHeight(20).bu
 
 扣除间距后第一栏占 1/4、第二栏占 3/4。每一行按自己所属栏的真实宽度换行，不缩放已测字形、不裁掉宽栏内容来适应窄栏。首行缩进仍仅用于整个原文第一行；短区和零高首区不消耗来源。权重在 setter 与构建边界快照，`columns(n)` 恢复等宽，空权重列表也恢复等宽。保留旧三／四参数构造；record 新分量不承诺二进制兼容。
 
-`WidthAwareRegionFlow.layoutVariableRegions(context, regions, widths)` 是可选扩展，正有限宽度序列按逻辑区域索引循环，包含跳过的首区；每项不大于上下文宽度。`FlowText`、`OpenTypeText`、`RichTextComponent.flow()`、`FlowColumn`、`FontScope`、`FontRoleScope` 与 `StyleScope` 已接入。混合流逐区扣内边距、旋转子宽度序列，整块图片等普通组件按当前栏宽测量；各区边界重置间距。全局数量、来源、诊断及取消规则保持。
+`WidthAwareRegionFlow.layoutVariableRegions(context, regions, widths)` 是可选扩展，最多 16 个正有限宽度按逻辑区域索引循环，包含跳过的首区；每项不大于上下文宽度。`FlowText`、`OpenTypeText`、`RichTextComponent.flow()`、`FlowColumn`、`SemanticTable`、`GridTable`、`FontScope`、`FontRoleScope` 与 `StyleScope` 已接入。混合流逐区扣内边距、旋转子宽度序列，整块图片等普通组件按当前栏宽测量；各区边界重置间距。全局数量、来源、诊断及取消规则保持。
 
 `FlowText` 与 `RichTextComponent.flow(policy)` 也支持最低多行策略：短首区可跳过，栏尾不足时按候选分配重新测量完整原文，再验证实际栏宽和行数。每次区域调用最多 32 次测量、4,000,000 个源 UTF-16 单位的重复工作；预算内没有已验证方案时明确失败。首行缩进和缺字诊断仍使用完整原文，不合并试排诊断。默认最低一行策略及等宽路径保持一次换行。见[最低行数设计](adr/0071-minimum-lines-in-variable-columns.md)及[阶段六十三](verification/phase-63-minimum-lines.md)。
 
@@ -80,4 +80,6 @@ var columns = ContinuousColumns.builder(FlowText.builder(text)
         .columnWeights(List.of(1.0, 3.0)).gap(20).build();
 ~~~
 
-`SemanticTable` 已接入变宽区域：完整行／合并行组按实际栏宽测量，支持原子嵌套格、最终字段和图文外链，见[语义表格变宽 API](variable-tables-api.md)。不同宽度的行内格完整行续排见[拆行指南](variable-table-continuation-api.md)；纵向合并拆分／递归子树续排、组件网格和其他旧分页组件仍明确拒绝；等宽路径保持。自定义宽度实现须保持每个片段适应自己的栏宽，非法结果不能通过平衡试排隐藏。文字基础实现与输出证据见[ADR-0067](adr/0067-width-aware-continuous-columns.md)及[阶段五十九](verification/phase-59-variable-columns.md)。
+`SemanticTable` 默认按实际栏宽准备完整行／合并行组；显式 `allowRowSplit(true)` 还支持行内格纵向 owner 和有界 Paragraph／Table 块格递归续排，保留最终字段、图文外链及原始来源，见[语义表格变宽 API](variable-tables-api.md)和[拆行指南](variable-table-continuation-api.md)。含块格表自身的 Auto、块格重复表头仍拒绝，语义表深最多 16 层，累计准备工作最多 4,000,000 个源 UTF-16 单位。
+
+组件 `GridTable` 可按实际格宽准备标准文字、OpenType、静态表单、语义表格及混合列，默认原子合并组整体移动，显式 `allowRowSplit(true)` 才按完整行续排；普通固定组件仍保持原子，详见[网格续排](grid-continuation-api.md#不同宽度的连续栏)。其他未实现变宽 SPI 的旧分页组件不能据此跨不同栏宽续排。自定义实现须保持每个片段适应自己的栏宽，非法结果不能通过平衡试排隐藏。文字基础证据见[阶段五十九](verification/phase-59-variable-columns.md)，纵向 owner 及递归／网格扩展分别见[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)和[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)。

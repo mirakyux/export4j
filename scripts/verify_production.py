@@ -147,7 +147,10 @@ def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", reposi
     ns = {"m": "http://maven.apache.org/POM/4.0.0"}
     bom = ET.parse(published("export4j-bom", version, "pom"))
     managed = bom.findall("m:dependencyManagement/m:dependencies/m:dependency", ns)
-    require({d.findtext("m:artifactId", namespaces=ns) for d in managed} == {c["name"] for c in own}, "BOM constraints differ")
+    expected_bom = {("com.mirakyux.export4j", c["name"], version) for c in own}
+    require(len(managed) == len(expected_bom) and
+            {tuple(d.findtext("m:" + field, namespaces=ns) for field in ("groupId", "artifactId", "version")) for d in managed} == expected_bom,
+            "BOM constraints differ")
     optional = ET.parse(published("export4j-opentype", version, "pom"))
     native_bindings = [entry for entry in optional.findall("m:dependencies/m:dependency", ns)
                        if entry.findtext("m:groupId", namespaces=ns) == "org.lwjgl"]

@@ -2,6 +2,8 @@
 
 `export4j-adapter-web` 的 `HtmlImporter` 默认将离线 HTML／CSS 子集转换为可[语义编辑](semantic-editing-api.md)的 `Document`。显式 `.layoutMode(true)` 可将盒、Flex、Grid 和定位编译为运行时布局组件。两种模式都不执行脚本、不访问文件／URL，分页由 Export4j 引擎完成。
 
+MinerU 等 Markdown 与原始 HTML 表格混合输入，可由调用方先显式转换成 HTML，再从此入口严格导入；本地图片登记、合并表格列宽、图注分页及数学边界见[文献 PDF 接入](literature-pdf-integration.md)。
+
 ```java
 import com.mirakyux.export4j.adapter.web.HtmlImporter;
 import com.mirakyux.export4j.model.edit.DocumentEditor;

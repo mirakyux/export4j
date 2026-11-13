@@ -94,6 +94,7 @@ final class DocxMathPackage {
         for (var entry : grouped.entrySet()) {
             var paragraph = paragraphs.get(entry.getKey()); if (paragraph == null) { throw new IOException("mathematical paragraph was not retained by semantic import"); }
             var reserved = new HashSet<Integer>(); for (var image : paragraph.images()) { reserved.add(image.sourceIndex()); } for (var field : paragraph.fields()) { reserved.add(field.sourceIndex()); }
+            for (var vector : paragraph.vectors()) { reserved.add(vector.sourceIndex()); }
             int index = 0;
             for (int offset = 0; offset < paragraph.text().length(); offset++) {
                 ExecutionContext.checkpoint();

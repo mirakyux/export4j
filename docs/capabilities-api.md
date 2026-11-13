@@ -18,7 +18,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 19 个模块（16 个库、BOM、示例和可选设计器应用）。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
 
-[Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。PDF／SVG 的受限 TeX 矢量排版目前位于 [ManuWeave 示例](examples.md#数学公式)，通用模型尚未提供跨格式公式节点或自动 TeX↔OMML 转换。实现与实际 Word 应用动作见[专项验收](verification/manuweave-templates.md)。
+[Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。[行内矢量](inline-vectors-api.md)让调用方生成的有界轮廓进入 Paragraph／TableCell 及显式 HTML／Markdown 资源注册，PDF 保存真实轮廓和 ActualText；不内置 TeX 解析或 TeX↔OMML。DOCX／Web 仅可明确降为逻辑文字，XML v1 保存拒绝。受限 TeX 转轮廓示例仍见 [ManuWeave](examples.md#数学公式)，实际 Word 公式动作见[专项验收](verification/manuweave-templates.md)。
 
 ## 已有 PDF 处理与语义恢复
 
@@ -148,7 +148,7 @@ engine.writeAtomically(document, backend, targetPath, options);
 
 输出流入口 `engine.write(document, backend, stream, options)` 保留流所有权，失败可能已写入部分字节。`writeAtomically` 要求目标父目录已存在及文件系统支持原子移动：临时文件写入成功后才替换目标，失败删除临时文件并保留原文件。PDF 使用 `PdfOptions.storage(TEMP_FILE)` 可把后端流缓冲放到临时文件；Layout IR、Display List 和资源仍驻留内存，不能称为完整流式大文档引擎。
 
-开发源码新增[普通文档逐页导出](paged-document-api.md)：`engine.exportPaged` 接受 `Document`、`PageDocument` 和 `SectionedDocument`，规划最终分页后逐页绘制及释放，返回轻量摘要。目录、未来引用、分节页码、页区和脚注使用最终分页；评论与可编辑表单在打开写出器前拒绝。配合 `PdfSpoolBackend` 可释放完成页的 PDFBox 对象，并直接复制活页对象，避免单页临时 PDF 的写入及重新解析。完整输入、最大块、脚注切片和有限索引仍占内存，多遍规划增加计算成本；详见[验收](verification/paged-document-export.md)。已发布的 `0.1.0-rc.1` 不含此入口。
+从 `0.1.0-rc.2` 起提供[普通文档逐页导出](paged-document-api.md)：`engine.exportPaged` 接受 `Document`、`PageDocument` 和 `SectionedDocument`，规划最终分页后逐页绘制及释放，返回轻量摘要。目录、未来引用、分节页码、页区和脚注使用最终分页；评论与可编辑表单在打开写出器前拒绝。配合 `PdfSpoolBackend` 可释放完成页的 PDFBox 对象，并直接复制活页对象，避免单页临时 PDF 的写入及重新解析。完整输入、最大块、脚注切片和有限索引仍占内存，多遍规划增加计算成本；详见[验收](verification/paged-document-export.md)。较早的 `0.1.0-rc.1` 不含此入口。
 
 同一指南另提供按需普通块源：`exportSemantic(PageSettings, BlockSource.Factory)` 已知总数时单遍布局，`exportReplay` 显式两遍稳定快照，均无需先构造完整正文模型。支持标题／列表／题注、表格、图片、组件、外链、固定页区和最终页字段；全局导航、未来引用、分节及脚注重排不在该流入口范围内。来源和测量缓存按当前页／keep 链释放，全局 ID 与页摘要仍随有限节点／页数增长。
 
@@ -186,7 +186,7 @@ DOCX 严格往返现支持富文本／行内图片单元格及外部超链接关
 | --- | --- |
 | 行内语义 | 正文与语义单元格固定宽度动态字段、行内交叉引用和正文脚注锚点已实现，见[字段 API](inline-fields-api.md)；仍缺单元格注释标记、任意组件内字段、自动字段宽度重排及未支持节点的无障碍映射 |
 | 高级布局 | 文字／富文本及混合流的变宽栏已由[阶段五十九](verification/phase-59-variable-columns.md)接入，最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义行／合并行组跨变宽区域](variable-tables-api.md)已接入；[行内格完整行跨变宽栏续排](variable-table-continuation-api.md)也已支持。[变宽递归子树与组件网格续排](variable-table-continuation-api.md)、[任意轮廓与跨页浮动锚点](contour-floats-api.md)及[可选原生方向／可变字体](native-opentype-api.md)已接入；标准合并格完整行及语义续排见[语义格 API](grid-semantic-flow-api.md) |
-| DOCX | 浮动／裁剪等复杂图像、目录／评论／表单完整模型映射；首页／奇偶语义页区已验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)已验收，Word 保存兼容单独登记 |
+| DOCX | 首页／奇偶页区、浮动图片／文本框、图片变换、深表、目录、评论、修订和表单的[类型化语义子集](docx-semantic-api.md)已由[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)验收；[有限样式级联](docx-style-import-api.md)及[原包文字编辑](docx-editing-api.md)也已验收。未建模 OOXML 与更广 Word 兼容仍须独立验收，不承诺任意文件无损往返或 PDF 同分页 |
 | PDF | 现有编辑、恢复、PDF/UA-1、选定 PDF/A 及 PAdES 的子集见对应 API；任意外部结构、任意标准等级与通用阅读器兼容不由有限样例保证 |
 | 兼容与容量 | [阶段十三](verification/phase-13-authoring.md)有有界混合报告采样；[阶段二十四](verification/phase-24-streaming-tables.md)完成单向布局／PDF 各 1k／10k／100k 行及 64 MiB 堆布局控制共 7 组独立 JVM，分录观察堆、Windows 工作集／私有字节／句柄、吞吐、临时盘和退出文件清理。100k PDF 1,786 页、325.281 秒；PDFBox 累积对象仍在。后续[磁盘索引 PDF 与重放容量](streaming-replay-api.md)另有独立验证；一般 Word／LibreOffice 外观、其他系统／JDK及跨阅读器矩阵仍按对应缺口推进。有限容量证据不证明长期无泄漏 |
 

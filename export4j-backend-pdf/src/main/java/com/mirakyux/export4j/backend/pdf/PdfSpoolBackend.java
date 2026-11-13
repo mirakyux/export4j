@@ -44,7 +44,8 @@ import com.mirakyux.export4j.model.ExecutionContext;
  * Each accepted page is rendered with the ordinary PdfBackend, serialized to a bounded discard sink
  * to finalize font subsets and measure its byte budget, copied directly from its independent object
  * graph, and released before return. No intermediate PDF file or parser is required.
- * Equivalent font and image graphs reuse previously written objects;
+ * Equivalent font and image graphs reuse previously written objects; up to 256 finalized TrueType
+ * program streams are also shared independently of page-local CID and Unicode mappings.
  * bounded session-local caches retain fingerprints, output object numbers and at most eight parsed
  * horizontal TrueType programs backed by at most 32 MiB of encoded source data. PDF fonts remain page-local.
  * Up to 64 finalized horizontal TrueType subset snapshots reuse at most 16 MiB including metadata;
@@ -103,6 +104,7 @@ public final class PdfSpoolBackend implements PageBackend {
     private final class Session implements PageWriter {
         private static final int LEAF_PAGES = 256;
         private static final int SHARED_FONTS = 256;
+        private static final int SHARED_FONT_PROGRAMS = 256;
         private static final int SHARED_IMAGES = 256;
         private final Thread owner = Thread.currentThread();
         private final DocumentMetadata metadata;
@@ -120,6 +122,7 @@ public final class PdfSpoolBackend implements PageBackend {
         private final PdfImagePrograms imagePrograms = new PdfImagePrograms();
         private final List<Long> leafPages = new ArrayList<>(LEAF_PAGES);
         private final LinkedHashMap<String, Long> sharedFonts = new LinkedHashMap<>(16, 0.75f, true);
+        private final LinkedHashMap<String, Long> sharedFontPrograms = new LinkedHashMap<>(16, 0.75f, true);
         private final LinkedHashMap<String, Long> sharedImages = new LinkedHashMap<>(16, 0.75f, true);
         private long nextObject = 4;
         private long leafObject;
@@ -401,6 +404,7 @@ public final class PdfSpoolBackend implements PageBackend {
             private final COSDictionary page;
             private final IdentityHashMap<COSBase, Long> numbers = new IdentityHashMap<>();
             private final IdentityHashMap<COSBase, Boolean> sourceObjects = new IdentityHashMap<>();
+            private final IdentityHashMap<COSBase, Boolean> fontProgramSources = new IdentityHashMap<>();
             private final PdfFontFingerprint fingerprints = new PdfFontFingerprint(this::countSource);
             private final List<COSBase> pending = new ArrayList<>();
 
@@ -410,6 +414,11 @@ public final class PdfSpoolBackend implements PageBackend {
                 if (sourceObjects.put(value, Boolean.TRUE) == null && sourceObjects.size() > limits.maxObjectsPerPage()) {
                     throw new IOException("PDF per-page object budget exceeded");
                 }
+                if (value instanceof COSDictionary dictionary
+                        && COSName.FONT_DESC.equals(dictionary.getCOSName(COSName.TYPE))
+                        && dictionary.getDictionaryObject(COSName.FONT_FILE2) instanceof COSStream program) {
+                    fontProgramSources.put(program, Boolean.TRUE);
+                }
             }
 
             private long reference(COSBase value) throws IOException {
@@ -417,8 +426,9 @@ public final class PdfSpoolBackend implements PageBackend {
                 if (number != null) { return number; }
                 countSource(value);
                 boolean font = value instanceof COSDictionary dictionary && COSName.FONT.equals(dictionary.getCOSName(COSName.TYPE));
+                boolean fontProgram = fontProgramSources.containsKey(value);
                 boolean image = value instanceof COSStream stream && COSName.IMAGE.equals(stream.getCOSName(COSName.SUBTYPE));
-                var sharedResources = font ? sharedFonts : image ? sharedImages : null;
+                var sharedResources = font ? sharedFonts : fontProgram ? sharedFontPrograms : image ? sharedImages : null;
                 String key = sharedResources == null ? null : fingerprints.key((COSDictionary) value);
                 if (key != null) {
                     var shared = sharedResources.get(key);
@@ -426,7 +436,7 @@ public final class PdfSpoolBackend implements PageBackend {
                 }
                 long result = reserve(); numbers.put(value, result); pending.add(value);
                 if (key != null) {
-                    int capacity = font ? SHARED_FONTS : SHARED_IMAGES;
+                    int capacity = font ? SHARED_FONTS : fontProgram ? SHARED_FONT_PROGRAMS : SHARED_IMAGES;
                     if (sharedResources.size() == capacity) { sharedResources.pollFirstEntry(); }
                     sharedResources.put(key, result);
                 }
@@ -522,6 +532,7 @@ public final class PdfSpoolBackend implements PageBackend {
             if (closed) { return; }
             closed = true; terminal = true;
             sharedFonts.clear();
+            sharedFontPrograms.clear();
             sharedImages.clear();
             imagePrograms.close();
             Throwable failure = null;
