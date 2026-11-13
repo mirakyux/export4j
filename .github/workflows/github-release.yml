@@ -103,6 +103,7 @@ jobs:
           import os
           from pathlib import Path
           import re
+          from urllib.parse import urljoin, urlsplit
           from zipfile import ZipFile
 
           def require(value, message):
@@ -170,7 +171,18 @@ jobs:
           if "-" in version:
               notes += "This is a prerelease; APIs may change.\n\n"
           if (root / "release-notes.md").is_file():
-              notes += (root / "release-notes.md").read_text(encoding="utf-8").rstrip() + "\n"
+              source_notes = f"https://github.com/{os.environ['GH_REPO']}/blob/{commit}/docs/releases/{version}.md"
+              def source_link(match):
+                  target = match[2]
+                  wrapped = target.startswith("<")
+                  destination = target[1:-1] if wrapped else target
+                  if urlsplit(destination).scheme or destination.startswith("//"):
+                      return match[0]
+                  resolved = urljoin(source_notes, destination)
+                  return match[1] + ("<" + resolved + ">" if wrapped else resolved)
+              version_notes = (root / "release-notes.md").read_text(encoding="utf-8").rstrip()
+              # Inline Markdown destinations are relative to the source notes, not the GitHub Release page.
+              notes += re.sub(r"(\]\()(<[^>\n]+>|[^\s()<>]+)(?=[\s)])", source_link, version_notes) + "\n"
           (Path(os.environ["RUNNER_TEMP"]) / "release-notes.md").write_text(notes, encoding="utf-8")
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
               output.write(f"release_root={root}\n")

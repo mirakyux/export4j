@@ -96,6 +96,36 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 self.assertIn("release_root=" + str(root.resolve()), (workspace / "outputs").read_text(encoding="utf-8"))
                 self.assertIn(COMMIT, (workspace / "release-notes.md").read_text(encoding="utf-8"))
 
+    def test_release_note_links_resolve_against_original_source_notes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            root = batch(workspace)
+            source = ("[规范](../releasing.md)\n"
+                      "[文献](../literature-pdf-integration.md#本次真实文献)\n"
+                      "[根说明](../../README.md#usage)\n"
+                      "[锚点](#主要变化)\n"
+                      "[查询](../text-api.md?plain=1#text)\n"
+                      "[预算](../fluent-api.md \"引擎预算\")\n"
+                      "[资源](<../file with spaces.md#part>)\n"
+                      "[绝对](https://example.com/guide?q=1#part)\n"
+                      "[邮件](mailto:docs@example.com)\n"
+                      "[网络](//example.com/guide)\n")
+            (root / "release-notes.md").write_text(source, encoding="utf-8")
+            execute("release-batch-validation", workspace)
+            result = (workspace / "release-notes.md").read_text(encoding="utf-8")
+            base = f"https://github.com/{REPOSITORY}/blob/{COMMIT}/"
+            expected = (f"[规范]({base}docs/releasing.md)\n"
+                        f"[文献]({base}docs/literature-pdf-integration.md#本次真实文献)\n"
+                        f"[根说明]({base}README.md#usage)\n"
+                        f"[锚点]({base}docs/releases/{VERSION}.md#主要变化)\n"
+                        f"[查询]({base}docs/text-api.md?plain=1#text)\n"
+                        f"[预算]({base}docs/fluent-api.md \"引擎预算\")\n"
+                        f"[资源](<{base}docs/file with spaces.md#part>)\n"
+                        "[绝对](https://example.com/guide?q=1#part)\n"
+                        "[邮件](mailto:docs@example.com)\n"
+                        "[网络](//example.com/guide)\n")
+            self.assertTrue(result.endswith(expected))
+
     def test_missing_ambiguous_changed_source_bundle_sbom_and_consumers_are_rejected(self):
         for change in ("missing", "ambiguous", "commit", "bundle", "version", "sbom", "pom-only", "remote-signatures", "consumer-version"):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary:
