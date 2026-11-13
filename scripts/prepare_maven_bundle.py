@@ -14,6 +14,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
+from publication_scope import published_modules, verify_math_source_bundle
+
 
 @lru_cache(maxsize=4)
 def uses_posix_paths(gpg: str) -> bool:
@@ -61,8 +63,9 @@ def prepare(repository: Path, version: str, public_key: Path, sbom: Path, output
     repository = repository.resolve()
     group = repository / "com/mirakyux/export4j"
     modules = sorted(path for path in group.iterdir() if (path / version).is_dir())
-    if len(modules) != 17 or not any(path.name == "export4j-bom" for path in modules):
-        raise ValueError("Expected exactly 16 libraries and the BOM")
+    if {path.name for path in modules} != published_modules(Path(__file__).resolve().parents[1]):
+        raise ValueError("Staged libraries and BOM differ from the configured publication scope")
+    library_count = len(modules) - 1
     namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
     artifacts = []
     library_hashes = {}
@@ -97,14 +100,16 @@ def prepare(repository: Path, version: str, public_key: Path, sbom: Path, output
                                 entry.findtext("m:artifactId", namespaces=namespace),
                                 entry.findtext("m:version", namespaces=namespace)) for entry in managed}
                 expected = {("com.mirakyux.export4j", item.name, version) for item in modules if item.name != "export4j-bom"}
-                if len(managed) != 16 or constraints != expected:
-                    raise ValueError("BOM must constrain exactly the 16 staged libraries to the staged version")
+                if len(managed) != library_count or constraints != expected:
+                    raise ValueError("BOM must constrain exactly the staged libraries to the staged version")
             if module.name != "export4j-bom":
                 for suffix in (".jar", "-sources.jar", "-javadoc.jar"):
                     with zipfile.ZipFile(directory / (prefix + suffix)) as jar:
                         if not {"META-INF/LICENSE", "META-INF/NOTICE"}.issubset(jar.namelist()):
                             raise ValueError("Every library archive must carry LICENSE and NOTICE")
                 binary = directory / (prefix + ".jar")
+                if module.name == "export4j-math":
+                    verify_math_source_bundle(binary, Path(__file__).resolve().parents[1])
                 library_hashes[module.name] = hashlib.sha256(binary.read_bytes()).hexdigest()
         # A valid signature must also reject modified bytes, independently of Gradle's signer.
         tampered = home / "tampered"
@@ -133,7 +138,7 @@ def prepare(repository: Path, version: str, public_key: Path, sbom: Path, output
             bundle.writestr(info, artifact.read_bytes())
     report = {"modules": len(modules), "signedArtifacts": len(artifacts) // 2,
               "signatureTamperRejected": True, "version": version,
-              "bomConstraintsVerified": 16,
+              "bomConstraintsVerified": library_count,
               "sbomSha256": hashlib.sha256(sbom.read_bytes()).hexdigest(),
               "sbomLibrariesVerified": len(own), "bundleSha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
               "uploaded": False, "remoteConsumerVerified": False}

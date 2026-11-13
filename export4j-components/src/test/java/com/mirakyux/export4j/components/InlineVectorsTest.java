@@ -53,6 +53,42 @@ class InlineVectorsTest {
                 .allMatch(link -> link.bounds().x() >= formula.bounds().x() + formula.bounds().width()));
     }
 
+    @Test void headingAndBothListKindsKeepVectorsAndLinksAcrossPaginationAndPrefixInsertion() throws IOException {
+        var value = vector(24);
+        var content = List.<InlineContent>of(new InlineText("Before ", InlineStyle.of(12)), value,
+                new InlineText(" After", InlineStyle.of(12), "https://example.com/after"));
+        var document = new Document(DocumentMetadata.EMPTY, new PageSettings(new PageSize(200, 70), PageMargins.uniform(10)),
+                List.of(Heading.mixed("h", content, 1, FORMAT), BulletItem.mixed("b", content, "*", 1, FORMAT),
+                        NumberedItem.mixed("n", "steps", content, 0, FORMAT, 1)));
+        var result = DocumentEngine.builder(fonts()).build().layout(document);
+        assertTrue(result.body().pages().size() >= 2);
+        var vectorPaths = result.display().pages().stream().flatMap(page -> page.commands().stream())
+                .filter(DrawCommand.FillPath.class::isInstance).map(DrawCommand.FillPath.class::cast)
+                .filter(path -> path.color().equals(new com.mirakyux.export4j.graphics.RgbColor(32 / 255.0, 48 / 255.0, 64 / 255.0)))
+                .toList();
+        assertEquals(3, vectorPaths.size());
+        assertTrue(vectorPaths.stream().allMatch(path -> path.path().segments().size() == value.resource().segmentCount()));
+        assertEquals(3, result.display().extras().externalLinks().stream()
+                .filter(link -> link.destination().uri().equals("https://example.com/formula")).count());
+        assertEquals(3, result.display().extras().externalLinks().stream()
+                .filter(link -> link.destination().uri().equals("https://example.com/after")).count());
+        var lowered = SemanticBlocks.compile(new SectionedDocument(document.metadata(),
+                List.of(new Section("s", document.pageSettings(), document.blocks(), 0))), List.of()).document().sections().getFirst().blocks();
+        assertEquals(7, ((Heading) lowered.getFirst()).vectors().getFirst().sourceIndex());
+        assertEquals(9, ((Paragraph) lowered.get(1)).vectors().getFirst().sourceIndex());
+        assertEquals(10, ((Paragraph) lowered.get(2)).vectors().getFirst().sourceIndex());
+        var navigation = Navigation.fromHeadings(document, TableOfContents.NONE, List.of(), List.of());
+        assertEquals("Before \\frac{a}{b} After", navigation.bookmarks().getFirst().title());
+    }
+
+    @Test void headingVectorsCannotBypassTheSourceLogicalTextBudget() throws IOException {
+        var heading = Heading.mixed("h", List.of(vector(24)), 1, FORMAT);
+        var engine = DocumentEngine.builder(fonts()).layoutLimits(limits -> limits.maxCodePoints(3)).build();
+        var failure = assertThrows(DocumentLayoutException.class,
+                () -> engine.layout(new Document(DocumentMetadata.EMPTY, PAGE, List.of(heading))));
+        assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
+    }
+
     @Test void automaticColumnsRespectAtomicVectorWidthAndLogicalTextBudget() throws IOException {
         var cell = TableCell.mixed(List.of(vector(70)), new CellFormat(12, 22, ParagraphAlignment.LEFT));
         var table = new Table("t", List.of(new ColumnWidth.Auto(1, 160)), List.of(new TableRow(List.of(cell))), 0,

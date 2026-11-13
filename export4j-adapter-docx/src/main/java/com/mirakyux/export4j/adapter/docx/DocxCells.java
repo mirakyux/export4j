@@ -110,6 +110,13 @@ final class DocxCells {
         if (cell.hasAttributeNS(OD, "content") && !cell.getAttributeNS(OD, "content").equals("blocks")) {
             throw new IOException("invalid DOCX cell content branch");
         }
+        if (content.stream().anyMatch(element -> element.hasAttributeNS(OD, "inlineCell"))) {
+            if (cell.hasAttributeNS(OD, "content") || content.size() != 1 || !content.getFirst().getLocalName().equals("p")
+                    || !content.getFirst().getAttributeNS(OD, "inlineCell").equals("true") || !content.getFirst().hasAttributeNS(OD, "id")) {
+                throw new IOException("invalid Word inline-cell paragraph branch");
+            }
+            return false;
+        }
         return cell.hasAttributeNS(OD, "content") || content.size() > 1
                 || content.stream().anyMatch(element -> element.hasAttributeNS(OD, "id"))
                 || content.stream().anyMatch(element -> element.getLocalName().equals("tbl"));
@@ -158,6 +165,11 @@ final class DocxCells {
     static void validateTailLocation(Element element) throws IOException {
         if (element.hasAttributeNS(OD, "content") && (!W.equals(element.getNamespaceURI()) || !element.getLocalName().equals("tc"))) {
             throw new IOException("DOCX cell content branch marker requires a cell");
+        }
+        if (element.hasAttributeNS(OD, "inlineCell") && (!W.equals(element.getNamespaceURI()) || !element.getLocalName().equals("p")
+                || !element.getAttributeNS(OD, "inlineCell").equals("true") || !element.hasAttributeNS(OD, "id")
+                || !(element.getParentNode() instanceof Element parent) || !W.equals(parent.getNamespaceURI()) || !parent.getLocalName().equals("tc"))) {
+            throw new IOException("Word inline-cell identity requires a direct cell paragraph");
         }
         if (element.hasAttributeNS(OD, "cellTail") && (!(element.getParentNode() instanceof Element parent)
                 || !W.equals(parent.getNamespaceURI()) || !parent.getLocalName().equals("tc"))) {

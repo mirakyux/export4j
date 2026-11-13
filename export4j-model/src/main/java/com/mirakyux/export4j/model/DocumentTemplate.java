@@ -15,7 +15,7 @@ import java.util.Objects;
  */
 public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
         PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText,
-        List<Note> notes, DocumentNavigation navigation, List<CellRule> cellRules) {
+        List<Note> notes, DocumentNavigation navigation, List<CellRule> cellRules, List<CellContent> cellContents) {
     private static final double LOG10_2 = 0.3010299956639812;
 
     public DocumentTemplate {
@@ -29,6 +29,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         notes = List.copyOf(notes);
         Objects.requireNonNull(navigation, "navigation");
         cellRules = List.copyOf(cellRules);
+        cellContents = List.copyOf(cellContents);
+        if (cellContents.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("cell content template budget exceeded"); }
         if (cellRules.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("cell rule template budget exceeded"); }
         if (notes.size() > limits.maxVisitedNodes()) { throw new IllegalArgumentException("note template budget exceeded"); }
         hyperlinkTemplates = Map.copyOf(hyperlinkTemplates);
@@ -50,6 +52,37 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             Objects.requireNonNull(prototype, "prototype"); Objects.requireNonNull(rule, "rule");
             if (prototype.hasBlocks()) { throw new IllegalArgumentException("conditional styles require inline cells"); }
         }
+    }
+
+    /** Dynamic semantic content attached to the identity of one prototype cell. Source nodes remain
+     * template declarations; final cells contain only complete Paragraph/Table blocks. */
+    public record CellContent(TableCell prototype, List<Node> nodes) {
+        public CellContent {
+            Objects.requireNonNull(prototype, "prototype"); nodes = List.copyOf(nodes);
+            requireCellNodes(nodes, 0);
+        }
+    }
+
+    private static void requireCellNodes(List<Node> nodes, int depth) {
+        if (depth > 128) { throw new IllegalArgumentException("cell template nesting exceeds limit"); }
+        for (var node : nodes) {
+            ExecutionContext.checkpoint();
+            switch (node) {
+                case ValueBlock value -> SemanticTree.validateCellBlocks(List.of(value.prototype()));
+                case Source ignored -> { }
+                case When when -> { requireCellNodes(when.yes(), depth + 1); requireCellNodes(when.no(), depth + 1); }
+                case Each each -> requireCellNodes(each.children(), depth + 1);
+                default -> throw new IllegalArgumentException("cell content requires paragraphs or tables");
+            }
+        }
+    }
+
+    /** Compatibility constructor for templates without dynamic cell content. */
+    public DocumentTemplate(DocumentMetadata metadata, PageSettings pageSettings, List<Node> nodes, Limits limits,
+            PageRegions pageRegions, List<SectionNode> sections, Map<String, String> hyperlinkTemplates, boolean literalText,
+            List<Note> notes, DocumentNavigation navigation, List<CellRule> cellRules) {
+        this(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText,
+                notes, navigation, cellRules, List.of());
     }
 
     /** Compatibility constructor for templates without conditional cell styles. */
@@ -103,7 +136,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         }
     }
 
-    public sealed interface Node permits ValueBlock, When, Each, Rows, Columns, Grid, GridItem { }
+    public sealed interface Node permits ValueBlock, Source, When, Each, Rows, Columns, Grid, GridItem { }
     /** Task-confined nested template authoring; branches are snapshotted when the callback returns. */
     public static final class Nodes {
         private final List<Node> values = new ArrayList<>();
@@ -147,6 +180,32 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
     public record ValueBlock(Block prototype) implements Node {
         public ValueBlock { Objects.requireNonNull(prototype, "prototype"); }
     }
+    /** Explicit source input, resolved before layout. Literal content is never interpolated; lookup
+     * selects one complete string value by dot path and deliberately treats that value as source syntax.
+     * Mixed template interpolation is unsupported. Options are complete authoring snapshots and the
+     * parser is caller-supplied; one session per parser identity is owned by each render. */
+    public record Source(String id, String source, boolean lookup, ContentOptions.Resolved options,
+            SourceContentParser parser) implements Node {
+        public Source {
+            if (Objects.requireNonNull(id, "id").isBlank()) { throw new IllegalArgumentException("blank source ID"); }
+            Objects.requireNonNull(source, "source"); Objects.requireNonNull(options, "options");
+            Objects.requireNonNull(parser, "parser");
+            if (lookup) { checkPath(source); }
+        }
+        public static Source literal(String id, String source, ContentOptions.Resolved options, SourceContentParser parser) {
+            return new Source(id, source, false, options, parser);
+        }
+        public static Source value(String id, String path, ContentOptions.Resolved options, SourceContentParser parser) {
+            return new Source(id, path, true, options, parser);
+        }
+        public static Source literal(String id, String source, SourceContentParser parser) {
+            return literal(id, source, ContentOptions.defaults(), parser);
+        }
+        public static Source value(String id, String path, SourceContentParser parser) {
+            return value(id, path, ContentOptions.defaults(), parser);
+        }
+    }
+
     /** A lexical scalar condition with immutable branches. Only the selected branch expands.
      * Nesting another condition in {@code no} forms an ordered, mutually exclusive alternative.
      * The three-argument constructor preserves the original boolean-true condition. */
@@ -225,6 +284,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                     }
                 }
                 case Rows ignored -> { }
+                case Source ignored -> { /* The bound ColumnFlow validates actual generated types. */ }
                 case When when -> { requireColumnNodes(when.yes(), depth + 1); requireColumnNodes(when.no(), depth + 1); }
                 case Each each -> requireColumnNodes(each.children(), depth + 1);
                 case Columns ignored -> throw new IllegalArgumentException("nested column templates are unsupported");
@@ -291,6 +351,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                         throw new IllegalArgumentException("grids accept only grid items");
                     }
                 }
+                case Source ignored -> throw new IllegalArgumentException("grids accept only grid items");
                 case When when -> { requireGridNodes(when.yes(), tracks, depth + 1); requireGridNodes(when.no(), tracks, depth + 1); }
                 case Each each -> requireGridNodes(each.children(), tracks, depth + 1);
                 default -> throw new IllegalArgumentException("grids accept only grid item templates");
@@ -424,33 +485,35 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
 
     /** Binds sections, page regions and notes under one snapshot and shared work/text budgets. */
     public Rendered renderComplete(Map<String, ?> data) {
-        var state = new Binding();
-        Object frozen = state.freeze(Objects.requireNonNull(data, "data"), 0);
-        if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
-        var root = new Scope(map, null);
-        var values = new ArrayList<Section>();
-        var declarations = sections.isEmpty() ? List.of(new SectionNode("document", pageSettings, nodes, 0, pageRegions)) : sections;
-        Map<PageRegion, PageRegion> bands = cellRules.isEmpty() ? new HashMap<>() : new java.util.IdentityHashMap<>();
-        for (var declaration : declarations) {
-            state.visit("sections");
-            state.blocks.clear();
-            state.expand(declaration.nodes(), root, "", 0, Map.of());
-            var regions = declaration.pageRegions();
-            var resolved = regions.map((name, value) -> bands.computeIfAbsent(value, band -> state.band(band, root)));
-            values.add(new Section(declaration.id(), declaration.pageSettings(), state.blocks,
-                    declaration.firstPageNumber(), resolved));
+        try (var state = new Binding()) {
+            Object frozen = state.freeze(Objects.requireNonNull(data, "data"), 0);
+            if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
+            var root = new Scope(map, null);
+            var values = new ArrayList<Section>();
+            var declarations = sections.isEmpty() ? List.of(new SectionNode("document", pageSettings, nodes, 0, pageRegions)) : sections;
+            Map<PageRegion, PageRegion> bands = cellRules.isEmpty() && cellContents.isEmpty()
+                    ? new HashMap<>() : new java.util.IdentityHashMap<>();
+            for (var declaration : declarations) {
+                state.visit("sections");
+                state.blocks.clear();
+                state.expand(declaration.nodes(), root, "", 0, Map.of());
+                var regions = declaration.pageRegions();
+                var resolved = regions.map((name, value) -> bands.computeIfAbsent(value, band -> state.band(band, root)));
+                values.add(new Section(declaration.id(), declaration.pageSettings(), state.blocks,
+                        declaration.firstPageNumber(), resolved));
+            }
+            var boundNotes = new ArrayList<Note>();
+            for (var note : notes) {
+                state.visit("notes");
+                state.consume(note.id()); state.consume(note.paragraphId());
+                boundNotes.add(new Note(note.id(), note.paragraphId(), state.text(note.text(), root), note.kind()));
+            }
+            state.consume(navigation.contents().title());
+            for (var bookmark : navigation.bookmarks()) { state.visit("navigation"); state.consume(bookmark.title()); state.consume(bookmark.blockId()); }
+            var document = new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values, navigation);
+            navigation.validate(document);
+            return new Rendered(document, boundNotes);
         }
-        var boundNotes = new ArrayList<Note>();
-        for (var note : notes) {
-            state.visit("notes");
-            state.consume(note.id()); state.consume(note.paragraphId());
-            boundNotes.add(new Note(note.id(), note.paragraphId(), state.text(note.text(), root), note.kind()));
-        }
-        state.consume(navigation.contents().title());
-        for (var bookmark : navigation.bookmarks()) { state.visit("navigation"); state.consume(bookmark.title()); state.consume(bookmark.blockId()); }
-        var document = new SectionedDocument(new DocumentMetadata(state.text(metadata.title(), root), state.text(metadata.author(), root)), values, navigation);
-        navigation.validate(document);
-        return new Rendered(document, boundNotes);
     }
 
     /** One immutable lexical declaration; iteration does not copy the entire outer data snapshot. */
@@ -464,9 +527,17 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         }
     }
 
-    private final class Binding {
+    private final class Binding implements AutoCloseable {
+        private final Map<SourceContentParser, SourceContentParser.Session> sourceSessions = new java.util.IdentityHashMap<>();
+        private final List<SourceContentParser.Session> sessionOrder = new ArrayList<>();
+        private final Map<TableCell, List<Node>> cellSources = new java.util.IdentityHashMap<>();
         private final Map<TableCell, List<CellStyleRule>> rules = new java.util.IdentityHashMap<>();
         private Binding() {
+            for (var entry : cellContents) {
+                if (cellSources.put(entry.prototype(), entry.nodes()) != null) {
+                    throw new IllegalArgumentException("duplicate cell content declaration");
+                }
+            }
             for (var entry : cellRules) {
                 rules.computeIfAbsent(entry.prototype(), ignored -> new ArrayList<>()).add(entry.rule());
             }
@@ -527,6 +598,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 switch (node) {
                     case ValueBlock value -> target.add(bind(value.prototype(), scope, suffix,
                             blockIds(value.prototype(), suffix, relocations), depth));
+                    case Source input -> target.addAll(parseSource(input, scope, suffix, depth));
                     case When when -> {
                         Object value = get(when.path(), scope);
                         boolean flag;
@@ -604,6 +676,124 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             }
         }
 
+        private List<Block> parseSource(Source input, Scope scope, String suffix, int depth) {
+            ExecutionContext.checkpoint();
+            String source = input.source();
+            if (input.lookup()) {
+                Object value = get(source, scope);
+                if (!(value instanceof String text)) { throw error(BindingException.Code.TYPE_MISMATCH, source); }
+                source = text;
+            }
+            // Debit source material before invoking a parser, independently from its final output.
+            consume(source);
+            var remaining = new SourceContentParser.Remaining(limits.maxVisitedNodes() - visited,
+                    limits.maxBlocks() - blockCount, limits.maxRows() - rows,
+                    limits.maxCodePoints() - codePoints, limits.maxDepth() - depth);
+            var session = sourceSessions.get(input.parser());
+            if (session == null) {
+                session = Objects.requireNonNull(input.parser().openSession(), "source parser session");
+                sourceSessions.put(input.parser(), session);
+                sessionOrder.add(session);
+            }
+            String namespace = input.id() + suffix;
+            List<Block> parsed = Objects.requireNonNull(session.parse(namespace, source, input.options(), remaining),
+                    "parsed content");
+            ExecutionContext.checkpoint();
+            if (parsed.size() > limits.maxBlocks() - blockCount) {
+                throw error(BindingException.Code.BUDGET_EXCEEDED, "source.blocks");
+            }
+            parsed = List.copyOf(parsed);
+            for (var block : parsed) {
+                if (block instanceof com.mirakyux.export4j.model.GridItem) {
+                    throw error(BindingException.Code.UNSUPPORTED_BLOCK, "source.gridItem");
+                }
+                accountParsed(block, namespace, depth);
+            }
+            return parsed;
+        }
+
+        /** Counts final source output without binding it. Every occurrence is charged, including
+         * descendant tables/cells and vector paths. Parser sessions separately bound intermediates. */
+        private void accountParsed(Block block, String namespace, int depth) {
+            consumeBlock(depth);
+            String id = block.id();
+            if (id == null || !(id.equals(namespace) || id.startsWith(namespace + ":"))) {
+                throw error(BindingException.Code.INVALID_VALUE, "source.id");
+            }
+            consume(id);
+            switch (block) {
+                case Paragraph paragraph -> accountParsedParagraph(paragraph);
+                case Heading heading -> accountParsedParagraph(heading.paragraph());
+                case BulletItem item -> { accountParsedParagraph(item.paragraph()); consume(item.marker()); }
+                case NumberedItem item -> { accountParsedParagraph(item.paragraph()); consume(item.listId()); }
+                case Caption caption -> { consume(caption.kind()); consume(caption.text()); }
+                case CrossReference reference -> { consume(reference.prefix()); consume(reference.targetId()); }
+                case PageBreak ignored -> { }
+                case Table table -> {
+                    for (var row : table.rows()) {
+                        visit("source.rows");
+                        if (depth + 1 > limits.maxDepth() || ++rows > limits.maxRows()) {
+                            throw error(BindingException.Code.BUDGET_EXCEEDED, "source.rows");
+                        }
+                        for (var cell : row.cells()) {
+                            visit("source.cells");
+                            if (cell.hasBlocks()) {
+                                for (var child : cell.blocks()) { accountParsed(child, namespace, depth + 2); }
+                            } else {
+                                accountParsedInline(cell.text(), cell.inlines(), cell.images(), cell.fields(), cell.vectors());
+                            }
+                        }
+                    }
+                }
+                case ColumnFlow columns -> {
+                    for (var child : columns.blocks()) { accountParsed(child, namespace, depth + 1); }
+                }
+                case GridLayout grid -> {
+                    for (var child : grid.items()) { accountParsed(child, namespace, depth + 1); }
+                }
+                case com.mirakyux.export4j.model.GridItem item -> {
+                    for (var child : item.blocks()) { accountParsed(child, namespace, depth + 1); }
+                }
+                default -> throw error(BindingException.Code.UNSUPPORTED_BLOCK, "source.block");
+            }
+        }
+
+        private void accountParsedParagraph(Paragraph paragraph) {
+            accountParsedInline(paragraph.text(), paragraph.inlines(), paragraph.images(), paragraph.fields(), paragraph.vectors());
+        }
+
+        private void accountParsedInline(String text, List<InlineText> inlines, List<Paragraph.ImageSpan> images,
+                List<Paragraph.FieldSpan> fields, List<Paragraph.VectorSpan> vectors) {
+            consume(text);
+            for (var run : inlines) { visit("source.inlines"); consume(run.hyperlink()); }
+            for (var image : images) {
+                visit("source.images"); consume(image.image().altText()); consume(image.image().hyperlink());
+            }
+            for (var field : fields) { visit("source.fields"); consume(field.field().targetId()); }
+            for (var vector : vectors) {
+                visit("source.vectors"); consume(vector.vector().logicalText()); consume(vector.vector().hyperlink());
+                int segments = vector.vector().resource().segmentCount();
+                if (segments > limits.maxVisitedNodes() - visited) {
+                    throw error(BindingException.Code.BUDGET_EXCEEDED, "source.vectors");
+                }
+                visited += segments;
+            }
+        }
+
+        @Override public void close() {
+            Throwable failure = null;
+            for (int i = sessionOrder.size() - 1; i >= 0; i--) {
+                try { sessionOrder.get(i).close(); }
+                catch (RuntimeException | Error cause) {
+                    if (failure == null) { failure = cause; }
+                    else if (failure != cause) { failure.addSuppressed(cause); }
+                }
+            }
+            sourceSessions.clear(); sessionOrder.clear();
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
+        }
+
         private void consumeBlock(int depth) {
             visit("blocks");
             if (depth > limits.maxDepth() || ++blockCount > limits.maxBlocks()) {
@@ -616,6 +806,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 visit("ids");
                 switch (node) {
                     case ValueBlock value -> collectBlockIds(value.prototype(), suffix, ids);
+                    case Source input -> ids.put(input.id(), input.id() + suffix);
                     case When when -> { collectIds(when.yes(), suffix, ids, depth + 1); collectIds(when.no(), suffix, ids, depth + 1); }
                     case Rows table -> {
                         ids.put(table.id(), table.id() + suffix);
@@ -649,7 +840,11 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 if (item.block() instanceof Table table) {
                     for (var row : table.rows()) {
                         visit("ids");
-                        for (var ignored : row.cells()) { visit("ids"); }
+                        for (var cell : row.cells()) {
+                            visit("ids");
+                            var content = cellSources.get(cell);
+                            if (content != null) { collectIds(content, suffix, ids, item.cellPath().size() + 1); }
+                        }
                     }
                 }
             });
@@ -658,7 +853,9 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             visit("ids");
             for (var cell : row.cells()) {
                 visit("ids");
-                for (var block : cell.blocks()) { collectBlockIds(block, suffix, ids); }
+                var content = cellSources.get(cell);
+                if (content != null) { collectIds(content, suffix, ids, 0); }
+                else { for (var block : cell.blocks()) { collectBlockIds(block, suffix, ids); } }
             }
         }
         private TableRow bindRow(TableRow row, Scope scope, String suffix, Map<String, String> relocations, int depth) {
@@ -676,6 +873,17 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                     try { match = rule.matches(actual); }
                     catch (IllegalArgumentException ex) { throw error(BindingException.Code.TYPE_MISMATCH, rule.path()); }
                     if (match) { format = rule.style().apply(format); active.add(rule.style()); }
+                }
+                var sourceNodes = cellSources.get(cell);
+                if (sourceNodes != null) {
+                    if (!active.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "cellRules"); }
+                    var children = new ArrayList<Block>();
+                    var ids = new HashMap<>(relocations);
+                    collectIds(sourceNodes, suffix, ids, depth + 1);
+                    expand(sourceNodes, scope, suffix, depth + 1, ids, children);
+                    SemanticTree.validateCellBlocks(children);
+                    return new TableCell("", format, List.of(), List.of(), List.of(), List.of(),
+                            cell.columnSpan(), cell.rowSpan(), children);
                 }
                 if (cell.hasBlocks()) {
                     if (!active.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "cellRules"); }
@@ -710,19 +918,19 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
                 case Paragraph p -> bindParagraph(p, id, scope, relocations);
                 case Heading h -> {
                     var p = bindParagraph(h.paragraph(), id, scope, relocations);
-                    yield new Heading(id, p.text(), h.level(), h.format(), p.inlines());
+                    yield new Heading(id, p.text(), h.level(), h.format(), p.inlines(), p.images(), p.fields(), p.vectors());
                 }
                 case PageBreak ignored -> new PageBreak(id);
-                case Caption c -> new Caption(id, text(c.kind(), scope), text(c.text(), scope), c.format());
+                case Caption c -> new Caption(id, text(c.kind(), scope), text(c.text(), scope), c.format(), c.appearance());
                 case CrossReference r -> new CrossReference(id, text(r.prefix(), scope),
-                        fieldTarget(r.targetId(), scope, relocations), r.kind(), r.format());
+                        fieldTarget(r.targetId(), scope, relocations), r.kind(), r.format(), r.appearance());
                 case BulletItem b -> {
                     var p = bindParagraph(b.paragraph(), id, scope, relocations);
-                    yield new BulletItem(id, p.text(), b.marker(), b.level(), b.format(), p.inlines(), b.markerStyle());
+                    yield new BulletItem(id, p.text(), b.marker(), b.level(), b.format(), p.inlines(), b.markerStyle(), p.images(), p.fields(), p.vectors());
                 }
                 case NumberedItem n -> {
                     var p = bindParagraph(n.paragraph(), id, scope, relocations);
-                    yield new NumberedItem(id, n.listId(), p.text(), n.restartAt(), n.format(), n.level(), p.inlines(), n.markerStyle());
+                    yield new NumberedItem(id, n.listId(), p.text(), n.restartAt(), n.format(), n.level(), p.inlines(), n.markerStyle(), p.images(), p.fields(), p.vectors());
                 }
                 case Table t -> new Table(id, t.columns(), t.rows().stream()
                         .map(row -> bindRow(row, scope, suffix, relocations, depth + 1)).toList(), t.headerRows(), t.format());
@@ -933,7 +1141,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * build() validates the complete value and takes an immutable structural snapshot. */
     public static Builder builder() { return new Builder(); }
     /** Starts an independent builder from this value; referenced resources remain borrowed. */
-    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates).literalText(literalText).notes(notes).navigation(navigation).cellRules(cellRules); }
+    public Builder toBuilder() { return new Builder().metadata(metadata()).pageSettings(pageSettings()).nodes(nodes()).limits(limits()).pageRegions(pageRegions).sections(sections).hyperlinkTemplates(hyperlinkTemplates).literalText(literalText).notes(notes).navigation(navigation).cellRules(cellRules).cellContents(cellContents); }
 
     /** Mutable, task-confined construction state; built values do not retain this builder. */
     public static final class Builder {
@@ -948,6 +1156,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private List<Note> notes = List.of();
         private DocumentNavigation navigation = DocumentNavigation.NONE;
         private List<CellRule> cellRules = List.of();
+        private List<CellContent> cellContents = List.of();
 
         private Builder() { }
         public Builder metadata(DocumentMetadata value) { metadata = java.util.Objects.requireNonNull(value, "metadata"); return this; }
@@ -962,6 +1171,7 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         public Builder navigation(DocumentNavigation value) { navigation = Objects.requireNonNull(value, "navigation"); return this; }
         /** Conditions attach by prototype identity, are evaluated in lexical scope, and share work budgets. */
         public Builder cellRules(List<CellRule> values) { cellRules = List.copyOf(values); return this; }
+        public Builder cellContents(List<CellContent> values) { cellContents = List.copyOf(values); return this; }
         /** Maps passive prototype URI keys to expressions bound in the link's lexical scope.
          * Keys are valid ExternalDestination URIs; final values undergo the same validation after binding.
          * Does not fetch resources. Copies the map immediately; each render uses independent state.
@@ -994,6 +1204,6 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
             var value = new Nodes(); configure.accept(value);
             return node(new Grid(id, tracks, columnGap, rowGap, value.snapshot()));
         }
-        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, navigation, cellRules); }
+        public DocumentTemplate build() { return new DocumentTemplate(metadata, pageSettings, nodes, limits, pageRegions, sections, hyperlinkTemplates, literalText, notes, navigation, cellRules, cellContents); }
     }
 }

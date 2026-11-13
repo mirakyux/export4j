@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.mirakyux.export4j.font.FontData;
-import com.mirakyux.export4j.font.TrueTypeFontLoader;
+import com.mirakyux.export4j.font.FontFaceCache;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
@@ -151,9 +151,11 @@ class SimpleLayoutValuesTest {
     }
 
     private static FontData loadFont() throws IOException {
-        try (var input = SimpleLayoutValuesTest.class.getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
+        // The pool must distinguish equal font content held by independently parsed font objects.
+        try (var cache = FontFaceCache.builder().enabled(false).build();
+                var input = SimpleLayoutValuesTest.class.getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
             if (input == null) { throw new IOException("missing explicit test font"); }
-            return TrueTypeFontLoader.load(input, TrueTypeFontLoader.DEFAULT_MAX_BYTES).data();
+            return cache.load(input).data();
         }
     }
 

@@ -70,6 +70,9 @@ import com.mirakyux.export4j.model.processing.DocumentConversion;
  */
 public final class DocxAdapter {
     public enum Policy { STRICT, ALLOW_LOSS }
+    /** Word baseline-spacing mapping. EXACT retains the legacy fixed spacing. OBJECTS_AT_LEAST
+     * lets image and native-mathematics paragraphs expand while ordinary text remains fixed. */
+    public enum LineSpacing { EXACT, AT_LEAST, OBJECTS_AT_LEAST }
     public record Diagnostic(String part, String element, String message) { }
     public record ReadResult(SectionedDocument document, List<Diagnostic> diagnostics) {
         public ReadResult { Objects.requireNonNull(document, "document"); diagnostics = List.copyOf(diagnostics); }
@@ -108,7 +111,7 @@ public final class DocxAdapter {
         Objects.requireNonNull(output, "output"); byte[] bytes = DocxSemanticWriter.write(this, limits, Objects.requireNonNull(document, "document")); output.write(bytes);
     }
     boolean materializeSemanticStyles(Map<String, byte[]> parts, Policy policy, List<Diagnostic> diagnostics) throws IOException {
-        return DocxStyles.materialize(parts, fontFamilies, policy, diagnostics, limits);
+        return DocxStyles.materialize(parts, fontFamilies, fontProfiles, policy, diagnostics, limits);
     }
     ReadResult readSemanticBody(InputStream input, Policy policy, boolean stylesMaterialized) throws IOException {
         try { return readPackage(input, policy, 0, stylesMaterialized); }
@@ -134,6 +137,8 @@ public final class DocxAdapter {
     private final DocxLimits limits;
     private final RegionGeometry regionGeometry;
     private final Map<String, FontRoles> fontFamilies;
+    private final DocxFontProfiles fontProfiles;
+    private final LineSpacing lineSpacing;
 
     /** Four caller-owned physical font-role keys for one explicit OOXML font family. Empty regular
      * selects the configured default font group. No installed-font discovery or synthetic variants.
@@ -160,6 +165,9 @@ public final class DocxAdapter {
         private DocxLimits limits = DocxLimits.DEFAULT;
         private RegionGeometry regionGeometry;
         private final Map<String, FontRoles> fontFamilies = new HashMap<>();
+        private final Map<DocxFontFamilies, FontRoles> fontProfiles = new HashMap<>();
+        private DocxFontFamilies defaultFonts;
+        private LineSpacing lineSpacing = LineSpacing.EXACT;
         private Builder() { }
         public Builder limits(DocxLimits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
         public Builder regionGeometry(RegionGeometry value) { regionGeometry = Objects.requireNonNull(value, "regionGeometry"); return this; }
@@ -167,7 +175,27 @@ public final class DocxAdapter {
             if (Objects.requireNonNull(name, "name").isBlank()) { throw new IllegalArgumentException("empty font family"); }
             if (fontFamilies.putIfAbsent(name, Objects.requireNonNull(roles, "roles")) != null) { throw new IllegalArgumentException("duplicate font family"); } return this;
         }
-        public DocxAdapter build() { return new DocxAdapter(limits, regionGeometry, fontFamilies); }
+        /** Declares default Word script families without loading or discovering physical fonts.
+         * Registers the ordinary, bold, italic and boldItalic semantic role keys for strict readback. */
+        public Builder defaultFonts(DocxFontFamilies value) {
+            Objects.requireNonNull(value, "defaultFonts");
+            var roles = new FontRoles("", "bold", "italic", "boldItalic");
+            var existing = fontProfiles.get(value);
+            if (existing != null && !existing.equals(roles)) { throw new IllegalArgumentException("default font profile already has custom role keys"); }
+            if (defaultFonts != null && !defaultFonts.equals(value)) { fontProfiles.remove(defaultFonts, roles); }
+            defaultFonts = value; fontProfiles.put(value, roles); return this;
+        }
+        /** Registers a script-family profile for both semantic-role output and strict import.
+         * One semantic role must have exactly one profile and one bold/italic variant. */
+        public Builder fontFamily(DocxFontFamilies families, FontRoles roles) {
+            Objects.requireNonNull(families, "families"); Objects.requireNonNull(roles, "roles");
+            var previous = fontProfiles.putIfAbsent(families, roles);
+            if (previous != null && !previous.equals(roles)) { throw new IllegalArgumentException("duplicate DOCX font profile"); }
+            return this;
+        }
+        /** Selects only Word's line-box mapping; it does not remeasure or alter the portable model. */
+        public Builder lineSpacing(LineSpacing value) { lineSpacing = Objects.requireNonNull(value, "lineSpacing"); return this; }
+        public DocxAdapter build() { return new DocxAdapter(limits, regionGeometry, fontFamilies, new DocxFontProfiles(fontProfiles, defaultFonts), lineSpacing); }
     }
 
     public DocxAdapter() { this(DocxLimits.DEFAULT); }
@@ -199,7 +227,7 @@ public final class DocxAdapter {
     public DocumentConversion.Target conversionTarget() {
         return DocxConversions.target(this);
     }
-    public DocxAdapter(DocxLimits limits) { this(limits, null, Map.of()); }
+    public DocxAdapter(DocxLimits limits) { this(limits, null, Map.of(), new DocxFontProfiles(Map.of(), null), LineSpacing.EXACT); }
     /** Same-format package-preserving literal text edits. Untouched parts retain exact expanded bytes;
      * only explicitly supported text nodes change. No semantic import, field update or external access.
      * Macro/active, signed and protected packages are rejected independently of loss policy.
@@ -207,8 +235,18 @@ public final class DocxAdapter {
     public DocxPackageEditor.Request editPackage(byte[] encoded) {
         return DocxPackageEditor.request(this, limits, encoded);
     }
-    private DocxAdapter(DocxLimits limits, RegionGeometry regionGeometry, Map<String, FontRoles> fontFamilies) {
-        this.limits = Objects.requireNonNull(limits, "limits"); this.regionGeometry = regionGeometry; this.fontFamilies = Map.copyOf(fontFamilies);
+    private DocxAdapter(DocxLimits limits, RegionGeometry regionGeometry, Map<String, FontRoles> fontFamilies,
+            DocxFontProfiles fontProfiles, LineSpacing lineSpacing) {
+        this.limits = Objects.requireNonNull(limits, "limits"); this.regionGeometry = regionGeometry;
+        this.fontFamilies = Map.copyOf(fontFamilies); this.fontProfiles = fontProfiles; this.lineSpacing = lineSpacing;
+    }
+
+    boolean mappedFontRole(String role) { return fontProfiles.role(role) != null; }
+
+    void objectSpacing(Element paragraph) {
+        if (lineSpacing == LineSpacing.EXACT) { return; }
+        var spacing = child(child(paragraph, "pPr"), "spacing");
+        if (spacing != null) { spacing.setAttributeNS(W, "w:lineRule", "atLeast"); }
     }
 
     /** Controlled strict semantic output; the borrowed stream is neither closed nor flushed. */
@@ -296,6 +334,8 @@ public final class DocxAdapter {
 
     public void write(SectionedDocument document, OutputStream output) throws IOException {
         Objects.requireNonNull(document, "document");
+        try { DocxSemanticSupport.validateCellIds(document, List.of(), List.of()); }
+        catch (IllegalArgumentException failure) { throw new IOException("invalid Word cell anchor identity", failure); }
         if (!document.navigation().equals(com.mirakyux.export4j.model.DocumentNavigation.NONE)) {
             throw new IOException("DOCX navigation requires an explicit conversion loss policy");
         }
@@ -372,7 +412,7 @@ public final class DocxAdapter {
                                     var paragraph = (Paragraph) block;
                                     paragraph.inlines().forEach(run -> { if (!run.style().fontRole().isEmpty()) { roles.add(run.style().fontRole()); } });
                                     xml.append("<w:p od:id=\"").append(escape(paragraph.id())).append("\">");
-                                    properties(xml, paragraph.format(), 0, 0, 1);
+                                    properties(xml, paragraph.format(), 0, 0, 1, !paragraph.images().isEmpty());
                                     runs(xml, paragraph, bandLinks, images, fields);
                                     xml.append("</w:p>");
                                 }
@@ -423,7 +463,7 @@ public final class DocxAdapter {
                         main.append(" od:marker=\"").append(escape(item.marker())).append("\"");
                     }
                     main.append('>');
-                    properties(main, p.format(), block instanceof Heading h ? h.level() : 0, listId, level);
+                    properties(main, p.format(), block instanceof Heading h ? h.level() : 0, listId, level, !p.images().isEmpty());
                     fields.start(main, block.id());
                     if (block instanceof PageBreak) { main.append("<w:r><w:br w:type=\"page\"/></w:r>"); }
                     else { runs(main, p, hyperlinks, images, fields); }
@@ -441,6 +481,7 @@ public final class DocxAdapter {
         main.append("</w:body></w:document>");
         numbering.append("</w:numbering>");
         var styles = new StringBuilder(XML + "<w:styles" + NS + ">");
+        styles.append(fontProfiles.defaultsXml());
         for (int level = 1; level <= 6; level++) {
             styles.append("<w:style w:type=\"paragraph\" w:styleId=\"Heading").append(level).append("\"><w:name w:val=\"heading ")
                     .append(level).append("\"/><w:pPr><w:outlineLvl w:val=\"").append(level - 1).append("\"/></w:pPr></w:style>");
@@ -521,7 +562,7 @@ public final class DocxAdapter {
         if (rotation != 0) { throw new IOException("DOCX rotation requires an explicit conversion loss policy"); }
     }
 
-    private static void properties(StringBuilder xml, ParagraphFormat f, int heading, int number, int level) {
+    private void properties(StringBuilder xml, ParagraphFormat f, int heading, int number, int level, boolean objects) {
         xml.append("<w:pPr od:minBefore=\"").append(f.pagination().minLinesBeforeBreak()).append("\" od:minAfter=\"").append(f.pagination().minLinesAfterBreak()).append("\">");
         if (heading > 0) { xml.append("<w:pStyle w:val=\"Heading").append(heading).append("\"/>"); }
         if (f.pagination().keepWithNext()) { xml.append("<w:keepNext/>"); }
@@ -531,7 +572,7 @@ public final class DocxAdapter {
         if (f.lineBreakPolicy() == com.mirakyux.export4j.model.LineBreakPolicy.CJK_STRICT) {
             xml.append("<w:kinsoku od:policy=\"CJK_STRICT\"/>");
         }
-        xml.append("<w:spacing w:lineRule=\"exact\" w:line=\"").append(twips(f.lineHeight())).append("\" w:before=\"").append(twips(f.spaceBefore()))
+        xml.append("<w:spacing w:lineRule=\"").append(lineSpacing == LineSpacing.AT_LEAST || objects && lineSpacing == LineSpacing.OBJECTS_AT_LEAST ? "atLeast" : "exact").append("\" w:line=\"").append(twips(f.lineHeight())).append("\" w:before=\"").append(twips(f.spaceBefore()))
                 .append("\" w:after=\"").append(twips(f.spaceAfter())).append("\"/>");
         xml.append("<w:ind w:left=\"").append(twips(f.subsequentLineIndent())).append("\"");
         if (f.firstLineIndent() >= f.subsequentLineIndent()) { xml.append(" w:firstLine=\"").append(twips(f.firstLineIndent() - f.subsequentLineIndent())); }
@@ -583,7 +624,12 @@ public final class DocxAdapter {
         xml.append("</w:rPr>");
     }
 
-    private static String roleProperties(String role) {
+    private String roleProperties(String role) {
+        var profile = fontProfiles.role(role);
+        if (profile != null) {
+            return "<w:rPr>" + DocxFontProfiles.xml(profile.families()) + (profile.bold() ? "<w:b/>" : "")
+                    + (profile.italic() ? "<w:i/>" : "") + "</w:rPr>";
+        }
         return switch (role) {
             case "bold" -> "<w:rPr><w:b/></w:rPr>";
             case "italic" -> "<w:rPr><w:i/></w:rPr>";
@@ -667,7 +713,7 @@ public final class DocxAdapter {
         }
     }
 
-    private static void table(StringBuilder xml, Table table, double availableWidth, Map<String, String> hyperlinks,
+    private void table(StringBuilder xml, Table table, double availableWidth, Map<String, String> hyperlinks,
             DocxImages.Writer images, DocxFields.Writer fields, Set<String> roles, List<String> ancestorAnchors) throws IOException {
         double fixed = table.columns().stream().filter(ColumnWidth.Fixed.class::isInstance).map(ColumnWidth.Fixed.class::cast).mapToDouble(ColumnWidth.Fixed::points).sum();
         double weights = table.columns().stream().mapToDouble(c -> c instanceof ColumnWidth.Fraction f ? f.weight() : c instanceof ColumnWidth.Auto ? 1 : 0).sum();
@@ -755,7 +801,7 @@ public final class DocxAdapter {
                             var paragraph = (Paragraph) block;
                             paragraph.inlines().forEach(inline -> { if (!inline.style().fontRole().isEmpty()) { roles.add(inline.style().fontRole()); } });
                             xml.append("<w:p od:id=\"").append(escape(paragraph.id())).append("\" od:kind=\"paragraph\">");
-                            properties(xml, paragraph.format(), 0, 0, 1);
+                            properties(xml, paragraph.format(), 0, 0, 1, !paragraph.images().isEmpty());
                             pending.forEach(id -> fields.start(xml, id)); fields.start(xml, paragraph.id());
                             runs(xml, paragraph, hyperlinks, images, fields);
                             fields.end(xml, paragraph.id());
@@ -766,13 +812,13 @@ public final class DocxAdapter {
                     if (cell.blocks().getLast() instanceof Table) { xml.append("<w:p od:cellTail=\"true\"/>"); }
                     xml.append("</w:tc>"); firstCell = false; continue;
                 }
-                xml.append("<w:p>");
+                xml.append("<w:p od:inlineCell=\"true\" od:id=\"").append(escape(DocxSemanticDocument.cellParagraphId(table.id(), anchor.rowIndex(), anchor.columnIndex()))).append("\">");
                 var f = cell.format();
                 var format = new ParagraphFormat(f.fontSize(), f.lineHeight(), 0, 0, f.alignment(), 0, 0, false).withLineBreakPolicy(f.lineBreakPolicy());
                 cell.inlines().forEach(inline -> { if (!inline.style().fontRole().isEmpty()) { roles.add(inline.style().fontRole()); } });
-                properties(xml, format, 0, 0, 1);
+                properties(xml, format, 0, 0, 1, !cell.images().isEmpty());
                 anchors.forEach(id -> fields.start(xml, id));
-                runs(xml, new Paragraph("cell", cell.text(), format, cell.inlines(), cell.images(), cell.fields(), cell.vectors()), hyperlinks, images, fields);
+                runs(xml, DocxSemanticSupport.cellParagraph(table, anchor), hyperlinks, images, fields);
                 for (int a = anchors.size() - 1; a >= 0; a--) { fields.end(xml, anchors.get(a)); }
                 firstCell = false;
                 xml.append("</w:p></w:tc>");
@@ -837,7 +883,7 @@ public final class DocxAdapter {
             }
         }
         List<Diagnostic> diagnostics = new ArrayList<>();
-        boolean stylesMaterialized = alreadyMaterialized || DocxStyles.materialize(parts, fontFamilies, policy, diagnostics, limits);
+        boolean stylesMaterialized = alreadyMaterialized || DocxStyles.materialize(parts, fontFamilies, fontProfiles, policy, diagnostics, limits);
         Element relations = parts.containsKey("word/_rels/document.xml.rels") ? parse(parts.get("word/_rels/document.xml.rels")) : null;
         var decoded = new HashMap<String, com.mirakyux.export4j.model.ImageResource>();
         var images = new DocxImages.Reader(parts, relations, decoded);
@@ -974,12 +1020,8 @@ public final class DocxAdapter {
         if (pageBreak && !text.isEmpty()) { loss(policy, diagnostics, "word/document.xml", "br", "inline page break cannot be represented inside a paragraph"); }
         if (pageBreak && text.isEmpty()) { return new PageBreak(id); }
         String heading = value(child(pr, "pStyle"), "");
-        if ((!mixed.images().isEmpty() || !mixed.fields().isEmpty()) && (heading.matches("(?i)Heading[1-6]") || child(pr, "numPr") != null)) {
-            loss(policy, diagnostics, "word/document.xml", "pPr", "image or field heading or list is imported as a paragraph");
-            return mixed;
-        }
         if (heading.matches("(?i)Heading[1-6]")) {
-            return new Heading(id, text, Integer.parseInt(heading.substring(7)), f, semanticRuns(inlines, f));
+            return new Heading(id, text, Integer.parseInt(heading.substring(7)), f, semanticRuns(mixed), mixed.images(), mixed.fields(), mixed.vectors());
         }
         if (!heading.isEmpty()) { loss(policy, diagnostics, "word/document.xml", "pStyle", "paragraph style inheritance is unsupported"); }
         var num = child(pr, "numPr");
@@ -993,7 +1035,7 @@ public final class DocxAdapter {
             }
             String marker = p.getAttributeNS(OD, "marker");
             if (definition != null && value(child(definition, "numFmt"), "decimal").equals("bullet")) { marker = value(child(definition, "lvlText"), "•"); }
-            if (!marker.isEmpty()) { return new BulletItem(id, text, marker, level, f, semanticRuns(inlines, f), markerStyle); }
+            if (!marker.isEmpty()) { return new BulletItem(id, text, marker, level, f, semanticRuns(mixed), markerStyle, mixed.images(), mixed.fields(), mixed.vectors()); }
             if (definition == null) { loss(policy, diagnostics, "word/numbering.xml", "numId", "numbering definition is missing"); }
             else if (!value(child(definition, "numFmt"), "decimal").equals("decimal")) { loss(policy, diagnostics, "word/numbering.xml", "numFmt", "only decimal and bullet numbering are supported"); }
             if (definition != null && !p.hasAttributeNS(OD, "restart")) {
@@ -1003,7 +1045,7 @@ public final class DocxAdapter {
                 if (!value(child(definition, "lvlText"), label.toString()).equals(label.toString())) { loss(policy, diagnostics, "word/numbering.xml", "lvlText", "custom decimal label is unsupported"); }
             }
             return new NumberedItem(id, attribute(p, OD, "listId", "num-" + numId), text,
-                    integer(attribute(p, OD, "restart", "0")), f, level, semanticRuns(inlines, f), markerStyle);
+                    integer(attribute(p, OD, "restart", "0")), f, level, semanticRuns(mixed), markerStyle, mixed.images(), mixed.fields(), mixed.vectors());
         }
         return mixed;
     }
@@ -1011,12 +1053,16 @@ public final class DocxAdapter {
     private static List<InlineText> semanticRuns(List<InlineText> runs, ParagraphFormat format) {
         return runs.stream().allMatch(run -> run.style().equals(InlineStyle.of(format.fontSize())) && run.hyperlink().isEmpty()) ? List.of() : runs;
     }
+    private static List<InlineText> semanticRuns(Paragraph paragraph) {
+        return paragraph.images().isEmpty() && paragraph.fields().isEmpty() && paragraph.vectors().isEmpty()
+                ? semanticRuns(paragraph.inlines(), paragraph.format()) : paragraph.inlines();
+    }
 
     static ParagraphFormat format(Element pr) throws IOException {
         double size = number(value(child(child(pr, "rPr"), "sz"), "24")) / 2;
         var spacing = child(pr, "spacing");
         double line = attributeNumber(spacing, W, "line", size * 30) / 20;
-        if (!attribute(spacing, W, "lineRule", "auto").equals("exact")) { line = attributeNumber(spacing, W, "line", 240) / 240 * size * 1.5; }
+        if (attribute(spacing, W, "lineRule", "auto").equals("auto")) { line = attributeNumber(spacing, W, "line", 240) / 240 * size * 1.5; }
         var ind = child(pr, "ind");
         double subsequent = attributeNumber(ind, W, "left", 0) / 20;
         double first = subsequent + (attributeNumber(ind, W, "firstLine", 0) - attributeNumber(ind, W, "hanging", 0)) / 20;
@@ -1090,6 +1136,10 @@ public final class DocxAdapter {
                 int columnSpan = readColumnSpan(cell);
                 if (columnSpan > Integer.MAX_VALUE - column || !columns.isEmpty() && columnSpan > columns.size() - column) {
                     throw new IOException("DOCX cell coverage exceeds the table grid");
+                }
+                for (var paragraph : DocxCells.content(cell)) {
+                    if (paragraph.hasAttributeNS(OD, "inlineCell") && (!paragraph.getAttributeNS(OD, "id").equals(DocxSemanticDocument.cellParagraphId(ids.get(table), rowIndex, column))
+                            || readVerticalMerge(cell) == VerticalMerge.CONTINUE)) { throw new IOException("invalid Word inline-cell source identity"); }
                 }
                 var merge = readVerticalMerge(cell);
                 if (merge == VerticalMerge.CONTINUE) {
@@ -1402,7 +1452,7 @@ public final class DocxAdapter {
         if (name.equals("kinsoku") && enabled(element) && !"CJK_STRICT".equals(attribute(element, OD, "policy", ""))) {
             loss(policy, diagnostics, "word/document.xml", name, "external Chinese line-break settings do not define the engine's strict subset");
         }
-        if (name.equals("spacing") && !Set.of("exact", "auto").contains(attribute(element, W, "lineRule", "auto"))) { loss(policy, diagnostics, "word/document.xml", name, "unsupported line spacing rule"); }
+        if (name.equals("spacing") && !Set.of("exact", "auto", "atLeast").contains(attribute(element, W, "lineRule", "auto"))) { loss(policy, diagnostics, "word/document.xml", name, "unsupported line spacing rule"); }
         if (name.equals("ind") && (attributeNumber(element, W, "left", 0) < 0 || attributeNumber(element, W, "left", 0) + attributeNumber(element, W, "firstLine", 0) - attributeNumber(element, W, "hanging", 0) < 0)) { loss(policy, diagnostics, "word/document.xml", name, "negative indents are unsupported"); }
         if (name.equals("type") && !value(element, "nextPage").equals("nextPage")) { loss(policy, diagnostics, "word/document.xml", name, "only next-page sections are supported"); }
         if (name.equals("u") && !Set.of("single", "none").contains(value(element, "single"))) { loss(policy, diagnostics, "word/document.xml", name, "unsupported underline style"); }

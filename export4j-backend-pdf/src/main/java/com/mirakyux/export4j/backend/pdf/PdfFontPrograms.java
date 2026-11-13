@@ -19,20 +19,34 @@ import com.mirakyux.export4j.model.ExecutionContext;
 final class PdfFontPrograms implements AutoCloseable {
     private final int maxEntries;
     private final long maxSourceBytes;
+    private final PdfFontCache cache;
+    private final boolean reuseSubsets;
     private final LinkedHashMap<String, Entry> entries = new LinkedHashMap<>(8, 0.75f, true);
     private final Set<String> pinned = new HashSet<>();
     private final PdfFontSubsets subsets = new PdfFontSubsets();
     private long sourceBytes;
     private boolean closed;
 
-    PdfFontPrograms() { this(8, 32L * 1024 * 1024); }
+    PdfFontPrograms() { this(PdfFontCache.defaultCache()); }
 
-    PdfFontPrograms(int maxEntries, long maxSourceBytes) {
+    PdfFontPrograms(PdfFontCache cache) { this(cache, true); }
+
+    PdfFontPrograms(PdfFontCache cache, boolean reuseSubsets) { this(8, 32L * 1024 * 1024, cache, reuseSubsets); }
+
+    PdfFontPrograms(int maxEntries, long maxSourceBytes) { this(maxEntries, maxSourceBytes, PdfFontCache.defaultCache()); }
+
+    PdfFontPrograms(int maxEntries, long maxSourceBytes, PdfFontCache cache) {
+        this(maxEntries, maxSourceBytes, cache, true);
+    }
+
+    private PdfFontPrograms(int maxEntries, long maxSourceBytes, PdfFontCache cache, boolean reuseSubsets) {
         if (maxEntries <= 0 || maxSourceBytes <= 0) {
             throw new IllegalArgumentException("font program cache bounds must be positive");
         }
         this.maxEntries = maxEntries;
         this.maxSourceBytes = maxSourceBytes;
+        this.cache = java.util.Objects.requireNonNull(cache, "cache");
+        this.reuseSubsets = reuseSubsets;
     }
 
     /** Null means the caller must use a page-owned program; no cache bound is relaxed. */
@@ -40,9 +54,14 @@ final class PdfFontPrograms implements AutoCloseable {
         if (closed) { throw new IllegalStateException("PDF font program cache is closed"); }
         ExecutionContext.checkpoint();
         var existing = entries.get(data.id());
-        if (existing != null) {
+        if (existing != null && existing.lease().reusable()) {
             pinned.add(data.id());
             return existing.font();
+        }
+        if (existing != null) {
+            existing.lease().close();
+            entries.remove(data.id());
+            sourceBytes -= existing.sourceBytes();
         }
         if (data.byteSize() > maxSourceBytes) { return null; }
         while (entries.size() >= maxEntries || data.byteSize() > maxSourceBytes - sourceBytes) {
@@ -53,7 +72,7 @@ final class PdfFontPrograms implements AutoCloseable {
                 if (!pinned.contains(candidate.getKey())) {
                     removed = candidate.getValue();
                     // Keep a failed close owned by the session so final cleanup can still attempt it.
-                    removed.font().close();
+                    removed.lease().close();
                     candidates.remove();
                     sourceBytes -= removed.sourceBytes();
                     break;
@@ -61,14 +80,19 @@ final class PdfFontPrograms implements AutoCloseable {
             }
             if (removed == null) { return null; }
         }
-        var parsed = parse(data);
-        entries.put(data.id(), new Entry(parsed, data.byteSize()));
+        var lease = cache.acquire(data);
+        var parsed = lease.font();
+        entries.put(data.id(), new Entry(parsed, data.byteSize(), lease));
         sourceBytes += data.byteSize();
         pinned.add(data.id());
         return parsed;
     }
 
     PdfFontSubsets subsets() { return subsets; }
+    boolean reusesSubsets() { return reuseSubsets; }
+
+    /** A failed or abandoned export must not return potentially changed programs to other sessions. */
+    void discard() { entries.values().forEach(entry -> entry.lease().discard()); }
 
     /** Called only after the page's PDF document and all of its font borrowers have closed. */
     void releasePage() { pinned.clear(); subsets.releasePage(); }
@@ -89,7 +113,7 @@ final class PdfFontPrograms implements AutoCloseable {
         subsets.close();
         Throwable failure = null;
         for (var entry : entries.values()) {
-            try { entry.font().close(); }
+            try { entry.lease().close(); }
             catch (IOException | RuntimeException | Error cause) {
                 if (failure == null) { failure = cause; } else { failure.addSuppressed(cause); }
             }
@@ -100,5 +124,5 @@ final class PdfFontPrograms implements AutoCloseable {
         if (failure instanceof Error cause) { throw cause; }
     }
 
-    private record Entry(TrueTypeFont font, int sourceBytes) { }
+    private record Entry(TrueTypeFont font, int sourceBytes, PdfFontCache.Lease lease) { }
 }

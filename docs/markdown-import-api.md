@@ -30,11 +30,26 @@ var losses = imported.report().losses();
 | strong／emphasis／两者组合、删除线 | 完整行内样式；默认角色 `bold`／`italic`／`boldItalic`，删除线保留 |
 | 链接、引用式链接 | 被动 HTTP／HTTPS／mailto；引用定义不进入正文，链接标题另报损失 |
 | 有序／无序及混合嵌套列表 | NumberedItem／BulletItem，最多九层，保持起始编号和父列表关系；模型有序子级使用完整点分编号 |
-| GFM 表格 | 语义 Table、表头、单元格对齐、转义管道及空格；列为等比例，空正文表需明确增加空行 |
-| 显式登记图片 | Paragraph／格中的 InlineImage，保留源替代文字及所在链接；标题／列表只允许明确降级为替代文字 |
-| 代码／引用／任务条目 | 需要明确损失处理；不宣称保留代码语言、引用容器或复选框语义 |
+| GFM 表格 | 语义 Table、表头、单元格对齐、转义管道及空格；列为等比例。仅含表头时保留行及粗体外观，关闭重复，不添加空正文行 |
+| 显式登记图片／矢量 | 段落、标题、有序／无序列表及单元格保留混合行内对象；图片保留源替代文字及所在链接 |
+| 围栏／缩进代码块、行内代码 | 映射为代码角色的字面文字，不再要求损失策略；代码块保留解析后的空白／换行，行内代码遵循 CommonMark 空白规则 |
+| 引用／任务条目 | 仍需明确损失处理；不宣称保留引用容器或复选框语义 |
 
 字体通过 `.fontRoles(strong,emphasis,combined,code)` 指定角色，导出 PDF 时仍须显式登记对应物理字体。默认代码角色为 `code`，不自动获取字体。元数据、纸张及默认正文格式可通过 Builder 提供。
+
+正文格式 `.paragraphFormat(...)` 与表格格式 `.cellFormat(...)` 独立。未设置表格格式时，构建时使用 `CellFormat.of(最终正文的字号)`，保留默认 1.5 倍固定行高；不会继承正文的行高、对齐或换行策略。显式表格格式同时控制单元格和其中行内文字的字号，并保留行高与换行策略。GFM 中明确指定的列对齐优先，未指定的列使用表格格式的对齐。
+
+```java
+import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.ParagraphFormat;
+
+var importer = MarkdownImporter.builder()
+        .paragraphFormat(ParagraphFormat.of(12))
+        .cellFormat(CellFormat.builder().fontSize(12).lineHeight(64).build())
+        .build();
+```
+
+表格中的高图片或行内公式仍须放得进固定行框，应通过 `cellFormat` 预留高度；导入器不会自动缩放资源。格式在 `build()` 时快照，`conversion(...)` 使用相同配置。代码语言元数据及语法高亮不进入模型；代码内容不执行。
 
 ## 资源与策略
 
@@ -45,19 +60,17 @@ var losses = imported.report().losses();
 | 功能键 | DEGRADE | DISCARD |
 | --- | --- | --- |
 | `BLOCK_QUOTE` | 去容器，缩进正文 | 去整个引用子树 |
-| `CODE_BLOCK`／`INLINE_CODE` | 带代码角色的文字，去代码语义及语言 | 去对应代码 |
 | `THEMATIC_BREAK` | 五个连字符文字 | 去分隔线 |
 | `RAW_HTML` | 安全 HTML 按字面文字输出；简单 br 直接为换行 | 去该原始 HTML 节点 |
 | `TASK_LIST` | 保留任务标记字面文字 | 去该任务条目 |
 | `LIST_ITEM_STRUCTURE` | 多块内容平铺并保留缩进 | 去该不支持的子块／条目 |
-| `IMAGE_RESOURCE`／`HEADING_INLINE_OBJECT`／`LIST_INLINE_OBJECT` | 图片变替代文字 | 去图片 |
+| `IMAGE_RESOURCE` | 未登记图片变替代文字 | 去图片 |
 | `LINK_TITLE`／`IMAGE_TITLE`／`RELATIVE_LINK` | 去不支持的标题／目标，保留其余内容 | 同样仅去该属性／目标 |
-| `TABLE_HEADER_ONLY` | 增加空正文行 | 去表格 |
 | `NUMBERING_START` | 零起始编号改为一 | 去该列表 |
 
 未知节点仅允许 DISCARD，不能虚构降级表示。脚本或危险链接即使在将被丢弃的子树内也拒绝；安全原始 HTML 不在这里解释布局。
 
-MinerU 等输入常混有 HTML 表格。默认严格模式会对 `RAW_HTML` 报错；选择 DEGRADE 只得到字面 HTML，不能保留合并格。需要表格语义时，可由调用方显式将 CommonMark 渲染为 HTML，再交给 `HtmlImporter` 严格导入，见[文献 PDF 接入](literature-pdf-integration.md)。这条路径的诊断位置属于生成后的 HTML，不是原 Markdown 偏移。
+本 `MarkdownImporter` 入口默认严格模式仍拒绝 `RAW_HTML`；选择 DEGRADE 只得到字面 HTML，不能保留合并格。对于混合 Markdown／HTML 表格，使用 `ContentImporter` 并显式声明 `ContentOptions.builder().format(ContentOptions.Format.MARKDOWN).rawHtml(true)`，库在既有离线子集内统一解析，保持合并格并把诊断映射回原 Markdown。公式、代码保护及 PDF／原生 Word 双目标见[混合内容与跨格式公式](rich-content-api.md)；不需要使用端另写 CommonMark→HTML 适配。旧 RC3 消费侧接入记录仍见[文献 PDF 接入](literature-pdf-integration.md)。
 
 ## 位置与预算
 

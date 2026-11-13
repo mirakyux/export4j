@@ -60,6 +60,9 @@ final class HtmlCss {
         int orphans = 1;
         int widows = 1;
         boolean borderless;
+        boolean contentDefaults;
+        boolean explicitLine;
+        boolean explicitAlignment;
         final Map<String, String> box = new HashMap<>();
         Computed(ParagraphFormat base) { size = base.fontSize(); line = base.lineHeight() / size; relativeLine = true; after = base.spaceAfter(); }
         Computed(Computed parent) {
@@ -67,6 +70,7 @@ final class HtmlCss {
             bold = parent.bold; italic = parent.italic; underline = parent.underline; strike = parent.strike;
             pre = parent.pre; hidden = parent.hidden; roles = parent.roles; color = parent.color; alignment = parent.alignment;
             orphans = parent.orphans; widows = parent.widows;
+            contentDefaults = parent.contentDefaults; explicitLine = parent.explicitLine; explicitAlignment = parent.explicitAlignment;
         }
         double lineHeight() { return relativeLine ? size * line : line; }
         InlineStyle inline() {
@@ -76,7 +80,8 @@ final class HtmlCss {
             return base.toBuilder().fontSize(size).lineHeight(lineHeight()).alignment(alignment)
                     .firstLineIndent(base.firstLineIndent() + indent + first + extraIndent)
                     .subsequentLineIndent(base.subsequentLineIndent() + indent + extraIndent).spaceBefore(before).spaceAfter(after)
-                    .keepTogether(keepTogether).pagination(new PaginationPolicy(false, false, orphans, widows)).build();
+                    .keepTogether(keepTogether).pagination(new PaginationPolicy(contentDefaults && base.pagination().keepWithNext(),
+                            contentDefaults && base.pagination().pageBreakBefore(), orphans, widows)).build();
         }
     }
     HtmlCss(HtmlImporter importer, ImportSupport.State state) { this.importer = importer; this.state = state; }
@@ -129,15 +134,33 @@ final class HtmlCss {
     }
     Computed get(Element element) {
         var cached = computed.get(element); if (cached != null) { return cached; }
-        Computed parent = element.parent() == null ? new Computed(importer.format) : get(element.parent());
+        Computed parent;
+        if (element.parent() == null) {
+            parent = new Computed(importer.format);
+            if (state.content != null) {
+                var options = state.content.options;
+                parent.roles = List.of(options.fontRole(), "bold", "italic", "boldItalic"); parent.color = options.rgb();
+                parent.alignment = importer.format.alignment(); parent.line = importer.format.lineHeight(); parent.relativeLine = false;
+                parent.contentDefaults = true; parent.orphans = importer.format.pagination().minLinesBeforeBreak(); parent.widows = importer.format.pagination().minLinesAfterBreak();
+            }
+        } else { parent = get(element.parent()); }
         var value = new Computed(parent); String tag = element.normalName();
-        if (tag.matches("h[1-6]")) {
+        if (state.content != null) {
+            value.before = importer.format.spaceBefore(); value.keepTogether = importer.format.keepTogether();
+            if (Set.of("td", "th").contains(tag)) {
+                var cell = state.content.options.cellFormat();
+                if (!parent.explicitSize) { value.size = cell.fontSize(); }
+                if (!parent.explicitLine) { value.line = cell.lineHeight(); value.relativeLine = false; }
+                if (!parent.explicitAlignment) { value.alignment = cell.alignment(); }
+            }
+        }
+        if (state.content == null && tag.matches("h[1-6]")) {
             if (!parent.explicitSize) { var format = Heading.defaultFormat(tag.charAt(1) - '0'); value.size = format.fontSize(); value.line = format.lineHeight() / value.size; value.relativeLine = true; }
         }
         value.bold |= Set.of("strong", "b", "th").contains(tag); value.italic |= Set.of("em", "i").contains(tag);
         value.underline |= tag.equals("u"); value.strike |= Set.of("s", "del", "strike").contains(tag);
         value.after = importer.format.spaceAfter();
-        if (tag.equals("pre")) { value.pre = true; }
+        if (tag.equals("pre") || tag.equals("code")) { value.pre = true; }
         var winners = new HashMap<String, Declaration>();
         for (var rule : rules) {
             state.work(1);
@@ -203,6 +226,7 @@ final class HtmlCss {
             switch (declaration.name()) {
                 case "font-size" -> { value.size = positive(length(text)); value.explicitSize = true; }
                 case "line-height" -> {
+                    value.explicitLine = true;
                     if (text.equals("normal")) { value.line = 1.5; value.relativeLine = true; }
                     else if (text.matches("[0-9]+(?:\\.[0-9]+)?")) { value.line = positive(Double.parseDouble(text)); value.relativeLine = true; }
                     else { value.line = positive(length(text)); value.relativeLine = false; }
@@ -215,7 +239,7 @@ final class HtmlCss {
                     else { value.roles = roles; }
                 }
                 case "color" -> value.color = color(text);
-                case "text-align" -> value.alignment = ParagraphAlignment.valueOf(text.toUpperCase(Locale.ROOT));
+                case "text-align" -> { value.alignment = ParagraphAlignment.valueOf(text.toUpperCase(Locale.ROOT)); value.explicitAlignment = true; }
                 case "text-decoration" -> {
                     var parts = List.of(text.split("\\s+"));
                     if (!Set.of("none", "underline", "line-through").containsAll(parts) || parts.contains("none") && parts.size() != 1) { throw new IllegalArgumentException(); }

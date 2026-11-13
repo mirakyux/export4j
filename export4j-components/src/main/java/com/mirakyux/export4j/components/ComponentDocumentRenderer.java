@@ -242,8 +242,9 @@ public final class ComponentDocumentRenderer {
                     }
                     var component = (ComponentFragment) fragment;
                     var resolved = new TextComponent(reference.prefix() + label, SemanticBlocks.style(reference.format()),
-                            com.mirakyux.export4j.graphics.RgbColor.BLACK).layout(new com.mirakyux.export4j.layout.core.ComponentContext(
-                                    component.layout().width(), component.layout().height(), fonts, page, body.pages().size(), page + 1));
+                            SemanticBlocks.referenceColor(reference)).layout(new com.mirakyux.export4j.layout.core.ComponentContext(
+                                    component.layout().width(), component.layout().height(),
+                                    SemanticBlocks.referenceFonts(reference, fonts, roles), page, body.pages().size(), page + 1, roles));
                     builder.save();
                     if (reference.format().rotation() != 0) {
                         builder.transform(AffineTransform.fittedRotation(new Rect(fragment.origin().x(), fragment.origin().y(),

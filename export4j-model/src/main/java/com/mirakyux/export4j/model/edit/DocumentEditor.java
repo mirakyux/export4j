@@ -289,7 +289,7 @@ public final class DocumentEditor {
                         var prefix = new Paragraph(reference.id(), reference.prefix(), reference.format());
                         var changed = TextEdits.replace(prefix, needle, replacement, location, state);
                         return List.of(changed == prefix ? block : new com.mirakyux.export4j.model.CrossReference(reference.id(), changed.text(),
-                                reference.targetId(), reference.kind(), reference.format()));
+                                reference.targetId(), reference.kind(), reference.format(), reference.appearance()));
                     }
                     if (!(block instanceof Table) && !(block instanceof com.mirakyux.export4j.model.PageBreak)) {
                         state.unsupported("OPAQUE_BLOCK", "REPLACE_TEXT", location, "block has no editable semantic text",
@@ -396,10 +396,10 @@ public final class DocumentEditor {
     private static Block rebuild(Block source, Paragraph value) {
         return switch (source) {
             case Paragraph ignored -> value;
-            case Heading original -> new Heading(value.id(), value.text(), original.level(), value.format(), value.inlines());
-            case BulletItem original -> new BulletItem(value.id(), value.text(), original.marker(), original.level(), value.format(), value.inlines(), original.markerStyle());
-            case NumberedItem original -> new NumberedItem(value.id(), original.listId(), value.text(), original.restartAt(), value.format(), original.level(), value.inlines(), original.markerStyle());
-            case Caption original -> new Caption(value.id(), original.kind(), value.text(), value.format());
+            case Heading original -> new Heading(value.id(), value.text(), original.level(), value.format(), value.inlines(), value.images(), value.fields(), value.vectors());
+            case BulletItem original -> new BulletItem(value.id(), value.text(), original.marker(), original.level(), value.format(), value.inlines(), original.markerStyle(), value.images(), value.fields(), value.vectors());
+            case NumberedItem original -> new NumberedItem(value.id(), original.listId(), value.text(), original.restartAt(), value.format(), original.level(), value.inlines(), original.markerStyle(), value.images(), value.fields(), value.vectors());
+            case Caption original -> new Caption(value.id(), original.kind(), value.text(), value.format(), original.appearance());
             default -> throw new IllegalArgumentException("block has no editable paragraph");
         };
     }

@@ -66,7 +66,7 @@ class XmlTemplateWriterTest {
             .pagination(PaginationPolicy.BALANCED).build();
     private static final InlineStyle STYLE = new InlineStyle("accent", 10, 0x224488, -2, true, true);
 
-    @Test void inlineVectorsFailExplicitlyUnderEveryPolicyBeforeOldTargetsAreTouched(@TempDir Path directory) throws IOException {
+    @Test void inlineVectorsRoundTripWithCompleteGeometryUnderEveryPolicy(@TempDir Path directory) throws IOException {
         var vector = new InlineVector(VectorResource.of(12, 6, 3, List.of(
                 new VectorResource.Segment(VectorResource.Operation.MOVE, List.of(0.0, -6.0)),
                 new VectorResource.Segment(VectorResource.Operation.LINE, List.of(12.0, 3.0)))), "x+y");
@@ -81,17 +81,46 @@ class XmlTemplateWriterTest {
             for (var policy : List.of(ProcessingPolicy.STRICT,
                     ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build(),
                     ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.IGNORE, ProcessingPolicy.Treatment.DISCARD).build())) {
-                var failure = assertThrows(IllegalArgumentException.class,
-                        () -> XmlTemplateWriter.from(document).policy(policy).prepare().to(target));
-                assertTrue(failure.getMessage().contains("inline vectors"));
-                assertEquals("old", Files.readString(target));
+                var prepared = XmlTemplateWriter.from(document).policy(policy).prepare();
+                prepared.to(target);
+                assertEquals(document.blocks(), XmlTemplateBundle.read(Files.readAllBytes(target)).compile().render(Map.of()).blocks());
                 var output = new ByteArrayOutputStream();
-                assertThrows(IllegalArgumentException.class, () -> DocumentConversion.from(document).policy(policy)
-                        .prepare(XmlTemplateWriter.conversionTarget()).to(output));
-                assertEquals(0, output.size());
+                DocumentConversion.from(document).policy(policy).prepare(XmlTemplateWriter.conversionTarget()).to(output);
+                assertEquals(document.blocks(), XmlTemplateBundle.read(output.toByteArray()).compile().renderSections(Map.of())
+                        .sections().getFirst().blocks());
+                assertTrue(prepared.preview().issues().isEmpty());
             }
         }
         try (var paths = Files.list(directory)) { assertEquals(List.of(target), paths.toList()); }
+    }
+
+    @Test void headingAndListsSaveMixedObjectsWithLinksAndLiteralVectorReadingText() throws IOException {
+        var resource = VectorResource.of(12, 6, 3, List.of(
+                new VectorResource.Segment(VectorResource.Operation.MOVE, List.of(0.0, -6.0)),
+                new VectorResource.Segment(VectorResource.Operation.LINE, List.of(12.0, 3.0))));
+        var vector = new InlineVector(resource, "${raw}", 0x224466, "https://example.com/vector");
+        var image = new InlineImage(image(), 12, 10, 0, "Image ${raw}", "https://example.com/image");
+        var content = List.of(new InlineText("Before ", InlineStyle.of(11)), image, vector,
+                new InlineField(InlineField.Kind.PAGE, "", 20, InlineStyle.of(11)), new InlineText(" After", InlineStyle.of(11)));
+        var document = new Document(DocumentMetadata.EMPTY, PAGE, List.of(Heading.mixed("h", content, 1, FORMAT),
+                BulletItem.mixed("b", content, "*", 1, FORMAT), NumberedItem.mixed("n", "steps", content, 0, FORMAT, 1)));
+        var bundle = XmlTemplateWriter.from(document).prepare().bundle();
+        for (int i = 0; i < 3; i++) {
+            var restored = XmlTemplateBundle.read(bundle.encode()).compile().render(Map.of());
+            assertEquals(document.blocks(), restored.blocks());
+            bundle = XmlTemplateWriter.from(restored).prepare().bundle();
+        }
+    }
+
+    @Test void malformedVectorPathsAreRejectedBeforeBindingAndCannotExecuteExpressions() {
+        for (String segment : List.of("<segment operation='LINE' points='0 0'/>",
+                "<segment operation='MOVE' points='NaN 0'/>", "<segment operation='MOVE' points='0 0 1'/>",
+                "<segment operation='MOVE' points='${x} 0'/>", "<segment operation='MOVE' points='20 0'/>",
+                "<segment operation='MOVE' points='0 0' href='https://example.com'/>")) {
+            String source = "<document version='1'><p><vector width='12' ascent='6' descent='3' logical='x'>"
+                    + segment + "</vector></p></document>";
+            assertThrows(TemplateException.class, () -> XmlTemplate.builder().build().compile(source));
+        }
     }
 
     @Test void renamedListIdsDoNotMergeIndependentListsAcrossSections() throws IOException {

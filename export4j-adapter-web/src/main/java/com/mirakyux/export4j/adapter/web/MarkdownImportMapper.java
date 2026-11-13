@@ -98,9 +98,9 @@ final class MarkdownImportMapper {
         if (node instanceof org.commonmark.node.Paragraph) {
             output.add(Paragraph.mixed(id, inlines(node, context(format), location), format));
         } else if (node instanceof org.commonmark.node.Heading heading) {
-            var headingFormat = indent(com.mirakyux.export4j.model.Heading.defaultFormat(heading.getLevel()), (quoteDepth + listDepth) * 18);
-            output.add(com.mirakyux.export4j.model.Heading.rich(id,
-                    textOnly(inlines(node, context(headingFormat), location), "HEADING_INLINE_OBJECT", location), heading.getLevel(), headingFormat));
+            var headingFormat = indent(state.content == null ? com.mirakyux.export4j.model.Heading.defaultFormat(heading.getLevel()) : importer.format, (quoteDepth + listDepth) * 18);
+            output.add(com.mirakyux.export4j.model.Heading.mixed(id,
+                    inlines(node, context(headingFormat), location), heading.getLevel(), headingFormat));
         } else if (node instanceof ListBlock list) {
             list(list, output, quoteDepth, listDepth + 1, list instanceof OrderedList ? id : "", 0);
         } else if (node instanceof BlockQuote) {
@@ -108,14 +108,15 @@ final class MarkdownImportMapper {
                 blocks(node, output, quoteDepth + 1, listDepth);
             }
         } else if (node instanceof FencedCodeBlock code) {
-            if (loss("CODE_BLOCK", location, "model has no fenced code block or language metadata", "CODE_STRUCTURE_AND_LANGUAGE_REMOVED") == Treatment.DEGRADE) {
-                output.add(code(id, code.getLiteral(), format));
-            }
+            output.add(code(id, code.getLiteral(), format));
         } else if (node instanceof IndentedCodeBlock code) {
-            if (loss("CODE_BLOCK", location, "model has no code block container", "CODE_STRUCTURE_REMOVED") == Treatment.DEGRADE) {
-                output.add(code(id, code.getLiteral(), format));
-            }
-        } else if (node instanceof TableBlock) { table(node, id, location, output); }
+            output.add(code(id, code.getLiteral(), format));
+        } else if (node instanceof TableBlock) {
+            if (state.content != null && !state.content.options.tables()) {
+                String literal = state.content.raw(location.startUtf16(), location.endUtf16()); state.text(literal);
+                output.add(Paragraph.mixed(id, List.of(new InlineText(literal, state.content.style(format.fontSize()))), format));
+            } else { table(node, id, location, output); }
+        }
         else if (node instanceof ThematicBreak) {
             if (loss("THEMATIC_BREAK", location, "model has no semantic thematic break", "RULE_REPLACED_WITH_TEXT") == Treatment.DEGRADE) {
                 state.text(5); output.add(new Paragraph(id, "-----", format));
@@ -150,7 +151,7 @@ final class MarkdownImportMapper {
             }
             int level = ordered ? numberDepth : visualDepth;
             var format = indent(importer.format, (quoteDepth + (ordered ? visualDepth - numberDepth : 0)) * 18);
-            var runs = textOnly(inlines(paragraph, context(format), location(paragraph, id, List.of())), "LIST_INLINE_OBJECT", location);
+            var runs = inlines(paragraph, context(format), location(paragraph, id, List.of()));
             if (paragraph.getFirstChild() instanceof Text text && text.getLiteral().matches("(?s)^\\[[ xX]\\](?:[ \\t].*|$)")) {
                 if (loss("TASK_LIST", location, "model has no task checkbox semantics", "TASK_STATE_RETAINED_AS_LITERAL_TEXT") == Treatment.DISCARD) {
                     index++; restart = true; continue;
@@ -158,9 +159,9 @@ final class MarkdownImportMapper {
             }
             if (ordered) {
                 int start = restart ? Math.addExact(firstNumber, index) : 0;
-                output.add(NumberedItem.rich(id, effectiveId, runs, start, format, level));
+                output.add(NumberedItem.mixed(id, effectiveId, runs, start, format, level));
                 restart = false;
-            } else { output.add(BulletItem.rich(id, runs, "•", level, format)); }
+            } else { output.add(BulletItem.mixed(id, runs, "•", level, format)); }
             for (var child = paragraph.getNext(); child != null; child = child.getNext()) {
                 if (child instanceof ListBlock nested) {
                     list(nested, output, quoteDepth, visualDepth + 1, effectiveId, numberDepth);
@@ -176,41 +177,50 @@ final class MarkdownImportMapper {
     }
     private Paragraph code(String id, String literal, ParagraphFormat format) {
         state.text(literal.length());
-        return new Paragraph(id, List.of(new InlineText(literal, InlineStyle.of(format.fontSize()).toBuilder().fontRole(importer.codeRole).build())), format);
+        var style = state.content == null ? InlineStyle.of(format.fontSize()).toBuilder().fontRole(importer.codeRole).build()
+                : state.content.style(format.fontSize());
+        return new Paragraph(id, List.of(new InlineText(literal, style)), format);
     }
     private void table(Node source, String id, ProcessingIssue.Location location, List<Block> output) {
         var rows = new ArrayList<TableRow>(); int headers = 0; int columns = -1;
         for (var group = source.getFirstChild(); group != null; group = group.getNext()) {
             for (var row = group.getFirstChild(); row != null; row = row.getNext()) {
+                state.row();
                 state.work(1); var cells = new ArrayList<TableCell>(); int column = 0;
                 for (var value = row.getFirstChild(); value != null; value = value.getNext()) {
                     if (!(value instanceof org.commonmark.ext.gfm.tables.TableCell cell)) { throw new IllegalArgumentException("invalid Markdown table cell"); }
-                    if (++state.tableSlots > state.limits.maxTableSlots()) { throw new IllegalArgumentException("import table slot budget exceeded"); }
+                    state.slots(1);
                     var path = List.of(new CellLocation(id, rows.size(), column++, -1));
                     var cellLocation = location(value, id, path);
-                    ParagraphAlignment alignment = cell.getAlignment() == null ? ParagraphAlignment.LEFT : switch (cell.getAlignment()) {
+                    ParagraphAlignment alignment = cell.getAlignment() == null ? importer.cellFormat.alignment() : switch (cell.getAlignment()) {
                         case LEFT -> ParagraphAlignment.LEFT; case CENTER -> ParagraphAlignment.CENTER; case RIGHT -> ParagraphAlignment.RIGHT;
                     };
-                    var format = CellFormat.of(importer.format.fontSize()).withAlignment(alignment);
-                    cells.add(TableCell.mixed(inlines(cell, context(importer.format), cellLocation), format));
+                    var format = importer.cellFormat.withAlignment(alignment);
+                    cells.add(TableCell.mixed(inlines(cell, context(format), cellLocation), format));
                 }
                 if (columns == -1) { columns = column; }
                 if (columns != column || column == 0) { throw new IllegalArgumentException("invalid Markdown table coverage"); }
                 rows.add(new TableRow(cells)); if (group instanceof TableHead) { headers++; }
             }
         }
-        if (rows.size() <= headers) {
-            if (loss("TABLE_HEADER_ONLY", location, "model requires at least one table body row", "EMPTY_BODY_ROW_ADDED") != Treatment.DEGRADE) { return; }
-            var empty = new ArrayList<TableCell>();
-            for (int column = 0; column < columns; column++) {
-                if (++state.tableSlots > state.limits.maxTableSlots()) { throw new IllegalArgumentException("import table slot budget exceeded"); }
-                empty.add(new TableCell("", CellFormat.of(importer.format.fontSize())));
+        // A header-only table has no repetition boundary. Keep its actual rows once; never invent
+        // an empty body row. Header cell text already retains the input's inline appearance.
+        if (rows.size() == headers) {
+            headers = 0;
+            for (int row = 0; row < rows.size(); row++) {
+                var cells = new ArrayList<TableCell>();
+                for (var cell : rows.get(row).cells()) {
+                    var runs = cell.inlines().stream().map(text -> new InlineText(text.text(),
+                            text.style().toBuilder().fontRole(importer.strongRole).build(), text.hyperlink())).toList();
+                    cells.add(new TableCell(cell.text(), cell.format(), runs, cell.images(), cell.fields(), cell.vectors(),
+                            cell.columnSpan(), cell.rowSpan(), cell.blocks()));
+                }
+                rows.set(row, new TableRow(cells));
             }
-            rows.add(new TableRow(empty));
         }
         var widths = new ArrayList<ColumnWidth>();
         for (int column = 0; column < columns; column++) { widths.add(new ColumnWidth.Fraction(1)); }
-        output.add(new Table(id, widths, rows, headers, TableFormat.DEFAULT));
+        output.add(new Table(id, widths, rows, headers, state.content == null ? TableFormat.DEFAULT : state.content.options.tableFormat()));
     }
     private List<InlineContent> inlines(Node parent, Context context, ProcessingIssue.Location location) {
         var output = new ArrayList<InlineContent>();
@@ -227,9 +237,9 @@ final class MarkdownImportMapper {
             } else if (node instanceof Strikethrough) {
                 output.addAll(inlines(node, new Context(context.style().toBuilder().strikeThrough(true).build(), context.link(), context.strong(), context.emphasis()), at));
             } else if (node instanceof Code code) {
-                if (loss("INLINE_CODE", at, "model has no inline code semantics", "INLINE_CODE_RETAINED_AS_STYLED_TEXT") == Treatment.DEGRADE) {
-                    text(output, code.getLiteral(), new Context(context.style().toBuilder().fontRole(importer.codeRole).build(), context.link(), false, false));
-                }
+                var style = state.content == null ? context.style().toBuilder().fontRole(importer.codeRole).build() : context.style();
+                // Code is literal text: dollar delimiters and markup are never reinterpreted.
+                text(output, code.getLiteral(), new Context(style, context.link(), false, false));
             } else if (node instanceof Link link) {
                 String destination = link(link.getDestination(), at);
                 if (link.getTitle() != null && !link.getTitle().isEmpty()) { loss("LINK_TITLE", at, "model has no hyperlink title", "LINK_TITLE_REMOVED"); }
@@ -241,6 +251,7 @@ final class MarkdownImportMapper {
                 if (vector != null) {
                     if (image.getTitle() != null && !image.getTitle().isEmpty()) { loss("IMAGE_TITLE", at, "model has no image title", "IMAGE_TITLE_REMOVED"); }
                     String target = context.link().isEmpty() ? vector.hyperlink() : context.link();
+                    if (state.content != null) { state.content.vector(vector); }
                     state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
                     output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), target));
                 } else if (resource == null) {
@@ -257,23 +268,10 @@ final class MarkdownImportMapper {
         return List.copyOf(output);
     }
     private void text(List<InlineContent> output, String literal, Context context) {
-        state.text(literal.length()); output.add(new InlineText(literal, context.style(), context.link()));
+        if (state.content != null) { output.addAll(state.content.text(literal, context.style(), context.link(), state, false)); }
+        else { state.text(literal.length()); output.add(new InlineText(literal, context.style(), context.link())); }
     }
-    private List<InlineText> textOnly(List<InlineContent> content, String feature, ProcessingIssue.Location location) {
-        var runs = new ArrayList<InlineText>();
-        for (var item : content) {
-            if (item instanceof InlineText run) { runs.add(run); }
-            else if (item instanceof InlineImage image && loss(feature, location, "text-only model block cannot retain an image", "IMAGE_REPLACED_WITH_ALT_TEXT") == Treatment.DEGRADE) {
-                state.text(image.altText().length()); runs.add(new InlineText(image.altText(), InlineStyle.of(importer.format.fontSize()), image.hyperlink()));
-            } else if (item instanceof InlineVector vector) {
-                state.unsupported("INLINE_VECTOR", location, "heading/list cannot retain an inline vector",
-                        List.of("VECTOR_REPLACED_WITH_LOGICAL_TEXT"), Treatment.DEGRADE);
-                state.text(vector.logicalText().length());
-                runs.add(new InlineText(vector.logicalText(), InlineStyle.of(importer.format.fontSize()).toBuilder().rgb(vector.rgb()).build(), vector.hyperlink()));
-            }
-        }
-        return runs;
-    }
+
     private String plain(Node parent) {
         var result = new StringBuilder(); var stack = new ArrayDeque<Node>();
         for (var child = parent.getLastChild(); child != null; child = child.getPrevious()) { stack.push(child); }
@@ -311,7 +309,8 @@ final class MarkdownImportMapper {
         boolean discard = state.policy.resolve("MARKDOWN", feature, "IMPORT").treatment() == Treatment.DISCARD;
         return state.unsupported(feature, location, reason, List.of(discard ? "CONTENT_REMOVED" : effect), Treatment.DEGRADE, Treatment.DISCARD);
     }
-    private static Context context(ParagraphFormat format) { return new Context(InlineStyle.of(format.fontSize()), "", false, false); }
+    private Context context(ParagraphFormat format) { return new Context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.style(format.fontSize()), "", false, false); }
+    private Context context(CellFormat format) { return new Context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.style(format.fontSize()), "", false, false); }
     private static ParagraphFormat indent(ParagraphFormat format, double amount) {
         return format.toBuilder().firstLineIndent(format.firstLineIndent() + amount).subsequentLineIndent(format.subsequentLineIndent() + amount).build();
     }

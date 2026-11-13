@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":export4j-adapter-template"))
     implementation(project(":export4j-adapter-pdf"))
     implementation(project(":export4j-adapter-web"))
+    implementation(project(":export4j-math"))
     implementation(libs.jlatexmath) {
         isTransitive = false
     }
@@ -59,6 +60,24 @@ tasks.register<JavaExec>("inlineVectors") {
     description = "Generates baseline-preserving inline vector mathematics in paragraphs, cells and HTML imports."
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.mirakyux.export4j.examples.InlineVectorsExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("contentBlocks") {
+    group = "application"
+    description = "Generates equivalent Java/XML source content with scoped defaults and explicit DOCX losses."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.ContentBlocksExample")
+    workingDir = rootProject.projectDir
+    systemProperty("java.awt.headless", "true")
+}
+
+tasks.register<JavaExec>("math") {
+    group = "application"
+    description = "Uses the public optional math API for Markdown, vector PDF/SVG/PNG and editable Word equations."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.mirakyux.export4j.examples.MathExample")
     workingDir = rootProject.projectDir
     systemProperty("java.awt.headless", "true")
 }

@@ -2,6 +2,8 @@
 package com.mirakyux.export4j.adapter.docx;
 
 import com.mirakyux.export4j.model.Block;
+import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionException;
@@ -15,6 +17,10 @@ import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
+import com.mirakyux.export4j.model.Table;
+import com.mirakyux.export4j.model.TableCell;
+import com.mirakyux.export4j.model.TableFormat;
+import com.mirakyux.export4j.model.TableRow;
 import com.mirakyux.export4j.model.VectorResource;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -68,7 +74,11 @@ class DocxMathTest {
         var replacement = new DocxMath.Fraction(run("p"), run("q"));
         var changed = current.withEquation(current.equations().getFirst().id(), replacement);
         var reopened = read(stripMetadata(write(changed))).document();
-        assertEquals(replacement, reopened.equations().getFirst().expression());
+        var resolvedReplacement = new DocxMath.Fraction(
+                new DocxMath.Run("p", DocxMath.Style.ITALIC, 18, 0),
+                new DocxMath.Run("q", DocxMath.Style.ITALIC, 18, 0));
+        assertEquals(resolvedReplacement, changed.equations().getFirst().expression());
+        assertEquals(resolvedReplacement, reopened.equations().getFirst().expression());
         assertEquals(expected.subList(1, 8), reopened.equations().subList(1, 8).stream().map(DocxMathDocument.Equation::expression).toList());
         assertEquals(expected.getFirst(), current.equations().getFirst().expression());
         assertEquals(texts(current), texts(reopened));
@@ -85,6 +95,100 @@ class DocxMathTest {
         assertEquals(0, xml(write(source)).getElementsByTagNameNS(M, "oMathPara").getLength());
         assertThrows(IllegalArgumentException.class, () -> document(List.of(paragraph), List.of(
                 equation("bad", "inline", 4, DocxMathDocument.Placement.DISPLAY_CENTER, run("x")))));
+    }
+
+    @Test void bodyCellEquationsRetainTheirAnchorsWithoutPromotingOrdinaryRepeatedHeaders() throws IOException {
+        var paragraph = new Paragraph("cell-math", "A \ufffc B", ParagraphFormat.of(12));
+        var source = document(List.of(headerTable(TableCell.builder().blocks(List.of(paragraph)).build())),
+                List.of(equation("cell-equation", paragraph.id(), 2, DocxMathDocument.Placement.INLINE,
+                        new DocxMath.Fraction(run("a"), run("b")))));
+        byte[] encoded = write(source);
+        for (var input : List.of(encoded, stripMetadata(encoded))) {
+            var current = read(input).document();
+            for (int round = 0; round < 3; round++) {
+                var table = (Table) current.semantic().body().sections().getFirst().blocks().getFirst();
+                assertEquals(1, table.headerRows());
+                assertFalse(table.rows().getFirst().cells().getFirst().hasBlocks());
+                assertEquals("Header", table.rows().getFirst().cells().getFirst().text());
+                var bodyCell = table.rows().get(1).cells().getFirst();
+                if (input == encoded) { assertTrue(bodyCell.hasBlocks()); }
+                var retained = bodyCell.hasBlocks() ? (Paragraph) bodyCell.blocks().getFirst()
+                        : DocxSemanticSupport.cellParagraph(table, table.grid().anchorRows().get(1).getFirst());
+                assertEquals(paragraph.text(), retained.text());
+                var actual = current.equations().getFirst();
+                assertEquals(retained.id(), actual.anchor().paragraphId());
+                assertEquals(2, actual.anchor().utf16());
+                assertEquals(source.equations().getFirst().expression(), actual.expression());
+                var restored = read(write(current)).document();
+                assertEquals(current.equations(), restored.equations());
+                current = restored;
+            }
+        }
+    }
+
+    @Test void plainHeaderTableSemanticRoundtripRetainsInlineCellsAndItsTableReference() throws IOException {
+        var table = headerTable(new TableCell("Body", CellFormat.of(12)));
+        var references = Paragraph.mixed("refs", List.of(new InlineField(InlineField.Kind.REFERENCE_PAGE,
+                table.id(), 24, InlineStyle.of(12))), ParagraphFormat.of(12));
+        var source = new DocxSemanticDocument(document(List.of(table, references), List.of()).semantic().body());
+        for (int round = 0; round < 3; round++) {
+            var encoded = new ByteArrayOutputStream();
+            ADAPTER.writeSemantic(source, encoded);
+            var result = ADAPTER.readSemantic(new ByteArrayInputStream(encoded.toByteArray()), DocxAdapter.Policy.STRICT);
+            assertTrue(result.diagnostics().isEmpty());
+            var retained = (Table) result.document().body().sections().getFirst().blocks().getFirst();
+            assertEquals(table.id(), retained.id());
+            assertEquals(1, retained.headerRows());
+            assertFalse(retained.hasBlockCells());
+            assertEquals("Header", retained.rows().getFirst().cells().getFirst().text());
+            assertEquals("Body", retained.rows().get(1).cells().getFirst().text());
+            var reference = (Paragraph) result.document().body().sections().getFirst().blocks().get(1);
+            assertEquals(retained.id(), reference.fields().getFirst().field().targetId());
+            source = result.document();
+        }
+    }
+
+    @Test void genuineBlockHeaderRemainsRejectedForWriteAndReadUnderEveryPolicy() throws IOException {
+        var header = TableCell.builder().blocks(List.of(new Paragraph("header-block", "Header", ParagraphFormat.of(12)))).build();
+        var source = new Table("table", List.of(new ColumnWidth.Fraction(1)),
+                List.of(new TableRow(List.of(header)), new TableRow(List.of(new TableCell("Body", CellFormat.of(12))))),
+                1, TableFormat.DEFAULT);
+        var output = new ByteArrayOutputStream();
+        var failure = assertThrows(IOException.class, () -> ADAPTER.writeSemantic(
+                new DocxSemanticDocument(document(List.of(source), List.of()).semantic().body()), output));
+        assertTrue(failure.getMessage().contains("repeated parent table headers"));
+        assertEquals(0, output.size());
+        byte[] encoded = write(document(List.of(headerTable(new TableCell("Body", CellFormat.of(12)))), List.of()));
+        byte[] malformed = mutate(encoded, root -> {
+            var cell = (Element) root.getElementsByTagNameNS(DocxSemanticXml.W, "tc").item(0);
+            cell.setAttributeNS(DocxSemanticXml.OD, "od:content", "blocks");
+            DocxAdapter.child(cell, "p").removeAttributeNS(DocxSemanticXml.OD, "inlineCell");
+            DocxAdapter.child(cell, "p").setAttributeNS(DocxSemanticXml.OD, "od:id", "genuine-header");
+        });
+        for (var policy : DocxAdapter.Policy.values()) {
+            var rejected = assertThrows(IOException.class,
+                    () -> ADAPTER.readSemantic(new ByteArrayInputStream(malformed), policy));
+            assertTrue(rejected.getMessage().contains("repeated parent table headers"));
+        }
+    }
+
+    @Test void metadataFreeNativeRevisionKeepsTheGeneratedBodyCellParagraphAnchor() throws IOException {
+        var paragraph = new Paragraph("cell-revision", "AB", ParagraphFormat.of(12));
+        var body = document(List.of(headerTable(TableCell.builder().blocks(List.of(paragraph)).build())), List.of()).semantic().body();
+        var revision = new DocxSemanticDocument.Revision("inserted", DocxSemanticDocument.RevisionKind.INSERT,
+                DocxSemanticDocument.Range.of(paragraph.id(), 0, 1), "Author", null, "", null, null);
+        var semantic = new DocxSemanticDocument(body, List.of(), List.of(), List.of(revision), List.of(), List.of());
+        var output = new ByteArrayOutputStream();
+        ADAPTER.writeSemantic(semantic, output);
+        var result = ADAPTER.readSemantic(new ByteArrayInputStream(stripMetadata(output.toByteArray())),
+                DocxAdapter.Policy.STRICT).document();
+        var table = (Table) result.body().sections().getFirst().blocks().getFirst();
+        assertFalse(table.rows().getFirst().cells().getFirst().hasBlocks());
+        var bodyCell = table.rows().get(1).cells().getFirst();
+        assertTrue(bodyCell.hasBlocks());
+        var retained = (Paragraph) bodyCell.blocks().getFirst();
+        assertEquals("AB", retained.text());
+        assertEquals(DocxSemanticDocument.Range.of(retained.id(), 0, 1), result.revisions().getFirst().range());
     }
 
     @Test void nativeEquationsCannotClaimVectorMarkersAndWriteRejectsTheirGeometry() {
@@ -350,6 +454,11 @@ class DocxMathTest {
         return document(paragraphs, equations);
     }
     private static DocxMath run(String value) { return new DocxMath.Run(value); }
+    private static Table headerTable(TableCell body) {
+        return new Table("table", List.of(new ColumnWidth.Fixed(200)),
+                List.of(new TableRow(List.of(new TableCell("Header", CellFormat.of(12)))), new TableRow(List.of(body))),
+                1, TableFormat.DEFAULT);
+    }
     private static DocxMath plain(String value) { return new DocxMath.Run(value, DocxMath.Style.PLAIN); }
     private static DocxMathDocument.Equation equation(String id, String paragraph, int position, DocxMathDocument.Placement placement, DocxMath value) { return new DocxMathDocument.Equation(id, new DocxSemanticDocument.Point(paragraph, position), placement, value); }
     private static DocxMathDocument document(List<? extends Block> blocks, List<DocxMathDocument.Equation> equations) { return new DocxMathDocument(new SectionedDocument(DocumentMetadata.EMPTY, List.of(new Section("main", PageSettings.A4, List.copyOf(blocks), 0))), equations); }

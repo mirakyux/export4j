@@ -17,15 +17,18 @@ import com.mirakyux.export4j.layout.ParagraphFragment;
 import com.mirakyux.export4j.layout.TableFragment;
 import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.Note;
+import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
@@ -92,6 +95,28 @@ class InlineImagesTest {
                 List.of(new Note("n", "p", "Canonical image note", Note.Kind.FOOTNOTE)));
         assertEquals(1, withNote.display().extras().externalLinks().size());
         assertEquals(1, withNote.display().pages().stream().flatMap(p -> p.commands().stream()).filter(DrawCommand.Image.class::isInstance).count());
+    }
+
+    @Test void headingAndBothListKindsDrawImagesOnceWithTheirOwnLinksAfterPrefixInsertion() throws IOException {
+        var icon = image();
+        var content = List.<InlineContent>of(new InlineText("Before ", InlineStyle.of(12)), icon,
+                new InlineText(" After", InlineStyle.of(12), "https://example.com/after"));
+        var document = new Document(DocumentMetadata.EMPTY,
+                new PageSettings(new PageSize(220, 80), PageMargins.uniform(12)),
+                List.of(Heading.mixed("h", content, 1, FORMAT), BulletItem.mixed("b", content, "*", 1, FORMAT),
+                        NumberedItem.mixed("n", "steps", content, 0, FORMAT, 1)));
+        var result = engine().layout(document);
+        assertTrue(result.body().pages().size() > 1);
+        var commands = result.display().pages().stream().flatMap(page -> page.commands().stream())
+                .filter(DrawCommand.Image.class::isInstance).map(DrawCommand.Image.class::cast).toList();
+        var links = result.display().extras().externalLinks().stream()
+                .filter(link -> link.destination().uri().equals("https://example.com/icon")).toList();
+        assertEquals(3, commands.size());
+        assertEquals(commands.stream().map(DrawCommand.Image::bounds).toList(), links.stream().map(link -> link.bounds()).toList());
+        assertEquals(3, result.display().extras().externalLinks().stream()
+                .filter(link -> link.destination().uri().equals("https://example.com/after")).count());
+        assertEquals("Before Icon After", Navigation.fromHeadings(document, TableOfContents.NONE, List.of(), List.of())
+                .bookmarks().getFirst().title());
     }
 
     @Test void nativeTextLinksOnEitherSideNeverIncludeTheImageAdvance() throws IOException {

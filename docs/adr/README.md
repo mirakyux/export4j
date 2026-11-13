@@ -129,3 +129,8 @@
 | 0110 | [语义栅格、XML 保存与设计器](0110-editable-semantic-grid.md) | 已采纳；显式轨道／跨轨项、整行原子分页及真实项边界 |
 | 0111 | [普通文档按页规划、重放与释放](0111-page-at-a-time-document-export.md) | 已采纳；共享分页、最终语义、轻量摘要及单页 PDF 对象直接复制 |
 | 0112 | [普通内容块的按需输入与显式重放](0112-incremental-block-source.md) | 已采纳；当前页来源窗口、单遍已知总数及两遍稳定快照 |
+| 0113 | [可选的有界公式转换与 Markdown 识别](0113-optional-bounded-math.md) | 已采纳；可选依赖、显式子集、逐次锚点与预算／取消 |
+| 0114 | [字体缓存按内容寻址并在空闲后释放](0114-idle-expiring-font-caches.md) | 已采纳；有界默认复用、独占解析租约及无请求空闲清理 |
+| 0115 | [源内容块在编写边界解析并逐属性继承](0115-source-content-options.md) | 已采纳；互斥源格式、显式公式装配、词法默认值及跨源累计预算；实际验收另录 |
+| 0116 | [标题与列表保留混合内容，XML 保存静态矢量](0116-mixed-semantic-blocks-and-static-vectors.md) | 已采纳；统一原子对象、UTF-16 来源及完整静态路径保存；实际验收另录 |
+| 0117 | [一次源编译生成视觉公式与原生 Word 数学](0117-single-source-math-representations.md) | 已采纳；私有出现身份、逐目标显式表示与短生命周期字体入口；实际验收另录 |

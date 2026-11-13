@@ -12,6 +12,8 @@ import shutil
 import subprocess
 import zipfile
 
+from publication_scope import published_libraries
+
 
 def jdk_tool(name: str) -> str:
     suffix = ".exe" if os.name == "nt" else ""
@@ -70,8 +72,8 @@ def snapshot(root: Path, reference: str, version: str = "0.1.0-SNAPSHOT") -> dic
         if len(archives) != 1:
             raise RuntimeError(f"Assemble exactly one candidate JAR for {module.name}; found {len(archives)}")
         modules[module.name] = snapshot_jar(archives[0])
-    if len(modules) != 16 or not all(modules.values()):
-        raise RuntimeError("Expected the complete 16-library API, without empty modules")
+    if set(modules) != published_libraries(root) or not all(modules.values()):
+        raise RuntimeError("Expected the complete configured library API, without empty modules")
     return {"schema": 1, "reference": reference, "jdk": "21", "modules": modules}
 
 

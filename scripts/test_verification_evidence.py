@@ -209,6 +209,8 @@ class CoordinateConsumerEvidenceTest(unittest.TestCase):
             records.append(identity + "\t" + str(path))
             hashes.append(identity + "\t" + filename + "\t" + hashlib.sha256(payload).hexdigest())
         libraries_report = [row.split("\t")[0] for row in records]
+        modules = [row.split(":")[1] for row in libraries_report] + ["export4j-bom"]
+        (root / "settings.gradle.kts").write_text("include(" + ",".join('"' + name + '"' for name in modules) + ")", encoding="utf-8")
         if change == "missing":
             records.pop()
         if change == "duplicate":

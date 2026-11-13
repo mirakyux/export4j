@@ -1,6 +1,6 @@
 # 行内矢量资源
 
-`InlineVector` 将调用方已经生成的有界轮廓放入普通段落、语义表格单元格及固定页区，与相邻文字一起换行和分页。PDF、SVG、PNG 使用同一布局结果。该入口不解析 TeX、SVG 或 MathML，也不引入公式运行库；公式解析、许可、字体及来源映射由调用方负责。
+`InlineVector` 将调用方已经生成的有界轮廓放入段落、标题、两种列表、语义表格单元格及固定页区，与相邻文字一起换行和分页。PDF、SVG、PNG 使用同一布局结果。该入口不解析 TeX、SVG 或 MathML，也不引入公式运行库；TeX 公式可直接使用可选[公式模块](math-api.md)，无需使用端维护解析和轮廓捕获。
 
 ## 创建原子内容
 
@@ -64,7 +64,28 @@ var markdown = MarkdownImporter.builder().paragraphFormat(format)
 
 注册键精确匹配 HTML `img src` 或 Markdown 图片 destination；图片和矢量不能占用同一个键。不会读取键指向的文件、下载资源或把任意 `$...$` 当作公式。注册对象的 `logicalText` 是公式原文，`alt` 不替代它。HTML 显式宽高／CSS 尺寸必须等于资源的 pt 尺寸，冲突直接失败；需要缩放时由调用方重新生成整体资源。
 
-普通段落和语义单元格保留矢量。标题与列表的文字模型不能承载该对象，STRICT 拒绝；仅显式对 `INLINE_VECTOR` 采用 DEGRADE 才替换为逻辑文字并报告 `VECTOR_REPLACED_WITH_LOGICAL_TEXT`。`MarkdownTemplate` 是另一个模板入口，本次不增加矢量语法。
+段落、标题、两种列表及语义单元格均保留矢量，可分别使用 `Paragraph.mixed`、`Heading.mixed`、`BulletItem.mixed`、`NumberedItem.mixed` 和 `TableCell.mixed`。列表前缀只移动对象的 UTF-16 锚点，不展开公式或重建轮廓；列表 Builder 的 `content(...)` 立即快照输入，最终字号只决定内部对象占位样式，显式文字样式保持原值。自动标题书签使用普通文字、图片 alt 和矢量阅读文字；含动态字段的标题须使用明确书签标题。`MarkdownTemplate` 是另一个模板入口，本次不增加矢量语法。
+
+`Document.Builder` 的混合内容便利入口为 `headingContent(content, level)`、`bulletContent(content)` 和 `numberedContent(listId, content)`。原有 `heading`／`bullet`／`numbered` 的 `List<InlineText>` 签名及行为保留。
+
+## XML 保存与恢复
+
+XML v1 支持静态的有界路径，可与文字、图片、字段混排，并通过 `XmlTemplateWriter` 保存为普通资源 ZIP：
+
+```xml
+<document version="1">
+  <heading level="1" size="12" line-height="24">Symbol:
+    <vector width="18" ascent="10" descent="2" logical="\triangle" color="#223344">
+      <segment operation="MOVE" points="0 2"/>
+      <segment operation="LINE" points="9 -10"/>
+      <segment operation="LINE" points="18 2"/>
+      <segment operation="CLOSE"/>
+    </vector>
+  </heading>
+</document>
+```
+
+尺寸、坐标、操作顺序、颜色和段数使用同一模型校验。`logical` 始终作为字面阅读文字，`${...}` 不会单独插值后与旧轮廓错配；动态公式须重建整个资源或使用公式模块。路径无外部资源引用。编译、绑定、保存及 ZIP 各自保留有限输入、节点、文字及输出预算。标题／列表保存保留原对象顺序、外链和 UTF-16 位置；标题不接受脚注标记，两种列表接受有匹配注释的显式脚注标记。
 
 ## 输出与文字提取边界
 
@@ -74,7 +95,7 @@ var markdown = MarkdownImporter.builder().paragraphFormat(format)
 | SVG／PNG | 绘制同一矢量；带交互链接时仍按静态后端契约拒绝，不静默删链接 |
 | HTML／Markdown 导出 | STRICT 拒绝；明确 `INLINE_VECTOR`／DEGRADE 时输出转义后的逻辑文字，并报告轮廓／颜色／几何损失 |
 | DOCX | 普通无损写出入口拒绝；统一转换明确 `INLINE_VECTOR`／DEGRADE 时输出逻辑文字并报告损失，不转成 OMML 或图片 |
-| XML 模型保存／资源 ZIP | v1 未定义矢量编码，所有策略均拒绝，不生成会丢失轮廓的恢复数据 |
+| XML 模型保存／资源 ZIP | v1 静态路径编码完整保存几何、颜色、链接和阅读文字；非法路径或预算超限直接拒绝 |
 
 `ActualText` 不是普通字体字形：支持该属性的阅读器可搜索原文，忽略它的提取器可能只看到轮廓的不可见锚点，不能承诺逐字坐标或任意阅读器选区。原 TeX 只作为逻辑阅读文字，不能据此声称可编辑公式、TeX↔OMML 转换或 PDF/UA 合规。
 

@@ -55,7 +55,7 @@ HTML 语义导入默认使用等比例表格列。需要按内容分配时，将
 
 ## 数学和文本提取
 
-高层 [InlineVector／VectorResource](inline-vectors-api.md) 接受调用方已经生成的不可变有界轮廓，进入 `Paragraph.mixed`／`TableCell.mixed`。`HtmlImporter.Builder.vector(src, value)` 与 `MarkdownImporter.Builder.vector(destination, value)` 将现有图片占位符精确映射为矢量，不需要把公式转成 PNG。库不内置 TeX 解析器；调用方仍需限制 TeX 子集、解析工作量、路径数量、字体、尺寸和来源记录。既有高分辨率 PNG＋`InlineImage` 仍可使用，图片 `alt` 不会自动成为 PDF 可搜索公式。
+高层 [InlineVector／VectorResource](inline-vectors-api.md) 接受调用方已经生成的不可变有界轮廓，进入段落、标题、两种列表及语义单元格的 `mixed` 入口。`HtmlImporter.Builder.vector(src, value)` 与 `MarkdownImporter.Builder.vector(destination, value)` 将现有图片占位符精确映射为矢量，不需要把公式转成 PNG。矢量入口本身不解析 TeX；受限 TeX 可使用可选[公式模块](math-api.md)，自定义转换器仍须限制解析工作量、路径数量、字体、尺寸和来源记录。既有高分辨率 PNG＋`InlineImage` 仍可使用，图片 `alt` 不会自动成为 PDF 可搜索公式。
 
 调用方可复用自己的公式轮廓转换器，将其结果显式变成 `VectorResource` 的 MOVE／LINE／CURVE／CLOSE 段，坐标对齐基线，以原 TeX 作为 `InlineVector.logicalText`。每个公式只占一个原始 UTF-16 标记；动态公式必须整体重建，不能只替换 TeX 而复用旧轮廓。HTML 中的显式宽高必须与资源 pt 尺寸一致。独立组件仍可使用 `DrawCommand.OutlineText`，现有 [ManuWeave 数学示例](../examples/src/main/java/com/mirakyux/export4j/examples/ManuWeaveMath.java)属于受限 TeX 实现；高层矢量入口不代表任意 TeX、自动 TeX↔OMML 或通用 SVG 导入。
 
@@ -63,7 +63,7 @@ HTML 语义导入默认使用等比例表格列。需要按内容分配时，将
 
 `ActualText` 保留、阅读器搜索和提取器逐字坐标是不同能力。矢量公式用 ActualText 保存原 TeX；已有八式组件样张在 PDFium 中可逐式搜索原文，但 pypdf 普通提取只返回轮廓的不可见锚点。原生文字的改进限于仅含图片、LTR 静态 TTF、无装饰且实际字形一一映射的安全混排行；含字段／矢量及复杂塑形仍保留原轮廓路径，见[行内图像](inline-images-api.md)。不能把公式逻辑文字当作原生字形，或叠加整层隐藏正文掩盖工具差异。
 
-DOCX 和 Web 导出没有通用矢量映射，默认拒绝；只有明确设置 `INLINE_VECTOR`／DEGRADE 才保留逻辑文字并报告 `VECTOR_REPLACED_WITH_LOGICAL_TEXT`。XML v1 保存对所有策略均拒绝矢量。消费侧采用新入口时应重新编译调用方，逐项核对新损失报告，并对真实文献重新执行结构、渲染和提取检查；仅替换依赖或登记一个键不能代替完整验收。
+普通 `InlineVector` 的 DOCX 和 Web 导出没有通用矢量映射，默认拒绝；只有明确设置 `INLINE_VECTOR`／DEGRADE 才保留逻辑文字并报告 `VECTOR_REPLACED_WITH_LOGICAL_TEXT`。XML v1 静态路径编码可完整保存几何、颜色、外链和字面阅读文字，标题及两种列表也保留混合对象；动态公式必须整体重建。公式模块的原生 Word 数学使用独立的编译绑定契约，不能把任意矢量当成 OMML。消费侧采用新入口时应重新编译调用方，逐项核对新损失报告，并对真实文献重新执行结构、渲染和提取检查；仅替换依赖或登记一个键不能代替完整验收。本次富内容扩展另见[验收记录](verification/rich-content.md)，历史 RC3 验收保持原范围。
 
 PDFium 还会将部分行末连字符返回为 U+FFFE，并将 `FPDFText_IsHyphen` 标为 1；若其他工具可还原连字符、`FPDFText_HasUnicodeMapError` 为 0，应先确认提取器行为。内容比较可以单独记录这种标记，不能直接改写 PDF 字符映射。
 

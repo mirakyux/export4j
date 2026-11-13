@@ -17,6 +17,7 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-pdf")
     implementation("com.mirakyux.export4j:export4j-adapter-web")
     implementation("com.mirakyux.export4j:export4j-opentype")
+    implementation("com.mirakyux.export4j:export4j-math")
     val nativeClassifier = rootProject.extra["export4jNativeClassifierResolved"] as String
     runtimeOnly("org.lwjgl:lwjgl:3.4.3:$nativeClassifier")
     runtimeOnly("org.lwjgl:lwjgl-harfbuzz:3.4.3:$nativeClassifier")
@@ -43,6 +44,47 @@ tasks.register<JavaExec>("inlineVectors") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.InlineVectorConsumer")
     workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("math") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.MathConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("contentBlocks") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.ContentBlocksConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("richContent") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.RichContentConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("fontCache") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.FontCacheConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("fontCacheBenchmark") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.FontCacheConsumer")
+    workingDir = projectDir
+    args(providers.gradleProperty("consumer.fontCacheEnabled").orElse("true").get())
     systemProperty("java.awt.headless", "true")
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
 }

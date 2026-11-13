@@ -314,8 +314,9 @@ final class PagedDocumentRenderer {
                         ? Integer.toString(plan.number(target.pageIndex(), plan.offset())) : plan.semantic().labels().get(reference.targetId());
                 if (label == null) { throw new IllegalArgumentException("number reference requires a caption or numbered item"); }
                 var component = (ComponentFragment) fragment;
-                var value = new TextComponent(reference.prefix() + label, SemanticBlocks.style(reference.format()), RgbColor.BLACK)
-                        .layout(new ComponentContext(component.layout().width(), component.layout().height(), plan.fonts(),
+                var value = new TextComponent(reference.prefix() + label, SemanticBlocks.style(reference.format()), SemanticBlocks.referenceColor(reference))
+                        .layout(new ComponentContext(component.layout().width(), component.layout().height(),
+                                SemanticBlocks.referenceFonts(reference, plan.fonts(), plan.roles()),
                                 page.pageIndex(), plan.bodyPages(), page.pageIndex() + 1, plan.roles()));
                 if (value.width() > Math.nextUp(component.layout().width()) || value.height() > Math.nextUp(component.layout().height())) {
                     throw new IllegalArgumentException("resolved cross reference exceeds reserved geometry");

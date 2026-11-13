@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.mirakyux.export4j.font.FontData;
-import com.mirakyux.export4j.font.TrueTypeFontLoader;
+import com.mirakyux.export4j.font.FontFaceCache;
 import com.mirakyux.export4j.graphics.DisplayPage;
 import com.mirakyux.export4j.graphics.DrawCommand;
 import com.mirakyux.export4j.graphics.Point;
@@ -39,6 +39,8 @@ class DocumentPainterCommandReuseTest {
 
     @Test
     void equalRepeatedInkKeepsEveryCommandSlotAndItsExactFontIdentity() {
+        assertNotSame(font, independentIdentity);
+        assertEquals(font.id(), independentIdentity.id());
         var original = text(run(font, 10, 0, 5), new Point(3, 8), RgbColor.BLACK);
         var equal = text(run(font, 10, 0, 5), new Point(3, 8), RgbColor.BLACK);
         try (var session = DocumentPainter.openSession()) {
@@ -118,9 +120,11 @@ class DocumentPainterCommandReuseTest {
     }
 
     private static FontData loadFont() throws IOException {
-        try (var input = DocumentPainterCommandReuseTest.class.getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
+        // The pool must distinguish equal font content held by independently parsed font objects.
+        try (var cache = FontFaceCache.builder().enabled(false).build();
+                var input = DocumentPainterCommandReuseTest.class.getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
             if (input == null) { throw new IOException("missing explicit test font"); }
-            return TrueTypeFontLoader.load(input, TrueTypeFontLoader.DEFAULT_MAX_BYTES).data();
+            return cache.load(input).data();
         }
     }
 }

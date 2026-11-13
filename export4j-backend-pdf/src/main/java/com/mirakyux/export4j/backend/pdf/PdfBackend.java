@@ -48,7 +48,7 @@ import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 
 /**
- * Stateless PDFBox output backend, reusable concurrently with independent output streams.
+ * PDFBox output backend, reusable concurrently with independent output streams.
  * Supports RGB with explicit per-paint alpha, standard-font Latin text and premeasured embedded TrueType glyph runs.
  * Performs no shaping or automatic layout. Output streams remain caller-owned.
  * Non-painting logical anchors embed the fixed font bundled with PDFBox; archival
@@ -61,22 +61,26 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     private static final double MAX_PAGE_POINTS = 14_400;
     private final PdfLimits limits;
     private final PdfOptions options;
+    private final PdfFontCache fontCache;
 
     /** Task-confined backend configuration; resulting backend owns no caller resources. */
     public static Builder builder() { return new Builder(); }
     public static final class Builder {
         private PdfLimits limits = PdfLimits.DEFAULT;
         private PdfOptions options = PdfOptions.DEFAULT;
+        private PdfFontCache fontCache = PdfFontCache.defaultCache();
         private Builder() { }
         public Builder limits(PdfLimits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
         public Builder options(PdfOptions value) { options = Objects.requireNonNull(value, "options"); return this; }
+        /** Borrows a caller-owned parsed-font cache; closing the backend's sessions never closes it. */
+        public Builder fontCache(PdfFontCache value) { fontCache = Objects.requireNonNull(value, "fontCache"); return this; }
         public Builder options(java.util.function.Consumer<PdfOptions.Builder> configure) {
             var value = PdfOptions.builder().storage(options.storage());
             options.encryption().ifPresent(value::encryption); options.archival().ifPresent(value::archival);
             options.accessibility().ifPresent(value::accessibility);
             configure.accept(value); return options(value.build());
         }
-        public PdfBackend build() { return new PdfBackend(limits, options); }
+        public PdfBackend build() { return new PdfBackend(limits, options, fontCache); }
     }
 
     public PdfBackend() {
@@ -88,8 +92,14 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     public PdfBackend(PdfLimits limits, PdfOptions options) {
+        this(limits, options, PdfFontCache.defaultCache());
+    }
+
+    /** Uses explicit immutable budgets/options and borrows the supplied thread-safe font cache. */
+    public PdfBackend(PdfLimits limits, PdfOptions options, PdfFontCache fontCache) {
         this.limits = Objects.requireNonNull(limits, "limits");
         this.options = Objects.requireNonNull(options, "options");
+        this.fontCache = Objects.requireNonNull(fontCache, "fontCache");
     }
 
     @Override
@@ -99,7 +109,9 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
 
     public com.mirakyux.export4j.model.processing.ProcessingReport write(DisplayDocument document, OutputStream output,
             com.mirakyux.export4j.model.processing.ProcessingPolicy policy) throws IOException {
-        return write(document, output, policy, null);
+        try (var programs = new PdfFontPrograms(fontCache, false)) {
+            return write(document, output, policy, programs);
+        }
     }
 
     /** Spool sessions may borrow parsed programs; PDF fonts and every PDF document remain independent. */
@@ -146,7 +158,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         Objects.requireNonNull(output, "output");
         preflight(document);
         try (PDDocument pdf = createDocument(document.metadata())) {
-            if (programs != null) { programs.subsets().begin(document.pages(), this::anchorFontData); }
+            if (programs != null && programs.reusesSubsets()) { programs.subsets().begin(document.pages(), this::anchorFontData); }
             if (options.archival().isPresent()) { options.archival().orElseThrow().configure(pdf, document.metadata(), document.extras()); }
             Map<FontFamily, PDType1Font> fonts = new EnumMap<>(FontFamily.class);
             Map<String, PDFont> embedded = new HashMap<>();
@@ -163,16 +175,21 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             protect(pdf);
             // Explicitly shield borrowed streams from implementation-specific close behavior.
             save(pdf, output);
-            if (programs != null) { programs.subsets().remember(); }
+            if (programs != null && programs.reusesSubsets()) { programs.subsets().remember(); }
             if (consumer != null) {
                 ExecutionContext.checkpoint();
                 consumer.accept(pdf.getPage(0));
             }
         } catch (PdfRenderException failure) {
+            if (programs != null) { programs.discard(); }
             throw failure;
         } catch (IOException failure) {
+            if (programs != null) { programs.discard(); }
             throw new PdfRenderException(PdfErrorCode.OUTPUT_FAILED, -1, -1,
                     "PDF output failed", failure);
+        } catch (RuntimeException | Error failure) {
+            if (programs != null) { programs.discard(); }
+            throw failure;
         } finally {
             if (programs != null) { programs.releasePage(); }
         }
@@ -386,6 +403,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         private final Map<String, PDFont> embedded = new HashMap<>();
         private final PdfGlyphMappingCache glyphMappings = new PdfGlyphMappingCache();
         private final ImageCache images = new ImageCache();
+        private final PdfFontPrograms fontPrograms = new PdfFontPrograms(fontCache, false);
         private WriterState state = WriterState.OPEN;
         private long interactionCount;
         private long interactionCodePoints;
@@ -434,7 +452,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
                 interactionCount += snapshot.size();
                 budget.accept(page);
                 ExecutionContext.progress("PDF_PAGE", "", pageIndex, pageIndex, -1);
-                renderPage(pdf, page, pageIndex, fonts, embedded, images, null, null, glyphMappings);
+                renderPage(pdf, page, pageIndex, fonts, embedded, images, null, fontPrograms, glyphMappings);
                 PdfExtrasWriter.write(pdf, new DocumentExtras(List.of(), List.of(), List.of(), List.of(), snapshot));
                 ExecutionContext.checkpoint();
             } catch (IOException failure) {
@@ -475,9 +493,11 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         public void close() throws IOException {
             requireOwner();
             if (state == WriterState.CLOSED) { return; }
+            if (state != WriterState.FINISHED) { fontPrograms.discard(); }
             state = WriterState.CLOSED;
-            try {
-                pdf.close();
+            try (fontPrograms) {
+                try { pdf.close(); }
+                catch (IOException | RuntimeException | Error failure) { fontPrograms.discard(); throw failure; }
             } catch (IOException failure) {
                 throw new PdfRenderException(PdfErrorCode.OUTPUT_FAILED, -1, -1,
                         "PDF resource cleanup failed", failure);
@@ -500,6 +520,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
         }
 
         private void fail() {
+            fontPrograms.discard();
             if (state == WriterState.OPEN) { state = WriterState.FAILED; }
         }
     }
@@ -797,8 +818,9 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
     }
 
     private static PDFont loadPositionedFont(PDDocument pdf, FontData data, PdfFontPrograms programs) throws IOException {
-        int[] codePointOrder = programs == null ? new int[0] : programs.subsets().codePointOrder(data);
-        if (programs != null) {
+        int[] codePointOrder = programs == null || !programs.reusesSubsets()
+                ? new int[0] : programs.subsets().codePointOrder(data);
+        if (programs != null && programs.reusesSubsets()) {
             var cached = programs.subsets().create(pdf, data);
             if (cached != null) { return new PdfUnicodeFont(pdf, cached, codePointOrder); }
         }
@@ -809,7 +831,7 @@ public final class PdfBackend implements DocumentBackend, PageBackend {
             var result = PDType0Font.load(pdf, parsed, data.subsetAllowed());
             // This PDFBox overload borrows the program. Cached programs remain session-owned.
             if (pageOwned) { pdf.registerTrueTypeFontForClosing(parsed); }
-            if (programs != null) { programs.subsets().loaded(data, result); }
+            if (programs != null && programs.reusesSubsets()) { programs.subsets().loaded(data, result); }
             return new PdfUnicodeFont(pdf, result, codePointOrder);
         } catch (IOException | RuntimeException | Error failure) {
             if (pageOwned) {

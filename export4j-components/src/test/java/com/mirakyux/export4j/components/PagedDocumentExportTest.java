@@ -129,6 +129,31 @@ class PagedDocumentExportTest {
         }
     }
 
+    @Test void captionsAndReferencesKeepTheirPhysicalFontAndColorInFullAndPagedOutput() throws IOException {
+        FontGroup bold;
+        try (var input = PagedDocumentExportTest.class.getResourceAsStream("/fonts/LiberationSans-Bold.ttf")) {
+            bold = FontGroup.strict(TrueTypeFontLoader.load(input, TrueTypeFontLoader.DEFAULT_MAX_BYTES));
+        }
+        var appearance = new com.mirakyux.export4j.model.TextAppearance("accent", 0x224466);
+        var source = document(new Caption("figure", "Figure", "Caption", FORMAT, appearance),
+                new com.mirakyux.export4j.model.CrossReference("reference", "See ", "figure",
+                        com.mirakyux.export4j.model.CrossReference.Kind.NUMBER, FORMAT, appearance));
+        var engine = DocumentEngine.builder(fonts).fontRole("accent", bold).build();
+        var full = engine.layout(source);
+        var sink = new Sink();
+        engine.exportPaged(source).backend(sink.backend()).to(new ByteArrayOutputStream());
+        assertEquals(full.display().pages().size(), sink.pages.size());
+        for (int page = 0; page < sink.pages.size(); page++) {
+            assertEquals(full.display().pages().get(page).commands(), sink.pages.get(page).commands());
+        }
+        var glyphs = sink.pages.stream().flatMap(page -> page.commands().stream())
+                .filter(DrawCommand.GlyphText.class::isInstance).map(DrawCommand.GlyphText.class::cast).toList();
+        assertTrue(glyphs.stream().anyMatch(text -> text.run().text().contains("Caption")));
+        assertTrue(glyphs.stream().anyMatch(text -> text.run().text().contains("See")));
+        assertTrue(glyphs.stream().allMatch(text -> text.run().font().id().equals(bold.fonts().getFirst().data().id())));
+        assertTrue(glyphs.stream().allMatch(text -> text.color().equals(new RgbColor(34 / 255.0, 68 / 255.0, 102 / 255.0))));
+    }
+
     @Test void refusesUnsupportedInteractionsAndUnknownFutureTargetsBeforeOpeningWriter() {
         var document = document(new Paragraph("p", "TEXT", FORMAT));
         var sink = new Sink();

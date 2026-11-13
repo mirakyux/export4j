@@ -10,7 +10,7 @@
 
 示例与测试的字体独立登记在[字体资源](../assets/fonts/README.md)，同目录保存各自许可原文。它们不属于 Maven 坐标清单。
 
-数学示例单独依赖 JLaTeXMath 1.0.7，采用 GPL-2.0-or-later 及其原始 linking exception，不进入核心库的 POM、BOM 或运行 SBOM。原始库声明、GPL 全文与内嵌字体条款保存在 `licenses/jlatexmath-1.0.7/`。示例分发包携带未经修改、包含字体资源的上游 sources JAR，以及 `jlatexmath-source-build/` 中三个原始 Maven POM；Greek／Cyrillic 文本扩展字体包未引入。PDF／SVG 中实际使用的是主 JAR 自带的四款 Computer Modern 数学字体轮廓。
+可选 `export4j-math` 模块与数学示例依赖 JLaTeXMath 1.0.7，采用 GPL-2.0-or-later 及其原始 linking exception。该依赖仅进入选择数学模块的运行依赖及库运行 SBOM，核心模块不依赖它；BOM 约束数学模块的自研版本，不管理第三方库。SBOM 使用完整许可名称，避免将原始例外误记为另一个 SPDX 例外。原始库声明、GPL 全文与内嵌字体条款保存在 `licenses/jlatexmath-1.0.7/`。数学模块二进制 JAR 在 `META-INF/third-party/source/` 携带未经修改、包含字体资源的上游 sources JAR，以及 `jlatexmath-source-build/` 中三个原始 Maven POM；示例分发包也携带相同源码材料。Greek／Cyrillic 文本扩展字体包未引入。可选公式模块显式加载主 JAR 的五款 Computer Modern 字体（含文字斜体 `latin/optional/jlm_cmti10.ttf`）；原 ManuWeave 示例仍使用原四款字体。
 
 常用文档的简历配图独立登记在[图片资源](../examples/src/main/resources/templates/common/assets/README.md)，保留 Pexels 作品、作者及许可链接；该照片不采用项目的 Apache-2.0。它不是 Java 依赖，未列入 Maven 坐标清单。
 

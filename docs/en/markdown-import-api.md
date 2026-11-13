@@ -30,11 +30,26 @@ var losses = imported.report().losses();
 | strong/emphasis/their combination, strikethrough | Full inline styles; default roles are `bold`/`italic`/`boldItalic`; strikethrough is preserved |
 | Links and reference links | Passive HTTP/HTTPS/mailto; reference definitions do not enter body text; link titles report separate losses |
 | Ordered/unordered and mixed nested lists | NumberedItem/BulletItem, up to nine levels, retaining starting numbers and parent-list relationships; ordered children use the model's full dotted numbering |
-| GFM tables | Semantic Table, headers, cell alignment, escaped pipes and spaces; columns have equal proportions; a header-only table requires explicit addition of an empty body row |
-| Explicitly registered images | InlineImage in paragraphs/cells, retaining source alternative text and enclosing links; headings/lists permit only explicit degradation to alternative text |
-| Code/quotes/task items | Require explicit loss handling; code language, quote containers and checkbox semantics are not claimed to be preserved |
+| GFM tables | Semantic Table, headers, cell alignment, escaped pipes and spaces; columns have equal proportions. Header-only tables retain their rows and bold appearance with repetition disabled, without an added empty body row |
+| Explicitly registered images/vectors | Mixed inline objects in paragraphs, headings, ordered/unordered items and cells; images retain source alternative text and enclosing links |
+| Fenced/indented blocks and inline code | Literal text with the code role without a loss-policy requirement. Blocks retain parsed whitespace/newlines; inline code follows CommonMark whitespace rules |
+| Quotes/task items | Still require explicit loss handling; quote containers and checkbox semantics are not claimed to be preserved |
 
 Font roles are specified through `.fontRoles(strong,emphasis,combined,code)`; PDF export still requires explicit registration of corresponding physical fonts. The default code role is `code`; fonts are not obtained automatically. Metadata, page size and default body formatting can be supplied through the Builder.
+
+Body formatting through `.paragraphFormat(...)` and table formatting through `.cellFormat(...)` are independent. When cell formatting is omitted, building resolves it to `CellFormat.of(the final body font size)`, retaining the default fixed line height of 1.5 times that size. Body line height, alignment and line-break policy are not inherited. An explicit cell format controls both cell and inline text font sizes, line height and line-break policy. Explicit GFM column alignment takes precedence; columns without alignment markers use the configured cell alignment.
+
+```java
+import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.ParagraphFormat;
+
+var importer = MarkdownImporter.builder()
+        .paragraphFormat(ParagraphFormat.of(12))
+        .cellFormat(CellFormat.builder().fontSize(12).lineHeight(64).build())
+        .build();
+```
+
+Tall images or inline equations must still fit the fixed cell line box; reserve their height through `cellFormat`. The importer does not scale resources automatically. The format is snapshotted at `build()` and shared by `conversion(...)`. Language metadata and syntax highlighting are not represented, and code content is never executed.
 
 ## Resources and Policies
 
@@ -45,19 +60,17 @@ The shared policy uses format key `MARKDOWN`, operation key `IMPORT` and precede
 | Feature key | DEGRADE | DISCARD |
 | --- | --- | --- |
 | `BLOCK_QUOTE` | Remove the container and indent its body | Remove the entire quote subtree |
-| `CODE_BLOCK`/`INLINE_CODE` | Text with the code role, removing code semantics and language | Remove the corresponding code |
 | `THEMATIC_BREAK` | Five literal hyphens | Remove the separator |
 | `RAW_HTML` | Emit safe HTML as literal text; simple br becomes a line break directly | Remove that raw HTML node |
 | `TASK_LIST` | Retain the literal task marker | Remove that task item |
 | `LIST_ITEM_STRUCTURE` | Flatten multiple blocks while retaining indentation | Remove the unsupported sub-block/item |
-| `IMAGE_RESOURCE`/`HEADING_INLINE_OBJECT`/`LIST_INLINE_OBJECT` | Convert the image to alternative text | Remove the image |
+| `IMAGE_RESOURCE` | Convert an unregistered image to alternative text | Remove the image |
 | `LINK_TITLE`/`IMAGE_TITLE`/`RELATIVE_LINK` | Remove the unsupported title/target and retain other content | Likewise remove only that attribute/target |
-| `TABLE_HEADER_ONLY` | Add an empty body row | Remove the table |
 | `NUMBERING_START` | Change a zero starting number to one | Remove that list |
 
 Unknown nodes permit only DISCARD; no degradation representation is invented. Scripts or dangerous links are rejected even inside subtrees that will be discarded. Safe raw HTML is not interpreted for layout here.
 
-MinerU-style input often mixes Markdown with HTML tables. The default strict policy rejects `RAW_HTML`; DEGRADE produces literal HTML and does not preserve merged-cell semantics. When table semantics are required, caller code can explicitly render CommonMark to HTML and then import it strictly with `HtmlImporter`; see [literature PDF integration (Chinese)](../literature-pdf-integration.md). Diagnostic positions on this path refer to the generated HTML, not offsets in the original Markdown.
+This `MarkdownImporter` entry point still rejects `RAW_HTML` by default; DEGRADE produces literal HTML and does not preserve merged cells. For mixed Markdown/HTML tables, use `ContentImporter` with explicit `ContentOptions.builder().format(ContentOptions.Format.MARKDOWN).rawHtml(true)`. The library maps its offline subset, preserves spans and maps diagnostics to original Markdown ranges. [Mixed content and cross-format mathematics](rich-content-api.md) covers formula/code protection and PDF/native Word targets without a caller-maintained CommonMark-to-HTML bridge. The older RC3 consumer integration remains documented in [literature PDF integration (Chinese)](../literature-pdf-integration.md).
 
 ## Positions and Budgets
 

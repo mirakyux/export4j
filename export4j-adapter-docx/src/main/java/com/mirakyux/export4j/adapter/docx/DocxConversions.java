@@ -81,7 +81,7 @@ final class DocxConversions {
                         new ProcessingIssue.Location("", "BODY", note.paragraphId(), List.of(), -1, -1),
                         "DOCX note text has no export mapping", "NOTE_TEXT_REMOVED", ProcessingPolicy.Treatment.DISCARD);
             }
-            var mapper = new Styles(source, policy, issues); var sections = new ArrayList<Section>();
+            var mapper = new Styles(adapter, source, policy, issues); var sections = new ArrayList<Section>();
             for (var section : source.sections()) {
                 var supported = section.pageRegions();
                 for (var layer : List.of("BACKGROUND", "FOREGROUND")) {
@@ -104,10 +104,11 @@ final class DocxConversions {
     private static final class Styles {
         private record ContainerTarget(String blockId, String feature) { }
         private final ProcessingPolicy policy;
+        private final DocxAdapter adapter;
         private final List<ProcessingIssue> issues;
         private final Map<String, ContainerTarget> containerTargets = new HashMap<>();
-        Styles(SectionedDocument source, ProcessingPolicy policy, List<ProcessingIssue> issues) {
-            this.policy = policy; this.issues = issues;
+        Styles(DocxAdapter adapter, SectionedDocument source, ProcessingPolicy policy, List<ProcessingIssue> issues) {
+            this.adapter = adapter; this.policy = policy; this.issues = issues;
             // Collect before mapping any paragraph so forward, backward and cell references agree.
             for (var section : source.sections()) {
                 SemanticTree.walk(section.blocks(), visit -> {
@@ -137,22 +138,24 @@ final class DocxConversions {
                 } else if (block instanceof Paragraph paragraph) { result.add(paragraph(paragraph, at)); }
                 else if (block instanceof Heading heading) {
                     var mapped = paragraph(heading.paragraph(), at);
-                    result.add(Heading.rich(heading.id(), mapped.inlines(), heading.level(), mapped.format()));
+                    result.add(Heading.mixed(heading.id(), mapped.content(), heading.level(), mapped.format()));
                 } else if (block instanceof BulletItem item) {
                     var mapped = paragraph(item.paragraph(), at);
-                    result.add(BulletItem.rich(item.id(), mapped.inlines(), item.marker(), item.level(), mapped.format(), style(item.markerStyle(), at)));
+                    result.add(BulletItem.mixed(item.id(), mapped.content(), item.marker(), item.level(), mapped.format(), style(item.markerStyle(), at)));
                 } else if (block instanceof NumberedItem item) {
                     var mapped = paragraph(item.paragraph(), at);
-                    result.add(NumberedItem.rich(item.id(), item.listId(), mapped.inlines(), item.restartAt(), mapped.format(), item.level(), style(item.markerStyle(), at)));
+                    result.add(NumberedItem.mixed(item.id(), item.listId(), mapped.content(), item.restartAt(), mapped.format(), item.level(), style(item.markerStyle(), at)));
                 }
                 else if (block instanceof Caption caption) {
                     add(issues, policy, "EXPORT", "MODEL", "DOCX", "CAPTION", at,
                             "caption numbering has no DOCX semantic mapping", "CAPTION_REPLACED_WITH_UNNUMBERED_TEXT", ProcessingPolicy.Treatment.DEGRADE);
-                    result.add(paragraph(new Paragraph(caption.id(), caption.text(), caption.format()), at));
+                    result.add(paragraph(new Paragraph(caption.id(), List.of(new InlineText(caption.text(),
+                            caption.appearance().style(caption.format().fontSize()))), caption.format()), at));
                 } else if (block instanceof CrossReference reference) {
                     add(issues, policy, "EXPORT", "MODEL", "DOCX", "CROSS_REFERENCE", at,
                             "independent reference has no DOCX semantic mapping", "REFERENCE_REPLACED_WITH_UNRESOLVED_TEXT", ProcessingPolicy.Treatment.DEGRADE);
-                    result.add(paragraph(new Paragraph(reference.id(), reference.prefix() + "[unresolved reference]", reference.format()), at));
+                    result.add(paragraph(new Paragraph(reference.id(), List.of(new InlineText(reference.prefix() + "[unresolved reference]",
+                            reference.appearance().style(reference.format().fontSize()))), reference.format()), at));
                 }
                 else if (block instanceof Table table) {
                     var rows = new ArrayList<TableRow>();
@@ -217,7 +220,7 @@ final class DocxConversions {
                     reason, "ROTATION_REMOVED", ProcessingPolicy.Treatment.DEGRADE);
         }
         private InlineStyle style(InlineStyle source, ProcessingIssue.Location at) {
-            if (Set.of("", "bold", "italic", "boldItalic").contains(source.fontRole())) { return source; }
+            if (Set.of("", "bold", "italic", "boldItalic").contains(source.fontRole()) || adapter.mappedFontRole(source.fontRole())) { return source; }
             add(issues, policy, "EXPORT", "MODEL", "DOCX", "FONT_ROLE", at,
                     "custom font role has no DOCX font/style mapping", "FONT_ROLE_REPLACED_WITH_DEFAULT", ProcessingPolicy.Treatment.DEGRADE);
             return source.toBuilder().fontRole("").build();

@@ -23,6 +23,36 @@
 
 新文件在 Word 中实际打开、编辑、保存和重开的结果见[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)。
 
+## 字体族与对象行距
+
+当前开发版可在适配器中显式声明 Word 的四个字体槽，并将完整字体族配置与语义角色关联：
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxAdapter;
+import com.mirakyux.export4j.adapter.docx.DocxFontFamilies;
+
+var adapter = DocxAdapter.builder()
+        .defaultFonts(new DocxFontFamilies("Liberation Serif", "Noto Serif SC"))
+        .fontFamily(new DocxFontFamilies("Liberation Sans", "Noto Sans CJK SC"),
+                new DocxAdapter.FontRoles("sans", "sansBold", "sansItalic", "sansBoldItalic"))
+        .lineSpacing(DocxAdapter.LineSpacing.OBJECTS_AT_LEAST)
+        .build();
+```
+
+双参数 `DocxFontFamilies(latin, eastAsia)` 将 Latin 同时用于 ASCII、高 ANSI 和复杂文字槽；四参数构造器可分别声明 `ascii`、`highAnsi`、`eastAsia` 和 `complexScript`。`uniform(family)` 为四槽使用同一族。它们只声明接收端的字体名称，不查找、加载或嵌入物理字体，也不替代 PDF 引擎的显式字体配置。
+
+`defaultFonts` 输出文档默认字体和普通／粗体／斜体／粗斜体的 `""`、`bold`、`italic`、`boldItalic` 角色。多脚本 `fontFamily(DocxFontFamilies, FontRoles)` 同时用于角色输出和严格读取；每个角色只能对应一个字体族组合及一个粗斜体状态，有歧义的配置在构建时失败。原 `fontFamily(String, FontRoles)` 保留为单字体族的导入映射入口。
+
+| `LineSpacing` | Word 行框行为 |
+| --- | --- |
+| `EXACT`（默认） | 保持既有固定行距映射 |
+| `AT_LEAST` | 段落写为 `w:lineRule="atLeast"` |
+| `OBJECTS_AT_LEAST` | 图片、原生数学所在段落使用最小行距，其余段落保持固定行距 |
+
+这些选项只控制 Word 的 OOXML 表达，不重测通用模型，也不保证 Word 与 PDF 同分页。`atLeast` 的数值可读取为模型行高，原始行距模式不作为独立通用属性保存；再次输出采用当前适配器配置。原生数学插入也执行所选对象行距策略，避免固定行框截断高公式。
+
+严格读取只接受已明确登记的字体族组合及受支持的平面声明；主题字体槽、未知字体属性和任意命名样式图不会因此获得通用无损支持。普通 `write` 仍拒绝未经处理的 `InlineVector`，应通过 `writeMath` 绑定原生数学，或由统一转换明确报告降级。未映射结构仍按原有严格／损失策略处理，不能通过声明默认字体或对象行距绕过校验。跨格式公式的同源编译及实际降级见[混合内容](rich-content-api.md)。
+
 ## 有类型对象
 
 | 对象 | 实际映射 |

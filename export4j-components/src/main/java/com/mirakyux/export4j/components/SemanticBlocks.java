@@ -30,6 +30,29 @@ final class SemanticBlocks {
 
     private SemanticBlocks() { }
 
+    private static Paragraph captionParagraph(Caption caption, String text) {
+        if (caption.appearance().equals(com.mirakyux.export4j.model.TextAppearance.DEFAULT)) {
+            return new Paragraph(caption.id(), text, caption.format());
+        }
+        return new Paragraph(caption.id(), List.of(new InlineText(text,
+                caption.appearance().style(caption.format().fontSize()))), caption.format());
+    }
+
+    static com.mirakyux.export4j.font.FontGroup referenceFonts(CrossReference reference,
+            com.mirakyux.export4j.font.FontGroup fallback, Map<String, com.mirakyux.export4j.font.FontGroup> roles) {
+        String role = reference.appearance().fontRole();
+        if (role.isEmpty()) { return fallback; }
+        var fonts = roles.get(role);
+        if (fonts == null) { throw new IllegalArgumentException("unregistered cross-reference font role"); }
+        return fonts;
+    }
+
+    static com.mirakyux.export4j.graphics.RgbColor referenceColor(CrossReference reference) {
+        int rgb = reference.appearance().rgb();
+        return new com.mirakyux.export4j.graphics.RgbColor((rgb >> 16 & 255) / 255.0,
+                (rgb >> 8 & 255) / 255.0, (rgb & 255) / 255.0);
+    }
+
     /** Single-pass lowering keeps numbering counters without retaining completed source blocks. */
     static final class Stream {
         private final Map<String, Integer> counters = new HashMap<>();
@@ -53,7 +76,7 @@ final class SemanticBlocks {
             if (original instanceof Caption caption) {
                 int number = Math.addExact(counters.getOrDefault(caption.kind(), 0), 1);
                 counters.put(caption.kind(), number);
-                return new Paragraph(caption.id(), caption.kind() + " " + number + ". " + caption.text(), caption.format());
+                return captionParagraph(caption, caption.kind() + " " + number + ". " + caption.text());
             }
             if (original instanceof CrossReference) {
                 throw new IllegalArgumentException("ordinary block streams cannot resolve cross references");
@@ -85,7 +108,13 @@ final class SemanticBlocks {
         var explicitNotes = new HashSet<String>();
         for (var section : document.sections()) {
             for (var block : section.blocks()) {
-                if (!(block instanceof Paragraph p)) { continue; }
+                Paragraph p = switch (block) {
+                    case Paragraph value -> value;
+                    case BulletItem value -> value.paragraph();
+                    case NumberedItem value -> value.paragraph();
+                    default -> null;
+                };
+                if (p == null) { continue; }
                 for (var span : p.fields()) {
                     var field = span.field();
                     if (field.kind() != InlineField.Kind.NOTE_MARKER) { continue; }
@@ -120,23 +149,24 @@ final class SemanticBlocks {
                     counters.put("caption:" + caption.kind(), number);
                     String label = caption.kind() + " " + number;
                     labels.put(caption.id(), label);
-                    block = new Paragraph(caption.id(), label + ". " + caption.text(), caption.format());
+                    block = captionParagraph(caption, label + ". " + caption.text());
                 } else if (block instanceof CrossReference reference) {
                     refs.put(reference.id(), reference);
                     // Reserve wrapped geometry using the final number label or a conservative 10-digit page label.
                     block = new ComponentBlock(reference.id(), context -> {
                         var format = reference.format();
+                        var referenceFonts = referenceFonts(reference, context.fontGroup(), context.fontRoles());
                         int maxLines = 1;
                         if (reference.kind() == CrossReference.Kind.NUMBER) {
                             String label = labels.get(reference.targetId());
                             if (label == null) { throw new IllegalArgumentException("number reference requires a numbered target"); }
                             maxLines = new com.mirakyux.export4j.text.ParagraphLayouter().layout(reference.prefix() + label,
-                                    context.fontGroup(), context.width(), style(format)).lines().size();
+                                    referenceFonts, context.width(), style(format)).lines().size();
                         } else {
                             // All ten digits are considered; page/restart numbering is bounded by signed int.
                             for (int digit = 0; digit < 10; digit++) {
                                 maxLines = Math.max(maxLines, new com.mirakyux.export4j.text.ParagraphLayouter().layout(
-                                        reference.prefix() + Integer.toString(digit).repeat(10), context.fontGroup(), context.width(), style(format)).lines().size());
+                                        reference.prefix() + Integer.toString(digit).repeat(10), referenceFonts, context.width(), style(format)).lines().size());
                             }
                         }
                         return new com.mirakyux.export4j.layout.ComponentLayout(context.width(), maxLines * format.lineHeight(), maxLines, List.of(), List.of());
@@ -188,13 +218,14 @@ final class SemanticBlocks {
 
     private static Paragraph prefix(Paragraph source, String prefix, ParagraphFormat format, InlineStyle markerStyle) {
         var bodyStyle = InlineStyle.of(format.fontSize());
-        if (source.inlines().isEmpty() && markerStyle.equals(bodyStyle)) {
+        if (source.inlines().isEmpty() && source.images().isEmpty() && source.fields().isEmpty()
+                && source.vectors().isEmpty() && markerStyle.equals(bodyStyle)) {
             return new Paragraph(source.id(), prefix + source.text(), format);
         }
-        var runs = new ArrayList<InlineText>();
-        runs.add(new InlineText(prefix, markerStyle));
-        if (source.inlines().isEmpty()) { runs.add(new InlineText(source.text(), bodyStyle)); }
-        else { runs.addAll(source.inlines()); }
-        return new Paragraph(source.id(), runs, format);
+        // 前缀只移动原子对象的 UTF-16 锚点，不重新测量或展开正文。
+        var content = new ArrayList<com.mirakyux.export4j.model.InlineContent>();
+        content.add(new InlineText(prefix, markerStyle));
+        content.addAll(source.content());
+        return Paragraph.mixed(source.id(), content, format);
     }
 }

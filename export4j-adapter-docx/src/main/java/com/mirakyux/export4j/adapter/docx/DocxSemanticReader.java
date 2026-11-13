@@ -45,6 +45,7 @@ import static com.mirakyux.export4j.adapter.docx.DocxSemanticXml.zip;
 import static com.mirakyux.export4j.adapter.docx.DocxAdapter.children;
 import static com.mirakyux.export4j.adapter.docx.DocxAdapter.child;
 import com.mirakyux.export4j.model.Block;
+import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.SemanticTree;
@@ -82,6 +83,7 @@ final class DocxSemanticReader {
     private final Map<String, Element> starts = new HashMap<>(); private final Map<String, Element> ends = new HashMap<>();
     private final Map<String, List<String>> sideIds = new LinkedHashMap<>(); private final Map<String, Element> commentElements = new LinkedHashMap<>();
     private final Set<String> tocTokens = new HashSet<>();
+    private final Set<Element> generatedInlineParagraphs = new HashSet<>();
     private final Set<String> usedIds = new HashSet<>(); private final Map<String, List<Block>> sideBlocks = new HashMap<>();
     private int next; private int markerId;
     private DocxSemanticReader(DocxAdapter adapter, DocxLimits limits, DocxAdapter.Policy policy) { this.adapter = adapter; this.limits = limits; this.policy = policy; }
@@ -121,6 +123,7 @@ final class DocxSemanticReader {
         }
         var points = new HashMap<String, Point>();
         for (var root : stories.values()) { locate(root, points); }
+        restoreInlineCells(points);
         for (var root : stories.values()) { for (var mark : all(root, OD, "mark")) { remove(mark); } }
         for (var entry : roots.entrySet()) { if (parts.containsKey(entry.getKey())) { parts.put(entry.getKey(), encode(entry.getValue(), limits.maxEntryBytes())); } }
         var imported = adapter.readSemanticBody(new ByteArrayInputStream(zip(parts, limits)), policy, stylesMaterialized); diagnostics.addAll(imported.diagnostics());
@@ -176,10 +179,34 @@ final class DocxSemanticReader {
     private void collectExistingIds(Element root) throws IOException {
         for (var element : descendants(root)) { if ((is(element, "p") || is(element, "tbl")) && element.hasAttributeNS(OD, "id") && !usedIds.add(element.getAttributeNS(OD, "id"))) { throw new IOException("duplicate native paragraph ID"); } }
     }
-    private void assignIds(Element root) {
+    private void assignIds(Element root) throws IOException {
         for (var element : descendants(root)) { if ((is(element, "p") || is(element, "tbl")) && !element.hasAttributeNS(OD, "id") && !element.hasAttributeNS(OD, "cellTail") && !element.hasAttributeNS(OD, "boundary") && !continuation(element)) {
+            if (is(element, "p") && element.getParentNode() instanceof Element cell && is(cell, "tc")
+                    && !DocxCells.blockCell(cell, DocxCells.content(cell))) {
+                generatedInlineParagraphs.add(element);
+            }
             String id; do { id = "word-" + (is(element, "p") ? "p-" : "table-") + next++; } while (!usedIds.add(id)); element.setAttributeNS(OD, "od:id", id);
         } }
+    }
+    /** Temporary indexing IDs must not turn ordinary inline cells into modeled block cells.
+     * Existing IDs and actual native anchors still require a real paragraph in the model. */
+    private void restoreInlineCells(Map<String, Point> points) {
+        var anchored = new HashSet<String>();
+        for (var point : points.values()) { anchored.add(point.paragraphId()); }
+        for (var paragraph : generatedInlineParagraphs) {
+            ExecutionContext.checkpoint();
+            String id = paragraph.getAttributeNS(OD, "id");
+            if (anchored.contains(id)) { continue; }
+            boolean bookmarkAnchor = false;
+            for (var name : List.of("bookmarkStart", "bookmarkEnd")) {
+                for (var bookmark : all(paragraph, W, name)) {
+                    if (!bookmark.hasAttributeNS(OD, "owner") || bookmark.getAttributeNS(OD, "owner").equals(id)) {
+                        bookmarkAnchor = true;
+                    }
+                }
+            }
+            if (!bookmarkAnchor) { paragraph.removeAttributeNS(OD, "id"); }
+        }
     }
     private static boolean continuation(Element element) { for (Node n = element; n instanceof Element e; n = n.getParentNode()) { if (is(e, "tc") && DocxCells.continuation(e)) { return true; } } return false; }
     private static List<Element> descendants(Element root) { var result = new ArrayList<Element>(); result.add(root); var nodes = root.getElementsByTagName("*"); for (int i = 0; i < nodes.getLength(); i++) { result.add((Element)nodes.item(i)); } return result; }

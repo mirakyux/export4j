@@ -1,5 +1,7 @@
 # 字体和文本 API
 
+当前开发版的 `TrueTypeFontLoader.load` 默认复用相同内容的不可变字体，并在空闲后释放缓存引用；容量、期限、主动清空和 PDF 解析池见[字体缓存](font-cache-api.md)。
+
 多脚本、缺字替换后的原文簇、双向续行及阅读器搜索／选区实测见[文字语料](text-corpus-api.md)和 [ADR-0026](adr/0026-source-clusters-and-shaping-context.md)。查询成功、逻辑原文与逐字选区几何分别判断；轮廓锚点不提供通用提取或精确选区保证。
 
 当前 API 支持静态 TrueType／CFF、显式集合成员与自适应简单／OpenType 排版，提供显式字体回退、测量、段落换行、缩进、对齐和固定行距。布局结果可直接转为 PDF 绘制命令；页面可由调用方创建，也可由[文档布局 API](layout-api.md)自动分配。

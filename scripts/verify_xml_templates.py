@@ -95,6 +95,13 @@ def check_rich_span(reader, source, margin):
                 if all(abs(a - b) < .00001 for a, b in zip(fill, blue, strict=True)):
                     cmap = font["/ToUnicode"].get_object().get_data().decode("ascii")
                     mapping = {}
+                    for block in re.findall(r"beginbfchar(.*?)endbfchar", cmap, re.S):
+                        for line in block.strip().splitlines():
+                            match = re.fullmatch(r"\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*", line)
+                            require(match is not None, "fixture uses an unsupported CID character mapping")
+                            cid, value = match.groups()
+                            require(len(value) % 4 == 0, "CID character mapping is not complete UTF-16")
+                            mapping[int(cid, 16)] = bytes.fromhex(value).decode("utf-16-be")
                     for block in re.findall(r"beginbfrange(.*?)endbfrange", cmap, re.S):
                         for line in block.strip().splitlines():
                             match = re.fullmatch(r"\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*", line)
@@ -106,7 +113,10 @@ def check_rich_span(reader, source, margin):
                         if isinstance(value, (str, bytes)):
                             data = value.original_bytes if isinstance(value, TextStringObject) else bytes(value)
                             require(len(data) % 2 == 0, "colored CID string has odd byte count")
-                            text.extend(mapping[int.from_bytes(data[i:i + 2], "big")] for i in range(0, len(data), 2))
+                            for i in range(0, len(data), 2):
+                                cid = int.from_bytes(data[i:i + 2], "big")
+                                require(cid in mapping, "colored text CID has no ToUnicode mapping: " + hex(cid))
+                                text.append(mapping[cid])
                     spans.append({**placement, "source": "".join(text), "fontSize": size})
             elif operator == b"m":
                 path = [point(matrix, *(float(value) for value in operands))]

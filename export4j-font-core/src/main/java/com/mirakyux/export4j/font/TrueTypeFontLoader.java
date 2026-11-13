@@ -19,12 +19,25 @@ import org.apache.fontbox.ttf.OTFParser;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
-/** Eager, bounded static TrueType/CFF loader. Parser resources close before an immutable face is returned. */
+/**
+ * Eager, bounded static TrueType/CFF loader. Parser resources close before an immutable face is returned.
+ * Successful loads share a content-addressed cache of at most 16 faces and 64 MiB of source bytes,
+ * with five-minute idle expiration. Source-byte weight is not a total heap limit. An automatic
+ * cleanup task removes expired references even if no further load occurs; retained caller faces remain valid.
+ * Use an explicit {@link FontFaceCache} for different bounds or to disable retention.
+ */
 public final class TrueTypeFontLoader {
     public static final int DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
+    private static final FontFaceCache CACHE = FontFaceCache.builder().build();
 
     private TrueTypeFontLoader() {
     }
+
+    /** Removes references owned by the shared cache without invalidating faces retained by callers. */
+    public static void clearCache() { CACHE.clear(); }
+
+    /** Returns shared-cache occupancy and cumulative counters; reading statistics does not trigger cleanup. */
+    public static FontFaceCache.Stats cacheStats() { return CACHE.stats(); }
 
     /** Loads caller-owned bytes under the default size limit; never scans system fonts. */
     public static FontFace load(byte[] bytes) throws IOException {
@@ -60,12 +73,11 @@ public final class TrueTypeFontLoader {
     }
 
     public static FontFace load(byte[] bytes, int maxBytes) throws IOException {
-        Objects.requireNonNull(bytes, "bytes");
-        requireLimit(maxBytes);
-        if (bytes.length > maxBytes) {
-            throw new FontLoadException(FontLoadException.Code.BUDGET_EXCEEDED, "font byte budget exceeded");
-        }
-        byte[] snapshot = bytes.clone();
+        return CACHE.load(bytes, maxBytes);
+    }
+
+    /** Parses only a loader-private, immutable snapshot. Never call with caller-owned bytes. */
+    static FontFace loadSnapshotUncached(byte[] snapshot) throws IOException {
         boolean cff = snapshot.length >= 4 && snapshot[0] == 'O' && snapshot[1] == 'T' && snapshot[2] == 'T' && snapshot[3] == 'O';
         if (snapshot.length < 12 || !cff && (snapshot[0] != 0 || snapshot[1] != 1
                 || snapshot[2] != 0 || snapshot[3] != 0)) {

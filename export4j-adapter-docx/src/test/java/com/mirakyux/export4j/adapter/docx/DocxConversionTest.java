@@ -45,6 +45,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocxConversionTest {
+    @Test void captionAndReferenceTextDegradationPreservesExplicitAppearance() throws Exception {
+        var appearance = new com.mirakyux.export4j.model.TextAppearance("bold", 0x224466);
+        var source = Document.builder()
+                .add(new Caption("caption", "Figure", "Styled caption", ParagraphFormat.of(12), appearance))
+                .add(new CrossReference("reference", "See ", "caption", CrossReference.Kind.NUMBER,
+                        ParagraphFormat.of(12), appearance)).build();
+        var policy = ProcessingPolicy.builder()
+                .feature("CAPTION", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+                .feature("CROSS_REFERENCE", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
+        var output = new ByteArrayOutputStream();
+        var result = DocumentConversion.from(source).policy(policy).prepare(new DocxAdapter().conversionTarget()).to(output);
+        assertEquals(List.of("CAPTION", "CROSS_REFERENCE"), result.report().losses().stream().map(issue -> issue.feature()).toList());
+        var restored = new DocxAdapter().read(new ByteArrayInputStream(output.toByteArray()), DocxAdapter.Policy.STRICT).document();
+        var paragraphs = restored.sections().getFirst().blocks().stream().map(block -> (Paragraph) block).toList();
+        assertTrue(paragraphs.get(0).text().contains("Styled caption"));
+        assertTrue(paragraphs.get(1).text().startsWith("See "));
+        assertTrue(paragraphs.stream().flatMap(paragraph -> paragraph.inlines().stream())
+                .allMatch(run -> run.style().fontRole().equals("bold") && run.style().rgb() == 0x224466));
+    }
+
     private static InlineVector vector(String text) {
         var resource = VectorResource.of(10, 8, 2, List.of(
                 new VectorResource.Segment(VectorResource.Operation.MOVE, List.of(0.0, -8.0)),

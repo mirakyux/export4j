@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.adapter.web;
 
+import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
@@ -36,6 +37,7 @@ public final class MarkdownImporter {
     final DocumentMetadata metadata;
     final PageSettings pageSettings;
     final ParagraphFormat format;
+    final CellFormat cellFormat;
     final String strongRole;
     final String emphasisRole;
     final String combinedRole;
@@ -46,6 +48,7 @@ public final class MarkdownImporter {
         policy = builder.policy; limits = builder.limits; images = Map.copyOf(builder.images); metadata = builder.metadata;
         vectors = Map.copyOf(builder.vectors);
         pageSettings = builder.pageSettings; format = builder.format; strongRole = builder.strongRole;
+        cellFormat = builder.cellFormat == null ? CellFormat.of(format.fontSize()) : builder.cellFormat;
         emphasisRole = builder.emphasisRole; combinedRole = builder.combinedRole; codeRole = builder.codeRole; baseUri = builder.baseUri;
     }
     public Request read(String source) { return new Request(Objects.requireNonNull(source, "source"), this); }
@@ -91,7 +94,7 @@ public final class MarkdownImporter {
     private com.mirakyux.export4j.model.processing.DocumentConversion.Request conversion(TextImportIO.Source source) {
         return com.mirakyux.export4j.model.processing.DocumentConversion.from("MARKDOWN", shared -> {
             var builder = new Builder().policy(shared).limits(limits).metadata(metadata).pageSettings(pageSettings)
-                    .paragraphFormat(format).fontRoles(strongRole, emphasisRole, combinedRole, codeRole);
+                    .paragraphFormat(format).cellFormat(cellFormat).fontRoles(strongRole, emphasisRole, combinedRole, codeRole);
             builder.images.putAll(images); builder.vectors.putAll(vectors); builder.baseUri = baseUri;
             var imported = builder.build().read(source.read()).execute();
             return com.mirakyux.export4j.model.processing.DocumentConversion.Input.of(imported.document(), imported.report());
@@ -107,6 +110,7 @@ public final class MarkdownImporter {
         private DocumentMetadata metadata = DocumentMetadata.EMPTY;
         private PageSettings pageSettings = PageSettings.A4;
         private ParagraphFormat format = ParagraphFormat.of(12);
+        private CellFormat cellFormat;
         private String strongRole = "bold";
         private String emphasisRole = "italic";
         private String combinedRole = "boldItalic";
@@ -118,6 +122,11 @@ public final class MarkdownImporter {
         public Builder metadata(DocumentMetadata value) { metadata = Objects.requireNonNull(value, "metadata"); return this; }
         public Builder pageSettings(PageSettings value) { pageSettings = Objects.requireNonNull(value, "pageSettings"); return this; }
         public Builder paragraphFormat(ParagraphFormat value) { format = Objects.requireNonNull(value, "format"); return this; }
+        /** Sets immutable GFM cell text metrics in points, independently of body paragraphs.
+         * Explicit GFM column alignment overrides this alignment. When omitted, build() uses
+         * CellFormat.of(the final paragraph font size), retaining its default 1.5 line-height ratio.
+         */
+        public Builder cellFormat(CellFormat value) { cellFormat = Objects.requireNonNull(value, "cellFormat"); return this; }
         public Builder image(String destination, InlineImage value) {
             String name = key(destination); Objects.requireNonNull(value, "image");
             if (vectors.containsKey(name)) { throw new IllegalArgumentException("Markdown resource key already registered as a vector"); }

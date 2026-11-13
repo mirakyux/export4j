@@ -20,13 +20,13 @@ def build_inputs(root: Path):
         "scripts/verify_maven_consumer.py", "scripts/maven_central.py", ".github/workflows/release.yml",
         ".github/workflows/github-release.yml",
         "scripts/verify_production.py", "scripts/audit_dependencies.py",
-        "scripts/create_published_api_baseline.py",
+        "scripts/create_published_api_baseline.py", "scripts/publication_scope.py",
         "verification/api/baseline-0.1.0-rc.2.json",
         "verification/api/baseline-0.1.0-rc.2.provenance.json",
         "verification/consumer/build.gradle.kts", "verification/consumer/settings.gradle.kts",
         "verification/consumer/gradle.lockfile"
     )}
-    paths.update(path for directory in (root / "gradle", root / "third-party/licenses", root / "assets",
+    paths.update(path for directory in (root / "gradle", root / "third-party/licenses", root / "third-party/jlatexmath-source-build", root / "assets",
                                         root / "verification/consumer/src")
                  for path in directory.rglob("*") if path.is_file())
     for module in root.glob("export4j-*"):

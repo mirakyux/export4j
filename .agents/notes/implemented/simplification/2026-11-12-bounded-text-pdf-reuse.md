@@ -13,7 +13,7 @@
 ## 决策
 
 - [FontData／TrueTypeFontLoader](../../../../export4j-font-core/src/main/java/com/mirakyux/export4j/font/TrueTypeFontLoader.java) 仅通过包内所有权转移接管 loader 私有快照；调用方数组及可覆写流返回的数组仍先复制，保持加载后不可变。
-- 同一程序跨角色使用时，调用方仍应复用已加载的 `FontFace`；哈希相同不等于多个加载结果自动合并。
+- 同一程序跨角色使用时仍应复用已加载的 `FontFace`。当前加载器还按完整内容哈希自动复用不可变加载结果，空闲后解除缓存引用；跨导出的解析字体独占借用及主动释放以 [ADR-0114](../../../../docs/adr/0114-idle-expiring-font-caches.md) 为准。
 - [ExplicitPhysicalFontCache](../../../../export4j-text-core/src/main/java/com/mirakyux/export4j/text/ExplicitPhysicalFontCache.java) 向 JDK 提供不可变 `FontData` 的独立只读游标，避免 `bytes()` 的完整克隆；流遵守无符号单字节、偏移、零长度及 EOF 契约。JDK 后续解析及临时资源仍由其管理。
 - FontBox 使用未修改的官方 3.0.8 运行制品，版本由现有版本目录及依赖锁固定；不编译或内嵌上游源码，也不保留补丁构建分支。
 - [ParagraphLayouter](../../../../export4j-text-core/src/main/java/com/mirakyux/export4j/text/ParagraphLayouter.java) 对单 StyledSpan 省去逐字样式查找表，多样式段保留原路径。格式、字体回退、软／硬换行及 UTF-16 来源不变。
@@ -23,9 +23,9 @@
 
 | 对象 | 范围与上限 | 保留的约束 |
 | --- | --- | --- |
-| 基础物理字体 | 进程内，最多 32 程序、64 MiB 源字节权重 | 按 SHA-256 去重，同步 miss；仅保存基础 Font 和权重，不保留 FontData 或派生字号，超限正常加载 |
+| 基础物理字体 | 进程内，最多 32 程序、64 MiB 源字节权重，空闲 5 分钟过期 | 按 SHA-256 去重，同步 miss；仅保存基础 Font 和权重，不保留 FontData 或派生字号，超限正常加载 |
 | [字形映射](../../../../export4j-backend-pdf/src/main/java/com/mirakyux/export4j/backend/pdf/PdfGlyphMappingCache.java) | 文档／Writer 内，最多 16 字体、每字体 256 码点 | 超限正常计算，每个 glyph 仍核对实际 GID；Writer 关闭清空，普通调用结束释放 |
-| [解析后的字体程序](../../../../export4j-backend-pdf/src/main/java/com/mirakyux/export4j/backend/pdf/PdfFontPrograms.java) | 会话内，最多 8 项、32 MiB 编码源字节 | 当前页借用项固定到页关闭；超限回到页所有的解析对象；会话关闭释放解析资源 |
+| [解析后的字体程序](../../../../export4j-backend-pdf/src/main/java/com/mirakyux/export4j/backend/pdf/PdfFontPrograms.java) | 会话内最多 8 项／32 MiB；另有相同默认容量、空闲 5 分钟过期的跨导出解析池 | 当前页借用项固定到页关闭；同一解析对象不同时交给多个会话；超限回到本次独立解析，解析资源按租约归还或关闭 |
 | [子集快照](../../../../export4j-backend-pdf/src/main/java/com/mirakyux/export4j/backend/pdf/PdfFontSubsets.java) | 会话内，最多 64 项、16 MiB；每字体页级最多 8,192 个 Unicode／GID 对 | 跨页仅保留不可变快照，不保留已关闭页面的 PDFont／COS 对象；不能缓存时正常生成 |
 | [spool 字体根与 FontFile2](../../../../export4j-backend-pdf/src/main/java/com/mirakyux/export4j/backend/pdf/PdfSpoolBackend.java) | 两个独立的 256 项 LRU | 程序相同不代表 ToUnicode 相同；命中仍遍历完整源对象图计费，关闭时清空索引 |
 
@@ -62,4 +62,4 @@
 
 ## 适用范围
 
-适用于字体载入、段落样式查找及 PDF 普通／逐页／spool 输出的内部优化。此处上限是当前实现取舍，不是新增公共 API 或普遍容量承诺；更改时应同步源码、行为回归和相关结论。
+适用于字体载入、段落样式查找及 PDF 普通／逐页／spool 输出的优化。内部会话缓存的上限是实现取舍；公开加载缓存与 PDF 池通过[字体缓存 API](../../../../docs/font-cache-api.md)配置。更改时应同步源码、行为回归和相关结论。

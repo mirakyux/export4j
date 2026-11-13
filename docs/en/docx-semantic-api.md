@@ -23,6 +23,36 @@ Ordinary export and native-semantic rebuilding explicitly declare `compatibility
 
 Real Word open/edit/save/reopen results for new files appear in [phase 107 (Chinese)](../verification/phase-107-windows-reader-compatibility.md).
 
+## Font families and object line spacing
+
+The development version can explicitly declare all four Word font slots and associate a complete script-family profile with semantic roles:
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxAdapter;
+import com.mirakyux.export4j.adapter.docx.DocxFontFamilies;
+
+var adapter = DocxAdapter.builder()
+        .defaultFonts(new DocxFontFamilies("Liberation Serif", "Noto Serif SC"))
+        .fontFamily(new DocxFontFamilies("Liberation Sans", "Noto Sans CJK SC"),
+                new DocxAdapter.FontRoles("sans", "sansBold", "sansItalic", "sansBoldItalic"))
+        .lineSpacing(DocxAdapter.LineSpacing.OBJECTS_AT_LEAST)
+        .build();
+```
+
+The two-argument `DocxFontFamilies(latin, eastAsia)` uses Latin for ASCII, high ANSI and complex scripts. The four-argument constructor declares `ascii`, `highAnsi`, `eastAsia` and `complexScript` separately; `uniform(family)` uses one family for every slot. Names only declare presentation for the receiving application. They do not discover, load or embed physical fonts, or replace the PDF engine's explicit font configuration.
+
+`defaultFonts` writes document defaults and the regular/bold/italic/bold-italic role keys `""`, `bold`, `italic` and `boldItalic`. `fontFamily(DocxFontFamilies, FontRoles)` supports both role-based output and strict reading. A role must map to exactly one family profile and one bold/italic variant; ambiguous configurations fail at build time. The original `fontFamily(String, FontRoles)` remains a single-family import mapping.
+
+| `LineSpacing` | Word line boxes |
+| --- | --- |
+| `EXACT` (default) | Preserve the existing fixed-height mapping |
+| `AT_LEAST` | Write paragraphs with `w:lineRule="atLeast"` |
+| `OBJECTS_AT_LEAST` | Use minimum-height lines for paragraphs containing images or native equations; keep other paragraphs exact |
+
+These options affect OOXML output without remeasuring the portable model or guaranteeing Word/PDF pagination parity. An `atLeast` value can be read as the model's line height; the original rule is not a separate portable attribute, so later output uses the current adapter's configuration. Native equation insertion also applies the selected object-spacing policy to avoid clipping tall equations.
+
+Strict reading accepts explicitly registered family profiles and supported flat declarations. Theme-font slots, unknown font attributes and arbitrary named style graphs do not become losslessly supported. Ordinary `write` still rejects unprocessed `InlineVector` objects: bind native equations through `writeMath`, or explicitly report degradation through document conversion. Existing strict/loss handling remains in force; declaring default fonts or object spacing cannot bypass validation. See [mixed content](rich-content-api.md) for one-source equation compilation and actual fallback reports.
+
 ## Typed objects
 
 | Object | Actual mapping |

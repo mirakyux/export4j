@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 
+from publication_scope import published_libraries
+
 
 def execute(command, root, log, environment=None, timeout=1800):
     with log.open("wb") as stream:
@@ -57,7 +59,7 @@ def consume_once(root, output, repository, version, native_classifier, gradle, c
                        f"-Pexport4jCentralOnly={str(central).lower()}"]
     if not central:
         command += [f"-Pexport4jRepositoryDirectory={repository}"]
-    execute(command + ["build", "run", "inlineVectors", "resolvedLibraries", "--write-locks", "--refresh-dependencies"],
+    execute(command + ["build", "run", "inlineVectors", "math", "fontCache", "contentBlocks", "richContent", "resolvedLibraries", "--write-locks", "--refresh-dependencies"],
             root, output / "signed-consumer.log", environment)
     build = consumer / "build"
     actual = {line for line in (build / "resolved-libraries.txt").read_text(encoding="utf-8").splitlines()
@@ -65,21 +67,21 @@ def consume_once(root, output, repository, version, native_classifier, gradle, c
     modules = {path.name for path in (repository / "com/mirakyux/export4j").iterdir()
                if (path / version).is_dir() and path.name != "export4j-bom"}
     expected = {f"com.mirakyux.export4j:{name}:{version}" for name in modules}
-    if len(expected) != 16 or actual != expected:
-        raise ValueError("Consumer did not resolve exactly the 16 verified library JARs")
+    if modules != published_libraries(root) or actual != expected:
+        raise ValueError("Consumer did not resolve exactly the configured, verified library JARs")
     components = {line for line in (build / "resolved-components.txt").read_text(encoding="utf-8").splitlines()
                   if line.startswith("com.mirakyux.export4j:")}
     bom = "com.mirakyux.export4j:export4j-bom:" + version
     if components != actual | {bom}:
-        raise ValueError("Consumer did not resolve the matching BOM and 16 libraries")
+        raise ValueError("Consumer did not resolve the matching BOM and libraries")
     hashes = [line.split("\t") for line in (build / "resolved-library-sha256.txt").read_text(encoding="utf-8").splitlines()]
     own = [row for row in hashes if row[0].startswith("com.mirakyux.export4j:")]
-    if len(own) != 16 or {row[0] for row in own} != actual:
-        raise ValueError("Consumer did not report exactly 16 project JAR hashes")
+    if len(own) != len(expected) or {row[0] for row in own} != actual:
+        raise ValueError("Consumer did not report exactly the configured project JAR hashes")
     files = [line.split("\t") for line in (build / "resolved-library-files.txt").read_text(encoding="utf-8").splitlines()]
     own_files = [(identity, Path(filename)) for identity, filename in files if identity.startswith("com.mirakyux.export4j:")]
-    if len(own_files) != 16 or {identity for identity, path in own_files} != actual:
-        raise ValueError("Consumer did not report exactly 16 resolved project JAR files")
+    if len(own_files) != len(expected) or {identity for identity, path in own_files} != actual:
+        raise ValueError("Consumer did not report exactly the configured resolved project JAR files")
     resolved = dict(own_files)
     for coordinate, filename, sha in own:
         artifact = coordinate.split(":")[1]

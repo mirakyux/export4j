@@ -127,9 +127,17 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
             return add(Heading.rich(nextId(), runs, level, theme.headingFormat(level)));
         }
 
+        /** Snapshots styled text and atomic objects using the current heading format. */
+        public Builder headingContent(List<? extends InlineContent> content, int level) {
+            return add(Heading.mixed(nextId(), content, level, theme.headingFormat(level)));
+        }
+
         public Builder bullet(String text) { return add(new BulletItem(nextId(), text, "•", 1, bodyFormat, runs(text, theme.bodyText(), bodyFormat.fontSize()), theme.bodyText().style(bodyFormat.fontSize()))); }
 
         public Builder bullet(List<InlineText> runs) { return add(BulletItem.rich(nextId(), runs, "•", 1, bodyFormat, theme.bodyText().style(bodyFormat.fontSize()))); }
+
+        /** Snapshots mixed body content; the bullet retains the current independent marker appearance. */
+        public Builder bulletContent(List<? extends InlineContent> content) { return add(BulletItem.mixed(nextId(), content, "•", 1, bodyFormat, theme.bodyText().style(bodyFormat.fontSize()))); }
 
         /** Continues a level-one list; use NumberedItem for restart or nesting control. */
         public Builder numbered(String listId, String text) {
@@ -138,6 +146,11 @@ public record Document(DocumentMetadata metadata, PageSettings pageSettings, Lis
 
         public Builder numbered(String listId, List<InlineText> runs) {
             return add(NumberedItem.rich(nextId(), listId, runs, 0, bodyFormat, 1, theme.bodyText().style(bodyFormat.fontSize())));
+        }
+
+        /** Snapshots mixed body content and continues a level-one list with an independent marker. */
+        public Builder numberedContent(String listId, List<? extends InlineContent> content) {
+            return add(NumberedItem.mixed(nextId(), listId, content, 0, bodyFormat, 1, theme.bodyText().style(bodyFormat.fontSize())));
         }
 
         /** Repeating header, equal-width columns and current convenience-table defaults; requires a body row. */

@@ -9,6 +9,7 @@ import com.mirakyux.export4j.adapter.web.MarkdownImporter;
 import com.mirakyux.export4j.adapter.web.UnsupportedAction;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;
 import com.mirakyux.export4j.components.DocumentEngine;
+import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.edit.DocumentEditor;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import java.io.IOException;
@@ -26,6 +27,13 @@ final class MarkdownImportConsumer {
                 || !prepared.preview().issues().equals(imported.report().issues())) {
             throw new IllegalStateException("isolated Markdown import reports differ");
         }
+        var code = MarkdownImporter.builder().build().read("```java\n  CALLER-CODE  <tag> & value;\n    CALLER-NEXT\n```\n").execute();
+        if (!code.report().issues().isEmpty() || code.document().blocks().size() != 1
+                || !(code.document().blocks().getFirst() instanceof Paragraph literal)
+                || !literal.text().equals("  CALLER-CODE  <tag> & value;\n    CALLER-NEXT\n")) {
+            throw new IllegalStateException("isolated Markdown code whitespace changed");
+        }
+        Files.writeString(output.resolve("consumer-markdown-code.txt"), ((Paragraph) code.document().blocks().getFirst()).text());
         var edited = DocumentEditor.edit(imported.document()).replaceText("TARGET-OLD", "TARGET-READY").execute().document();
         engine.export(edited).backend(new PdfBackend()).to(output.resolve("consumer-markdown-import.pdf"));
         try (var stream = Files.newOutputStream(output.resolve("consumer-markdown-import.docx"))) { new DocxAdapter().write(edited, stream); }

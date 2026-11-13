@@ -43,6 +43,10 @@ Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert betw
 | PDF security and standards | AES-256, selected PDF/A profiles, PDF/UA-1 and PAdES B/T/LT/LTA, with explicit keys, trust and validation evidence |
 | Large documents | Streaming tables, explicit replay for totals/references, optional disk-indexed PDF output, execution budgets, cancellation and atomic file writes |
 
+The development version adds [bounded font caching and idle release](docs/en/font-cache-api.md) for repeated exports. This is separate from published RC3.
+
+Development [source content blocks](docs/en/content-blocks-api.md) add per-block fonts, color, paragraph properties and explicit text/Markdown/HTML parsing, with inherited defaults and independent formula/table switches. This batch's acceptance results are recorded separately.
+
 Support applies to the documented input subsets. See the [API guides](docs/en/README.md) for configuration and examples.
 
 ## Getting started
@@ -225,6 +229,7 @@ HTML preserves supported styles, embedded images and merged/nested tables. Markd
 | SVG / PNG | Image/vector resources within their respective supported subsets | Static pages and PNG page ZIPs |
 
 - Formats preserve different information. Unsupported features follow explicit loss policies; general Word round trips and identical DOCX/PDF pagination are not guaranteed.
+- The optional [math module](docs/en/math-api.md) converts bounded TeX and Markdown formulas into vector PDF/SVG/PNG or editable Word equations.
 - [Native Word equations](docs/en/docx-math-api.md) use typed OMML and remain editable. The separate [math example](docs/en/examples.md#mathematical-formulas) renders a bounded TeX subset as PDF/SVG vectors; it requires no TeX installation.
 - PDF recovery infers editable structure from text, coordinates and drawings. It reports uncertainty, accepts explicit table grids and does not perform OCR. Font requirements and image fallbacks are described in the [recovery guide](docs/en/pdf-semantic-import-api.md).
 - [PDF redaction](docs/en/pdf-redaction-api.md) offers rasterization and selective reconstruction. The first loses searchable text and vectors; the second preserves supported content outside selected regions. Callers identify all sensitive regions.

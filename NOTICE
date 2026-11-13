@@ -142,11 +142,13 @@ Original license: examples/src/main/resources/templates/manuweave/MIT.txt
 Only formatting facts and catalog metadata are included; the example renderer
 and synthetic manuscript content are authored by Export4j.
 
-Academic mathematics examples use the unmodified JLaTeXMath 1.0.7 library.
+The optional export4j-math module and academic mathematics examples use the
+unmodified JLaTeXMath 1.0.7 library.
 Copyright (C) 2009-2011 Calixte Denizet; Kris Coolsaet; Nico Van Cleemput;
 Kurt Vermeulen; Copyright 2004-2007 Universiteit Gent.
 The library is GPL-2.0-or-later with its stated linking exception; its bundled
 fonts retain their individual licenses. Complete original notices are in
-third-party/licenses/jlatexmath-1.0.7/. The examples distribution includes the
-upstream sources JAR and corresponding Maven build POMs.
+third-party/licenses/jlatexmath-1.0.7/. The math binary JAR includes the upstream
+sources JAR and corresponding Maven build POMs under META-INF/third-party/source/;
+the examples distribution also includes these materials.
 Source: https://github.com/opencollab/jlatexmath

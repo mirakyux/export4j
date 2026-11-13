@@ -148,7 +148,7 @@ class XmlSemanticSavingTest {
         }
     }
 
-    @Test void textBlockLinksBindLexicallyButNeverAdmitImagesFieldsOrNestedLinks() {
+    @Test void textBlockLinksBindLexicallyAndRejectUnknownImagesFieldsOrNestedLinks() {
         var template = compile("<each items='items' as='item'><heading level='1'><link href='https://example.com/${item}'><span color='#224488'>${item}</span></link></heading></each>");
         var headings = template.render(Map.of("items", List.of("one", "two"))).blocks();
         assertEquals("https://example.com/two", ((Heading) headings.get(1)).inlines().getFirst().hyperlink());
@@ -167,7 +167,8 @@ class XmlSemanticSavingTest {
                 "<notes><note id='n' paragraph='p' kind='ENDNOTE'><span>X</span></note></notes><p id='p'>X</p>",
                 "<p>X</p><notes/>", "<each items='items' as='item'><notes/></each>",
                 "<if test='flag'><then><p>X</p></then><else><caption kind='Figure'><span>X</span></caption></else></if>",
-                "<caption kind=' '>X</caption>", "<caption kind='Figure' role='bold'>X</caption>")) {
+                "<caption kind=' '>X</caption>", "<caption kind='Figure' role='bad role'>X</caption>",
+                "<caption kind='Figure' color='#xyzxyz'>X</caption>")) {
             assertThrows(TemplateException.class, () -> compile(xml), xml);
         }
         // A declared note ID is reserved before auto IDs in regions or body are generated.

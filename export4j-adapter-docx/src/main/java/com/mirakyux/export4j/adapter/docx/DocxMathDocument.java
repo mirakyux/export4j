@@ -32,6 +32,7 @@ public record DocxMathDocument(DocxSemanticDocument semantic, List<Equation> equ
         var positions = new java.util.HashMap<String, Integer>(); for (int index = 0; index < order.size(); index++) { positions.put(order.get(index), index); }
         equations = equations.stream().sorted(java.util.Comparator.comparingInt((Equation equation) -> positions.getOrDefault(equation.anchor().paragraphId(), Integer.MAX_VALUE))
                 .thenComparingInt(equation -> equation.anchor().utf16())).toList();
+        var resolvedEquations = new ArrayList<Equation>();
         for (var equation : equations) {
             var anchor = equation.anchor(); var paragraph = paragraphs.get(anchor.paragraphId());
             if (!ids.add(equation.id()) || !occupied.add(anchor) || paragraph == null
@@ -42,18 +43,18 @@ public record DocxMathDocument(DocxSemanticDocument semantic, List<Equation> equ
                 throw new IllegalArgumentException("equation must own a unique ordinary object marker");
             }
             if (equation.placement() != Placement.INLINE && !paragraph.text().equals("\ufffc")) { throw new IllegalArgumentException("display equation requires an otherwise empty paragraph"); }
-            int offset = 0;
-            for (var run : paragraph.inlines()) {
-                if (anchor.utf16() >= offset && anchor.utf16() < offset + run.text().length()
-                        && (!run.hyperlink().isEmpty() || !run.style().equals(com.mirakyux.export4j.model.InlineStyle.of(paragraph.format().fontSize())))) {
-                    throw new IllegalArgumentException("mathematical marker requires the paragraph's default plain style");
-                }
-                offset += run.text().length();
+            var appearance = DocxMathSupport.markerStyle(paragraph, anchor.utf16());
+            if (appearance.underline() || appearance.strikeThrough() || appearance.baselineShift() != 0
+                    || appearance.fontSize() > 144 || appearance.fontSize() * 2 != Math.rint(appearance.fontSize() * 2)) {
+                throw new IllegalArgumentException("native mathematics marker supports point size, color, role and hyperlink only");
             }
+            resolvedEquations.add(new Equation(equation.id(), equation.anchor(), equation.placement(),
+                    DocxMathSupport.inherit(equation.expression(), appearance, paragraph.format().fontSize())));
             for (var revision : semantic.revisions()) { if (covers(revision.range(), anchor, order)) { throw new IllegalArgumentException("equation overlaps a revision"); } }
             for (var control : semantic.controls()) { if (covers(control.range(), anchor, order)) { throw new IllegalArgumentException("equation overlaps a content control"); } }
             for (var contents : semantic.contents()) { if (covers(contents.range(), anchor, order)) { throw new IllegalArgumentException("equation overlaps contents"); } }
         }
+        equations = List.copyOf(resolvedEquations);
         for (var paragraph : paragraphs.values()) {
             for (int index = 0; index < paragraph.text().length(); index++) {
                 if (paragraph.text().charAt(index) != '\ufffc') { continue; }

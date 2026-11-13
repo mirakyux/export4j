@@ -416,8 +416,12 @@ class XmlTemplateTest {
         }
         for (String container : List.of("heading level='1'", "bullet")) {
             String name = container.split(" ")[0];
-            assertEquals(TemplateException.Code.UNSUPPORTED_ELEMENT, assertThrows(TemplateException.class,
-                    () -> frozen.compile(documentXml("<" + container + ">X<image ref='logo' width='12' height='14'/></" + name + ">"))).code());
+            var block = frozen.compile(documentXml("<" + container + ">X<image ref='logo' width='12' height='14'/></" + name + ">"))
+                    .render(Map.of()).blocks().getFirst();
+            var mixed = block instanceof Heading heading ? heading.paragraph() : ((BulletItem) block).paragraph();
+            assertEquals("X\ufffc", mixed.text());
+            assertEquals(1, mixed.images().getFirst().sourceIndex());
+            assertSame(logo, mixed.images().getFirst().image().resource());
         }
     }
 

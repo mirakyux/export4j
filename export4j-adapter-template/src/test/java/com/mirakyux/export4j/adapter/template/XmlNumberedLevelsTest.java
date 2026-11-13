@@ -62,9 +62,18 @@ class XmlNumberedLevelsTest {
         assertEquals(item("10", "0").indexOf('>') + 2, failure.column());
     }
 
-    @Test void multiLevelNumberedContentRetainsItsExistingInlineAndContainerWhitelist() {
+    @Test void multiLevelNumberedContentPreservesAtomicFieldsAndRetainsItsContainerWhitelist() {
         for (String content : List.of("<page-number width='20'/>",
-                "<number-reference target='parent' width='20'/>", "<image ref='logo' width='10' height='10'/>", "<p>Text</p>")) {
+                "<number-reference target='parent' width='20'/>")) {
+            var item = (NumberedItem) compiler().compile(xml("<numbered id='item' list-id='steps' level='2'>A"
+                    + content + "B</numbered>")).render(Map.of()).blocks().getFirst();
+            assertEquals("A\ufffcB", item.text());
+            assertEquals(1, item.fields().getFirst().sourceIndex());
+            assertEquals(2, item.level());
+        }
+        rejected(compiler(), xml("<numbered id='item' list-id='steps' level='2'>"
+                + "<image ref='missing' width='10' height='10'/></numbered>"), TemplateException.Code.UNKNOWN_RESOURCE);
+        for (String content : List.of("<p>Text</p>", "<numbered list-id='nested'>Text</numbered>")) {
             rejected(compiler(), xml("<numbered id='item' list-id='steps' level='2'>" + content + "</numbered>"), TemplateException.Code.UNSUPPORTED_ELEMENT);
         }
         var linked = (NumberedItem) compiler().compile(xml("<numbered list-id='steps'><link href='https://example.com'>Text</link></numbered>"))

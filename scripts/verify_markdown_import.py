@@ -98,11 +98,22 @@ def main():
                 require(base64.b64decode(images[0].attrs["src"].split(",", 1)[1]) == (sample / "logo.png").read_bytes(), "resource bytes changed")
     with (sample / "losses.tsv").open(encoding="utf-8", newline="") as stream:
         losses = list(csv.DictReader(stream, delimiter="\t"))
-    require([row["feature"] for row in losses] == ["BLOCK_QUOTE", "CODE_BLOCK"], "actual losses differ")
+    require([row["feature"] for row in losses] == ["BLOCK_QUOTE"], "actual losses differ")
     for loss in losses:
         require(loss["action"] == "WARN" and loss["treatment"] == "DEGRADE", "import treatment differs")
         selected = source[int(loss["start"]):int(loss["end"])]
-        require(("QUOTE-ONLY" if loss["feature"] == "BLOCK_QUOTE" else "CODE-ONLY") in selected, "loss source range differs")
+        require("QUOTE-ONLY" in selected, "loss source range differs")
+    with ZipFile(sample / "report.docx") as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+        paragraphs = ["".join(node.text or "" for node in paragraph.iter(W + "t"))
+                      for paragraph in document.iter(W + "p")]
+        require("CODE-ONLY <tag> & value;" in paragraphs, "code literal was reinterpreted or altered in OOXML")
+        require(any(paragraph.find(".//" + W + "br") is not None
+                    for paragraph in document.iter(W + "p")
+                    if "CODE-ONLY" in "".join(node.text or "" for node in paragraph.iter(W + "t"))),
+                "code trailing newline disappeared in OOXML")
+    require((caller / "consumer-markdown-code.txt").read_text(encoding="utf-8")
+            == "  CALLER-CODE  <tag> & value;\n    CALLER-NEXT\n", "consumer code whitespace changed")
     require((caller / "consumer-markdown-import-losses.tsv").read_text().strip() == "BLOCK_QUOTE\tIGNORE\tDEGRADE", "IGNORE actual loss disappeared")
     tiles = []
     for label, path in (("example", sample / "report.pdf"), ("consumer", caller / "consumer-markdown-import.pdf")):
@@ -111,7 +122,7 @@ def main():
             require(difference(first, second)["meanAbsoluteChannelError"] < 1.5, "independent renderer mismatch")
             tiles.extend([(label + " Poppler", first), (label + " PDFium", second)])
     contact_sheet(tiles, OUTPUT)
-    report = {"versions": versions, "pdf_pages": 2, "docx": 2, "web_outputs": 4, "actual_losses": 3, "checks": "passed"}
+    report = {"versions": versions, "pdf_pages": 2, "docx": 2, "web_outputs": 4, "actual_losses": 2, "checks": "passed"}
     (OUTPUT / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
 

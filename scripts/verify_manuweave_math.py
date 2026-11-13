@@ -240,14 +240,23 @@ def check_consumer(directory):
     require(snapshot(first) == snapshot(edited_equations[0]), "isolated edit changed more than the denominator")
     libraries = (directory / "resolved-libraries.txt").read_text(encoding="utf-8")
     require("com.mirakyux.export4j:export4j-adapter-docx:" in libraries, "isolated consumer did not resolve the published DOCX adapter")
-    require("jlatexmath" not in libraries.lower() and ":examples:" not in libraries.lower(),
-            "isolated native mathematics consumer must not depend on examples or JLaTeXMath")
+    require(":examples:" not in libraries.lower(), "isolated native mathematics consumer must not depend on examples")
+    # The complete consumer now selects the separate optional mathematics module too.
+    # Check the actual resolved native adapter rather than the aggregate classpath.
+    resolved = [row.split("\t") for row in (directory / "resolved-library-files.txt").read_text(encoding="utf-8").splitlines()]
+    adapter_jars = [Path(filename) for coordinate, filename in resolved
+                    if coordinate.startswith("com.mirakyux.export4j:export4j-adapter-docx:")]
+    require(len(adapter_jars) == 1, "native adapter runtime JAR is missing or ambiguous")
+    with ZipFile(adapter_jars[0]) as adapter:
+        require(all(b"org/scilab/forge/jlatexmath" not in adapter.read(name)
+                    for name in adapter.namelist() if name.endswith(".class")),
+                "native DOCX mathematical bytecode acquired a JLaTeXMath reference")
     return {"status": "verified", "nativeFormulas": 2, "fractionAndMatrix": True,
             "strictPublicApiRoundtripAndEdit": True, "sourceAndArtifactHashesBound": True,
             "reportSha256": sha256(output / "consumer-native-math-report.xml"),
             "originalSha256": report["originalSha256"], "editedSha256": report["editedSha256"],
             "resolvedLibrariesSha256": sha256(directory / "resolved-libraries.txt"),
-            "exampleAndJlatexmathDependencyAbsent": True}
+            "exampleDependencyAbsent": True, "nativeAdapterJlatexmathReferencesAbsent": True}
 
 
 def main():

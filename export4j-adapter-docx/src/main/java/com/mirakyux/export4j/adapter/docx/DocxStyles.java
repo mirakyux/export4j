@@ -35,6 +35,7 @@ final class DocxStyles {
     private final Map<String, Style> styles = new LinkedHashMap<>();
     private final Map<String, Resolved> resolved = new HashMap<>();
     private final Map<String, DocxAdapter.FontRoles> fonts;
+    private final DocxFontProfiles profiles;
     private final DocxAdapter.Policy policy;
     private final List<DocxAdapter.Diagnostic> diagnostics;
     private final DocxLimits limits;
@@ -45,20 +46,20 @@ final class DocxStyles {
     private boolean hasDefaults;
     private long formattingWork;
 
-    private DocxStyles(Map<String, DocxAdapter.FontRoles> fonts, DocxAdapter.Policy policy, List<DocxAdapter.Diagnostic> diagnostics, DocxLimits limits) {
-        this.fonts = fonts; this.policy = policy; this.diagnostics = diagnostics; this.limits = limits;
+    private DocxStyles(Map<String, DocxAdapter.FontRoles> fonts, DocxFontProfiles profiles, DocxAdapter.Policy policy, List<DocxAdapter.Diagnostic> diagnostics, DocxLimits limits) {
+        this.fonts = fonts; this.profiles = profiles; this.policy = policy; this.diagnostics = diagnostics; this.limits = limits;
     }
-    static boolean materialize(Map<String, byte[]> parts, Map<String, DocxAdapter.FontRoles> fonts, DocxAdapter.Policy policy,
+    static boolean materialize(Map<String, byte[]> parts, Map<String, DocxAdapter.FontRoles> fonts, DocxFontProfiles profiles, DocxAdapter.Policy policy,
             List<DocxAdapter.Diagnostic> diagnostics, DocxLimits limits) throws IOException {
-        if (!parts.containsKey("word/styles.xml") && fonts.isEmpty()) { return false; }
+        if (!parts.containsKey("word/styles.xml") && fonts.isEmpty() && profiles.empty()) { return false; }
         var root = DocxAdapter.parse(parts.getOrDefault("word/styles.xml", ("<w:styles xmlns:w=\"" + W + "\"/>").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         if (!W.equals(root.getNamespaceURI()) || !root.getLocalName().equals("styles")) { throw new IOException("invalid DOCX styles root"); }
         // Empty project-owned role declarations and the original built-in styles retain their old path.
         boolean complex = children(root).stream().anyMatch(style -> !simple(style));
-        if (!complex && fonts.isEmpty()) { return false; }
-        var mapper = new DocxStyles(fonts, policy, diagnostics, limits); mapper.read(root);
+        if (!complex && fonts.isEmpty() && profiles.empty()) { return false; }
+        var mapper = new DocxStyles(fonts, profiles, policy, diagnostics, limits); mapper.read(root);
         for (var style : mapper.styles.values()) { mapper.resolve(style.id(), new HashSet<>(), 0); }
-        if (complex) { loss(policy, diagnostics, "word/styles.xml", "styleGraph", "named style graph is materialized into concrete semantic formatting"); }
+        if (complex && !profiles.declared(root)) { loss(policy, diagnostics, "word/styles.xml", "styleGraph", "named style graph is materialized into concrete semantic formatting"); }
         for (var entry : parts.entrySet()) {
             if (!entry.getKey().startsWith("word/") || !entry.getKey().endsWith(".xml") || entry.getKey().equals("word/styles.xml")) { continue; }
             var document = DocxAdapter.parse(entry.getValue());
@@ -75,7 +76,7 @@ final class DocxStyles {
         }
         return true;
     }
-    private static boolean simple(Element style) {
+    static boolean simple(Element style) {
         if (!W.equals(style.getNamespaceURI()) || !style.getLocalName().equals("style")) { return false; }
         String id = style.getAttributeNS(W, "styleId");
         return children(style).stream().allMatch(property -> property.getLocalName().equals("name")
@@ -207,14 +208,17 @@ final class DocxStyles {
     }
     private void applyFamily(Element properties) throws IOException {
         var family = child(properties, "rFonts"); if (family == null) { return; }
-        String name = ""; boolean supported = true;
-        for (int index = 0; index < family.getAttributes().getLength(); index++) {
-            var attribute = family.getAttributes().item(index); if (!W.equals(attribute.getNamespaceURI())) { continue; }
-            if (!Set.of("ascii", "hAnsi", "eastAsia", "cs").contains(attribute.getLocalName())) { supported = false; continue; }
-            if (!name.isEmpty() && !name.equals(attribute.getNodeValue())) { supported = false; } name = attribute.getNodeValue();
+        DocxAdapter.FontRoles mapping = null;
+        try {
+            var families = DocxFontProfiles.read(family);
+            mapping = profiles.mapping(family);
+            if (mapping == null && families.ascii().equals(families.highAnsi()) && families.ascii().equals(families.eastAsia())
+                    && families.ascii().equals(families.complexScript())) { mapping = fonts.get(families.ascii()); }
+        } catch (IOException failure) {
+            loss(policy, diagnostics, "word/styles.xml", "rFonts", "unsupported explicit script font-family declaration");
+            remove(properties, "rFonts"); return;
         }
-        var mapping = fonts.get(name);
-        if (!supported || mapping == null) { loss(policy, diagnostics, "word/styles.xml", "rFonts", "font family requires one explicit registered physical-role mapping"); }
+        if (mapping == null) { loss(policy, diagnostics, "word/styles.xml", "rFonts", "script font families require one explicit registered physical-role profile"); }
         else {
             boolean bold = enabled(child(properties, "b")); boolean italic = enabled(child(properties, "i"));
             String role = bold && italic ? mapping.boldItalic() : bold ? mapping.bold() : italic ? mapping.italic() : mapping.regular();

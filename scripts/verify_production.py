@@ -105,12 +105,13 @@ def check_docx(path):
 
 
 def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", repository=None, sbom_path=None):
+    from publication_scope import published_libraries, verify_math_source_bundle
     sbom = json.loads((sbom_path or ROOT / "build/reports/sbom.cdx.json").read_text(encoding="utf-8"))
     require(sbom["bomFormat"] == "CycloneDX" and sbom["specVersion"] == "1.6", "SBOM format differs")
     components = sbom["components"]
-    require(len(components) == len({c["bom-ref"] for c in components}) == 29, "SBOM runtime inventory differs")
+    require(len(components) == len({c["bom-ref"] for c in components}), "SBOM runtime inventory differs")
     own = [c for c in components if c["group"] == "com.mirakyux.export4j"]
-    require(len(own) == 16 and {"export4j-adapter-template", "export4j-adapter-pdf", "export4j-adapter-web", "export4j-opentype"} <= {c["name"] for c in own}, "SBOM library count differs")
+    require({c["name"] for c in own} == published_libraries(ROOT) and len(own) == len(published_libraries(ROOT)), "SBOM library scope differs")
     with (ROOT / "third-party/dependencies.csv").open(encoding="utf-8", newline="") as source:
         reviewed = {row["coordinate"]: row for row in csv.DictReader(source)}
     for component in components:
@@ -119,7 +120,13 @@ def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", reposi
         key = f'{component["group"]}:{component["name"]}:{component["version"]}'
         require(reviewed[key]["scope"] == "runtime" and reviewed[key]["sha256"] == component["hashes"][0]["content"], f"external SBOM artifact differs: {key}")
         expected_license = "BSD-3-Clause" if component["group"] == "org.lwjgl" else "BSD-2-Clause" if component["group"] == "org.commonmark" else "MIT" if component["group"] in ("org.jsoup", "org.bouncycastle") else "Apache-2.0"
-        require(component["licenses"] == [{"license": {"id": expected_license}}], f"external SBOM license differs: {key}")
+        expected_licenses = [{"license": {"id": expected_license}}]
+        if key == "org.scilab.forge:jlatexmath:1.0.7":
+            expected_licenses = [{"license": {"name": "GPL-2.0-or-later with upstream JLaTeXMath linking exception",
+                "url": "https://github.com/mirakyux/export4j/blob/main/third-party/licenses/jlatexmath-1.0.7/LICENSE"}}]
+        require(component["licenses"] == expected_licenses, f"external SBOM license differs: {key}")
+    require({f'{c["group"]}:{c["name"]}:{c["version"]}' for c in components if c["group"] != "com.mirakyux.export4j"}
+            == {key for key, row in reviewed.items() if row["scope"] == "runtime"}, "SBOM third-party scope differs")
     repo = (repository or ROOT / "build/repository") / "com/mirakyux/export4j"
     def published(name, version, extension, classifier=""):
         directory = repo / name / version
@@ -136,6 +143,8 @@ def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", reposi
         name, component_version = component["name"], component["version"]
         require(component_version == version, f"SBOM version differs: {name}")
         artifact = published(name, component_version, "jar")
+        if name == "export4j-math":
+            verify_math_source_bundle(artifact, ROOT)
         require(hashlib.sha256(artifact.read_bytes()).hexdigest() == component["hashes"][0]["content"], f"SBOM hash differs: {name}")
         require(published(name, component_version, "jar", "sources").exists(), f"sources missing: {name}")
         require(published(name, component_version, "jar", "javadoc").exists(), f"Javadoc missing: {name}")
@@ -163,7 +172,7 @@ def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", reposi
         require(pointer.exists(), "run verify_local_consumer.ps1 first or pass --consumer-build-directory")
         consumer_build_directory = Path(pointer.read_text(encoding="utf-8").strip())
     libraries = (consumer_build_directory / "resolved-libraries.txt").read_text().splitlines()
-    require(len(libraries) == 29 and set(libraries) == {f'{c["group"]}:{c["name"]}:{c["version"]}' for c in components}, "isolated consumer dependencies differ")
+    require(len(libraries) == len(components) and set(libraries) == {f'{c["group"]}:{c["name"]}:{c["version"]}' for c in components}, "isolated consumer dependencies differ")
     consumer = consumer_build_directory / "output"
     require("CONSUMER-OK-123" in extracted(consumer / "consumer.pdf"), "consumer PDF text differs")
     require(WordDocument(consumer / "consumer.docx").paragraphs[0].text == "CONSUMER-OK-123", "consumer DOCX differs")
@@ -204,7 +213,7 @@ def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", reposi
     with ZipFile(examples_jar) as archive:
         for name in ("NotoNaskhArabic-Regular.ttf", "NotoNaskhArabic-OFL.txt", "NotoSansDevanagari-Regular.ttf", "NotoSansThai-Regular.ttf"):
             require(archive.read("fonts/" + name) == (ROOT / "assets/fonts" / name).read_bytes(), f"packaged Arabic font/license differs: {name}")
-    return {"runtimeComponents": len(components), "libraries": 16, "bomConstraints": len(managed), "isolatedConsumer": "passed"}
+    return {"runtimeComponents": len(components), "libraries": len(own), "bomConstraints": len(managed), "isolatedConsumer": "passed"}
 
 
 def main():

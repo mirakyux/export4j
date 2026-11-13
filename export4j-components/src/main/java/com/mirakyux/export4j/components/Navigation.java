@@ -48,7 +48,7 @@ public record Navigation(List<Bookmark> bookmarks, TableOfContents contents, Lis
         var value = document.navigation(); value.validate(document);
         var bookmarks = value.headings() ? document.sections().stream().flatMap(section -> section.blocks().stream())
                 .filter(Heading.class::isInstance).map(Heading.class::cast).filter(heading -> heading.level() <= value.maxHeadingLevel())
-                .map(heading -> new Bookmark(heading.text(), heading.id(), heading.level())).toList()
+                .map(heading -> new Bookmark(headingTitle(heading), heading.id(), heading.level())).toList()
                 : value.bookmarks().stream().map(bookmark -> new Bookmark(bookmark.title(), bookmark.blockId(), bookmark.level())).toList();
         var source = value.contents(); var appearance = ContentsStyle.builder();
         source.styles().forEach((part, style) -> {
@@ -70,8 +70,22 @@ public record Navigation(List<Bookmark> bookmarks, TableOfContents contents, Lis
     public static Navigation fromHeadings(Document document, TableOfContents contents, List<Comment> comments, List<Field> fields) {
         Objects.requireNonNull(document, "document");
         var bookmarks = document.blocks().stream().filter(Heading.class::isInstance).map(Heading.class::cast)
-                .map(heading -> new Bookmark(heading.text(), heading.id(), heading.level())).toList();
+                .map(heading -> new Bookmark(headingTitle(heading), heading.id(), heading.level())).toList();
         return new Navigation(bookmarks, contents, comments, fields);
+    }
+
+    /** 为导航生成静态阅读文字，不把原子对象的 U+FFFC 标记当成真实标题字形。 */
+    private static String headingTitle(Heading heading) {
+        var title = new StringBuilder();
+        for (var part : heading.paragraph().content()) {
+            switch (part) {
+                case com.mirakyux.export4j.model.InlineText text -> title.append(text.text());
+                case com.mirakyux.export4j.model.InlineImage image -> title.append(image.altText());
+                case com.mirakyux.export4j.model.InlineVector vector -> title.append(vector.logicalText());
+                case com.mirakyux.export4j.model.InlineField ignored -> throw new IllegalArgumentException("heading with generated fields requires explicit bookmark titles");
+            }
+        }
+        return title.toString();
     }
 
     public Navigation {

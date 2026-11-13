@@ -66,6 +66,7 @@ public final class PdfSpoolBackend implements PageBackend {
     private final Path temporaryDirectory;
     private final PdfLimits pageLimits;
     private final PdfSpoolLimits limits;
+    private final PdfFontCache fontCache;
 
     public PdfSpoolBackend(Path temporaryDirectory) {
         this(temporaryDirectory, PdfLimits.DEFAULT, PdfSpoolLimits.DEFAULT);
@@ -92,9 +93,15 @@ public final class PdfSpoolBackend implements PageBackend {
     }
 
     public PdfSpoolBackend(Path temporaryDirectory, PdfLimits pageLimits, PdfSpoolLimits limits) {
+        this(temporaryDirectory, pageLimits, limits, PdfFontCache.defaultCache());
+    }
+
+    /** Uses the caller's existing temporary parent and borrows its thread-safe font cache. */
+    public PdfSpoolBackend(Path temporaryDirectory, PdfLimits pageLimits, PdfSpoolLimits limits, PdfFontCache fontCache) {
         this.temporaryDirectory = Objects.requireNonNull(temporaryDirectory, "temporaryDirectory").toAbsolutePath();
         this.pageLimits = Objects.requireNonNull(pageLimits, "pageLimits");
         this.limits = Objects.requireNonNull(limits, "limits");
+        this.fontCache = Objects.requireNonNull(fontCache, "fontCache");
     }
 
     @Override public PageWriter open(DocumentMetadata metadata, OutputStream output) throws IOException {
@@ -117,8 +124,8 @@ public final class PdfSpoolBackend implements PageBackend {
         private final DiskIndex pageIndex;
         private final byte[] xrefEntry = "0000000000 00000 n \n".getBytes(StandardCharsets.US_ASCII);
         private final CountedOutput output;
-        private final PdfBackend renderer = new PdfBackend(pageLimits);
-        private final PdfFontPrograms fontPrograms = new PdfFontPrograms();
+        private final PdfBackend renderer = new PdfBackend(pageLimits, PdfOptions.DEFAULT, fontCache);
+        private final PdfFontPrograms fontPrograms = new PdfFontPrograms(fontCache);
         private final PdfImagePrograms imagePrograms = new PdfImagePrograms();
         private final List<Long> leafPages = new ArrayList<>(LEAF_PAGES);
         private final LinkedHashMap<String, Long> sharedFonts = new LinkedHashMap<>(16, 0.75f, true);
@@ -131,6 +138,7 @@ public final class PdfSpoolBackend implements PageBackend {
         private long serializedPageBytes;
         private boolean terminal;
         private boolean closed;
+        private boolean finished;
         private PageNavigation navigation;
         private final java.util.Map<Integer, List<Long>> internalAnnotations = new java.util.HashMap<>();
         private final List<Long> linkObjects = new ArrayList<>();
@@ -273,7 +281,7 @@ public final class PdfSpoolBackend implements PageBackend {
                 }
                 write("trailer\n<< /Size " + nextObject + " /Root 1 0 R /Info 3 0 R >>\nstartxref\n"
                         + xrefStart + "\n%%EOF\n");
-                output.flush(); terminal = true;
+                output.flush(); finished = true; terminal = true;
             } catch (IOException | RuntimeException | Error failure) { terminal = true; throw failure; }
         }
 
@@ -530,6 +538,7 @@ public final class PdfSpoolBackend implements PageBackend {
         @Override public void close() throws IOException {
             requireThread();
             if (closed) { return; }
+            if (!finished) { fontPrograms.discard(); }
             closed = true; terminal = true;
             sharedFonts.clear();
             sharedFontPrograms.clear();

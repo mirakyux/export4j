@@ -26,6 +26,7 @@ import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.CellStyleRule;
 import com.mirakyux.export4j.model.TemplateCondition;
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.DocumentNavigation;
 import com.mirakyux.export4j.model.DocumentTemplate;
@@ -38,6 +39,8 @@ import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineVector;
+import com.mirakyux.export4j.model.VectorResource;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.LineBreakPolicy;
@@ -58,6 +61,7 @@ import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.TableFormat;
 import com.mirakyux.export4j.model.TableRow;
+import com.mirakyux.export4j.model.SourceContentParser;
 import com.mirakyux.export4j.adapter.template.TemplateException.Code;
 
 /** Immutable offline XML template compiler. Each compile owns its parser and state; instances may be shared.
@@ -95,12 +99,38 @@ public final class XmlTemplate {
     private static final Pattern PATH = Pattern.compile("[A-Za-z_][A-Za-z_0-9]*(\\.[A-Za-z_][A-Za-z_0-9]*)*");
     private static final Pattern LENGTH = Pattern.compile("([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(pt|mm|cm|in)?");
     private static final String LINK_REFERENCE_PREFIX = "https://export4j.invalid/.template-link/";
-    private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break", "table", "rows", "columns", "grid", "item");
+    private static final Set<String> BLOCK_ELEMENTS = Set.of("p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break", "table", "rows", "columns", "grid", "item", "content");
     private static final Set<String> PARAGRAPH_ATTRIBUTES = Set.of("id", "size", "line-height", "align",
             "keep-together", "space-before", "space-after", "first-indent", "subsequent-indent", "line-break",
             "keep-with-next", "page-break-before", "min-lines-before", "min-lines-after", "rotation");
     private static final Set<String> INLINE_STYLE_ATTRIBUTES = Set.of("role", "color", "size", "underline", "strike", "baseline-shift");
     private static final Set<String> SPAN_ATTRIBUTES = Set.of("style", "role", "color", "size", "underline", "strike", "baseline-shift");
+    private static final Set<String> CONTENT_ATTRIBUTES;
+    static {
+        var names = new HashSet<>(PARAGRAPH_ATTRIBUTES);
+        names.remove("id");
+        names.addAll(Set.of("role", "color", "content-format", "formulas", "tables", "raw-html", "cell-size", "cell-line-height",
+                "cell-align", "cell-line-break", "table-padding", "table-draw-borders", "table-allow-row-split",
+                "table-space-before", "table-space-after"));
+        CONTENT_ATTRIBUTES = Set.copyOf(names);
+    }
+    private static Set<String> contentAttributes(String... extra) {
+        var names = new HashSet<>(CONTENT_ATTRIBUTES);
+        names.addAll(List.of(extra));
+        return Set.copyOf(names);
+    }
+    private static final SourceContentParser PLAIN_CONTENT = () -> (namespace, source, options, remaining) -> {
+        if (options.format() != ContentOptions.Format.TEXT || options.formulas()) {
+            throw new IllegalArgumentException("Rich source content requires an explicitly configured content parser");
+        }
+        if (remaining.maxBlocks() < 1 || remaining.maxVisitedNodes() < 1
+                || source.codePointCount(0, source.length()) > remaining.maxCodePoints()) {
+            throw new IllegalArgumentException("Source content exceeds the remaining binding budget");
+        }
+        return List.of(new Paragraph(namespace, List.of(new InlineText(source,
+                new InlineStyle(options.fontRole(), options.paragraphFormat().fontSize(), options.rgb(), 0, false, false))),
+                options.paragraphFormat()));
+    };
     private final PageSettings pageSettings;
     private final DocumentTheme theme;
     private final ParagraphFormat bodyFormat;
@@ -113,6 +143,8 @@ public final class XmlTemplate {
     private final long fragmentInputCharacters;
     private final Limits limits;
     private final DocumentTemplate.Limits bindingLimits;
+    private final ContentOptions contentOptions;
+    private final SourceContentParser contentParser;
 
     private XmlTemplate(Builder builder) {
         pageSettings = builder.pageSettings;
@@ -133,6 +165,8 @@ public final class XmlTemplate {
         fragmentInputCharacters = inputCharacters;
         limits = builder.limits;
         bindingLimits = builder.bindingLimits;
+        contentOptions = builder.contentOptions;
+        contentParser = builder.contentParser;
     }
 
     private static TextDefaults defaults(com.mirakyux.export4j.model.TextAppearance value) {
@@ -342,7 +376,7 @@ public final class XmlTemplate {
         private Element expand(String source) {
             var root = read(source, "", sourceBudget, null);
             requireName(root, "document");
-            attributes(root, Set.of("version", "title", "author", "literal-text"));
+            attributes(root, contentAttributes("version", "title", "author", "literal-text"));
             if (!required(root, "version").equals("1")) { throw error(root, Code.INVALID_VALUE); }
             pagePlacement(root, true);
             return element(root, 1, true, false, "", Set.of(), null);
@@ -364,7 +398,7 @@ public final class XmlTemplate {
                         if (!blockList) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
                         content.addAll(include(child, depth + 1, namespace));
                     } else {
-                        boolean childList = blockList && Set.of("each", "list", "section", "header", "footer", "columns", "grid", "item").contains(child.name())
+                        boolean childList = blockList && Set.of("each", "list", "section", "header", "footer", "columns", "grid", "item", "scope").contains(child.name())
                                 || conditional && (child.name().equals("then") || child.name().equals("else"));
                         boolean childConditional = blockList && child.name().equals("if");
                         content.add(element(child, depth + 1, childList, childConditional, namespace, localIds, include));
@@ -459,7 +493,7 @@ public final class XmlTemplate {
                 for (int i = current.content().size() - 1; i >= 0; i--) {
                     if (current.content().get(i) instanceof Element child) {
                         if (child.name().equals("include") && !scan.blockList()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
-                        boolean childList = scan.blockList() && Set.of("each", "list", "section", "header", "footer", "columns", "grid", "item").contains(child.name())
+                        boolean childList = scan.blockList() && Set.of("each", "list", "section", "header", "footer", "columns", "grid", "item", "scope").contains(child.name())
                                 || scan.conditional() && (child.name().equals("then") || child.name().equals("else"));
                         pending.push(new IdScan(child, childList, scan.blockList() && child.name().equals("if")));
                     }
@@ -515,6 +549,8 @@ public final class XmlTemplate {
 
     private final class Compiler {
         private final List<DocumentTemplate.CellRule> cellRules = new ArrayList<>();
+        private final List<DocumentTemplate.CellContent> cellContents = new ArrayList<>();
+        private final List<ContentOptions> contentScopes = new ArrayList<>();
         private boolean literalText;
         private final Map<String, String> hyperlinkTemplates = new HashMap<>();
         private final Set<String> ids = new HashSet<>();
@@ -525,8 +561,10 @@ public final class XmlTemplate {
 
         private DocumentTemplate compile(Element root) {
             requireName(root, "document");
-            attributes(root, Set.of("version", "title", "author", "literal-text"));
+            attributes(root, contentAttributes("version", "title", "author", "literal-text"));
             if (!required(root, "version").equals("1")) { throw error(root, Code.INVALID_VALUE); }
+            contentScopes.add(contentOptions);
+            contentScopes.add(sourceOptions(root, scoped(bodyFormat, bodyText)));
             literalText = flag(root, "literal-text", false);
             reserveIds(root);
             var metadata = new DocumentMetadata(expression(root, value(root, "title", "")), expression(root, value(root, "author", "")));
@@ -577,10 +615,10 @@ public final class XmlTemplate {
                     sections.add(new DocumentTemplate.SectionNode(sectionId, sectionSettings,
                             nodes(children.subList(selected.end(), children.size())), first, selected.regions()));
                 }
-                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText, notes, navigation, cellRules);
+                return new DocumentTemplate(metadata, settings, List.of(), bindingLimits, regions, sections, hyperlinkTemplates, literalText, notes, navigation, cellRules, cellContents);
             }
             var bodyNodes = nodes(body);
-            return new DocumentTemplate(metadata, settings, bodyNodes, bindingLimits, regions, List.of(), hyperlinkTemplates, literalText, notes, navigation, cellRules);
+            return new DocumentTemplate(metadata, settings, bodyNodes, bindingLimits, regions, List.of(), hyperlinkTemplates, literalText, notes, navigation, cellRules, cellContents);
         }
 
         private DocumentNavigation navigation(Element element) {
@@ -809,7 +847,12 @@ public final class XmlTemplate {
             List<DocumentTemplate.Node> result = new ArrayList<>();
             for (var element : elements) {
                 ExecutionContext.checkpoint();
-                result.add(node(element));
+                if (element.name().equals("scope")) {
+                    attributes(element, CONTENT_ATTRIBUTES);
+                    contentScopes.add(sourceOptions(element, scoped(bodyFormat, bodyText)));
+                    try { result.addAll(nodes(element)); }
+                    finally { contentScopes.removeLast(); }
+                } else { result.add(node(element)); }
             }
             return List.copyOf(result);
         }
@@ -817,6 +860,7 @@ public final class XmlTemplate {
         private DocumentTemplate.Node node(Element element) {
             try {
                 return switch (element.name()) {
+                    case "content" -> source(element);
                     case "p", "heading", "bullet", "numbered", "caption", "cross-reference", "page-break" -> new DocumentTemplate.ValueBlock(block(element));
                     case "if" -> conditional(element);
                     case "each" -> {
@@ -842,6 +886,78 @@ public final class XmlTemplate {
             } catch (IllegalArgumentException invalid) {
                 throw error(element, Code.INVALID_VALUE);
             }
+        }
+
+        private ContentOptions.Resolved scoped(ParagraphFormat format, TextDefaults text) {
+            var resolved = new ContentOptions.Resolved(text.fontRole(), text.rgb(), format,
+                    cellFormat, theme.tableFormat(), ContentOptions.Format.TEXT, false, true);
+            for (var options : contentScopes) { resolved = options.resolve(resolved); }
+            return resolved;
+        }
+
+        private ContentOptions sourceOptions(Element element, ContentOptions.Resolved inherited) {
+            var options = ContentOptions.builder();
+            var attrs = element.attributes();
+            if (attrs.containsKey("role")) { options.fontRole(attrs.get("role")); }
+            if (attrs.containsKey("color")) { options.rgb(color(element, 0)); }
+            if (attrs.containsKey("content-format")) { options.format(ContentOptions.Format.valueOf(attrs.get("content-format"))); }
+            if (attrs.containsKey("formulas")) { options.formulas(toggle(element, "formulas")); }
+            if (attrs.containsKey("tables")) { options.tables(toggle(element, "tables")); }
+            if (attrs.containsKey("raw-html")) { options.rawHtml(toggle(element, "raw-html")); }
+            if (attrs.containsKey("size")) { options.fontSize(number(element, "size", 12)); }
+            if (attrs.containsKey("line-height")) { options.lineHeight(number(element, "line-height", 18)); }
+            if (attrs.containsKey("align")) { options.alignment(alignment(element, inherited.paragraphFormat().alignment())); }
+            if (attrs.containsKey("first-indent")) { options.firstLineIndent(number(element, "first-indent", 0)); }
+            if (attrs.containsKey("subsequent-indent")) { options.subsequentLineIndent(number(element, "subsequent-indent", 0)); }
+            if (attrs.containsKey("space-before")) { options.spaceBefore(number(element, "space-before", 0)); }
+            if (attrs.containsKey("space-after")) { options.spaceAfter(number(element, "space-after", 0)); }
+            if (attrs.containsKey("keep-together")) { options.keepTogether(flag(element, "keep-together", false)); }
+            if (attrs.containsKey("rotation")) { options.rotation(number(element, "rotation", 0)); }
+            if (attrs.containsKey("line-break")) { options.lineBreakPolicy(lineBreak(element, inherited.paragraphFormat().lineBreakPolicy())); }
+            if (attrs.containsKey("keep-with-next")) { options.keepWithNext(flag(element, "keep-with-next", false)); }
+            if (attrs.containsKey("page-break-before")) { options.pageBreakBefore(flag(element, "page-break-before", false)); }
+            if (attrs.containsKey("min-lines-before")) { options.minLinesBeforeBreak(positiveInteger(element, "min-lines-before")); }
+            if (attrs.containsKey("min-lines-after")) { options.minLinesAfterBreak(positiveInteger(element, "min-lines-after")); }
+            if (attrs.keySet().stream().anyMatch(name -> name.startsWith("cell-"))) {
+                var cell = inherited.cellFormat();
+                options.cellFormat(new CellFormat(number(element, "cell-size", cell.fontSize()),
+                        number(element, "cell-line-height", cell.lineHeight()),
+                        ParagraphAlignment.valueOf(value(element, "cell-align", cell.alignment().name())),
+                        LineBreakPolicy.valueOf(value(element, "cell-line-break", cell.lineBreakPolicy().name()))));
+            }
+            if (attrs.keySet().stream().anyMatch(name -> name.startsWith("table-"))) {
+                var table = inherited.tableFormat().toBuilder();
+                if (attrs.containsKey("table-padding")) { table.padding(number(element, "table-padding", 0)); }
+                if (attrs.containsKey("table-draw-borders")) { table.drawBorders(flag(element, "table-draw-borders", true)); }
+                if (attrs.containsKey("table-allow-row-split")) { table.allowRowSplit(flag(element, "table-allow-row-split", false)); }
+                if (attrs.containsKey("table-space-before")) { table.spaceBefore(number(element, "table-space-before", 0)); }
+                if (attrs.containsKey("table-space-after")) { table.spaceAfter(number(element, "table-space-after", 0)); }
+                options.tableFormat(table.build());
+            }
+            return options.build();
+        }
+
+        private ContentOptions.Toggle toggle(Element element, String name) {
+            return switch (required(element, name)) {
+                case "true", "ENABLED" -> ContentOptions.Toggle.ENABLED;
+                case "false", "DISABLED" -> ContentOptions.Toggle.DISABLED;
+                case "INHERIT" -> ContentOptions.Toggle.INHERIT;
+                default -> throw error(element, Code.INVALID_VALUE);
+            };
+        }
+
+        private DocumentTemplate.Source source(Element element) {
+            attributes(element, contentAttributes("id", "source"));
+            var options = sourceOptions(element, scoped(bodyFormat, bodyText)).resolve(scoped(bodyFormat, bodyText));
+            if (contentParser == PLAIN_CONTENT && (options.format() != ContentOptions.Format.TEXT || options.formulas())) {
+                throw error(element, Code.INVALID_VALUE);
+            }
+            String id = id(element);
+            if (element.attributes().containsKey("source")) {
+                empty(element);
+                return DocumentTemplate.Source.value(id, path(element, "source"), options, contentParser);
+            }
+            return DocumentTemplate.Source.literal(id, plain(element), options, contentParser);
         }
 
         private DocumentTemplate.Columns columns(Element element) {
@@ -901,19 +1017,23 @@ public final class XmlTemplate {
         }
 
         private Block block(Element element) {
-            return block(element, bodyFormat, bodyText);
+            return block(element, bodyFormat, bodyText, true);
         }
 
         private Block block(Element element, ParagraphFormat defaults, TextDefaults textDefaults) {
+            return block(element, defaults, textDefaults, false);
+        }
+
+        private Block block(Element element, ParagraphFormat defaults, TextDefaults textDefaults, boolean scopedDefaults) {
             var allowed = new HashSet<>(PARAGRAPH_ATTRIBUTES);
             allowed.addAll(Set.of("role", "color"));
             if (element.name().equals("p")) { allowed.add("style"); }
             if (Set.of("heading", "numbered", "bullet").contains(element.name())) { allowed.add("level"); }
             if (element.name().equals("numbered")) { allowed.addAll(Set.of("list-id", "restart")); }
             if (element.name().equals("bullet")) { allowed.add("marker"); }
-            if (element.name().equals("caption")) { allowed.add("kind"); allowed.remove("role"); allowed.remove("color"); }
+            if (element.name().equals("caption")) { allowed.add("kind"); }
             if (element.name().equals("cross-reference")) {
-                allowed.addAll(Set.of("kind", "target")); allowed.remove("role"); allowed.remove("color");
+                allowed.addAll(Set.of("kind", "target"));
             }
             if (element.name().equals("numbered") || element.name().equals("bullet")) {
                 allowed.addAll(Set.of("marker-role", "marker-size", "marker-color", "marker-shift", "marker-underline", "marker-strike"));
@@ -925,29 +1045,34 @@ public final class XmlTemplate {
                     : element.attributes().containsKey("level") ? integer(element, "level") : 1;
             if (element.name().equals("numbered") && (level < 1 || level > 9)) { throw error(element, Code.INVALID_VALUE); }
             var base = element.name().equals("heading") ? theme.headingFormat(level) : defaults;
+            var baseText = element.name().equals("heading") ? headingText.getOrDefault(level, TextDefaults.DEFAULT) : textDefaults;
+            if (scopedDefaults) {
+                var selected = scoped(base, baseText);
+                base = selected.paragraphFormat();
+                baseText = new TextDefaults(selected.fontRole(), selected.rgb());
+            }
             if (element.name().equals("p") && element.attributes().containsKey("style")) {
                 base = validated(element, () -> theme.paragraphStyle(styleName(element)));
             }
             var format = paragraphFormat(element, base);
+            var appearance = appearance(element, format.fontSize(), baseText);
+            var blockAppearance = new com.mirakyux.export4j.model.TextAppearance(appearance.fontRole(), appearance.rgb());
             if (element.name().equals("caption")) {
-                return new Caption(id, expression(element, required(element, "kind")), expression(element, plain(element)), format);
+                return new Caption(id, expression(element, required(element, "kind")), expression(element, plain(element)), format, blockAppearance);
             }
             if (element.name().equals("cross-reference")) {
                 return new CrossReference(id, expression(element, plain(element)), target(element),
-                        CrossReference.Kind.valueOf(required(element, "kind")), format);
+                        CrossReference.Kind.valueOf(required(element, "kind")), format, blockAppearance);
             }
-            var appearance = appearance(element, format.fontSize(), element.name().equals("heading")
-                    ? headingText.getOrDefault(level, TextDefaults.DEFAULT) : textDefaults);
-            var content = inline(element, appearance, element.name().equals("p"));
+            var content = inline(element, appearance, true);
             if (element.name().equals("p")) { return Paragraph.mixed(id, content, format); }
-            var runs = content.stream().map(item -> (InlineText) item).toList();
             var marker = markerStyle(element, appearance);
             if (element.name().equals("numbered")) {
-                return NumberedItem.rich(id, literalId(element, "list-id"), runs,
+                return NumberedItem.mixed(id, literalId(element, "list-id"), content,
                         element.attributes().containsKey("restart") ? integer(element, "restart") : 0, format, level, marker);
             }
-            return element.name().equals("heading") ? Heading.rich(id, runs, level, format)
-                    : BulletItem.rich(id, runs, value(element, "marker", "•"), level, format, marker);
+            return element.name().equals("heading") ? Heading.mixed(id, content, level, format)
+                    : BulletItem.mixed(id, content, value(element, "marker", "•"), level, format, marker);
         }
 
         private InlineStyle markerStyle(Element element, InlineStyle fallback) {
@@ -967,9 +1092,22 @@ public final class XmlTemplate {
         }
 
         private ParsedTable tableParts(Element element, int tableDepth) {
+            var inherited = scoped(bodyFormat, bodyText);
+            var textNames = Set.of("role", "color", "cell-size", "cell-line-height", "cell-align", "cell-line-break");
+            var declarations = new HashMap<String, String>();
+            element.attributes().forEach((name, value) -> { if (textNames.contains(name)) { declarations.put(name, value); } });
+            var local = new Element(element.name(), declarations, List.of(), element.line(), element.column(),
+                    element.fragmentName(), element.namespace());
+            contentScopes.add(sourceOptions(local, inherited));
+            try { return tablePartsScoped(element, tableDepth); }
+            finally { contentScopes.removeLast(); }
+        }
+
+        private ParsedTable tablePartsScoped(Element element, int tableDepth) {
             if (tableDepth > com.mirakyux.export4j.model.SemanticTree.MAX_TABLE_DEPTH) { throw error(element, Code.INVALID_STRUCTURE); }
             boolean dynamic = element.name().equals("rows");
             var allowed = new HashSet<>(Set.of("id", "row-split", "draw-borders", "padding-top", "padding-right", "padding-bottom", "padding-left", "space-before", "space-after", "rotation"));
+            allowed.addAll(Set.of("role", "color", "cell-size", "cell-line-height", "cell-align", "cell-line-break"));
             if (dynamic) { allowed.addAll(Set.of("items", "as")); }
             attributes(element, allowed);
             String id = id(element);
@@ -995,7 +1133,7 @@ public final class XmlTemplate {
                 else { throw error(row, Code.INVALID_STRUCTURE); }
             }
             if (rows.isEmpty() || dynamic && rows.size() != 1) { throw error(element, Code.INVALID_STRUCTURE); }
-            var defaults = theme.tableFormat();
+            var defaults = scoped(bodyFormat, bodyText).tableFormat();
             var padding = defaults.padding();
             var format = validated(element, () -> defaults.toBuilder().allowRowSplit(flag(element, "row-split", defaults.allowRowSplit()))
                     .drawBorders(flag(element, "draw-borders", defaults.drawBorders()))
@@ -1023,11 +1161,28 @@ public final class XmlTemplate {
                 var value = validated(cell, () -> {
                     int span = cell.attributes().containsKey("column-span") ? positiveInteger(cell, "column-span") : 1;
                     int rowSpan = cell.attributes().containsKey("row-span") ? positiveInteger(cell, "row-span") : 1;
-                    double size = number(cell, "size", cellFormat.fontSize());
-                    double height = number(cell, "line-height", cell.attributes().containsKey("size") ? size * 1.5 : cellFormat.lineHeight());
-                    var format = new CellFormat(size, height, alignment(cell, cellFormat.alignment()), lineBreak(cell, cellFormat.lineBreakPolicy()));
+                    var cellDefaults = scoped(bodyFormat, cellText);
+                    var defaultFormat = cellDefaults.cellFormat();
+                    double size = number(cell, "size", defaultFormat.fontSize());
+                    double height = number(cell, "line-height", cell.attributes().containsKey("size") ? size * 1.5 : defaultFormat.lineHeight());
+                    var format = new CellFormat(size, height, alignment(cell, defaultFormat.alignment()), lineBreak(cell, defaultFormat.lineBreakPolicy()));
                     var builder = TableCell.builder().format(format).columnSpan(span).rowSpan(rowSpan);
-                    var appearance = appearance(cell, size, cellText);
+                    var appearance = appearance(cell, size, new TextDefaults(cellDefaults.fontRole(), cellDefaults.rgb()));
+                    boolean sourceContent = hasSourceDeclaration(contentCell);
+                    if (sourceContent) {
+                        if (!rules.isEmpty() || header) { throw error(cell, Code.INVALID_STRUCTURE); }
+                        var paragraph = new ParagraphFormat(size, height, 0, 0, format.alignment(), 0, 0, false)
+                                .withLineBreakPolicy(format.lineBreakPolicy());
+                        contentScopes.add(ContentOptions.builder().paragraphFormat(paragraph).cellFormat(format)
+                                .fontRole(appearance.fontRole()).rgb(appearance.rgb()).build());
+                        List<DocumentTemplate.Node> childNodes;
+                        try { childNodes = nodes(contentCell); }
+                        finally { contentScopes.removeLast(); }
+                        if (childNodes.isEmpty()) { throw error(cell, Code.INVALID_STRUCTURE); }
+                        var prototype = builder.blocks(List.of(new Paragraph(id(cell), "", paragraph))).build();
+                        cellContents.add(new DocumentTemplate.CellContent(prototype, childNodes));
+                        return prototype;
+                    }
                     boolean blockContent = contentCell.content().stream().anyMatch(part -> part instanceof Element child
                             && (child.name().equals("p") || child.name().equals("table")));
                     if (!blockContent) { return builder.content(inline(contentCell, appearance, true)).build(); }
@@ -1047,6 +1202,20 @@ public final class XmlTemplate {
         private List<Element> childrenWithName(Element parent, String name) {
             return parent.content().stream().filter(part -> part instanceof Element child && child.name().equals(name))
                     .map(part -> (Element) part).toList();
+        }
+
+        private boolean hasSourceDeclaration(Element parent) {
+            var pending = new ArrayDeque<Element>();
+            pending.push(parent);
+            while (!pending.isEmpty()) {
+                ExecutionContext.checkpoint();
+                var value = pending.pop();
+                if (Set.of("content", "scope").contains(value.name())) { return true; }
+                for (var part : value.content()) {
+                    if (part instanceof Element child && !Set.of("table", "rows").contains(child.name())) { pending.push(child); }
+                }
+            }
+            return false;
         }
 
         private CellStyleRule cellRule(Element element) {
@@ -1131,6 +1300,26 @@ public final class XmlTemplate {
                         if (resource == null) { throw error(child, Code.UNKNOWN_RESOURCE); }
                         result.add(validated(child, () -> new InlineImage(resource, number(child, "width", 0), number(child, "height", 0), number(child, "baseline-shift", 0),
                                 expression(child, value(child, "alt", "")), hyperlink, number(child, "rotation", 0))));
+                    }
+                    case "vector" -> {
+                        if (!allowObjects) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
+                        attributes(child, Set.of("width", "ascent", "descent", "logical", "color"));
+                        var segments = new ArrayList<VectorResource.Segment>();
+                        for (var segment : children(child)) {
+                            requireName(segment, "segment"); attributes(segment, Set.of("operation", "points")); empty(segment);
+                            if (segments.size() == VectorResource.MAX_SEGMENTS) { throw error(segment, Code.INVALID_VALUE); }
+                            segments.add(validated(segment, () -> {
+                                var op = VectorResource.Operation.valueOf(required(segment, "operation"));
+                                String encoded = value(segment, "points", "").strip();
+                                var points = encoded.isEmpty() ? List.<Double>of()
+                                        : java.util.Arrays.stream(encoded.split("\\s+", 7)).map(Double::parseDouble).toList();
+                                return new VectorResource.Segment(op, points);
+                            }));
+                        }
+                        // 阅读文字与轮廓是同一个静态值，禁止在绑定时只插值文字而保留旧轮廓。
+                        result.add(validated(child, () -> new InlineVector(VectorResource.of(number(child, "width", 0),
+                                number(child, "ascent", 0), number(child, "descent", 0), segments),
+                                value(child, "logical", ""), color(child, 0), hyperlink)));
                     }
                     case "link" -> {
                         if (!hyperlink.isEmpty()) { throw error(child, Code.UNSUPPORTED_ELEMENT); }
@@ -1407,6 +1596,8 @@ public final class XmlTemplate {
         private final Map<String, String> fragments = new HashMap<>();
         private Limits limits = Limits.DEFAULT;
         private DocumentTemplate.Limits bindingLimits = DocumentTemplate.Limits.DEFAULT;
+        private ContentOptions contentOptions = ContentOptions.builder().build();
+        private SourceContentParser contentParser = PLAIN_CONTENT;
         private Builder() { }
         /** Replaces fallback page settings. A main-source first page element overrides only declared values;
          * its uniform margin is applied before per-edge margins, and orientation reorders the resulting size.
@@ -1457,6 +1648,17 @@ public final class XmlTemplate {
         }
         public Builder limits(Limits value) { limits = Objects.requireNonNull(value, "limits"); return this; }
         public Builder bindingLimits(DocumentTemplate.Limits value) { bindingLimits = Objects.requireNonNull(value, "bindingLimits"); return this; }
+        /** Sparse defaults for source blocks and lexical scopes; resolved against this compiler's theme.
+         * Existing explicit native paragraph and inline attributes retain precedence. */
+        public Builder contentOptions(ContentOptions value) { contentOptions = Objects.requireNonNull(value, "contentOptions"); return this; }
+        /** Configures sparse defaults synchronously; built compilers retain the completed value only. */
+        public Builder contentOptions(Consumer<ContentOptions.Builder> configure) {
+            var value = contentOptions.toBuilder(); Objects.requireNonNull(configure, "configure").accept(value);
+            return contentOptions(value.build());
+        }
+        /** Explicit offline compiler for source blocks. The default handles plain text only.
+         * One session is opened per render; its lifetime and cumulative budgets are shared across source nodes. */
+        public Builder contentParser(SourceContentParser value) { contentParser = Objects.requireNonNull(value, "contentParser"); return this; }
         /** Registers a name in the immutable resource allowlist. The compiler performs no decoding or I/O. */
         public Builder image(String name, ImageResource resource) {
             if (!IDENTIFIER.matcher(Objects.requireNonNull(name, "name")).matches()) { throw new IllegalArgumentException("invalid resource name"); }

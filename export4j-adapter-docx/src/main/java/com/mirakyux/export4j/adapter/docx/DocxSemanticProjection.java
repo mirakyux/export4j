@@ -95,12 +95,31 @@ final class DocxSemanticProjection {
         var result = new ArrayList<Block>();
         for (var block : source) {
             ExecutionContext.checkpoint();
-            if (block instanceof Table table) { block = new Table(table.id(), table.columns(), table.rows().stream().map(row -> row.cells().isEmpty() ? TableRow.covered() : new TableRow(row.cells().stream().map(c -> c.hasBlocks() ? c.toBuilder().blocks(insertBoxes(c.blocks(), boxes, images, active, issues, policy)).build() : portableCell(c, table.id(), images, issues, policy)).toList())).toList(), table.headerRows(), table.format()); }
+            if (block instanceof Table table) { block = projectTable(table, boxes, images, active, issues, policy); }
             else if (block instanceof Paragraph p) { block = portableParagraph(p, images, issues, policy); }
             result.add(block);
             if (boxes.containsKey(block.id())) { if (!active.add(block.id())) { throw new IllegalArgumentException("cyclic textbox projection"); } result.addAll(insertBoxes(boxes.get(block.id()), boxes, images, active, issues, policy)); active.remove(block.id()); }
         }
         return List.copyOf(result);
+    }
+    private static Table projectTable(Table table, Map<String, List<Block>> boxes, Map<Point, InlineImage> images,
+            Set<String> active, List<ProcessingIssue> issues, ProcessingPolicy policy) {
+        var rows = new ArrayList<TableRow>();
+        for (var anchors : table.grid().anchorRows()) {
+            var cells = new ArrayList<TableCell>();
+            for (var anchor : anchors) {
+                var cell = anchor.cell();
+                if (cell.hasBlocks()) { cells.add(cell.toBuilder().blocks(insertBoxes(cell.blocks(), boxes, images, active, issues, policy)).build()); }
+                else {
+                    var paragraph = DocxSemanticSupport.cellParagraph(table, anchor);
+                    if (boxes.containsKey(paragraph.id())) {
+                        cells.add(cell.toBuilder().blocks(insertBoxes(List.of(paragraph), boxes, images, active, issues, policy)).build());
+                    } else { cells.add(portableCell(cell, table.id(), images, issues, policy)); }
+                }
+            }
+            rows.add(cells.isEmpty() ? TableRow.covered() : new TableRow(cells));
+        }
+        return new Table(table.id(), table.columns(), rows, table.headerRows(), table.format());
     }
     private static InlineImage rasterize(Picture picture) throws IOException {
         var image = picture.image(); var transform = picture.transform(); var source = ImageIO.read(new ByteArrayInputStream(image.resource().bytes()));

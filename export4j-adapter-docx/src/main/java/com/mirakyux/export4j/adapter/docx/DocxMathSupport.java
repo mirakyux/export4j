@@ -60,6 +60,53 @@ final class DocxMathSupport {
             case DocxMath.UpperLimit limit -> List.of(limit.base(), limit.limit());
         };
     }
+    static com.mirakyux.export4j.model.InlineStyle markerStyle(com.mirakyux.export4j.model.Paragraph paragraph, int at) {
+        int offset = 0;
+        for (var run : paragraph.inlines()) {
+            if (at >= offset && at < offset + run.text().length()) { return run.style(); }
+            offset += run.text().length();
+        }
+        return com.mirakyux.export4j.model.InlineStyle.of(paragraph.format().fontSize());
+    }
+    static DocxMath inherit(DocxMath node, com.mirakyux.export4j.model.InlineStyle appearance, double paragraphSize) {
+        return switch (node) {
+            case DocxMath.Run run -> {
+                // An OMML run does not reliably inherit the paragraph mark's w:rPr in
+                // independent readers. Resolve every inherited size, including when the
+                // marker and paragraph agree; an explicit mathematical run still wins.
+                double size = run.fontSize() == 0 ? appearance.fontSize() : run.fontSize();
+                int color = run.rgb() == 0 ? appearance.rgb() : run.rgb();
+                var style = run.style();
+                boolean bold = java.util.Set.of("bold", "boldItalic").contains(appearance.fontRole());
+                boolean italic = java.util.Set.of("italic", "boldItalic").contains(appearance.fontRole());
+                // NORMAL_TEXT explicitly requests Word's m:nor mode. A host font role must not
+                // silently turn prose into a mathematical run and change spacing/font semantics.
+                if (bold && style != DocxMath.Style.NORMAL_TEXT) { style = style == DocxMath.Style.ITALIC || style == DocxMath.Style.BOLD_ITALIC ? DocxMath.Style.BOLD_ITALIC : DocxMath.Style.BOLD; }
+                if (italic && style != DocxMath.Style.NORMAL_TEXT) { style = style == DocxMath.Style.BOLD || style == DocxMath.Style.BOLD_ITALIC ? DocxMath.Style.BOLD_ITALIC : DocxMath.Style.ITALIC; }
+                yield new DocxMath.Run(run.text(), style, size, color);
+            }
+            case DocxMath.Sequence sequence -> {
+                var values = new ArrayList<DocxMath>();
+                for (var value : sequence.elements()) {
+                    var current = inherit(value, appearance, paragraphSize);
+                    if (current instanceof DocxMath.Sequence nested) { values.addAll(nested.elements()); }
+                    else { values.add(current); }
+                }
+                yield values.size() == 1 ? values.getFirst() : new DocxMath.Sequence(values);
+            }
+            case DocxMath.Fraction fraction -> new DocxMath.Fraction(inherit(fraction.numerator(), appearance, paragraphSize), inherit(fraction.denominator(), appearance, paragraphSize));
+            case DocxMath.Subscript script -> new DocxMath.Subscript(inherit(script.base(), appearance, paragraphSize), inherit(script.subscript(), appearance, paragraphSize));
+            case DocxMath.Superscript script -> new DocxMath.Superscript(inherit(script.base(), appearance, paragraphSize), inherit(script.superscript(), appearance, paragraphSize));
+            case DocxMath.SubSuperscript script -> new DocxMath.SubSuperscript(inherit(script.base(), appearance, paragraphSize), inherit(script.subscript(), appearance, paragraphSize), inherit(script.superscript(), appearance, paragraphSize));
+            case DocxMath.Radical radical -> new DocxMath.Radical(inherit(radical.radicand(), appearance, paragraphSize), radical.degree().map(value -> inherit(value, appearance, paragraphSize)));
+            case DocxMath.Nary nary -> new DocxMath.Nary(nary.operator(), nary.lower().map(value -> inherit(value, appearance, paragraphSize)), nary.upper().map(value -> inherit(value, appearance, paragraphSize)), inherit(nary.operand(), appearance, paragraphSize), nary.limits(), nary.grow());
+            case DocxMath.Matrix matrix -> new DocxMath.Matrix(matrix.rows().stream().map(row -> row.stream().map(value -> inherit(value, appearance, paragraphSize)).toList()).toList(), matrix.columns(), matrix.baseline());
+            case DocxMath.Delimiter delimiter -> new DocxMath.Delimiter(delimiter.opening(), delimiter.closing(), delimiter.separator(), delimiter.items().stream().map(value -> inherit(value, appearance, paragraphSize)).toList(), delimiter.grow(), delimiter.shape());
+            case DocxMath.Function function -> new DocxMath.Function(inherit(function.name(), appearance, paragraphSize), inherit(function.argument(), appearance, paragraphSize));
+            case DocxMath.LowerLimit limit -> new DocxMath.LowerLimit(inherit(limit.base(), appearance, paragraphSize), inherit(limit.limit(), appearance, paragraphSize));
+            case DocxMath.UpperLimit limit -> new DocxMath.UpperLimit(inherit(limit.base(), appearance, paragraphSize), inherit(limit.limit(), appearance, paragraphSize));
+        };
+    }
     static DocxMath canonical(DocxMath node) {
         return switch (node) {
             case DocxMath.Run run -> run;

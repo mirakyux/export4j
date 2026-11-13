@@ -45,13 +45,13 @@ def execute(marker, workspace, runner=None):
                 exec(inline_python(marker), {})
 
 
-def batch(workspace, layout="build/release/central"):
+def batch(workspace, layout="build/release/central", library_count=16):
     root = workspace / "release-artifacts" / layout
     (root / "distribution").mkdir(parents=True)
     (root / "remote").mkdir()
     (root / "remote-consumer").mkdir()
     own, artifacts = [], {}
-    for index in range(16):
+    for index in range(library_count):
         name = f"export4j-fixture-{index}"
         prefix = f"com/mirakyux/export4j/{name}/{VERSION}/{name}-{VERSION}"
         for suffix in (".jar", ".pom", ".module", "-sources.jar", "-javadoc.jar"):
@@ -69,14 +69,15 @@ def batch(workspace, layout="build/release/central"):
     (root / "sbom.cdx.json").write_bytes(sbom)
     (root / "public-key.asc").write_text("original public key", encoding="utf-8")
     write(root, "build-inputs.json", {"version": VERSION, "headRevision": COMMIT})
-    report = {"version": VERSION, "modules": 17, "signedArtifacts": 82, "signatureTamperRejected": True,
-              "bomConstraintsVerified": 16, "sbomLibrariesVerified": 16, "sbomSha256": hashlib.sha256(sbom).hexdigest(),
+    artifact_count = library_count * 5 + 2
+    report = {"version": VERSION, "modules": library_count + 1, "signedArtifacts": artifact_count, "signatureTamperRejected": True,
+              "bomConstraintsVerified": library_count, "sbomLibrariesVerified": library_count, "sbomSha256": hashlib.sha256(sbom).hexdigest(),
               "bundleSha256": hashlib.sha256((root / "distribution/maven-central-bundle.zip").read_bytes()).hexdigest()}
     write(root, "distribution/distribution-report.json", report)
     write(root, "remote/publication-report.json", dict(report, uploaded=True, origin="https://repo.maven.apache.org/maven2/",
-          remoteArtifactsMatched=82, remoteSignaturesVerified=82, remoteConsumerVerified=False))
-    consumer = {"remoteConsumerVerified": True, "isolatedCoordinateConsumerVerified": True, "consumerJarHashesVerified": 16,
-                "consumerProjectArtifacts": 16, "consumerProjectComponents": 17,
+          remoteArtifactsMatched=artifact_count, remoteSignaturesVerified=artifact_count, remoteConsumerVerified=False))
+    consumer = {"remoteConsumerVerified": True, "isolatedCoordinateConsumerVerified": True, "consumerJarHashesVerified": library_count,
+                "consumerProjectArtifacts": library_count, "consumerProjectComponents": library_count + 1,
                 "consumerBomCoordinate": "com.mirakyux.export4j:export4j-bom:" + VERSION}
     write(root, "remote-consumer/consumer-report.json", dict(consumer, pomOnlyConsumerVerified=True, pomOnlyConsumer=consumer))
     return root
@@ -87,6 +88,14 @@ def write(root, name, value):
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
+    def test_new_module_batch_preserves_historical_recovery(self):
+        for library_count in (16, 17):
+            with self.subTest(library_count=library_count), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                batch(workspace, library_count=library_count)
+                execute("release-batch-validation", workspace)
+                self.assertIn(f"All {library_count} library JARs", (workspace / "release-notes.md").read_text(encoding="utf-8"))
+
     def test_old_and_new_artifact_layouts_keep_original_source(self):
         for layout in ("release/central", "build/release/central"):
             with self.subTest(layout=layout), tempfile.TemporaryDirectory() as temporary:

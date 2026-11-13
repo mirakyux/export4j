@@ -112,7 +112,7 @@ public final class DocxSemanticEditor {
                 var toc = require(doc.contents(), id, Contents::id); var lines = new ArrayList<String>();
                 for (var section : doc.body().sections()) { for (var block : section.blocks()) { if (block instanceof Heading h && h.level() >= toc.firstLevel() && h.level() <= toc.lastLevel()) {
                     if (toc.pageNumbers() && (!pages.containsKey(h.id()) || pages.get(h.id()) < 1)) { throw new IllegalArgumentException("actual page number missing for TOC heading: " + h.id()); }
-                    lines.add(h.text() + (toc.pageNumbers() ? "\t" + pages.get(h.id()) : ""));
+                    lines.add(headingText(h) + (toc.pageNumbers() ? "\t" + pages.get(h.id()) : ""));
                 } } }
                 var updated = replace(doc, toc.range(), String.join("\n", lines), state, false);
                 var current = require(updated.contents(), id, Contents::id);
@@ -121,6 +121,19 @@ public final class DocxSemanticEditor {
             });
         }
         public Result execute() throws IOException { return ExecutionContext.execute(execution, () -> { var state = new State(policy); var value = source; for (var op : List.copyOf(operations)) { value = op.apply(value, state); } return new Result(value, state.changes, new ProcessingReport(ProcessingReport.Phase.ACTUAL, state.issues)); }); }
+    }
+    private static String headingText(Heading heading) {
+        var text = new StringBuilder();
+        for (var content : heading.paragraph().content()) {
+            if (content instanceof InlineText run) {
+                if (run.text().indexOf('\ufffc') >= 0) { throw new IllegalArgumentException("TOC heading has an unresolved object marker: " + heading.id()); }
+                text.append(run.text());
+            } else if (content instanceof com.mirakyux.export4j.model.InlineImage image) { text.append(image.altText()); }
+            else if (content instanceof com.mirakyux.export4j.model.InlineVector vector) { text.append(vector.logicalText()); }
+            else { throw new IllegalArgumentException("TOC heading contains an unresolved field: " + heading.id()); }
+        }
+        if (text.isEmpty()) { throw new IllegalArgumentException("TOC heading requires readable text or alternative text: " + heading.id()); }
+        return text.toString();
     }
     private static <T> T require(List<T> values, String id, java.util.function.Function<T, String> key) { return values.stream().filter(v -> key.apply(v).equals(id)).findFirst().orElseThrow(() -> new IllegalArgumentException("native semantic ID missing: " + id)); }
     private static <T> List<T> replaceById(List<T> values, T value, java.util.function.Function<T, String> key) { var result = new ArrayList<T>(); boolean found = false; for (var prior : values) { if (key.apply(prior).equals(key.apply(value))) { result.add(value); found = true; } else { result.add(prior); } } if (!found) { result.add(value); } return List.copyOf(result); }

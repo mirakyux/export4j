@@ -109,7 +109,7 @@ final class HtmlImportMapper {
     }
     private String id(Element source) {
         return ids.computeIfAbsent(source, element -> {
-            if (!element.id().isEmpty()) { return element.id(); }
+            if (!element.id().isEmpty()) { return state.content == null ? element.id() : state.content.sourceId(element.id()); }
             return generatedId();
         });
     }
@@ -137,6 +137,13 @@ final class HtmlImportMapper {
     }
     private void block(Element element, List<Block> output, Context context) {
         state.work(1); String tag = element.normalName(); String id = id(element);
+        if (tag.equals("table") && state.content != null && !state.content.options.tables()) {
+            var range = location(element, id, context.cells());
+            String literal = state.content.raw(range.startUtf16(), range.endUtf16()); state.text(literal);
+            var style = css.get(element);
+            output.add(Paragraph.mixed(id, List.of(new InlineText(literal, style.inline())), style.paragraph(importer.format, context.indent())));
+            return;
+        }
         if (importer.layoutMode && !compilingBox && needsBox(element) && CONTAINERS.contains(tag)) { layoutAnchors.add(element); }
         attributes(element, id, context.cells()); if (hidden(element, id, context.cells())) { return; }
         var own = new Context(id, context.cells(), context.indent());
@@ -150,16 +157,14 @@ final class HtmlImportMapper {
             return;
         }
         if (tag.equals("p")) { output.add(Paragraph.mixed(id, content(element.childNodes(), element, own), format)); }
-        else if (tag.matches("h[1-6]")) { output.add(Heading.rich(id, textOnly(content(element.childNodes(), element, own), element, own), tag.charAt(1) - '0', format)); }
+        else if (tag.matches("h[1-6]")) { output.add(Heading.mixed(id, content(element.childNodes(), element, own), tag.charAt(1) - '0', format)); }
         else if (CONTAINERS.contains(tag)) {
             if (css.get(element).geometryExplicit) { loss(element, "CONTAINER_GEOMETRY", "container margins cannot preserve CSS box and margin-collapse semantics", "CONTAINER_GEOMETRY_REMOVED", id, context.cells()); }
             blocks(element, output, context);
         } else if (tag.equals("table")) { output.add(table(element, own, 1)); }
         else if (tag.equals("ul") || tag.equals("ol")) { list(element, output, context, 1, "", 0); }
         else if (tag.equals("pre")) {
-            if (loss(element, "CODE_BLOCK", "model has no preformatted code container or no-wrap guarantee", "CODE_CONTAINER_REMOVED", id, context.cells()) == Treatment.DEGRADE) {
-                output.add(Paragraph.mixed(id, content(element.childNodes(), element, own), format));
-            }
+            output.add(Paragraph.mixed(id, content(element.childNodes(), element, own), format));
         } else if (tag.equals("blockquote")) {
             if (loss(element, "BLOCK_QUOTE", "model has no quote container", "QUOTE_CONTAINER_FLATTENED", id, context.cells()) == Treatment.DEGRADE) {
                 blocks(element, output, new Context(id, context.cells(), context.indent() + 18));
@@ -322,16 +327,39 @@ final class HtmlImportMapper {
         state.work(1);
         if (node instanceof TextNode text) {
             String literal = text.getWholeText(); var computed = css.get(parent);
-            if (computed.pre) { pendingSpace(space, output); append(output, literal, computed, link); space.beginning = literal.endsWith("\n"); return; }
-            var normalized = new StringBuilder();
-            for (int index = 0; index < literal.length(); index++) {
-                char value = literal.charAt(index);
-                if (value == ' ' || value == '\n' || value == '\r' || value == '\t' || value == '\f') {
-                    if (!normalized.isEmpty()) { append(output, normalized.toString(), computed, link); normalized.setLength(0); }
-                    if (!space.beginning && !space.pending) { space.pending = true; space.style = computed; space.link = link; }
-                } else { pendingSpace(space, output); normalized.append(value); space.beginning = false; }
-            }
-            if (!normalized.isEmpty()) { append(output, normalized.toString(), computed, link); }
+            if (state.content != null && !formulaProtected(parent) && !state.content.formulaMarkers.isEmpty()) {
+                int cursor = 0;
+                while (cursor < literal.length()) {
+                    int at = literal.indexOf(state.content.literalPrefix, cursor);
+                    if (at < 0) { textContent(literal.substring(cursor), computed, link, output, space); break; }
+                    int end = literal.indexOf("END", at + state.content.literalPrefix.length());
+                    var span = end < 0 ? null : state.content.formulaMarkers.get(literal.substring(at, end + 3));
+                    if (span == null) { throw new IllegalArgumentException("formula placeholder was not preserved"); }
+                    textContent(literal.substring(cursor, at), computed, link, output, space); pendingSpace(space, output);
+                    var vector = state.content.render(span, computed.size, computed.color);
+                    output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), link.isEmpty() ? vector.hyperlink() : link));
+                    state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
+                    space.beginning = false; cursor = end + 3;
+                }
+            } else if (state.content != null && !formulaProtected(parent)
+                    && !(state.content.markdownFormulasScanned && state.content.options.formulas())) {
+                literal = state.content.restoreLiterals(literal);
+                state.content.budget.work(literal.length());
+                var spans = FormulaSyntax.text(literal, state.content.options.formulas() ? state.content.budget.remainingFormulas() : state.limits.maxNodes(),
+                        state.content.options.formulas() ? state.content.budget.maxFormulaUtf16 : literal.length());
+                if (state.content.options.formulas()) { state.content.budget.formulas(spans.size()); }
+                int cursor = 0;
+                for (var span : spans) {
+                    textContent(literal.substring(cursor, span.start()), computed, link, output, space); pendingSpace(space, output);
+                    if (state.content.options.formulas()) {
+                        var vector = state.content.render(span, computed.size, computed.color);
+                        state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
+                        output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), link.isEmpty() ? vector.hyperlink() : link));
+                    } else { append(output, literal.substring(span.start(), span.end()), computed, link); }
+                    space.beginning = false; cursor = span.end();
+                }
+                textContent(literal.substring(cursor), computed, link, output, space);
+            } else { textContent(literal, computed, link, output, space); }
         } else if (node instanceof Element element) {
             String tag = element.normalName(); attributes(element, context.block(), context.cells());
             if (hidden(element, context.block(), context.cells())) { return; }
@@ -346,6 +374,7 @@ final class HtmlImportMapper {
                     vectorDimensions(element, vector);
                     pendingSpace(space, output);
                     String target = link.isEmpty() ? vector.hyperlink() : link;
+                    if (state.content != null) { state.content.vector(vector); }
                     output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), target));
                     state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
                     space.beginning = false;
@@ -369,7 +398,6 @@ final class HtmlImportMapper {
                     output.add(new InlineImage(image.resource(), width, height, image.baselineShift(), element.attr("alt"), link)); state.text(1); space.beginning = false;
                 }
             } else if (INLINE.contains(tag) || tag.equals("code")) {
-                if (tag.equals("code") && loss(element, "INLINE_CODE", "model has no inline code semantics", "CODE_SEMANTICS_REMOVED", context.block(), context.cells()) == Treatment.DISCARD) { return; }
                 for (var child : element.childNodes()) { inline(child, element, context, link, output, space); }
             } else if (loss(element, "INLINE_ELEMENT", "HTML inline container has no semantic mapping", "INLINE_CONTAINER_FLATTENED", context.block(), context.cells()) == Treatment.DEGRADE) {
                 for (var child : element.childNodes()) { inline(child, element, context, link, output, space); }
@@ -377,7 +405,27 @@ final class HtmlImportMapper {
         } else if (!(node instanceof Comment)) { throw new IllegalArgumentException("unsupported HTML data node"); }
     }
     private void append(List<InlineContent> output, String literal, HtmlCss.Computed style, String link) {
-        state.text(literal.length()); output.add(new InlineText(literal, style.inline(), link));
+        if (literal.isEmpty()) { return; }
+        if (state.content != null) { state.content.node(); }
+        state.text(literal); output.add(new InlineText(literal, style.inline(), link));
+    }
+    private static boolean formulaProtected(Element element) {
+        for (var current = element; current != null; current = current.parent()) {
+            if (Set.of("code", "pre", "a").contains(current.normalName())) { return true; }
+        }
+        return false;
+    }
+    private void textContent(String literal, HtmlCss.Computed computed, String link, List<InlineContent> output, Space space) {
+        if (computed.pre) { pendingSpace(space, output); append(output, literal, computed, link); space.beginning = literal.endsWith("\n"); return; }
+        var normalized = new StringBuilder();
+        for (int index = 0; index < literal.length(); index++) {
+            char value = literal.charAt(index);
+            if (value == ' ' || value == '\n' || value == '\r' || value == '\t' || value == '\f') {
+                if (!normalized.isEmpty()) { append(output, normalized.toString(), computed, link); normalized.setLength(0); }
+                if (!space.beginning && !space.pending) { space.pending = true; space.style = computed; space.link = link; }
+            } else { pendingSpace(space, output); normalized.append(value); space.beginning = false; }
+        }
+        if (!normalized.isEmpty()) { append(output, normalized.toString(), computed, link); }
     }
     private void vectorDimensions(Element element, InlineVector vector) {
         double width = vector.resource().width(), height = vector.resource().ascent() + vector.resource().descent();
@@ -396,21 +444,7 @@ final class HtmlImportMapper {
     private void pendingSpace(Space space, List<InlineContent> output) {
         if (space.pending) { append(output, " ", space.style, space.link); space.pending = false; }
     }
-    private List<InlineText> textOnly(List<InlineContent> content, Element source, Context context) {
-        var runs = new ArrayList<InlineText>();
-        for (var value : content) {
-            if (value instanceof InlineText run) { runs.add(run); }
-            else if (value instanceof InlineImage image && loss(source, "TEXT_BLOCK_IMAGE", "heading/list cannot hold an inline image", "IMAGE_REPLACED_WITH_ALT_TEXT", context.block(), context.cells()) == Treatment.DEGRADE) {
-                state.text(image.altText().length()); runs.add(new InlineText(image.altText(), css.get(source).inline(), image.hyperlink()));
-            } else if (value instanceof InlineVector vector) {
-                state.unsupported("INLINE_VECTOR", location(source, context.block(), context.cells()),
-                        "heading/list cannot retain an inline vector", List.of("VECTOR_REPLACED_WITH_LOGICAL_TEXT"), Treatment.DEGRADE);
-                state.text(vector.logicalText().length());
-                runs.add(new InlineText(vector.logicalText(), css.get(source).inline().toBuilder().rgb(vector.rgb()).build(), vector.hyperlink()));
-            }
-        }
-        return runs;
-    }
+
     private void list(Element source, List<Block> output, Context context, int depth, String parentList, int numberDepth) {
         if (depth > 9) { throw new IllegalArgumentException("HTML list nesting exceeds model limit"); }
         boolean ordered = source.normalName().equals("ol"); String listId = ordered && parentList.isEmpty() ? id(source) : parentList;
@@ -450,13 +484,13 @@ final class HtmlImportMapper {
                 state.text(markerText.length());
                 inline.removeFirst();
             }
-            var runs = textOnly(content(inline, item, own), item, own);
+            var runs = content(inline, item, own);
             var format = css.get(item).paragraph(importer.format, context.indent() + (ordered ? depth - level : 0) * 18);
             var markerStyle = css.get(marker == null ? item : marker).inline();
             if (ordered) {
                 int number = marker == null ? Math.addExact(start, index) : positiveInteger(markerText.substring(0, markerText.length() - 1));
-                output.add(NumberedItem.rich(id, listId, runs, number, format, level, markerStyle));
-            } else { output.add(BulletItem.rich(id, runs, marker == null ? "•" : markerText, level, format, markerStyle)); }
+                output.add(NumberedItem.mixed(id, listId, runs, number, format, level, markerStyle));
+            } else { output.add(BulletItem.mixed(id, runs, marker == null ? "•" : markerText, level, format, markerStyle)); }
             for (var child : nested) { attributes(child, id(child), context.cells()); list(child, output, context, depth + 1, listId, ordered ? level : numberDepth); }
             index++;
         }
@@ -471,12 +505,12 @@ final class HtmlImportMapper {
                 int count = columnGroup(child, context);
                 if (count > state.limits.maxTableSlots() - declaredColumns) { throw new IllegalArgumentException("HTML column declaration budget exceeded"); }
                 declaredColumns += count;
-            } else if (tag.equals("tr")) { inputRows.add(child); }
+            } else if (tag.equals("tr")) { state.row(); inputRows.add(child); }
             else if (Set.of("thead", "tbody", "tfoot").contains(tag)) {
                 attributes(child, context.block(), context.cells());
                 if (css.get(child).hidden) { throw new IllegalArgumentException("hidden HTML row groups cannot preserve table coverage"); }
                 if (tag.equals("thead") && !inputRows.isEmpty()) { throw new IllegalArgumentException("HTML table header must be first"); }
-                for (var row : child.children()) { if (!row.normalName().equals("tr")) { throw new IllegalArgumentException("invalid HTML table row group"); } inputRows.add(row); }
+                for (var row : child.children()) { if (!row.normalName().equals("tr")) { throw new IllegalArgumentException("invalid HTML table row group"); } state.row(); inputRows.add(row); }
                 if (tag.equals("thead")) { headers = inputRows.size(); }
             } else { throw new IllegalArgumentException("HTML table child has no supported structural mapping"); }
         }
@@ -487,6 +521,17 @@ final class HtmlImportMapper {
                 headers++;
             }
         }
+        // A repeated header is a complete connected row group. Extend its boundary through every
+        // declared vertical span before creating cells, rather than letting a merge cross it.
+        for (int row = 0; row < headers; row++) {
+            for (var cell : inputRows.get(row).children()) {
+                int span = cell.hasAttr("rowspan") ? positiveInteger(cell.attr("rowspan")) : 1;
+                if (span > inputRows.size() - row) { throw new IllegalArgumentException("HTML header span exceeds table rows"); }
+                headers = Math.max(headers, row + span);
+            }
+        }
+        boolean headerOnly = headers == inputRows.size();
+        if (headerOnly) { headers = 0; }
         var rows = new ArrayList<TableRow>(); var occupied = new HashMap<Integer, Set<Integer>>(); int columns = 0, borderless = 0, cellCount = 0;
         for (int rowIndex = 0; rowIndex < inputRows.size(); rowIndex++) {
             state.work(1); var row = inputRows.get(rowIndex); attributes(row, context.block(), context.cells());
@@ -499,16 +544,17 @@ final class HtmlImportMapper {
                 int height = cell.hasAttr("rowspan") ? positiveInteger(cell.attr("rowspan")) : 1;
                 long slots = (long) width * height;
                 if (slots > state.limits.maxTableSlots() - state.tableSlots || height > inputRows.size() - rowIndex) { throw new IllegalArgumentException("HTML table coverage/budget exceeded"); }
-                state.tableSlots += slots; state.work(slots);
+                state.slots(slots); state.work(slots);
                 var path = new ArrayList<>(context.cells()); path.add(new CellLocation(context.block(), rowIndex, column, -1));
                 attributes(cell, context.block(), path);
                 if (css.get(cell).hidden) { throw new IllegalArgumentException("hidden HTML table cells cannot preserve grid coverage"); }
-                if (cell.normalName().equals("th") && rowIndex >= headers) { loss(cell, "TABLE_HEADER_ROLE", "body header-cell role has no model association", "HEADER_ASSOCIATION_REMOVED", context.block(), path); }
+                if (cell.normalName().equals("th") && rowIndex >= headers && !headerOnly) { loss(cell, "TABLE_HEADER_ROLE", "body header-cell role has no model association", "HEADER_ASSOCIATION_REMOVED", context.block(), path); }
                 for (int y = rowIndex; y < rowIndex + height; y++) {
                     var coverage = occupied.computeIfAbsent(y, unused -> new HashSet<>());
                     for (int x = column; x < column + width; x++) { if (!coverage.add(x)) { throw new IllegalArgumentException("overlapping HTML table cells"); } }
                 }
-                var style = css.get(cell); var format = new CellFormat(style.size, style.lineHeight(), style.alignment);
+                var style = css.get(cell); var format = new CellFormat(style.size, style.lineHeight(), style.alignment,
+                        state.content == null ? com.mirakyux.export4j.model.LineBreakPolicy.STANDARD : state.content.options.cellFormat().lineBreakPolicy());
                 cellCount++; if (style.borderless) { borderless++; }
                 var own = new Context(context.block(), List.copyOf(path), 0); TableCell value;
                 if (cell.children().stream().anyMatch(child -> Set.of("p", "table", "div").contains(child.normalName()))) {
@@ -546,11 +592,12 @@ final class HtmlImportMapper {
             }
             columns = Math.max(columns, occupied.getOrDefault(rowIndex, Set.of()).size()); rows.add(new TableRow(cells));
         }
-        if (headers >= rows.size()) { throw new IllegalArgumentException("HTML table requires body rows"); }
         if (declaredColumns > columns) { throw new IllegalArgumentException("HTML column declarations exceed cell grid"); }
         var widths = new ArrayList<ColumnWidth>(); for (int column = 0; column < columns; column++) { widths.add(new ColumnWidth.Fraction(1)); }
         if (borderless != 0 && borderless != cellCount) { state.unsupported("TABLE_BORDERS", location(source, context.block(), context.cells()), "the model uses one border flag for the complete table", List.of("MIXED_CELL_BORDER_OVERRIDES_REMOVED"), Treatment.DEGRADE); }
-        return new Table(context.block(), widths, rows, headers, TableFormat.DEFAULT.toBuilder().drawBorders(borderless != cellCount).build());
+        var tableFormat = state.content == null ? TableFormat.DEFAULT : state.content.options.tableFormat();
+        if (borderless == cellCount) { tableFormat = tableFormat.toBuilder().drawBorders(false).build(); }
+        return new Table(context.block(), widths, rows, headers, tableFormat);
     }
     private int columnGroup(Element group, Context context) {
         attributes(group, context.block(), context.cells());

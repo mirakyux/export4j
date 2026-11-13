@@ -414,7 +414,11 @@ public final class DocumentLayouter {
                         images(paragraph.images(), block, index, visit.cellPath());
                         vectors(paragraph.vectors(), block, index, visit.cellPath());
                     }
-                    case Heading heading -> codePoints = countText(heading.text(), codePoints, block, index, -1, -1);
+                    case Heading heading -> {
+                        codePoints = countText(heading.text(), codePoints, block, index, -1, -1);
+                        images(heading.images(), block, index, visit.cellPath());
+                        vectors(heading.vectors(), block, index, visit.cellPath());
+                    }
                     case PageBreak ignored -> { }
                     case ColumnFlow ignored -> { /* Descendants share the ordinary source budget. */ }
                     case GridItem ignored -> { /* Items and descendants retain their original identities. */ }

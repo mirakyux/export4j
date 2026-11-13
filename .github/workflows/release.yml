@@ -90,7 +90,7 @@ jobs:
         run: |
           python3 scripts/verify_maven_consumer.py --central --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/remote/repository" --output "$RELEASE_DIR/remote-consumer" --native-classifier natives-linux
           build/release-tools/bin/python scripts/verify_production.py --version "$RELEASE_VERSION" --repository "$RELEASE_DIR/remote/repository" --sbom "$RELEASE_DIR/sbom.cdx.json" --consumer-build-directory "$RELEASE_DIR/remote-consumer/consumer-project/verification/consumer/build" --output "$RELEASE_DIR/remote-output"
-          printf '\nPublished and verified: `%s`. All 16 library JARs and the BOM were consumed from Maven Central.\n' "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          printf '\nPublished and verified: `%s`. All configured library JARs and the BOM were consumed from Maven Central.\n' "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
       - name: Retain public artifacts and verification evidence
         id: evidence
         if: always()

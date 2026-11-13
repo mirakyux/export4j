@@ -79,29 +79,27 @@ class InlineVectorImportExportTest {
         assertThrows(IllegalArgumentException.class, () -> MarkdownImporter.builder().image("formula:one", image).vector("formula:one", vector("x+y")));
         assertThrows(IllegalArgumentException.class, () -> MarkdownImporter.builder().vector("formula:one", vector("x+y")).image("formula:one", image));
     }
-    @Test void markdownRetainsTheRegisteredVectorAndTextOnlyBlocksRequireExplicitDegrade() throws Exception {
+    @Test void markdownAndHtmlKeepRegisteredVectorsInsideHeadingsWithoutDegradation() throws Exception {
         var result = MarkdownImporter.builder().vector("formula:one", vector("x+y")).build()
                 .read("A[![wrong](formula:one)](https://example.com/math)B").execute();
         var paragraph = (Paragraph) result.document().blocks().getFirst();
         assertEquals("A\uFFFCB", paragraph.text()); assertEquals("x+y", paragraph.vectors().getFirst().vector().logicalText());
         assertEquals("https://example.com/math", paragraph.vectors().getFirst().vector().hyperlink());
         assertTrue(result.report().issues().isEmpty());
-        var failure = assertThrows(ProcessingException.class, () -> MarkdownImporter.builder()
-                .vector("formula:one", vector("x+y")).build().read("# ![wrong](formula:one)").execute());
-        assertEquals("INLINE_VECTOR", failure.issue().feature());
-        var lowered = MarkdownImporter.builder().vector("formula:one", vector("x+y")).policy(degrade()).build()
+        var heading = MarkdownImporter.builder().vector("formula:one", vector("x+y")).build()
                 .read("# ![wrong](formula:one)").execute();
-        assertEquals("x+y", ((com.mirakyux.export4j.model.Heading) lowered.document().blocks().getFirst()).text());
-        assertEquals(List.of("VECTOR_REPLACED_WITH_LOGICAL_TEXT"), lowered.report().losses().getFirst().effects());
-        var html = assertThrows(ProcessingException.class, () -> HtmlImporter.builder().vector("formula:one", vector("x+y"))
-                .build().read("<h1><img src='formula:one'></h1>").execute());
-        assertEquals("INLINE_VECTOR", html.issue().feature());
+        assertEquals("x+y", ((com.mirakyux.export4j.model.Heading) heading.document().blocks().getFirst()).vectors().getFirst().vector().logicalText());
+        assertTrue(heading.report().issues().isEmpty());
+        var html = HtmlImporter.builder().vector("formula:one", vector("x+y"))
+                .build().read("<h1><img src='formula:one'></h1>").execute();
+        assertEquals("x+y", ((com.mirakyux.export4j.model.Heading) html.document().blocks().getFirst()).vectors().getFirst().vector().logicalText());
+        assertTrue(html.report().issues().isEmpty());
         var colored = new InlineVector(vector("x+y").resource(), "x+y", 0x123456, "https://example.com/math");
         for (var imported : List.of(
                 HtmlImporter.builder().vector("formula:one", colored).policy(degrade()).build().read("<h1><img src='formula:one'></h1>").execute(),
                 MarkdownImporter.builder().vector("formula:one", colored).policy(degrade()).build().read("# ![wrong](formula:one)").execute())) {
-            var run = ((com.mirakyux.export4j.model.Heading) imported.document().blocks().getFirst()).inlines().getFirst();
-            assertEquals(colored.rgb(), run.style().rgb()); assertEquals(colored.hyperlink(), run.hyperlink());
+            var kept = ((com.mirakyux.export4j.model.Heading) imported.document().blocks().getFirst()).vectors().getFirst().vector();
+            assertEquals(colored, kept); assertTrue(imported.report().issues().isEmpty());
         }
     }
     @Test void webExportRejectsOrReportsActualLogicalTextDegradeAcrossBodyAndCell(@TempDir Path directory) throws Exception {

@@ -26,6 +26,17 @@ public record DocxSemanticDocument(SectionedDocument body, List<Drawing> drawing
     public DocxSemanticDocument(SectionedDocument body) { this(body, List.of(), List.of(), List.of(), List.of(), List.of()); }
     public DocxSemanticEditor.Request edit() { return DocxSemanticEditor.edit(this); }
 
+    /** Stable virtual paragraph ID for an inline table cell's real anchor. Indices are zero-based
+     * physical grid row and column, including merged-cell coverage. Does not convert a cell to blocks.
+     * IDs share the document namespace; a collision with an authored block is rejected.
+     */
+    public static String cellParagraphId(String tableId, int row, int column) {
+        key(tableId);
+        if (row < 0 || column < 0) { throw new IllegalArgumentException("negative Word cell position"); }
+        return "__e4j_cell_" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(tableId.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                + "_" + row + "_" + column;
+    }
+
     public record Point(String paragraphId, int utf16) {
         public Point { key(paragraphId); if (utf16 < 0) { throw new IllegalArgumentException("negative Word text position"); } }
     }

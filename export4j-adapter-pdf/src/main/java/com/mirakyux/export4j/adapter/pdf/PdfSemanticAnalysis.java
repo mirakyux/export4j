@@ -253,7 +253,7 @@ final class PdfSemanticAnalysis {
                 context.work(); var source = boxes.get(block.id()); if (source != null) { page = source.page(); }
                 String key = source == null ? "" : bandKey(block, source, section.pageSettings().size().height());
                 if (!key.isEmpty() && occurrences.getOrDefault(key, Set.of()).size() >= 2) {
-                    var paragraph = block instanceof Heading value ? new Paragraph(value.id(), value.inlines(), value.format()) : (Paragraph) block;
+                    var paragraph = block instanceof Heading value ? value.paragraph() : (Paragraph) block;
                     (key.startsWith("H:") ? header : footer).add(paragraph);
                 } else { body.add(block); }
             }

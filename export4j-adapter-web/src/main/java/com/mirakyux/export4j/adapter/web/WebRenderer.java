@@ -196,10 +196,12 @@ final class WebRenderer {
             else { loss(ExportFeature.PAGE_BREAK, location, "Page break replaced with thematic separator"); out.add("\n---\n\n"); }
         } else if (block instanceof Caption caption) {
             loss(ExportFeature.CAPTION, location, "Caption emitted as unnumbered text");
-            paragraph(new Paragraph(caption.id(), caption.text(), caption.format()), "p", "", location, ParagraphFormat.of(12));
+            paragraph(new Paragraph(caption.id(), List.of(new InlineText(caption.text(),
+                    caption.appearance().style(caption.format().fontSize()))), caption.format()), "p", "", location, ParagraphFormat.of(12));
         } else if (block instanceof CrossReference reference) {
             loss(ExportFeature.CROSS_REFERENCE, location, "Reference replaced with explicit unresolved marker");
-            paragraph(new Paragraph(reference.id(), reference.prefix() + "[unresolved reference]", reference.format()), "p", "", location, ParagraphFormat.of(12));
+            paragraph(new Paragraph(reference.id(), List.of(new InlineText(reference.prefix() + "[unresolved reference]",
+                    reference.appearance().style(reference.format().fontSize()))), reference.format()), "p", "", location, ParagraphFormat.of(12));
         } else { loss(ExportFeature.CUSTOM_BLOCK, location, "Unsupported custom block omitted without invoking its code"); }
     }
 

@@ -2,6 +2,8 @@
 
 模板源码可直接编辑；需要一起保存主源、片段、图片和字体时，使用普通 ZIP 的 [XmlTemplateBundle](xml-template-bundle-api.md)。重开后仍编译为同一 `DocumentTemplate`，不改变已有 XML 语法或绑定方式。
 
+文本／Markdown／HTML 源、公式／表格解析及逐块默认值使用 `content` 与词法 `scope`。根级属性、逐项继承优先级、解析器装配和正文源格模式见[源内容块指南](content-blocks-api.md)；解析开关只作用于 `content`，不把普通 `p`／`span` 的插值文字重新当作标记语言。
+
 已有 Java 语义文档可用 [XmlTemplateWriter](xml-model-saving-api.md) 按支持子集保存为同一 XML／ZIP，再重开编辑；无法映射的内容使用共享动作与损失策略。
 
 根级 [navigation](portable-navigation-api.md) 可保存目录与书签声明，放在 page／页区之后、notes／正文／section 之前。使用 `renderSections` 或 `renderComplete` 保留，默认引擎自动根据编辑后的标题解析；较窄的旧绑定入口会拒绝丢失导航。
@@ -38,19 +40,21 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 
 ## 结构语法
 
-所有元素均无命名空间，根为 `<document version="1">`，可选 `title`、`author`、`literal-text`。结构之间允许空白和注释；正文、span 和单元格内的空白原样保留，因此正文不要为美化 XML 而额外缩进换行。
+所有元素均无命名空间，根为 `<document version="1">`，可选 `title`、`author`、`literal-text`，也可声明源内容默认值；根／词法属性见[源内容块指南](content-blocks-api.md)。结构之间允许空白和注释；正文、span 和单元格内的空白原样保留，因此正文不要为美化 XML 而额外缩进换行。
 
 | 元素 | 内容和属性 |
 | --- | --- |
 | `page` | 仅主根首个可选空节点；静态纸张／宽高／方向／边距，不生成正文块，详见页面指南 |
-| `p` | 普通文字、span、image、link、四类页码／编号字段及正文 note-marker；普通段落可自然跨页 |
+| `p` | 普通文字、span、image、静态 vector、link、四类页码／编号字段及正文 note-marker；普通段落可自然跨页 |
+| `content` | 显式源内容块；整字段 `source` 或静态文本／CDATA，支持局部外观、排版和解析选项；绑定时使用显式解析器 |
+| `scope` | 词法配置范围；逐项继承根／外层默认值，离开后恢复，不生成布局容器；属性见源内容块指南 |
 | `columns` | 正文连续分栏；count 1～3、pt gap、balanced、可选 weights；段落／表格及动态子节点，支持中间通栏图表，见[分栏指南](column-flow-api.md) |
 | `grid`／`item` | 1～12 轨正文栅格；显式行号／起始轨／跨轨数及 pt 行列间距，整行原子分页；见[栅格指南](grid-layout-api.md) |
-| `heading` | 必填 `level="1"`～`"6"`；文字、span、文字 link；禁止图片／字段 |
-| `bullet` | 1～9 级无序列表；可选 level（默认 1）、marker（默认 `•`）；文字、span、文字 link |
-| `numbered` | 1～9级十进制列表；必填静态 list-id，可选level（默认1）、restart；文字、span、文字 link |
-| `caption` | 必填非空 kind；仅原始文字，保留段落格式，在布局阶段按 kind 独立编号 |
-| `cross-reference` | 独立块；必填 kind="PAGE"／"NUMBER" 与 target，正文为纯文字前缀；最终页码／编号和链接由布局解析 |
+| `heading` | 必填 `level="1"`～`"6"`；文字、span、link、image、静态 vector 及页码／编号字段；禁止脚注标记 |
+| `bullet` | 1～9 级无序列表；可选 level（默认 1）、marker（默认 `•`）；完整混合行内内容 |
+| `numbered` | 1～9级十进制列表；必填静态 list-id，可选level（默认1）、restart；完整混合行内内容 |
+| `caption` | 必填非空 kind；仅原始文字，保留段落格式与 role／color 外观，在布局阶段按 kind 独立编号 |
+| `cross-reference` | 独立块；必填 kind="PAGE"／"NUMBER" 与 target，正文为纯文字前缀，支持 role／color；最终页码／编号和链接由布局解析 |
 | `notes` | 主根页配置／页区后、正文或分节前至多一个；只包含 note，详见注释与题注 |
 | `page-break` | 空元素；显式换页 |
 | `if` | 必填 `test="flag"`；可选 `operator`／`value`，默认布尔 TRUE；先且仅一个 then，随后可选一个 else，分支可嵌套 if |
@@ -66,7 +70,7 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 
 根显式 `literal-text="true"` 时，标题／作者、正文、替代文字和外链按原文处理，`${...}` 及未闭合 `${` 不插值；默认 false 保持现有行为。if／each／rows 的控制数据路径继续读取所传数据。静态字段目标仍须满足 ID 语法，资源名称／样式属性仍静态校验；该模式不关闭安全、预算或类型检查。保存已有模型时 writer 自动启用它，编写动态模板时通常使用默认模式。
 
-p、heading、bullet、numbered、caption、cross-reference、table、rows、page-break 可选 id。显式 ID 匹配 `[A-Za-z_][A-Za-z_0-9-]{0,127}`，不能插值或含 `@`，在两分支和循环原型之间也须唯一；note 的必填 ID 也参与避让。省略时生成 `xml-N` 并避开全部显式 ID；循环渲染附加 `@0` 等索引。
+p、heading、bullet、numbered、caption、cross-reference、content、table、rows、page-break 可选 id。显式 ID 匹配 `[A-Za-z_][A-Za-z_0-9-]{0,127}`，不能插值或含 `@`，在两分支和循环原型之间也须唯一；note 的必填 ID 也参与避让。省略时生成 `xml-N` 并避开全部显式 ID；循环渲染附加 `@0` 等索引。
 
 ## 比较条件与多分支
 
@@ -105,7 +109,7 @@ p、heading、bullet、numbered 支持 `size`、`line-height`、`align`、`keep-
 
 bullet／numbered 的 `marker-role`、`marker-size`、`marker-color`、`marker-shift`、`marker-underline`、`marker-strike` 可分别覆盖标记的完整样式，未声明项沿用所在块默认文字外观，正文 span 不影响标记。marker-shift 单位为 pt，正值下移；自定义 bullet 须非空白、无控制字符、最多 8 个 Unicode 码点。
 
-`<span role="bold" color="#224488" size="12" underline="true" strike="false">文字</span>` 只容纳文字。属性均可省略；默认继承当前块字号，颜色为黑色、角色为空、不加装饰。role 只选择调用方字体组里的真实角色，不加载或合成字体。
+`<span role="bold" color="#224488" size="12" underline="true" strike="false">文字</span>` 只容纳文字。属性均可省略；未声明的字号、角色和颜色继承当前块外观，无额外配置时才为黑色、空角色且不加装饰。role 只选择调用方字体组里的真实角色，不加载或合成字体。
 
 span 和四类字段另支持 `baseline-shift`，单位为 pt，正值下移；image 也支持该属性，默认 0。固定行框必须容纳字号／图片及位移，不自动缩小。
 
@@ -123,7 +127,7 @@ span 和四类字段另支持 `baseline-shift`，单位为 pt，正值下移；i
 
 column 恰好指定 width（正且有限的固定 pt）、weight（正且有限的比例），或成对 min-width／max-width（有界 Auto 的 pt 下／上限）；三种形式互斥，边界调用既有 ColumnWidth.Auto 校验。Auto 不放宽含块格表格的布局限制。每个 header／row 经 column-span／row-span 解析后必须完整覆盖网格，真实 cell 只在锚点行声明。cell 支持 size、line-height、align、line-break、column-span、row-span，以及文字、span、image、link 和四类行内字段。table／rows 可显式指定 padding-top／right／bottom／left、space-before／after（非负 pt），未声明项沿用主题值。普通行内 table／rows 可选 `row-split="true"`，默认 false；它调用既有语义表格分页，表头逐页重复，显式拆行按完整文字行续页，纵向／递归边界见对应指南。
 
-图片先由调用方有界解码为 ImageResource，再通过 `.image("logo", resource)` 注册。模板只写 `<image ref="logo" width="12" height="12" alt="标记"/>`。ref 不可插值，名字使用 ASCII 标识符。width、height 为正 point；alt 可插值。图片仅用于 p／cell，固定行框须容纳图像，否则由布局明确失败。编译器不解码图片、不扫描字体、不访问文件和网络。
+图片先由调用方有界解码为 ImageResource，再通过 `.image("logo", resource)` 注册。模板只写 `<image ref="logo" width="12" height="12" alt="标记"/>`。ref 不可插值，名字使用 ASCII 标识符。width、height 为正 point；alt 可插值。图片可用于 p／cell／heading／bullet／numbered，固定行框须容纳图像，否则由布局明确失败。编译器不解码图片、不扫描字体、不访问文件和网络。
 
 ## 单元格条件样式
 
@@ -166,13 +170,15 @@ column 恰好指定 width（正且有限的固定 pt）、weight（正且有限�
 
 上例须放在 `document` 或合法外层控制节点内。直接格内 `p` 从所在格继承字号、行距、对齐和断行策略，段间距默认为 0；`p` 显式属性优先。内表单元格重新使用编译器 `cellFormat`，不继承外格局部文字设置。
 
-直接出现任一 `p`／`table` 即进入块模式，只允许这两类节点及结构空白。行内文字、span、图片、字段和 link 须放进 `p`，不能与块平级混用。格内不接受 if／each／rows、标题、列表或换页；外层已有 each／rows 可以深复制完整子树，并重定位同一词法复制范围内的静态字段目标。
+未声明 `content`／`scope` 的普通静态块格，直接出现任一 `p`／`table` 即进入块模式，只允许这两类节点及结构空白。行内文字、span、图片、字段和 link 须放进 `p`，不能与块平级混用。此模式不接受格内 if／each／rows、标题、列表或换页；外层已有 each／rows 可以深复制完整子树，并重定位同一词法复制范围内的静态字段目标。
+
+正文格声明 `content`／`scope` 后采用独立的源格模式，可在该范围内使用源节点、条件、循环和动态表格；上述静态块格的控制节点限制不适用于它。展开结果仍须符合既有块单元格的段落／内表、深度和分页约束，不接纳任意块类型。源格同样禁止 `style-if` 及重复表头中的块内容，完整配置与例子见[源内容块指南](content-blocks-api.md#正文单元格中的源)。
 
 默认块格及父连通行组整体移页／移区；显式 `row-split="true"` 支持递归段落／内表及纵向 owner 续排，各层开关独立。重复父表头中的块格仍拒绝，普通行内父表头保持。所有条件分支均验证几何、深度和内容分支。语义表深最多 16 层，见[块格 API](block-cells-api.md)。
 
 ## 最终字段、编号与外链
 
-四种页码／编号字段都是空元素，放在 p／cell 中；每个字段占一个 U+FFFC 原文位置，并须显式预留正且有限的 width（point，不超过 Float.MAX_VALUE）。字段也支持 span 的 role、color、size、underline、strike 属性，默认采用所在块字号；不支持值、任意指令、自动缩小或缓存文字。正文注释标记使用下述独立 note-marker。
+四种页码／编号字段都是空元素，可放在 p／cell／heading／bullet／numbered 中；每个字段占一个 U+FFFC 原文位置，并须显式预留正且有限的 width（point，不超过 Float.MAX_VALUE）。字段也支持 span 的 role、color、size、underline、strike 属性，默认采用所在块字号、角色和颜色；不支持值、任意指令、自动缩小或缓存文字。正文注释标记使用下述独立 note-marker。
 
 | 元素 | 最终值与额外属性 |
 | --- | --- |
@@ -183,7 +189,7 @@ column 恰好指定 width（正且有限的固定 pt）、weight（正且有限�
 
 静态 target 使用与显式 ID 相同的语法；`${record.target}` 等动态 target 在编译时检查表达式，绑定后视为最终完整 ID，不自动添加 include 前缀或 each 后缀。编译检查语法、宽度和样式，包括未选中的 if 分支；目标是否存在、是否有编号在最终文档布局时检查。循环内静态字段引用同一词法复制作用域声明的目标时，重定位到当前副本，例如 `loop` 对应 `loop@0`；内层循环可引用当前外层副本，循环外的静态目标保持原 ID。条件分支也参与声明收集，但未选中的目标仍不存在，最终布局明确失败；循环外引用循环原型 ID 不会猜测某次迭代。值放不进预留框时由既有布局诊断明确失败。
 
-`numbered` 映射到现有 NumberedItem。list-id 必填，采用静态 ID 语法；同 list-id 的项目在全文档顺序中继续编号。level 为静态整数1～9，省略为1。restart 默认为0（继续），正值重设当前级，更新后清空全部更深级；只接受非负int。实际展开后的编号必须有完整父级，缺级和递增溢出在既有语义布局／DOCX导出阶段失败，编译或render不提前推测动态父计数。完整点分引用、循环／片段列表身份及九级边界见[多级编号指南](xml-numbering-api.md)。numbered／heading／bullet 可用文字 link，仍拒绝字段、图片及嵌套块。
+`numbered` 映射到现有 NumberedItem。list-id 必填，采用静态 ID 语法；同 list-id 的项目在全文档顺序中继续编号。level 为静态整数1～9，省略为1。restart 默认为0（继续），正值重设当前级，更新后清空全部更深级；只接受非负int。实际展开后的编号必须有完整父级，缺级和递增溢出在既有语义布局／DOCX导出阶段失败，编译或render不提前推测动态父计数。完整点分引用、循环／片段列表身份及九级边界见[多级编号指南](xml-numbering-api.md)。numbered／heading／bullet 保留图片、静态矢量、页码／编号字段及外链，不接受嵌套块；标题不接受脚注标记。静态路径编码见[行内矢量指南](inline-vectors-api.md)。
 
 ~~~xml
 <numbered id="check" list-id="checks" restart="3">复核记录</numbered>
@@ -191,7 +197,7 @@ column 恰好指定 width（正且有限的固定 pt）、weight（正且有限�
 <p><link href="https://example.com/report?a=1&amp;b=2">${label}<span role="bold" underline="true">详情</span><image ref="logo" width="12" height="12" alt="详情入口"/></link></p>
 ~~~
 
-`link` 用于 p／cell／heading／bullet／numbered，必填 href，内容为普通文字、span；仅 p／cell 的 link 额外允许已注册 image。链接内图片仍通过资源白名单选取；href 从不成为图片来源。href 可为静态地址或 `${record.url}` 等纯数据表达式，在当前词法范围绑定，每个副本独立解析。最终地址复用 ExternalDestination：只接受 HTTP、HTTPS、mailto，检查长度、控制字符、主机及用户信息。非法动态地址以脱敏 `BindingException.Code.INVALID_VALUE` 失败，不携带含原地址的 cause；缺值、类型、预算和取消仍按各自错误处理。没有隐式 URL 编码或外联。XML 中的 `&` 写为 `&amp;`。不支持嵌套链接、链接内字段、空 link 或点击脚本。
+`link` 用于 p／cell／heading／bullet／numbered，必填 href，内容为普通文字、span、已注册 image 或静态 vector。链接内图片仍通过资源白名单选取；href 从不成为图片来源。href 可为静态地址或 `${record.url}` 等纯数据表达式，在当前词法范围绑定，每个副本独立解析。最终地址复用 ExternalDestination：只接受 HTTP、HTTPS、mailto，检查长度、控制字符、主机及用户信息。非法动态地址以脱敏 `BindingException.Code.INVALID_VALUE` 失败，不携带含原地址的 cause；缺值、类型、预算和取消仍按各自错误处理。没有隐式 URL 编码或外联。XML 中的 `&` 写为 `&amp;`。不支持嵌套链接、链接内字段、空 link 或点击脚本。
 
 ## 独立交叉引用块
 
@@ -201,7 +207,7 @@ column 恰好指定 width（正且有限的固定 pt）、weight（正且有限�
 <cross-reference id="number-ref" kind="NUMBER" target="figure">参见 </cross-reference>
 ```
 
-`cross-reference` 映射既有 `CrossReference`，与行内固定宽度字段分别保留。正文仅为前缀文字，允许空前缀和数据表达式；kind 为静态 PAGE／NUMBER，不允许表达式。支持完整段落格式，按当前 bodyFormat 取默认值；不支持 span、role、color、图片、字段或 width。仅允许正文块位置，包括分节、if／each 和 include；页区、图层与表格格内仍拒绝。
+`cross-reference` 映射既有 `CrossReference`，与行内固定宽度字段分别保留。正文仅为前缀文字，允许空前缀和数据表达式；kind 为静态 PAGE／NUMBER，不允许表达式。支持完整段落格式及 `TextAppearance`，从当前正文／词法范围继承默认值，局部 `role`／`color` 分别显式覆盖；前缀与最终引用采用同一外观。不支持 span、图片、字段或 width。仅允许正文块位置，包括分节、if／each 和 include；页区、图层与表格格内仍拒绝。
 
 静态 target 遵循同一 ID 语法，片段局部目标附加 include 前缀，each 内目标重定位到当前副本。含表达式的 target 绑定为完整最终 ID，不再自动添加片段／循环前缀；可显式指向另一个副本。literal-text 模式关闭前缀和目标插值。ID、目标、前缀与展开共享预算及取消。
 
@@ -223,9 +229,9 @@ column 恰好指定 width（正且有限的固定 pt）、weight（正且有限�
 
 notes 仅允许主根声明，位置在可选 page／全部页区后、正文或 section 前，不进入片段、分节、if／each 或单元格。note 必填静态 id、paragraph 和 FOOTNOTE／ENDNOTE 种类；内容仅文字，在根数据范围绑定。顺序决定注释编号；不推测循环副本、动态 ID 或每次迭代的注释。paragraph 须指向实际展开后的顶层正文段落、列表或 Caption。
 
-使用 `var bound = template.renderComplete(data)` 同时获取分节文档与 notes，再用 `DocumentConversion.from(bound.document(), bound.notes())` 或显式引擎 notes 入口导出。旧三个 render 入口遇到非空注释声明明确拒绝。note-marker 只允许普通正文 p，复用行内字段的宽度、样式和 UTF-16 契约；须唯一匹配同段 Note。未显式标记时保留旧段末标记。表格／页区／标题／列表内仍不允许注释字段。最终关系错误抛出 IllegalArgumentException，不能由损失策略绕过；没有 XML 行列映射。
+使用 `var bound = template.renderComplete(data)` 同时获取分节文档与 notes，再用 `DocumentConversion.from(bound.document(), bound.notes())` 或显式引擎 notes 入口导出。旧三个 render 入口遇到非空注释声明明确拒绝。note-marker 可用于普通正文 p、bullet 和 numbered，复用行内字段的宽度、样式和 UTF-16 契约；须唯一匹配锚定同一段落或列表项的 Note。未显式标记时保留旧段末标记。表格／页区／标题内仍不允许注释字段。最终关系错误抛出 IllegalArgumentException，不能由损失策略绕过；没有 XML 行列映射。
 
-Caption 只包含原始文字及必填非空 kind，使用完整 ParagraphFormat，不接受 span、role、color、图片或字段。kind 和正文都可插值，literal-text 模式保持原文；每个 kind 的计数和编号引用仍由既有布局解析。支持 include／each 的 ID 复制及同副本编号引用，不把已生成编号拼回普通文字。注释访问、ID／锚点及正文计入共享绑定预算；所有新语法同样受安全解析、取消和源码预算约束。见[阶段八十](verification/phase-80-xml-semantic-saving.md)。
+Caption 只包含原始文字及必填非空 kind，使用完整 ParagraphFormat 与 `TextAppearance`；角色和颜色继承当前正文／词法默认值，可用局部 `role`／`color` 显式覆盖，编号与正文使用同一外观。不接受 span、图片或字段。kind 和正文都可插值，literal-text 模式保持原文；每个 kind 的计数和编号引用仍由既有布局解析。支持 include／each 的 ID 复制及同副本编号引用，不把已生成编号拼回普通文字。注释访问、ID／锚点及正文计入共享绑定预算；所有新语法同样受安全解析、取消和源码预算约束。见[阶段八十](verification/phase-80-xml-semantic-saving.md)。
 
 编译与数据绑定只保存被动链接，不访问目的地址。字体、UTF-16 原文位置、最终链接矩形和字段值仍由既有模型及布局处理。字段替换不会改变行宽、换行或分页；表头逐次呈现的页码仍遵守语义表格契约。DOCX 重复表头 PAGE 不能保留逐次呈现语义，仍须明确拒绝；静态 SVG／PNG 后端仍拒绝非空交互数据，不能无提示丢弃链接。
 

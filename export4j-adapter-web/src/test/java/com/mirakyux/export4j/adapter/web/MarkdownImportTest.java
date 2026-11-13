@@ -2,6 +2,7 @@
 package com.mirakyux.export4j.adapter.web;
 
 import com.mirakyux.export4j.model.BulletItem;
+import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionException;
@@ -9,15 +10,19 @@ import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.LineBreakPolicy;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
+import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.edit.DocumentEditor;
 import com.mirakyux.export4j.model.processing.ProcessingException;
+import com.mirakyux.export4j.model.processing.DocumentConversion;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy.Action;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy.Treatment;
+import com.mirakyux.export4j.model.processing.ProcessingReport;
 import com.sun.net.httpserver.HttpServer;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -62,6 +67,60 @@ class MarkdownImportTest {
         assertEquals(ParagraphAlignment.RIGHT, table.rows().get(2).cells().get(1).format().alignment());
         assertEquals(ParagraphAlignment.LEFT, table.rows().getFirst().cells().getFirst().format().alignment());
     }
+    @Test void omittedCellFormatKeepsExistingDefaultsBasedOnTheFinalParagraphFontSize() throws Exception {
+        var builder = MarkdownImporter.builder().paragraphFormat(ParagraphFormat.of(9));
+        builder.paragraphFormat(ParagraphFormat.builder().fontSize(20).lineHeight(64)
+                .alignment(ParagraphAlignment.RIGHT).lineBreakPolicy(LineBreakPolicy.CJK_STRICT).build());
+        var result = builder.build().read("Body\n\n| A |\n|---|\n| **B** |").execute();
+        var paragraph = (Paragraph) result.document().blocks().getFirst();
+        assertEquals(64, paragraph.format().lineHeight());
+        var table = (Table) result.document().blocks().get(1);
+        assertEquals(CellFormat.of(20), table.rows().getFirst().cells().getFirst().format());
+        var bodyCell = table.rows().get(1).cells().getFirst();
+        assertEquals(CellFormat.of(20), bodyCell.format());
+        assertEquals(20, bodyCell.inlines().getFirst().style().fontSize());
+    }
+    @Test void explicitCellMetricsControlInlineTextWhileGfmAlignmentRemainsAuthoritative() throws Exception {
+        var cellFormat = CellFormat.builder().fontSize(18).lineHeight(64).alignment(ParagraphAlignment.CENTER)
+                .lineBreakPolicy(LineBreakPolicy.CJK_STRICT).build();
+        var importer = MarkdownImporter.builder().paragraphFormat(ParagraphFormat.of(10)).cellFormat(cellFormat).build();
+        var result = importer.read("Body\n\n| Plain | Strong | Link |\n|---|---:|:---|\n| a | **b** | [c](https://example.org/) |").execute();
+        assertEquals(10, ((Paragraph) result.document().blocks().getFirst()).format().fontSize());
+        var table = (Table) result.document().blocks().get(1);
+        for (var row : table.rows()) {
+            assertEquals(cellFormat, row.cells().getFirst().format());
+            assertEquals(cellFormat.withAlignment(ParagraphAlignment.RIGHT), row.cells().get(1).format());
+            assertEquals(cellFormat.withAlignment(ParagraphAlignment.LEFT), row.cells().get(2).format());
+            for (var cell : row.cells()) {
+                assertTrue(cell.inlines().stream().allMatch(run -> run.style().fontSize() == 18));
+            }
+        }
+        assertEquals("bold", table.rows().get(1).cells().get(1).inlines().getFirst().style().fontRole());
+        assertEquals("https://example.org/", table.rows().get(1).cells().get(2).inlines().getFirst().hyperlink());
+    }
+    @Test void cellFormatAndConversionAreSnapshotsOfTheBuiltImporter() throws Exception {
+        var format = CellFormat.builder().fontSize(17).lineHeight(64).build();
+        var builder = MarkdownImporter.builder().cellFormat(format);
+        var importer = builder.build();
+        builder.cellFormat(CellFormat.of(8)).paragraphFormat(ParagraphFormat.of(8));
+        String source = "| A |\n|---|\n| **B** |";
+        var direct = (Table) importer.read(source).execute().document().blocks().getFirst();
+        var target = new DocumentConversion.Target("MODEL", (document, notes, policy, output) ->
+                new ProcessingReport(ProcessingReport.Phase.ACTUAL, List.of()));
+        var converted = (Table) importer.conversion(source).prepare(target).candidate().sections().getFirst().blocks().getFirst();
+        assertEquals(direct, converted);
+        assertEquals(format, converted.rows().get(1).cells().getFirst().format());
+        assertEquals(17, converted.rows().get(1).cells().getFirst().inlines().getFirst().style().fontSize());
+    }
+    @Test void headerOnlyTableKeepsItsConfiguredCellMetricsWithoutAddingRows() throws Exception {
+        var format = CellFormat.builder().fontSize(18).lineHeight(64).alignment(ParagraphAlignment.CENTER).build();
+        var importer = MarkdownImporter.builder().cellFormat(format).policy(policy(Action.WARN, Treatment.DEGRADE)).build();
+        var result = importer.read("| A |\n|---|").execute();
+        var table = (Table) result.document().blocks().getFirst();
+        assertEquals(format, table.rows().getFirst().cells().getFirst().format());
+        assertEquals(1, table.rows().size()); assertEquals(0, table.headerRows());
+        assertTrue(result.report().losses().isEmpty());
+    }
     @Test void nestedNumberingUsesRealParentCountersAndRestarts() throws Exception {
         var result = new MarkdownImporter().read("3. parent\n   1. nested one\n   2. nested two\n4. next\n\n- bullet\n  - deep\n").execute();
         var items = result.document().blocks();
@@ -78,14 +137,15 @@ class MarkdownImportTest {
         assertEquals(18, ordered.format().firstLineIndent());
         assertEquals(1, DocumentEditor.edit(result.document()).find("second").matches().size());
     }
-    @Test void codeAndQuoteLossesHavePreviewAndActualReportsEvenUnderIgnore() throws Exception {
+    @Test void quoteLossIsReportedWhileCodePreservesContentAndWhitespace() throws Exception {
         String source = "> quote\n\n```java\na < b;\n```\n\ninline `a  b`";
         assertThrows(ProcessingException.class, () -> new MarkdownImporter().read(source).prepare());
         var warned = lenient().read(source).prepare();
         var ignored = MarkdownImporter.builder().policy(policy(Action.IGNORE, Treatment.DEGRADE)).build().read(source).execute();
         assertEquals(warned.execute().document(), ignored.document());
         assertEquals(warned.preview().issues(), warned.execute().report().issues());
-        assertEquals(3, ignored.report().losses().size()); assertTrue(ignored.report().warnings().isEmpty());
+        assertEquals(1, ignored.report().losses().size()); assertTrue(ignored.report().warnings().isEmpty());
+        assertEquals("BLOCK_QUOTE", ignored.report().losses().getFirst().feature());
         var blocks = ignored.document().blocks();
         assertEquals(18, ((Paragraph) blocks.getFirst()).format().firstLineIndent());
         assertEquals("a < b;\n", ((Paragraph) blocks.get(1)).text());
@@ -129,10 +189,10 @@ class MarkdownImportTest {
         assertEquals("", ((Paragraph) degraded.document().blocks().getFirst()).inlines().getFirst().hyperlink());
     }
     @Test void sourceRangesIncludeOriginalUtf16AndPhysicalTableCoordinates() throws Exception {
-        var source = "😀\r\n\r\n| A | B |\r\n|---|---|\r\n| x | `code` |\r\n";
+        var source = "😀\r\n\r\n| A | B |\r\n|---|---|\r\n| x | [code](https://example.org/ \"tip\") |\r\n";
         var result = lenient().read(source).execute(); var issue = result.report().losses().getFirst();
-        assertEquals("INLINE_CODE", issue.feature());
-        assertEquals("`code`", source.substring(issue.location().startUtf16(), issue.location().endUtf16()));
+        assertEquals("LINK_TITLE", issue.feature());
+        assertEquals("[code](https://example.org/ \"tip\")", source.substring(issue.location().startUtf16(), issue.location().endUtf16()));
         assertEquals(1, issue.location().cellPath().getFirst().rowIndex());
         assertEquals(1, issue.location().cellPath().getFirst().columnIndex());
     }
@@ -156,27 +216,29 @@ class MarkdownImportTest {
         assertEquals(3, loose.document().blocks().size());
         assertEquals(2, loose.report().losses().stream().filter(issue -> issue.feature().equals("LIST_ITEM_STRUCTURE")).count());
     }
-    @Test void headerOnlyTableRequiresExplicitAddedRowLoss() throws Exception {
+    @Test void headerOnlyTableIsKeptOnceWithoutInventingAnEmptyRow() throws Exception {
         String source = "| A | B |\n|---|---|";
-        assertThrows(ProcessingException.class, () -> new MarkdownImporter().read(source).execute());
-        var result = lenient().read(source).execute();
-        assertEquals(2, ((Table) result.document().blocks().getFirst()).rows().size());
-        assertEquals("TABLE_HEADER_ONLY", result.report().losses().getFirst().feature());
+        var result = new MarkdownImporter().read(source).execute();
+        var table = (Table) result.document().blocks().getFirst();
+        assertEquals(1, table.rows().size()); assertEquals(0, table.headerRows());
+        assertTrue(result.report().losses().isEmpty());
     }
-    @Test void zeroNumberingAndHeadingImagesRequireExplicitLossTreatment() throws Exception {
+    @Test void zeroNumberingRequiresExplicitLossWhileHeadingImagesRemainObjects() throws Exception {
         assertThrows(ProcessingException.class, () -> new MarkdownImporter().read("0. zero\n1. next").execute());
         var numbered = lenient().read("0. zero\n1. next").execute();
         assertEquals(1, ((NumberedItem) numbered.document().blocks().getFirst()).restartAt());
         assertEquals("NUMBERING_START", numbered.report().losses().getFirst().feature());
-        assertThrows(ProcessingException.class, () -> MarkdownImporter.builder().image("logo", image()).build().read("# ![ALT](logo)").execute());
+        var strictHeading = MarkdownImporter.builder().image("logo", image()).build().read("# ![ALT](logo)").execute();
+        assertEquals(1, ((Heading) strictHeading.document().blocks().getFirst()).images().size());
         var heading = MarkdownImporter.builder().policy(policy(Action.WARN, Treatment.DEGRADE)).image("logo", image()).build().read("# ![ALT](logo)").execute();
-        assertEquals("ALT", ((Heading) heading.document().blocks().getFirst()).text());
-        assertEquals("HEADING_INLINE_OBJECT", heading.report().losses().getFirst().feature());
+        assertEquals("\uFFFC", ((Heading) heading.document().blocks().getFirst()).text());
+        assertEquals("ALT", ((Heading) heading.document().blocks().getFirst()).images().getFirst().image().altText());
+        assertTrue(heading.report().losses().isEmpty());
     }
     @Test void executableMarkupInsideCodeRemainsInertTextAndTitlesReportRemoval() throws Exception {
         var result = lenient().read("```html\n<script>literal</script>\n```\n\n[label](https://example.org/ \"title\")").execute();
         assertEquals("<script>literal</script>\n", ((Paragraph) result.document().blocks().getFirst()).text());
-        assertEquals(List.of("CODE_BLOCK", "LINK_TITLE"), result.report().losses().stream().map(issue -> issue.feature()).toList());
+        assertEquals(List.of("LINK_TITLE"), result.report().losses().stream().map(issue -> issue.feature()).toList());
         assertThrows(IllegalArgumentException.class, () -> MarkdownImporter.builder().policy(policy(Action.IGNORE, Treatment.PRESERVE)).build().read("> quote").execute());
     }
     @Test void metadataConfigAndPreparedCandidateAreSnapshots() throws Exception {

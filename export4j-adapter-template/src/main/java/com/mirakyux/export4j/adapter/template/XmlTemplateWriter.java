@@ -58,7 +58,7 @@ import java.util.Objects;
  * Uses the existing XML compiler/binder; unsupported runtime components require an explicit
  * discard policy. Fonts/licenses are provided by the caller, never discovered. Requests are task-confined;
  * prepared values are immutable except for caller execution callbacks. No layout or implicit I/O occurs.
- * Version 1 rejects inline vectors under every policy: it has no lossless vector resource encoding.
+ * Static inline vector paths use a bounded, explicit XML encoding with their logical reading text.
  */
 public final class XmlTemplateWriter {
     public static final String FORMAT = "XML_TEMPLATE";
@@ -360,18 +360,20 @@ public final class XmlTemplateWriter {
             if (value instanceof PageBreak) { add("<page-break"); attr("id", identifier(value.id())); add("/>"); return; }
             if (value instanceof Caption caption) {
                 add("<caption"); attr("id", identifier(caption.id())); attr("kind", caption.kind()); format(caption.format());
+                attr("role", caption.appearance().fontRole()); attr("color", String.format(java.util.Locale.ROOT, "#%06X", caption.appearance().rgb()));
                 add(">"); escaped(caption.text()); add("</caption>"); return;
             }
             if (value instanceof CrossReference reference) {
                 add("<cross-reference"); attr("id", identifier(reference.id())); attr("kind", reference.kind());
                 attr("target", identifier(reference.targetId())); format(reference.format());
+                attr("role", reference.appearance().fontRole()); attr("color", String.format(java.util.Locale.ROOT, "#%06X", reference.appearance().rgb()));
                 add(">"); escaped(reference.prefix()); add("</cross-reference>"); return;
             }
             String tag; ParagraphFormat format; List<InlineContent> content;
             if (value instanceof Paragraph paragraph) { tag = "p"; format = paragraph.format(); content = paragraph.content(); }
-            else if (value instanceof Heading heading) { tag = "heading"; format = heading.format(); content = runs(heading.text(), heading.inlines(), format.fontSize()); }
-            else if (value instanceof BulletItem bullet) { tag = "bullet"; format = bullet.format(); content = runs(bullet.text(), bullet.inlines(), format.fontSize()); }
-            else if (value instanceof NumberedItem numbered) { tag = "numbered"; format = numbered.format(); content = runs(numbered.text(), numbered.inlines(), format.fontSize()); }
+            else if (value instanceof Heading heading) { tag = "heading"; format = heading.format(); content = heading.paragraph().content(); }
+            else if (value instanceof BulletItem bullet) { tag = "bullet"; format = bullet.format(); content = bullet.paragraph().content(); }
+            else if (value instanceof NumberedItem numbered) { tag = "numbered"; format = numbered.format(); content = numbered.paragraph().content(); }
             else { loss("UNSUPPORTED_BLOCK", ProcessingPolicy.Treatment.DISCARD, "BLOCK_CONTENT_REMOVED"); return; }
             add("<" + tag); attr("id", identifier(value.id())); format(format);
             if (value instanceof Heading heading) { attr("level", heading.level()); }
@@ -409,10 +411,9 @@ public final class XmlTemplateWriter {
             var owner = location; int offset = 0;
             for (var value : values) {
                 ExecutionContext.checkpoint();
-                if (value instanceof InlineVector) { throw new IllegalArgumentException("XML template version 1 does not support inline vectors"); }
                 int length = value instanceof InlineText text ? text.text().length() : 1;
                 location = owner.range(offset, offset + length); offset += length;
-                String link = value instanceof InlineText text ? text.hyperlink() : value instanceof InlineImage image ? image.hyperlink() : "";
+                String link = value instanceof InlineText text ? text.hyperlink() : value instanceof InlineImage image ? image.hyperlink() : value instanceof InlineVector vector ? vector.hyperlink() : "";
                 if (!link.isEmpty()) { add("<link"); attr("href", link); add(">"); }
                 if (value instanceof InlineText text) { add("<span"); style(text.style()); add(">"); escaped(text.text()); add("</span>"); }
                 else if (value instanceof InlineImage image) {
@@ -421,6 +422,15 @@ public final class XmlTemplateWriter {
                     attr("baseline-shift", image.baselineShift()); attr("alt", image.altText());
                     if (image.rotation() != 0) { attr("rotation", image.rotation()); }
                     add("/>");
+                } else if (value instanceof InlineVector vector) {
+                    add("<vector"); attr("width", vector.resource().width()); attr("ascent", vector.resource().ascent());
+                    attr("descent", vector.resource().descent()); attr("logical", vector.logicalText()); attr("color", rgb(vector.rgb())); add(">");
+                    for (var segment : vector.resource().segments()) {
+                        ExecutionContext.checkpoint(); add("<segment"); attr("operation", segment.operation());
+                        attr("points", segment.coordinates().stream().map(number -> BigDecimal.valueOf(number).toPlainString())
+                                .collect(java.util.stream.Collectors.joining(" "))); add("/>");
+                    }
+                    add("</vector>");
                 } else if (value instanceof InlineField field) {
                     String tag = switch (field.kind()) { case PAGE -> "page-number"; case PAGES -> "page-count";
                         case REFERENCE_PAGE -> "page-reference"; case REFERENCE_NUMBER -> "number-reference"; case NOTE_MARKER -> "note-marker"; };

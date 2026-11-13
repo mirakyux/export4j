@@ -164,9 +164,9 @@ public final class XmlThemeExample {
         // Only that representation is normalized; complete formats, IDs, rich values and hierarchy stay exact.
         return blocks.stream().<Block>map(block -> switch (block) {
             case Heading heading -> new Heading(heading.id(), heading.text(), heading.level(), heading.format(),
-                    nativeRuns(heading.inlines(), heading.text(), heading.format().fontSize()));
+                    nativeRuns(heading.inlines(), heading.text(), heading.format().fontSize()), heading.images(), heading.fields(), heading.vectors());
             case NumberedItem item -> new NumberedItem(item.id(), item.listId(), item.text(), item.restartAt(), item.format(), item.level(),
-                    nativeRuns(item.inlines(), item.text(), item.format().fontSize()));
+                    nativeRuns(item.inlines(), item.text(), item.format().fontSize()), item.markerStyle(), item.images(), item.fields(), item.vectors());
             case Table table -> new Table(table.id(), table.columns(), table.rows().stream().map(row -> new TableRow(
                     row.cells().stream().map(XmlThemeExample::nativeCell).toList())).toList(), table.headerRows(), table.format());
             default -> block;
@@ -176,10 +176,10 @@ public final class XmlThemeExample {
     private static TableCell nativeCell(TableCell cell) {
         if (cell.hasBlocks()) { return cell.toBuilder().blocks(nativeValues(cell.blocks())).build(); }
         return new TableCell(cell.text(), cell.format(), nativeRuns(cell.inlines(), cell.text(), cell.format().fontSize()),
-                cell.images(), cell.fields(), cell.columnSpan(), cell.rowSpan());
+                cell.images(), cell.fields(), cell.vectors(), cell.columnSpan(), cell.rowSpan(), List.of());
     }
 
     private static List<InlineText> nativeRuns(List<InlineText> runs, String text, double size) {
-        return runs.equals(List.of(new InlineText(text, InlineStyle.of(size)))) ? List.of() : runs;
+        return text.indexOf('\ufffc') < 0 && runs.equals(List.of(new InlineText(text, InlineStyle.of(size)))) ? List.of() : runs;
     }
 }

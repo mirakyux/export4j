@@ -22,7 +22,9 @@ import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.graphics.DrawCommand;
 import com.mirakyux.export4j.model.Block;
+import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.DocumentTemplate;
+import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
@@ -183,10 +185,6 @@ class XmlTemplateFieldsLinksTest {
 
     @Test void fieldsLinksAndAtomicContentHaveAnExplicitContainerBoundary() {
         for (String content : List.of(
-                "<heading level='1'><page-number width='20'/></heading>",
-                "<bullet><page-count width='20'/></bullet>",
-                "<numbered list-id='steps'><page-number width='20'/></numbered>",
-                "<numbered list-id='steps'><image ref='logo' width='12' height='12'/></numbered>",
                 "<p><span><page-number width='20'/></span></p>",
                 "<p><field kind='PAGE' width='20'/></p>",
                 "<p><link href='https://example.com'><page-number width='20'/></link></p>",
@@ -196,6 +194,31 @@ class XmlTemplateFieldsLinksTest {
         assertRejected(TemplateException.Code.INVALID_STRUCTURE, xml("<p><note-marker width='20'/></p>"));
         assertRejected(TemplateException.Code.INVALID_STRUCTURE, xml("<p><link href='https://example.com'/></p>"));
         assertRejected(TemplateException.Code.UNSUPPORTED_ATTRIBUTE, xml("<p><link href='https://example.com' onclick='execute'>text</link></p>"));
+    }
+
+    @Test void semanticTextBlocksPreserveLinkedImagesFieldsAndUtf16Positions() throws IOException {
+        var logo = image();
+        var compiler = XmlTemplate.builder().image("logo", logo).build();
+        for (String tag : List.of("heading level='1'", "bullet", "numbered list-id='steps'")) {
+            String name = tag.split(" ")[0];
+            var document = compiler.compile(xml("<" + tag + ">${prefix}<link href='${url}'>"
+                    + "<image ref='logo' width='12' height='12' alt='${alt}'/></link><page-number width='20'/>B</" + name + ">"))
+                    .render(Map.of("prefix", "A😀", "url", "https://example.com/logo", "alt", "Icon"));
+            var paragraph = switch (document.blocks().getFirst()) {
+                case Heading h -> h.paragraph();
+                case BulletItem b -> b.paragraph();
+                case NumberedItem n -> n.paragraph();
+                default -> throw new AssertionError();
+            };
+            assertEquals("A😀\ufffc\ufffcB", paragraph.text());
+            assertEquals(3, paragraph.images().getFirst().sourceIndex());
+            assertEquals(4, paragraph.fields().getFirst().sourceIndex());
+            assertSame(logo, paragraph.images().getFirst().image().resource());
+            assertEquals("Icon", paragraph.images().getFirst().image().altText());
+            assertEquals("https://example.com/logo", paragraph.images().getFirst().image().hyperlink());
+            assertEquals(InlineField.Kind.PAGE, paragraph.fields().getFirst().field().kind());
+        }
+        assertRejected(TemplateException.Code.INVALID_VALUE, xml("<heading level='1'><note-marker target='note' width='20'/></heading>"));
     }
 
     @Test void staticDestinationsUseExistingUriRulesAndDynamicExpressionsCompileInAllBranches() {

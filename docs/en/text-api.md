@@ -1,5 +1,7 @@
 # Font and text API
 
+The development loader reuses immutable faces by content and releases idle cache references. See [font caching](font-cache-api.md) for limits, expiration, clearing and the PDF program pool.
+
 For multiple scripts, source clusters after missing-glyph replacement, bidirectional continuation and real reader search/selection checks, see the [text corpus (Chinese)](../text-corpus-api.md) and [ADR-0026 (Chinese)](../adr/0026-source-clusters-and-shaping-context.md). Query success, logical source text and per-character selection geometry are assessed separately; outline anchors do not guarantee general extraction or precise selection.
 
 The API supports static TrueType/CFF fonts, explicit collection members and adaptive simple/OpenType layout. It provides explicit fallback, measurement, paragraph breaking, indentation, alignment and fixed line heights. Layout results can become PDF drawing commands directly. The caller can create pages or let the [document layout API (Chinese)](../layout-api.md) allocate them automatically.

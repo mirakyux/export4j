@@ -33,6 +33,28 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HtmlImportTest {
+    @Test void cssFontFamilyAcceptsExplicitDefaultFontRoleAlongsideNamedVariants() throws Exception {
+        var importer = HtmlImporter.builder().fontFamily("Fixture Sans", "", "bold", "italic", "boldItalic").build();
+        var paragraph = (Paragraph) importer.read("<p style='font-family:Fixture Sans'>plain <b>bold</b> <i>italic</i> <b><i>both</i></b></p>").execute().document().blocks().getFirst();
+        assertEquals("", paragraph.inlines().stream().filter(run -> run.text().startsWith("plain")).findFirst().orElseThrow().style().fontRole());
+        assertEquals("bold", paragraph.inlines().stream().filter(run -> run.text().equals("bold")).findFirst().orElseThrow().style().fontRole());
+        assertEquals("italic", paragraph.inlines().stream().filter(run -> run.text().equals("italic")).findFirst().orElseThrow().style().fontRole());
+        assertEquals("boldItalic", paragraph.inlines().stream().filter(run -> run.text().equals("both")).findFirst().orElseThrow().style().fontRole());
+    }
+    @Test void cssFontFamilyRejectsInvalidRolesInEveryVariantWithoutRelaxingFamilyKeys() {
+        for (String invalid : List.of(" ", "bad-role", "two words", "9role", "x".repeat(257))) {
+            for (int index = 0; index < 4; index++) {
+                var roles = new String[] {"", "bold", "italic", "boldItalic"}; roles[index] = invalid;
+                assertThrows(IllegalArgumentException.class, () -> HtmlImporter.builder().fontFamily("Fixture Sans", roles[0], roles[1], roles[2], roles[3]));
+            }
+        }
+        for (int index = 0; index < 4; index++) {
+            var roles = new String[] {"", "bold", "italic", "boldItalic"}; roles[index] = null;
+            assertThrows(NullPointerException.class, () -> HtmlImporter.builder().fontFamily("Fixture Sans", roles[0], roles[1], roles[2], roles[3]));
+        }
+        assertThrows(IllegalArgumentException.class, () -> HtmlImporter.builder().fontFamily(" ", "", "bold", "italic", "boldItalic"));
+        assertThrows(NullPointerException.class, () -> HtmlImporter.builder().fontFamily(null, "", "bold", "italic", "boldItalic"));
+    }
     @Test void exportedNestedTableWrapperKeepsCellOrderAndRequiresExplicitLoss() throws Exception {
         String source = "<table id='outer'><tr><td><p id='before'>BEFORE</p>"
                 + "<div class='table-scroll'><table id='inner'><tr><td>INNER</td></tr></table></div>"

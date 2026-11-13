@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import zipfile
 
+from publication_scope import published_libraries
+
 ROOT = Path(__file__).resolve().parents[1]
 AGENT = r'''
 import java.lang.instrument.ClassFileTransformer;
@@ -120,7 +122,7 @@ def main():
                 (runtime / parts[2]).write_bytes(archive.read(member))
     jars = sorted(runtime.glob("*.jar"))
     project_jars = [path for path in jars if path.name.startswith("export4j-")]
-    if len(project_jars) != 16 or not any(path.name == "isolated-library-consumer.jar" for path in jars):
+    if len(project_jars) != len(published_libraries(ROOT)) or not any(path.name == "isolated-library-consumer.jar" for path in jars):
         raise RuntimeError("Incomplete published library or consumer JAR distribution")
     resolved = {}
     for line in (consumer / "resolved-library-sha256.txt").read_text(encoding="utf-8").splitlines():
@@ -144,11 +146,11 @@ def main():
     if set(control_log.read_text(encoding="utf-8").splitlines()) != expected or stdout.count("DENIED ") != 3:
         raise AssertionError("The printing denial negative control did not work")
     report = {"headless": True, "printingClassLoadingDenied": True,
-              "negativeControls": 3, "publishedProjectJars": 16,
+              "negativeControls": 3, "publishedProjectJars": len(project_jars),
               "resolvedRuntimeHashesVerified": len(jars) - 1,
               "productionPrintingReferences": 0, "consumers": {},
               "runtimeSha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in jars}}
-    for name in ("Consumer", "DocxSemanticCompleteConsumer", "HtmlCssLayoutConsumer"):
+    for name in ("Consumer", "DocxSemanticCompleteConsumer", "HtmlCssLayoutConsumer", "MathConsumer", "FontCacheConsumer", "ContentBlocksConsumer", "RichContentConsumer"):
         denied = output / (name + ".denied")
         products = output / name
         run([java, "-Djava.awt.headless=true", f"-javaagent:{agent}={denied}",

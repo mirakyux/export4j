@@ -13,6 +13,7 @@ import com.mirakyux.export4j.components.DocumentEngine;
 import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.edit.DocumentEditor;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import java.awt.Color;
@@ -68,8 +69,13 @@ public final class MarkdownImportExample {
         var policy = ProcessingPolicy.builder().defaultRule(ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE).build();
         var prepared = MarkdownImporter.builder().policy(policy).image("logo.png", image).build().read(source).prepare();
         var imported = prepared.execute();
-        if (imported.report().losses().size() != 2 || !prepared.preview().issues().equals(imported.report().issues())) {
+        if (imported.report().losses().size() != 1 || !imported.report().losses().getFirst().feature().equals("BLOCK_QUOTE")
+                || !prepared.preview().issues().equals(imported.report().issues())) {
             throw new IllegalStateException("Markdown import loss reconciliation failed");
+        }
+        if (imported.document().blocks().stream().filter(Paragraph.class::isInstance).map(Paragraph.class::cast)
+                .noneMatch(paragraph -> paragraph.text().equals("CODE-ONLY <tag> & value;\n"))) {
+            throw new IllegalStateException("Markdown code literal or trailing newline was changed");
         }
         var edited = DocumentEditor.edit(imported.document()).replaceText("TARGET-OLD", "TARGET-READY").execute().document();
         var regular = FontGroup.strict(List.of(AuthoringExample.face("LiberationSans-Regular.ttf")));
@@ -94,6 +100,6 @@ public final class MarkdownImportExample {
                     .append(issue.location().endUtf16()).append('\n');
         }
         Files.writeString(output.resolve("losses.tsv"), report);
-        System.out.println("Markdown import: " + edited.blocks().size() + " blocks, 2 reported semantic degradations");
+        System.out.println("Markdown import: " + edited.blocks().size() + " blocks, 1 reported semantic degradation");
     }
 }

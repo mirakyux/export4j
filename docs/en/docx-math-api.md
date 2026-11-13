@@ -2,7 +2,7 @@
 
 `export4j-adapter-docx` reads, builds and edits native Word OMML equations through immutable `DocxMath` trees. `writeMath` generates standard `m:oMath` / `m:oMathPara`, keeping equations editable. The model does not substitute original packages, XML fragments, pictures or TeX text for mathematical structure.
 
-`DocxMathDocument` wraps an existing `DocxSemanticDocument`. Public core models, the layout engine and PDF/SVG backends do not depend on this adapter type. There is no general TeX↔OMML, MathML or native-math-model-to-PDF conversion entry point here.
+`DocxMathDocument` wraps an existing `DocxSemanticDocument`. Public core models, the layout engine and PDF/SVG backends do not depend on this adapter type. This adapter has no general TeX↔OMML, MathML or native-math-model-to-PDF entry point. The optional [math module](math-api.md) adds bounded TeX-to-OMML and Markdown formula recognition.
 
 ## Read, construct and edit
 

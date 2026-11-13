@@ -2,7 +2,7 @@
 
 `export4j-adapter-docx` 用不可变 `DocxMath` 类型树读取、构造和修改 Word 原生 OMML 公式。`writeMath` 生成标准 `m:oMath`／`m:oMathPara`，公式保持可编辑；模型不保存原包、XML 片段、图片或 TeX 文本来代替公式结构。
 
-公式通过 `DocxMathDocument` 包裹现有 `DocxSemanticDocument`。公共核心模型、布局引擎和 PDF／SVG 后端不依赖这一适配器类型。这里没有通用 TeX↔OMML、MathML 或原生数学模型到 PDF 的转换入口。
+公式通过 `DocxMathDocument` 包裹现有 `DocxSemanticDocument`。公共核心模型、布局引擎和 PDF／SVG 后端不依赖这一适配器类型。该适配器没有通用 TeX↔OMML、MathML 或原生数学模型到 PDF 的转换入口；受限 TeX→OMML 和 Markdown 公式识别由可选[公式模块](math-api.md)提供。
 
 ## 读取、构造和修改
 

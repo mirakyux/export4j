@@ -61,7 +61,7 @@ class CentralReleaseTest(unittest.TestCase):
                 patch.object(central, "build_inputs", return_value={}), redirect_stdout(io.StringIO()):
             central.preflight(self.output / "preflight", "0.1.0", FINGERPRINT)
         repository_requests = [url for url in requests if url.startswith(central.CENTRAL)]
-        self.assertEqual(17, len(repository_requests))
+        self.assertEqual(len(central.published_modules(central.ROOT)), len(repository_requests))
         self.assertTrue(all(url.startswith(central.CENTRAL + 'com/mirakyux/export4j/export4j-') for url in repository_requests))
 
     def test_private_identity_mismatch_and_unpublished_public_key_stop(self):
@@ -119,7 +119,7 @@ class CentralReleaseTest(unittest.TestCase):
         bundle = self.output / "bundle.zip"
         files = {}
         with ZipFile(bundle, "w") as archive:
-            for index in range(82):
+            for index in range(central.publication_artifact_count(central.ROOT)):
                 name = f"com/mirakyux/export4j/export4j-fixture-{index}/0.1.0/fixture-{index}.jar"
                 for suffix in ("", ".asc", ".sha256"):
                     files[name + suffix] = (name + suffix).encode()
@@ -132,7 +132,7 @@ class CentralReleaseTest(unittest.TestCase):
                 downloads[next(iter(downloads))] = b"altered remote bytes"
             with patch.object(central, "checked_bundle", return_value=bundle), \
                     patch.object(central, "fetch", side_effect=lambda url, missing=False: downloads[url.removeprefix(central.CENTRAL)]), \
-                    patch.object(central, "prepare", return_value={"signedArtifacts": 82}) as verify, \
+                    patch.object(central, "prepare", return_value={"signedArtifacts": central.publication_artifact_count(central.ROOT)}) as verify, \
                     patch.object(central, "api") as api, redirect_stdout(io.StringIO()):
                 if tampered:
                     with self.assertRaisesRegex(ValueError, "differs"):
@@ -143,7 +143,7 @@ class CentralReleaseTest(unittest.TestCase):
                     central.verify_remote(output, "0.1.0", 60)
                     verify.assert_called_once()
                     repository = output / "remote/repository"
-                    self.assertEqual(246, sum(path.is_file() for path in repository.rglob("*")))
+                    self.assertEqual(3 * central.publication_artifact_count(central.ROOT), sum(path.is_file() for path in repository.rglob("*")))
                     self.assertTrue(all((repository / name).read_bytes() == data for name, data in files.items()))
                 api.assert_not_called()
 
@@ -215,7 +215,7 @@ class CentralReleaseTest(unittest.TestCase):
         bundle.parent.mkdir()
         bundle.write_bytes(b"original")
         central.save(self.output / "build-inputs.json", {"version": "0.1.0", "headRevision": "revision", "files": {"source": "hash"}})
-        central.save(self.output / "distribution/distribution-report.json", {"version": "0.1.0", "signedArtifacts": 82,
+        central.save(self.output / "distribution/distribution-report.json", {"version": "0.1.0", "signedArtifacts": central.publication_artifact_count(central.ROOT),
                      "bundleSha256": hashlib.sha256(b"original").hexdigest()})
         for inputs, revision, data in (({"source": "changed"}, "revision", b"original"),
                                        ({"source": "hash"}, "different", b"original"),
@@ -232,7 +232,7 @@ class CentralReleaseTest(unittest.TestCase):
         with ZipFile(bundle, "w") as archive:
             archive.writestr("org/example/dependency/1.0/dependency-1.0.jar", b"external artifact")
         central.save(self.output / "build-inputs.json", {"version": "0.1.0", "headRevision": "revision", "files": {}})
-        central.save(self.output / "distribution/distribution-report.json", {"version": "0.1.0", "signedArtifacts": 82,
+        central.save(self.output / "distribution/distribution-report.json", {"version": "0.1.0", "signedArtifacts": central.publication_artifact_count(central.ROOT),
             "bundleSha256": hashlib.sha256(bundle.read_bytes()).hexdigest()})
         with patch.object(central, "build_inputs", return_value={}), \
                 patch.object(central.subprocess, "run", return_value=Mock(stdout="revision\n")):

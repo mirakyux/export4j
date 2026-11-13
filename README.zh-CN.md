@@ -43,6 +43,10 @@ Export4j 是面向报告、发票、表单和结构化文档的开源 **Java PDF
 | PDF 安全与标准 | AES-256、选定 PDF/A 等级、PDF/UA-1 及 PAdES B／T／LT／LTA；密钥、信任和验证资料显式提供 |
 | 大文档 | 流式长表、用于总数／引用的显式重放、可选磁盘索引 PDF、执行预算、取消及原子文件输出 |
 
+当前开发版新增[有界字体缓存与空闲释放](docs/font-cache-api.md)，减少重复导出的字体加载和解析；已发布 RC3 不包含此功能。
+
+当前开发版的[源内容块](docs/content-blocks-api.md)支持每块声明字体、颜色、段落属性及文本／Markdown／HTML 格式，逐项继承默认值，并独立控制公式和表格解析；本批验收结果另行登记。
+
 各项能力适用于文档声明的输入子集，配置与示例见 [API 指南](docs/README.md)。
 
 ## 快速开始
@@ -225,6 +229,7 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 | SVG／PNG | 在各自支持子集内作为矢量／图像资源加载 | 静态页面及 PNG 页 ZIP |
 
 - 不同格式可保留的信息不同，不支持的内容按明确损失策略处理；不保证一般 Word 无损往返或 DOCX／PDF 同分页。
+- 可选[公式模块](docs/math-api.md)将受限 TeX／Markdown 公式转为 PDF／SVG／PNG 矢量或可编辑 Word 公式，无需使用端维护通用解析和渲染器。
 - [Word 原生公式](docs/docx-math-api.md)使用有类型 OMML，保留可编辑结构；独立[数学示例](docs/examples.md#数学公式)将受限 TeX 排成 PDF／SVG 矢量，无需安装 TeX。
 - PDF 恢复根据文字、坐标和绘图推断可编辑结构，报告不确定性，支持显式表格网格，不执行 OCR。字体要求及整页图片降级见[恢复指南](docs/pdf-semantic-import-api.md)。
 - [PDF 脱敏](docs/pdf-redaction-api.md)提供光栅化和选择性重建两种模式。前者损失文字搜索与矢量，后者保留选区外受支持的内容；调用方须定位全部敏感区域。

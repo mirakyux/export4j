@@ -1,5 +1,11 @@
 # 能力与 API 导航
 
+当前开发版提供[源内容块与继承配置](content-blocks-api.md)：Java／XML 按源块选择文本、Markdown 或 HTML，逐项声明字体、颜色、段落属性及公式／表格开关，编写时生成既有模型。既有子集已完成[独立验收](verification/content-blocks.md)，本次富内容扩展单独见[验收记录](verification/rich-content.md)；不等于任意网页、完整 LaTeX 或最终模型字符串的自动重解析。
+
+当前开发版的[字体缓存](font-cache-api.md)默认按内容复用不可变字体与独占 PDF 解析对象，提供条目／源字节限额、空闲自动释放、统计及主动清理；不扩大字体格式或隐式替代范围。
+
+可选[公式模块](math-api.md)提供受限 TeX 矢量、TeX→OMML 与上下文感知的 Markdown 公式导入；逐式源码降级和预算／取消有明确边界。普通适配器及核心模型仍不自动解释公式。
+
 本文汇总已提供的文档生成、导入、编辑与转换入口。首次使用见[文档索引](README.md)和[可运行示例](examples.md)；各 API 指南说明准确的输入子集及调用契约。段落中引用的历史验收记录只证明当时批次，当前完成状态以[缺口表](capability-gaps.md)为准。
 
 [正文分栏](column-flow-api.md)提供可保存的 ColumnFlow／XML columns 和设计器组件，支持 1～3 栏、比例／栏距／平衡，以及多栏正文中间插入通栏表格／图片再从剩余页高恢复。真实段落／表格来源保留；DOCX／Web 仅支持明确 DEGRADE 后顺序展平并报告布局损失，尚无原生分栏映射。
@@ -18,7 +24,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 19 个模块（16 个库、BOM、示例和可选设计器应用）。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
 
-[Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。[行内矢量](inline-vectors-api.md)让调用方生成的有界轮廓进入 Paragraph／TableCell 及显式 HTML／Markdown 资源注册，PDF 保存真实轮廓和 ActualText；不内置 TeX 解析或 TeX↔OMML。DOCX／Web 仅可明确降为逻辑文字，XML v1 保存拒绝。受限 TeX 转轮廓示例仍见 [ManuWeave](examples.md#数学公式)，实际 Word 公式动作见[专项验收](verification/manuweave-templates.md)。
+[Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。[行内矢量](inline-vectors-api.md)让调用方生成的有界轮廓进入段落／标题／两种列表／TableCell 及显式 HTML／Markdown 资源注册，PDF 保存真实轮廓和 ActualText；矢量本身不解析 TeX，也不携带 OMML。普通矢量导出 DOCX／Web 须明确降为逻辑文字；XML v1 静态路径编码完整保留几何、颜色、外链和阅读文字。受限 TeX 及 Word 原生数学使用可选[公式模块](math-api.md)，实际 Word 公式动作见[专项验收](verification/manuweave-templates.md)。
 
 ## 已有 PDF 处理与语义恢复
 

@@ -20,6 +20,7 @@ import com.mirakyux.export4j.layout.core.DocumentLayouter;
 import com.mirakyux.export4j.layout.core.DocumentPainter;
 import com.mirakyux.export4j.layout.core.PageTemplate;
 import com.mirakyux.export4j.model.Block;
+import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.ColumnFlow;
 import com.mirakyux.export4j.model.GridLayout;
@@ -32,6 +33,7 @@ import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.Note;
+import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.PageSize;
@@ -191,6 +193,28 @@ class InlineFieldsTest {
             assertThrows(IllegalArgumentException.class, () -> render(source, Navigation.EMPTY, fonts,
                     List.of(new Note("note", "other", "note", Note.Kind.FOOTNOTE))));
         }
+    }
+
+    @Test
+    void explicitListNoteMarkersRemainSingleAndResolveAfterTheirIndependentPrefixes() {
+        var source = new SectionedDocument(META, List.of(new Section("s", SETTINGS, List.of(
+                BulletItem.mixed("b", List.of(text("Bullet"), marker("bn")), "*", 1, FORMAT),
+                NumberedItem.mixed("n", "steps", List.of(text("Number"), marker("nn")), 0, FORMAT, 1)), 0)));
+        assertThrows(IllegalArgumentException.class, () -> Note.validate(source, List.of()));
+        var notes = List.of(new Note("bn", "b", "Bullet note", Note.Kind.FOOTNOTE),
+                new Note("nn", "n", "Number note", Note.Kind.FOOTNOTE));
+        var lowered = SemanticBlocks.compile(source, notes).document().sections().getFirst().blocks();
+        assertEquals("* Bullet\ufffc", ((Paragraph) lowered.getFirst()).text());
+        assertEquals("1. Number\ufffc", ((Paragraph) lowered.getLast()).text());
+        assertEquals(8, ((Paragraph) lowered.getFirst()).fields().getFirst().sourceIndex());
+        assertEquals(9, ((Paragraph) lowered.getLast()).fields().getFirst().sourceIndex());
+        var result = render(source, Navigation.EMPTY, fonts, notes);
+        String body = result.body().pages().stream().flatMap(page -> page.fragments().stream())
+                .map(InlineFieldsTest::logical).collect(java.util.stream.Collectors.joining());
+        assertTrue(body.contains("* Bullet[1]"));
+        assertTrue(body.contains("1. Number[2]"));
+        assertEquals(1, body.split("\\[1\\]", -1).length - 1);
+        assertEquals(1, body.split("\\[2\\]", -1).length - 1);
     }
 
     @Test

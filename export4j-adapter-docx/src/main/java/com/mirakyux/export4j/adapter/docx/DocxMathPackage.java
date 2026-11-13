@@ -8,6 +8,7 @@ import static com.mirakyux.export4j.adapter.docx.DocxMathXml.property;
 import static com.mirakyux.export4j.adapter.docx.DocxSemanticXml.OD;
 import static com.mirakyux.export4j.adapter.docx.DocxSemanticXml.W;
 import com.mirakyux.export4j.model.ExecutionContext;
+import com.mirakyux.export4j.model.InlineStyle;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,6 +41,7 @@ final class DocxMathPackage {
                     String id = formula.getAttributeNS(OD, "id"); if (!id.isEmpty() && !equationIds.add(id)) { throw new IOException("duplicate native equation ID"); }
                 }
             }
+            registerInlineCells(roots.values(), usedIds);
             var reservedEquationIds = new HashSet<>(equationIds); equationIds.clear(); int paragraphCounter = 0; int equationCounter = 0;
             for (var entry : roots.entrySet()) {
                 var root = entry.getValue();
@@ -51,7 +53,11 @@ final class DocxMathPackage {
                 for (var candidate : candidates) {
                     ExecutionContext.checkpoint();
                     if (++equationCounter > mathLimits.maxEquations()) { throw new IOException("native equation count budget exceeded"); }
-                    if (!(candidate.getParentNode() instanceof Element paragraph) || !DocxSemanticXml.is(paragraph, "p")) { throw new IOException("OMML requires a direct ordinary paragraph anchor"); }
+                    var paragraph = DocxSemanticXml.paragraph(candidate);
+                    if (paragraph == null || !(candidate.getParentNode() == paragraph
+                            || candidate.getParentNode() instanceof Element link && DocxSemanticXml.is(link, "hyperlink") && link.getParentNode() == paragraph)) {
+                        throw new IOException("OMML requires an ordinary paragraph or direct hyperlink anchor");
+                    }
                     var placement = DocxMathDocument.Placement.INLINE; Element formula = candidate;
                     if (DocxMathXml.is(candidate, "oMathPara")) {
                         DocxMathXml.check(candidate, Set.of()); var values = children(candidate); Element pr = null; int offset = 0;
@@ -60,19 +66,19 @@ final class DocxMathPackage {
                         var properties = DocxMathXml.properties(pr, Set.of("jc"));
                         placement = placement(DocxMathXml.value(properties.get("jc"), justification(settings.defaultJustification()))); formula = values.get(offset);
                     }
-                    DocxMathXml.check(formula, Set.of(OD + "|id")); String id = formula.getAttributeNS(OD, "id");
+                    DocxMathXml.check(formula, Set.of(OD + "|id", OD + "|markerRole", OD + "|markerSize", OD + "|markerColor")); String id = formula.getAttributeNS(OD, "id");
                     if (id.isEmpty()) { int number = equations.size(); do { id = "math-" + number++; } while (reservedEquationIds.contains(id) || equationIds.contains(id)); }
                     if (!equationIds.add(id)) { throw new IOException("duplicate native equation ID"); }
                     formula.removeAttributeNS(OD, "id");
+                    var appearance = readAppearance(formula);
                     var expression = reader.expression(formula, 1);
                     String paragraphId = paragraph.getAttributeNS(OD, "id");
                     if (paragraphId.isEmpty()) { do { paragraphId = "math-p-" + paragraphCounter++; } while (!usedIds.add(paragraphId)); paragraph.setAttributeNS(OD, "od:id", paragraphId); }
-                    int offset = 0;
-                    for (Node node = paragraph.getFirstChild(); node != candidate; node = node.getNextSibling()) {
-                        if (node == null) { throw DocxMathXml.invalid(); } if (node instanceof Element element) { offset = Math.addExact(offset, DocxSemanticXml.length(element)); }
-                    }
+                    int offset = sourceOffset(candidate, paragraph);
                     equations.add(new DocxMathDocument.Equation(id, new DocxSemanticDocument.Point(paragraphId, offset), placement, expression));
-                    paragraph.replaceChild(DocxSemanticXml.textRun(paragraph, "\ufffc"), candidate);
+                    var replacement = DocxSemanticXml.textRun(paragraph, "\ufffc");
+                    if (appearance != null) { markerProperties(replacement, appearance); }
+                    candidate.getParentNode().replaceChild(replacement, candidate);
                 }
                 if (M.equals(root.getNamespaceURI()) || root.getElementsByTagNameNS(M, "*").getLength() != 0) { throw new IOException("unrepresented OMML content is unsupported"); }
                 parts.put(entry.getKey(), DocxSemanticXml.encode(root, limits.maxEntryBytes()));
@@ -110,6 +116,8 @@ final class DocxMathPackage {
     static byte[] write(DocxAdapter adapter, DocxLimits limits, DocxMathDocument document, DocxMathLimits mathLimits) throws IOException {
         check(document, limits, mathLimits);
         var encoded = DocxSemanticWriter.write(adapter, limits, document.semantic());
+        var sourceParagraphs = DocxSemanticSupport.paragraphs(document.semantic().body(), document.semantic().drawings());
+        for (var comment : document.semantic().comments()) { DocxSemanticSupport.collect(comment.blocks(), sourceParagraphs); }
         var parts = adapter.unzip(new ByteArrayInputStream(encoded)); var roots = DocxPackageEditor.validateSemanticPackage(parts);
         var paragraphs = new HashMap<String, Element>();
         for (var root : roots.values()) {
@@ -125,19 +133,92 @@ final class DocxMathPackage {
             for (Node current = start; current != null; current = current.getNextSibling()) {
                 if (!(current instanceof Element candidate)) { continue; } int length = DocxSemanticXml.length(candidate);
                 if (length == 0) { continue; }
-                if (!DocxSemanticXml.is(candidate, "r") || length != 1 || !candidate.getTextContent().equals("\ufffc")) { throw new IOException("equation marker is not a plain atomic run"); }
-                marker = candidate; break;
+                if (length != 1 || !candidate.getTextContent().equals("\ufffc")) { throw new IOException("equation marker is not an atomic run"); }
+                if (DocxSemanticXml.is(candidate, "hyperlink")) {
+                    var contents = children(candidate);
+                    if (contents.size() != 1 || !DocxSemanticXml.is(contents.getFirst(), "r")) { throw new IOException("equation hyperlink must contain one atomic run"); }
+                    marker = contents.getFirst();
+                } else if (DocxSemanticXml.is(candidate, "r")) { marker = candidate; }
+                else { throw new IOException("equation marker is not an ordinary run or hyperlink"); }
+                break;
             }
             if (marker == null) { throw new IOException("equation marker missing"); }
             var formula = math(paragraph, "oMath"); formula.setAttributeNS(OD, "od:id", equation.id()); DocxMathXml.append(formula, equation.expression()); Element output = formula;
+            var sourceParagraph = sourceParagraphs.get(equation.anchor().paragraphId());
+            var appearance = DocxMathSupport.markerStyle(sourceParagraph, equation.anchor().utf16());
+            if (!appearance.equals(InlineStyle.of(sourceParagraph.format().fontSize()))) {
+                formula.setAttributeNS(OD, "od:markerRole", appearance.fontRole());
+                formula.setAttributeNS(OD, "od:markerSize", Double.toString(appearance.fontSize()));
+                formula.setAttributeNS(OD, "od:markerColor", String.format(java.util.Locale.ROOT, "%06X", appearance.rgb()));
+            }
             if (equation.placement() != DocxMathDocument.Placement.INLINE) {
                 var display = math(paragraph, "oMathPara"); var pr = math(paragraph, "oMathParaPr"); pr.appendChild(property(paragraph, "jc", justification(equation.placement()))); display.appendChild(pr); display.appendChild(formula); output = display;
             }
-            paragraph.replaceChild(output, marker);
+            marker.getParentNode().replaceChild(output, marker);
+            adapter.objectSpacing(paragraph);
         }
         writeSettings(roots.get("word/settings.xml"), document.settings());
         for (var entry : roots.entrySet()) { parts.put(entry.getKey(), DocxSemanticXml.encode(entry.getValue(), limits.maxEntryBytes())); }
         var result = DocxSemanticXml.zip(parts, limits); DocxPackageEditor.validateSemanticPackage(adapter.unzip(new ByteArrayInputStream(result))); return result;
+    }
+    /** A temporary mathematical anchor must not promote a metadata-free inline cell to a block
+     * cell, especially in repeated headers. Existing authored block IDs remain authoritative. */
+    private static void registerInlineCells(java.util.Collection<Element> roots, Set<String> usedIds) throws IOException {
+        int next = 0;
+        for (var root : roots) {
+            for (var table : DocxSemanticXml.all(root, W, "tbl")) {
+                String id = table.getAttributeNS(OD, "id");
+                if (id.isEmpty()) { do { id = "math-table-" + next++; } while (!usedIds.add(id)); table.setAttributeNS(OD, "od:id", id); }
+                int rowIndex = 0;
+                for (var row : children(table)) {
+                    if (!DocxSemanticXml.is(row, "tr")) { continue; } int column = 0;
+                    for (var cell : children(row)) {
+                        if (!DocxSemanticXml.is(cell, "tc")) { continue; }
+                        var content = DocxCells.content(cell);
+                        if (!DocxCells.continuation(cell) && !DocxCells.blockCell(cell, content) && content.size() == 1) {
+                            var paragraph = content.getFirst();
+                            if (DocxSemanticXml.is(paragraph, "p") && !paragraph.hasAttributeNS(OD, "id") && paragraph.getElementsByTagNameNS(M, "oMath").getLength() != 0) {
+                                String generated = DocxSemanticDocument.cellParagraphId(id, rowIndex, column);
+                                if (!usedIds.add(generated)) { throw new IOException("native mathematical cell anchor conflicts with an existing ID"); }
+                                paragraph.setAttributeNS(OD, "od:id", generated); paragraph.setAttributeNS(OD, "od:inlineCell", "true");
+                            }
+                        }
+                        column = Math.addExact(column, DocxAdapter.readColumnSpan(cell));
+                    }
+                    rowIndex++;
+                }
+            }
+        }
+    }
+    private static int sourceOffset(Element source, Element paragraph) throws IOException {
+        int result = 0;
+        for (Node current = source; current != paragraph; current = current.getParentNode()) {
+            if (current == null) { throw DocxMathXml.invalid(); }
+            for (Node previous = current.getPreviousSibling(); previous != null; previous = previous.getPreviousSibling()) {
+                if (previous instanceof Element element) { result = Math.addExact(result, DocxSemanticXml.length(element)); }
+            }
+        }
+        return result;
+    }
+    private static InlineStyle readAppearance(Element formula) throws IOException {
+        boolean role = formula.hasAttributeNS(OD, "markerRole"), size = formula.hasAttributeNS(OD, "markerSize"), color = formula.hasAttributeNS(OD, "markerColor");
+        if (!role && !size && !color) { return null; }
+        if (!role || !size || !color) { throw new IOException("incomplete native mathematical marker appearance"); }
+        String rgb = formula.getAttributeNS(OD, "markerColor"), name = formula.getAttributeNS(OD, "markerRole");
+        double points = DocxSemanticXml.number(formula.getAttributeNS(OD, "markerSize"));
+        if (!rgb.matches("[0-9A-Fa-f]{6}") || points <= 0 || points > 144 || points * 2 != Math.rint(points * 2)
+                || name.codePoints().anyMatch(cp -> Character.isISOControl(cp) || cp >= 0xd800 && cp <= 0xdfff)) {
+            throw new IOException("invalid native mathematical marker appearance");
+        }
+        for (var attribute : List.of("markerRole", "markerSize", "markerColor")) { formula.removeAttributeNS(OD, attribute); }
+        return new InlineStyle(name, points, Integer.parseInt(rgb, 16), 0, false, false);
+    }
+    private static void markerProperties(Element marker, InlineStyle appearance) {
+        var properties = DocxSemanticXml.word(marker, "rPr");
+        if (!appearance.fontRole().isEmpty()) { properties.appendChild(DocxSemanticXml.property(marker, "rStyle", appearance.fontRole())); }
+        properties.appendChild(DocxSemanticXml.property(marker, "sz", Long.toString(Math.round(appearance.fontSize() * 2))));
+        properties.appendChild(DocxSemanticXml.property(marker, "color", String.format(java.util.Locale.ROOT, "%06X", appearance.rgb())));
+        marker.insertBefore(properties, marker.getFirstChild());
     }
     private static void check(DocxMathDocument document, DocxLimits limits, DocxMathLimits mathLimits) throws IOException {
         try { DocxMathSupport.validate(document.equations(), mathLimits); }

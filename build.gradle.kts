@@ -167,7 +167,8 @@ val reviewedRuntimeLicenses = mapOf(
     "org.bouncycastle:bcprov-jdk18on:1.86" to "MIT",
     "org.bouncycastle:bcutil-jdk18on:1.86" to "MIT",
     "org.lwjgl:lwjgl:3.4.3" to "BSD-3-Clause",
-    "org.lwjgl:lwjgl-harfbuzz:3.4.3" to "BSD-3-Clause"
+    "org.lwjgl:lwjgl-harfbuzz:3.4.3" to "BSD-3-Clause",
+    "org.scilab.forge:jlatexmath:1.0.7" to "GPL-2.0-or-later with upstream JLaTeXMath linking exception"
 )
 fun jsonQuoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 for (library in inventoryLibraries) {
@@ -184,7 +185,10 @@ for (library in inventoryLibraries) {
             fun component(group: String, name: String, version: String, file: File, licenseId: String = "Apache-2.0"): String {
                 val purl = "pkg:maven/$group/$name@$version"
                 val sha = java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
-                return "{\"type\":\"library\",\"bom-ref\":${jsonQuoted(purl)},\"group\":${jsonQuoted(group)},\"name\":${jsonQuoted(name)},\"version\":${jsonQuoted(version)},\"purl\":${jsonQuoted(purl)},\"hashes\":[{\"alg\":\"SHA-256\",\"content\":\"$sha\"}],\"licenses\":[{\"license\":{\"id\":${jsonQuoted(licenseId)}}}]}"
+                val license = if (licenseId.startsWith("GPL-2.0-or-later with ")) {
+                    "{\"name\":${jsonQuoted(licenseId)},\"url\":\"https://github.com/mirakyux/export4j/blob/main/third-party/licenses/jlatexmath-1.0.7/LICENSE\"}"
+                } else { "{\"id\":${jsonQuoted(licenseId)}}" }
+                return "{\"type\":\"library\",\"bom-ref\":${jsonQuoted(purl)},\"group\":${jsonQuoted(group)},\"name\":${jsonQuoted(name)},\"version\":${jsonQuoted(version)},\"purl\":${jsonQuoted(purl)},\"hashes\":[{\"alg\":\"SHA-256\",\"content\":\"$sha\"}],\"licenses\":[{\"license\":$license}]}"
             }
             val archive = library.tasks.named<Jar>("jar").get().archiveFile.get().asFile
             val own = "${library.group}:${library.name}:${library.version}"

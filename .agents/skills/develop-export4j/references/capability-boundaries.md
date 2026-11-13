@@ -3,7 +3,7 @@
 这些条目用于定位既有能力，不代替当前源码、支持矩阵和对应验收记录。实现变化时同步相关条目；逐阶段记录中的限制只反映当时范围，当前状态以最新 API、缺口表及验收为准。
 
 - 项目定位：Java 文档生产引擎，核心竞争力是语义模型、布局算法与可替换后端。
-- 能力概览：PDF 报告支持显式 OpenType 文字、多栏、矩形绕排、文本表格拆行、脚注续页、换行引用、Builder、样式继承及上下文诊断；另有 SVG／PNG 静态输出、DOCX 语义子集、BOM／SBOM 和隔离 Maven 调用方。工程含 19 个模块（16 个库、BOM、示例和可选 HTML 设计器应用）；具体边界与证据以[支持矩阵](../../../../docs/capabilities-api.md)、下列 API 和对应验收为准。
+- 能力概览：PDF 报告支持显式 OpenType 文字、多栏、矩形绕排、文本表格拆行、脚注续页、换行引用、Builder、样式继承及上下文诊断；另有 SVG／PNG 静态输出、DOCX 语义子集、可选公式模块、BOM／SBOM 和隔离 Maven 调用方。工程含 20 个模块（17 个库、BOM、示例和可选 HTML 设计器应用）；具体边界与证据以[支持矩阵](../../../../docs/capabilities-api.md)、下列 API 和对应验收为准。
 - 项目名为 Export4j；Java 根包名与 Gradle 项目 group 为 `com.mirakyux.export4j`，模块及制品使用 `export4j-*`。
 - GAP-03／08／09／21 的原剩余清单已由[阶段九十九](../../../../docs/verification/phase-99-layout-fonts-streaming-graphics-closure.md)完成：变宽递归格／组件网格及[轮廓浮动](../../../../docs/contour-floats-api.md)、[可选原生 OpenType](../../../../docs/native-opentype-api.md)、[有界语义源／显式重放及磁盘索引 PDF](../../../../docs/streaming-replay-api.md)、[高级色彩／合成及离线 SVG 资源](../../../../docs/advanced-graphics-api.md)。下列早期阶段描述不重新构成这四项的待办。
 - 后续已补齐行内 PNG／JPEG、共享图文换行／分页、表格图片续页、图片外链与标准 DOCX 媒体，最新范围见[图像 API](../../../../docs/inline-images-api.md)和[验收](../../../../docs/verification/phase-6-inline-images.md)。

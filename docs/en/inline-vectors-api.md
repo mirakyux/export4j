@@ -1,6 +1,6 @@
 # Inline vector resources
 
-`InlineVector` places an explicit caller-built outline in paragraphs, semantic-table cells and fixed page regions. Text and vectors share line breaking and pagination; PDF, SVG and PNG use the same result. This API parses no TeX, SVG or MathML and adds no formula library. The caller owns formula parsing, fonts, licensing and source mapping.
+`InlineVector` places an explicit caller-built outline in paragraphs, headings, both list kinds, semantic-table cells and fixed page regions. Text and vectors share line breaking and pagination; PDF, SVG and PNG use the same result. This API parses no TeX, SVG or MathML and adds no formula library. For TeX, use the optional [math module](math-api.md) instead of maintaining a parser and outline capture.
 
 ## Create atomic content
 
@@ -64,7 +64,28 @@ var markdown = MarkdownImporter.builder().paragraphFormat(format)
 
 Keys exactly match `img src` or Markdown image destinations. Images and vectors cannot share a key. No file loading, remote fetching, automatic `$...$` recognition or implicit parsing occurs. Reading text comes from the registered vector, not image alt text. Explicit HTML/CSS dimensions must match intrinsic point dimensions; conflicts fail. Regenerate the resource to change its size.
 
-Paragraphs and semantic cells retain vectors. Headings and list models cannot: STRICT rejects them, and only an explicit `INLINE_VECTOR`/DEGRADE rule replaces them with logical text and reports `VECTOR_REPLACED_WITH_LOGICAL_TEXT`. The separate `MarkdownTemplate` syntax has no new vector feature.
+Paragraphs, headings, both list kinds and semantic cells retain vectors through `Paragraph.mixed`, `Heading.mixed`, `BulletItem.mixed`, `NumberedItem.mixed` and `TableCell.mixed`. List prefixes shift UTF-16 object anchors without expanding formulas or rebuilding outlines. List `Builder.content(...)` snapshots its input immediately; the final font size determines synthetic object marker styles while explicit text styles retain their values. Automatic heading bookmarks combine text, image alt text and vector reading text. Headings with generated fields require explicit bookmark titles. The separate `MarkdownTemplate` syntax has no new vector feature.
+
+`Document.Builder` exposes `headingContent(content, level)`, `bulletContent(content)` and `numberedContent(listId, content)` for mixed content. Existing `List<InlineText>` signatures and behavior of `heading`/`bullet`/`numbered` remain unchanged.
+
+## XML saving and recovery
+
+XML v1 encodes bounded static paths alongside text, images and fields. `XmlTemplateWriter` saves them in the ordinary resource ZIP:
+
+```xml
+<document version="1">
+  <heading level="1" size="12" line-height="24">Symbol:
+    <vector width="18" ascent="10" descent="2" logical="\triangle" color="#223344">
+      <segment operation="MOVE" points="0 2"/>
+      <segment operation="LINE" points="9 -10"/>
+      <segment operation="LINE" points="18 2"/>
+      <segment operation="CLOSE"/>
+    </vector>
+  </heading>
+</document>
+```
+
+Dimensions, coordinates, operation order, color and segment limits use the same model validation. `logical` remains literal: `${...}` cannot change reading text while keeping stale geometry. Rebuild the complete resource for a dynamic formula or use the math module. Paths cannot reference external resources. Compilation, binding, saving and ZIP encoding retain their finite input, node, text and output budgets. Heading/list saving preserves object order, links and UTF-16 anchors. Headings reject note markers; both list kinds accept explicit note markers with matching supplied notes.
 
 ## Output and extraction limits
 
@@ -74,7 +95,7 @@ Paragraphs and semantic cells retain vectors. Headings and list models cannot: S
 | SVG/PNG | Draws the same paths; interactive links still fail under static-backend rules |
 | HTML/Markdown export | STRICT rejects; explicit `INLINE_VECTOR`/DEGRADE emits escaped logical text and reports lost paths, color and geometry |
 | DOCX | Plain lossless writes reject; unified conversion can explicitly degrade to logical text with a loss report; no automatic OMML or rasterization |
-| XML model saving/resource ZIP | v1 has no vector encoding; all policies reject instead of creating incomplete recovery data |
+| XML model saving/resource ZIP | v1 static paths preserve geometry, color, links and reading text; invalid paths and exceeded budgets fail |
 
 `ActualText` is separate from native font glyphs. Readers supporting it may search original text; extractors ignoring it may return only the invisible anchor. It does not establish per-character coordinates, editable equations, TeX↔OMML conversion or PDF/UA compliance.
 

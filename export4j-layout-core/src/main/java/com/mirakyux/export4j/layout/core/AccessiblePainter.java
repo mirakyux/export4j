@@ -120,6 +120,15 @@ final class AccessiblePainter {
             default -> List.<com.mirakyux.export4j.model.InlineText>of();
         };
         requireUnlinked(inlines);
+        Paragraph semantic = switch (block) {
+            case Heading value -> value.paragraph();
+            case BulletItem value -> value.paragraph();
+            case NumberedItem value -> value.paragraph();
+            default -> null;
+        };
+        if (semantic != null && (!semantic.images().isEmpty() || !semantic.vectors().isEmpty())) {
+            throw new IllegalArgumentException("accessible heading/list objects require explicit structure and alternative-text bindings");
+        }
         if (block instanceof Heading heading) { return new Logical(id, Role.valueOf("H" + heading.level())); }
         if (block instanceof Paragraph paragraph) {
             if (!paragraph.vectors().isEmpty()) {

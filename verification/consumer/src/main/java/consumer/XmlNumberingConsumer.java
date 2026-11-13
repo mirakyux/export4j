@@ -78,15 +78,15 @@ final class XmlNumberingConsumer {
     private static List<Block> nativeValues(List<Block> blocks) {
         return blocks.stream().<Block>map(block -> switch (block) {
             case Heading heading -> new Heading(heading.id(), heading.text(), heading.level(), heading.format(),
-                    nativeRuns(heading.inlines(), heading.text(), heading.format().fontSize()));
+                    nativeRuns(heading.inlines(), heading.text(), heading.format().fontSize()), heading.images(), heading.fields(), heading.vectors());
             case NumberedItem item -> new NumberedItem(item.id(), item.listId(), item.text(), item.restartAt(), item.format(), item.level(),
-                    nativeRuns(item.inlines(), item.text(), item.format().fontSize()));
+                    nativeRuns(item.inlines(), item.text(), item.format().fontSize()), item.markerStyle(), item.images(), item.fields(), item.vectors());
             default -> block;
         }).toList();
     }
 
     private static List<InlineText> nativeRuns(List<InlineText> runs, String text, double size) {
         // Only one redundant unlinked default run is equivalent to the native short form.
-        return runs.equals(List.of(new InlineText(text, InlineStyle.of(size)))) ? List.of() : runs;
+        return text.indexOf('\ufffc') < 0 && runs.equals(List.of(new InlineText(text, InlineStyle.of(size)))) ? List.of() : runs;
     }
 }

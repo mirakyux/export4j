@@ -5,24 +5,44 @@ import java.util.Objects;
 import java.util.List;
 
 /** Semantic heading, levels 1 through 6. Layout retains its ID; navigation can collect headings automatically. */
-public record Heading(String id, String text, int level, ParagraphFormat format, List<InlineText> inlines) implements Block {
+public record Heading(String id, String text, int level, ParagraphFormat format, List<InlineText> inlines,
+        List<Paragraph.ImageSpan> images, List<Paragraph.FieldSpan> fields, List<Paragraph.VectorSpan> vectors) implements Block {
     public Heading {
         inlines = List.copyOf(inlines);
-        new Paragraph(id, text, format, inlines);
+        images = List.copyOf(images); fields = List.copyOf(fields); vectors = List.copyOf(vectors);
+        new Paragraph(id, text, format, inlines, images, fields, vectors);
         Objects.requireNonNull(format, "format");
+        if (fields.stream().anyMatch(span -> span.field().kind() == InlineField.Kind.NOTE_MARKER)) {
+            throw new IllegalArgumentException("note markers require a paragraph or list owner");
+        }
         if (text.isBlank() || level < 1 || level > 6) {
             throw new IllegalArgumentException("heading requires text and a level from 1 through 6");
         }
+    }
+
+    /** 保留原有仅文字的完整构造器。 */
+    public Heading(String id, String text, int level, ParagraphFormat format, List<InlineText> inlines) {
+        this(id, text, level, format, inlines, List.of(), List.of(), List.of());
     }
 
     public Heading(String id, String text, int level, ParagraphFormat format) {
         this(id, text, level, format, List.of());
     }
 
-    /** Styled text and external hyperlinks; images and fields are not heading content. */
+    /** Styled text and external hyperlinks. */
     public static Heading rich(String id, List<InlineText> inlines, int level, ParagraphFormat format) {
         var paragraph = new Paragraph(id, inlines, format);
         return new Heading(id, paragraph.text(), level, format, paragraph.inlines());
+    }
+
+    /** 混合文字及显式行内对象，保留真实 UTF-16 位置和资源。 */
+    public static Heading mixed(String id, List<? extends InlineContent> content, int level, ParagraphFormat format) {
+        var paragraph = Paragraph.mixed(id, content, format);
+        return new Heading(id, paragraph.text(), level, format, paragraph.inlines(), paragraph.images(), paragraph.fields(), paragraph.vectors());
+    }
+
+    public static Heading mixed(String id, List<? extends InlineContent> content, int level) {
+        return mixed(id, content, level, defaultFormat(level));
     }
 
     public static Heading rich(String id, List<InlineText> inlines, int level) {
@@ -43,6 +63,6 @@ public record Heading(String id, String text, int level, ParagraphFormat format,
     }
 
     public Paragraph paragraph() {
-        return new Paragraph(id, text, format, inlines);
+        return new Paragraph(id, text, format, inlines, images, fields, vectors);
     }
 }

@@ -40,7 +40,13 @@ public record Note(String id, String paragraphId, String text, Kind kind) {
                 boolean topLevel = section.blocks().get(visit.rootBlockIndex()) == block;
                 if (topLevel && (block instanceof Paragraph || block instanceof NumberedItem
                         || block instanceof BulletItem || block instanceof Caption)) { parents.add(block.id()); }
-                if (block instanceof Paragraph paragraph) {
+                Paragraph paragraph = switch (block) {
+                    case Paragraph value -> value;
+                    case BulletItem value -> value.paragraph();
+                    case NumberedItem value -> value.paragraph();
+                    default -> null;
+                };
+                if (paragraph != null) {
                     for (var span : paragraph.fields()) {
                         ExecutionContext.checkpoint(); var field = span.field();
                         if (field.kind() == InlineField.Kind.NOTE_MARKER

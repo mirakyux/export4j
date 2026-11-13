@@ -22,11 +22,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Local publication failed' }
     # Keep previous outputs available to readers without letting open files block this independent run.
     $consumerBuildDirectory = 'build/validation-' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
-    & .\gradlew.bat -g build/gradle-validation -p verification/consumer "-PconsumerBuildDirectory=$consumerBuildDirectory" "-Pexport4jRepositoryDirectory=$publicationRepositoryDirectory" clean build run resolvedLibraries --refresh-dependencies --write-locks --no-daemon --console=plain
+    & .\gradlew.bat -g build/gradle-validation -p verification/consumer "-PconsumerBuildDirectory=$consumerBuildDirectory" "-Pexport4jRepositoryDirectory=$publicationRepositoryDirectory" clean build run math fontCache contentBlocks richContent resolvedLibraries --refresh-dependencies --write-locks --no-daemon --console=plain
     if ($LASTEXITCODE -ne 0) { throw 'Isolated consumer verification failed' }
     $consumerAbsoluteDirectory = Join-Path (Join-Path $repositoryRoot 'verification/consumer') $consumerBuildDirectory
     $pomBuildDirectory = $consumerBuildDirectory + '-pom-only'
-    & .\gradlew.bat -g build/gradle-validation -p verification/consumer "-PconsumerBuildDirectory=$pomBuildDirectory" "-Pexport4jRepositoryDirectory=$publicationRepositoryDirectory" -Pexport4jPomOnly=true clean build run resolvedLibraries --refresh-dependencies --write-locks --no-daemon --console=plain
+    & .\gradlew.bat -g build/gradle-validation -p verification/consumer "-PconsumerBuildDirectory=$pomBuildDirectory" "-Pexport4jRepositoryDirectory=$publicationRepositoryDirectory" -Pexport4jPomOnly=true clean build run math fontCache contentBlocks richContent resolvedLibraries --refresh-dependencies --write-locks --no-daemon --console=plain
     if ($LASTEXITCODE -ne 0) { throw 'POM-only isolated consumer verification failed' }
     $pomAbsoluteDirectory = Join-Path (Join-Path $repositoryRoot 'verification/consumer') $pomBuildDirectory
     [System.IO.File]::WriteAllText((Join-Path $repositoryRoot 'build/verification/consumer-build-directory.txt'), $consumerAbsoluteDirectory)

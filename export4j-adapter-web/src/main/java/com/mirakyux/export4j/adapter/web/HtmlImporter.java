@@ -9,6 +9,7 @@ import com.mirakyux.export4j.model.InlineImage;
 import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.ParagraphFormat;
+import com.mirakyux.export4j.model.TextAppearance;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
 import com.mirakyux.export4j.model.processing.ProcessingReport;
 import java.io.File;
@@ -144,9 +145,10 @@ public final class HtmlImporter {
         }
         /** Maps one CSS family to a semantic font role; the output caller supplies its physical fonts.
          * Weight/style variants require separate registered roles in the output engine.
+         * Empty roles select explicit default fonts; nonempty roles follow TextAppearance's identifier contract.
          */
         public Builder fontFamily(String family, String regular, String bold, String italic, String boldItalic) {
-            families.put(key(family).toLowerCase(java.util.Locale.ROOT), java.util.List.of(key(regular), key(bold), key(italic), key(boldItalic))); return this;
+            families.put(key(family).toLowerCase(java.util.Locale.ROOT), java.util.List.of(role(regular), role(bold), role(italic), role(boldItalic))); return this;
         }
         /** Absolute HTTP(S) base for passive relative hyperlinks only. Never fetched. */
         public Builder baseUri(String value) {
@@ -158,6 +160,7 @@ public final class HtmlImporter {
         private static String key(String value) {
             if (Objects.requireNonNull(value, "key").isBlank()) { throw new IllegalArgumentException("empty HTML resource key"); } return value;
         }
+        private static String role(String value) { return new TextAppearance(value, 0).fontRole(); }
     }
     /** Per-source synchronous execution controls; source text is not included in diagnostics. */
     public static final class Request {

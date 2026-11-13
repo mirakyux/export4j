@@ -20,6 +20,7 @@ from zipfile import ZipFile
 
 from prepare_maven_bundle import gpg_path, prepare, temporary_keyring
 from verify_signed_distribution import build_inputs
+from publication_scope import publication_artifact_count, published_modules
 
 ROOT = Path(__file__).resolve().parents[1]
 CENTRAL = "https://repo.maven.apache.org/maven2/"
@@ -111,10 +112,7 @@ def preflight(output, release, expected_fingerprint):
     key = os.environ.get("EXPORT4J_SIGNING_KEY", "")
     if not key:
         raise ValueError("EXPORT4J_SIGNING_KEY is required")
-    includes = re.findall(r'\binclude\((.*?)\)', (ROOT / "settings.gradle.kts").read_text(encoding="utf-8"), re.DOTALL)
-    modules = {name for block in includes for name in re.findall(r'"(export4j-[a-z-]+)"', block)} - {"export4j-designer"}
-    if len(modules) != 17 or "export4j-bom" not in modules:
-        raise ValueError("Expected 16 published libraries and the BOM")
+    modules = published_modules(ROOT)
     def unused(name):
         path = f"com/mirakyux/export4j/{name}/{release}/{name}-{release}.pom"
         if fetch(CENTRAL + path, missing=True) is not None:
@@ -156,7 +154,7 @@ def checked_bundle(output, release):
         raise ValueError("Release commit changed after preflight")
     report = json.loads((output / "distribution/distribution-report.json").read_text(encoding="utf-8"))
     bundle = output / "distribution/maven-central-bundle.zip"
-    if report["version"] != release or report["signedArtifacts"] != 82 or hashlib.sha256(bundle.read_bytes()).hexdigest() != report["bundleSha256"]:
+    if report["version"] != release or report["signedArtifacts"] != publication_artifact_count(ROOT) or hashlib.sha256(bundle.read_bytes()).hexdigest() != report["bundleSha256"]:
         raise ValueError("Upload bundle differs from the independently verified batch")
     with ZipFile(bundle) as archive:
         for name in archive.namelist():
@@ -214,8 +212,8 @@ def verify_remote(output, release, timeout):
     deadline = time.monotonic() + timeout
     with ZipFile(bundle) as archive:
         names = [name for name in archive.namelist() if name.endswith((".jar", ".pom", ".module"))]
-        if len(names) != 82 or len(set(names)) != 82:
-            raise ValueError("Expected exactly 82 publication artifacts")
+        if len(names) != publication_artifact_count(ROOT) or len(set(names)) != len(names):
+            raise ValueError("Publication artifact count differs from the configured modules")
         expected = {name + suffix: archive.read(name + suffix) for name in names for suffix in ("", ".asc", ".sha256")}
     def download(entry):
         name, original = entry
@@ -231,9 +229,9 @@ def verify_remote(output, release, timeout):
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(download, expected.items()))
     report = prepare(repository, release, output / "public-key.asc", output / "sbom.cdx.json", target, shutil.which("gpg"))
-    report.update(uploaded=True, remoteArtifactsMatched=82, remoteSignaturesVerified=82, origin=CENTRAL)
+    report.update(uploaded=True, remoteArtifactsMatched=len(names), remoteSignaturesVerified=len(names), origin=CENTRAL)
     save(target / "publication-report.json", report)
-    print("All 82 remote artifacts, signatures and SHA-256 files match the uploaded batch")
+    print(f"All {len(names)} remote artifacts, signatures and SHA-256 files match the uploaded batch")
 
 
 def main():

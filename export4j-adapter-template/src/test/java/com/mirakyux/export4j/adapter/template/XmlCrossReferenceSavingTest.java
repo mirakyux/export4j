@@ -133,7 +133,8 @@ class XmlCrossReferenceSavingTest {
     @Test void malformedOrMisplacedReferencesFailEvenInUnselectedBranches() {
         for (String block : List.of("<cross-reference kind='OTHER' target='p'/>", "<cross-reference kind='PAGE'/>",
                 "<cross-reference target='p'/>", "<cross-reference kind='PAGE' target='bad target'/>",
-                "<cross-reference kind='${kind}' target='p'/>", "<cross-reference kind='PAGE' target='p' role='bold'/>",
+                "<cross-reference kind='${kind}' target='p'/>", "<cross-reference kind='PAGE' target='p' role='bad role'/>",
+                "<cross-reference kind='PAGE' target='p' color='#xyzxyz'/>",
                 "<cross-reference kind='PAGE' target='p'><span>Nested</span></cross-reference>",
                 "<cross-reference kind='PAGE' target='${broken'/>", "<cross-reference kind='PAGE' target='p' width='20'/>")) {
             assertThrows(TemplateException.class, () -> compile("<if test='shown'><then><p>X</p></then><else>" + block + "</else></if>"));

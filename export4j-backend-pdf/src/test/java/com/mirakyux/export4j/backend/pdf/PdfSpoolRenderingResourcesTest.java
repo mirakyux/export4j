@@ -111,7 +111,8 @@ class PdfSpoolRenderingResourcesTest {
     void evictsOnlyAfterThePreviousPageHasClosedAndCanReloadTheEarlierFont() throws IOException {
         var sans = font("LiberationSans-Regular.ttf");
         var serif = font("LiberationSerif-Regular.ttf");
-        try (var programs = new PdfFontPrograms(1, 32L * 1024 * 1024)) {
+        try (var cache = PdfFontCache.builder().enabled(false).build();
+                var programs = new PdfFontPrograms(1, 32L * 1024 * 1024, cache)) {
             var original = programs.borrow(sans.data());
             assertEquals(List.of("AB"), render(programs, page(List.of(sans), List.of("AB"))));
             assertEquals(List.of("CD"), render(programs, page(List.of(serif), List.of("CD"))));
@@ -126,7 +127,8 @@ class PdfSpoolRenderingResourcesTest {
         var sans = font("LiberationSans-Regular.ttf");
         var serif = font("LiberationSerif-Regular.ttf");
         long oneProgram = Math.max(sans.data().byteSize(), serif.data().byteSize());
-        try (var programs = new PdfFontPrograms(8, oneProgram)) {
+        try (var cache = PdfFontCache.builder().enabled(false).build();
+                var programs = new PdfFontPrograms(8, oneProgram, cache)) {
             var original = programs.borrow(sans.data());
             assertNull(programs.borrow(serif.data()), "pinned programs cannot exceed the encoded byte bound");
             programs.releasePage();

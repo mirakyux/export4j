@@ -24,6 +24,7 @@ import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableRow;
+import com.mirakyux.export4j.model.TableCell;
 import com.mirakyux.export4j.model.processing.ProcessingException;
 import com.mirakyux.export4j.model.processing.ProcessingIssue;
 import com.mirakyux.export4j.model.processing.ProcessingPolicy;
@@ -72,6 +73,7 @@ final class DocxSemanticSupport {
         if (bytes > 64L * 1024 * 1024 || pixels > 50_000_000) { throw new java.io.IOException("DOCX cumulative native image budget exceeded"); }
     }
     static Map<String, Paragraph> paragraphs(SectionedDocument body, List<Drawing> drawings) {
+        validateCellIds(body, drawings, List.of());
         var result = new LinkedHashMap<String, Paragraph>();
         for (var section : body.sections()) {
             collect(section.blocks(), result);
@@ -80,11 +82,54 @@ final class DocxSemanticSupport {
         for (var drawing : drawings) { if (drawing.content() instanceof TextBox box) { collect(box.blocks(), result); } }
         return result;
     }
+    /** Generated inline-cell anchors must never alias any authored block in any Word story. */
+    static void validateCellIds(SectionedDocument body, List<Drawing> drawings, List<Comment> comments) {
+        var sources = new ArrayList<List<Block>>(); var bands = new HashSet<PageRegion>();
+        for (var section : body.sections()) {
+            sources.add(section.blocks());
+            for (var band : java.util.stream.Stream.concat(section.pageRegions().headers().stream(), section.pageRegions().footers().stream()).toList()) {
+                if (bands.add(band)) { sources.add(band.blocks()); }
+            }
+        }
+        for (var drawing : drawings) { if (drawing.content() instanceof TextBox box) { sources.add(box.blocks()); } }
+        for (var comment : comments) { sources.add(comment.blocks()); }
+        var authored = new HashSet<String>(); var generated = new HashSet<String>();
+        for (var blocks : sources) {
+            SemanticTree.walk(blocks, visit -> {
+                authored.add(visit.block().id());
+                if (visit.block() instanceof Table table) {
+                    for (var row : table.grid().anchorRows()) {
+                        for (var anchor : row) {
+                            if (!anchor.cell().hasBlocks() && !generated.add(DocxSemanticDocument.cellParagraphId(table.id(), anchor.rowIndex(), anchor.columnIndex()))) {
+                                throw new IllegalArgumentException("duplicate generated Word cell anchor");
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        if (generated.stream().anyMatch(authored::contains)) { throw new IllegalArgumentException("generated Word cell anchor conflicts with an authored block ID"); }
+    }
     static void collect(List<Block> blocks, Map<String, Paragraph> output) {
         SemanticTree.walk(blocks, visit -> {
             var p = paragraph(visit.block());
-            if (p != null) { var prior = output.putIfAbsent(p.id(), p); if (prior != null && prior != p && !prior.equals(p)) { throw new IllegalArgumentException("duplicate Word paragraph ID"); } }
+            if (p != null) { putParagraph(output, p); }
+            else if (visit.block() instanceof Table table) {
+                for (var row : table.grid().anchorRows()) {
+                    for (var anchor : row) { if (!anchor.cell().hasBlocks()) { putParagraph(output, cellParagraph(table, anchor)); } }
+                }
+            }
         });
+    }
+    private static void putParagraph(Map<String, Paragraph> output, Paragraph paragraph) {
+        var previous = output.putIfAbsent(paragraph.id(), paragraph);
+        if (previous != null && previous != paragraph && !previous.equals(paragraph)) { throw new IllegalArgumentException("duplicate Word paragraph ID"); }
+    }
+    static Paragraph cellParagraph(Table table, com.mirakyux.export4j.model.TableGrid.Anchor anchor) {
+        var cell = anchor.cell(); var f = cell.format();
+        var format = new com.mirakyux.export4j.model.ParagraphFormat(f.fontSize(), f.lineHeight(), 0, 0, f.alignment(), 0, 0, false).withLineBreakPolicy(f.lineBreakPolicy());
+        return new Paragraph(DocxSemanticDocument.cellParagraphId(table.id(), anchor.rowIndex(), anchor.columnIndex()),
+                cell.text(), format, cell.inlines(), cell.images(), cell.fields(), cell.vectors());
     }
     static Paragraph paragraph(Block block) {
         if (block instanceof Paragraph p) { return p; }
@@ -94,6 +139,7 @@ final class DocxSemanticSupport {
         return null;
     }
     static void validate(SectionedDocument body, List<Drawing> drawings, List<Comment> comments, List<Revision> revisions, List<Control> controls, List<Contents> contents) {
+        validateCellIds(body, drawings, comments);
         var paragraphs = paragraphs(body, drawings); var order = new ArrayList<>(paragraphs.keySet());
         if ((long)drawings.size() + comments.size() + revisions.size() + controls.size() + contents.size() > 100_000) { throw new IllegalArgumentException("Word semantic feature budget exceeded"); }
         var ids = new HashSet<String>(); var picturePoints = new HashSet<Point>();
@@ -158,15 +204,29 @@ final class DocxSemanticSupport {
         for (var block : source) {
             ExecutionContext.checkpoint();
             if (block instanceof Table t) {
-                result.add(new Table(t.id(), t.columns(), t.rows().stream().map(row -> row.cells().isEmpty() ? TableRow.covered() : new TableRow(row.cells().stream().map(c -> c.hasBlocks() ? c.toBuilder().blocks(mapBlocks(c.blocks(), mapper)).build() : c).toList())).toList(), t.headerRows(), t.format()));
+                var rows = new ArrayList<TableRow>();
+                for (var anchors : t.grid().anchorRows()) {
+                    var cells = new ArrayList<TableCell>();
+                    for (var anchor : anchors) {
+                        var cell = anchor.cell();
+                        if (cell.hasBlocks()) { cells.add(cell.toBuilder().blocks(mapBlocks(cell.blocks(), mapper)).build()); }
+                        else {
+                            var value = mapper.apply(cellParagraph(t, anchor));
+                            var format = new com.mirakyux.export4j.model.CellFormat(value.format().fontSize(), value.format().lineHeight(), value.format().alignment(), value.format().lineBreakPolicy());
+                            cells.add(new TableCell(value.text(), format, value.inlines(), value.images(), value.fields(), value.vectors(), cell.columnSpan(), cell.rowSpan(), List.of()));
+                        }
+                    }
+                    rows.add(cells.isEmpty() ? TableRow.covered() : new TableRow(cells));
+                }
+                result.add(new Table(t.id(), t.columns(), rows, t.headerRows(), t.format()));
                 continue;
             }
             var original = paragraph(block);
             if (original == null) { result.add(block); continue; }
             var p = mapper.apply(original);
-            if (block instanceof Heading h && !p.text().isBlank()) { result.add(new Heading(p.id(), p.text(), h.level(), p.format(), p.inlines())); }
-            else if (block instanceof BulletItem b) { result.add(new BulletItem(p.id(), p.text(), b.marker(), b.level(), p.format(), p.inlines(), b.markerStyle())); }
-            else if (block instanceof NumberedItem n) { result.add(new NumberedItem(p.id(), n.listId(), p.text(), n.restartAt(), p.format(), n.level(), p.inlines(), n.markerStyle())); }
+            if (block instanceof Heading h && !p.text().isBlank()) { result.add(new Heading(p.id(), p.text(), h.level(), p.format(), p.inlines(), p.images(), p.fields(), p.vectors())); }
+            else if (block instanceof BulletItem b) { result.add(new BulletItem(p.id(), p.text(), b.marker(), b.level(), p.format(), p.inlines(), b.markerStyle(), p.images(), p.fields(), p.vectors())); }
+            else if (block instanceof NumberedItem n) { result.add(new NumberedItem(p.id(), n.listId(), p.text(), n.restartAt(), p.format(), n.level(), p.inlines(), n.markerStyle(), p.images(), p.fields(), p.vectors())); }
             else { result.add(p); }
         }
         return List.copyOf(result);

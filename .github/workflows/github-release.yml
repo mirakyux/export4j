@@ -123,24 +123,27 @@ jobs:
           digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
           sbom_bytes = (root / "sbom.cdx.json").read_bytes()
           sbom_digest = hashlib.sha256(sbom_bytes).hexdigest()
+          sbom = json.loads(sbom_bytes)
+          require(isinstance(sbom, dict) and isinstance(sbom.get("components"), list), "Invalid SBOM component list")
+          own = [item for item in sbom["components"] if item.get("group") == "com.mirakyux.export4j"]
+          library_count = len(own)
+          require(library_count > 0 and len({item["name"] for item in own}) == library_count, "SBOM library scope differs")
+          artifact_count = library_count * 5 + 2
           require(local["version"] == remote["version"] == version, "Release versions differ")
           require(local["bundleSha256"] == remote["bundleSha256"] == digest, "Release bundle differs")
           for report in (local, remote):
-              require(report["modules"] == 17 and report["signedArtifacts"] == 82 and report["signatureTamperRejected"] is True
-                      and report["bomConstraintsVerified"] == report["sbomLibrariesVerified"] == 16, "Distribution verification is incomplete")
+              require(report["modules"] == library_count + 1 and report["signedArtifacts"] == artifact_count and report["signatureTamperRejected"] is True
+                      and report["bomConstraintsVerified"] == report["sbomLibrariesVerified"] == library_count, "Distribution verification is incomplete")
               require(report["sbomSha256"] == sbom_digest, "SBOM differs from the verified publication")
           require(remote["uploaded"] is True and remote["origin"] == "https://repo.maven.apache.org/maven2/"
-                  and remote["remoteArtifactsMatched"] == remote["remoteSignaturesVerified"] == 82, "Central verification is incomplete")
+                  and remote["remoteArtifactsMatched"] == remote["remoteSignaturesVerified"] == artifact_count, "Central verification is incomplete")
           consumer = read("remote-consumer/consumer-report.json")
           require(consumer["pomOnlyConsumerVerified"] is True, "POM-only consumption is incomplete")
           for report in (consumer, consumer["pomOnlyConsumer"]):
               require(report["remoteConsumerVerified"] is True and report["isolatedCoordinateConsumerVerified"] is True
-                      and report["consumerJarHashesVerified"] == report["consumerProjectArtifacts"] == 16
-                      and report["consumerProjectComponents"] == 17, "Remote consumer is incomplete")
+                      and report["consumerJarHashesVerified"] == report["consumerProjectArtifacts"] == library_count
+                      and report["consumerProjectComponents"] == library_count + 1, "Remote consumer is incomplete")
               require(report["consumerBomCoordinate"] == "com.mirakyux.export4j:export4j-bom:" + version, "Consumer version differs")
-          sbom = json.loads(sbom_bytes)
-          own = [item for item in sbom["components"] if item.get("group") == "com.mirakyux.export4j"]
-          require(len(own) == len({item["name"] for item in own}) == 16, "SBOM library scope differs")
           with ZipFile(bundle) as archive:
               names = archive.namelist()
               require(len(names) == len(set(names)), "Duplicate publication paths")
@@ -150,7 +153,9 @@ jobs:
                           and all(part not in {".", ".."} and re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in parts),
                           "Invalid publication path")
               publications = [name for name in names if name.endswith((".jar", ".pom", ".module"))]
-              require(len(publications) == 82, "Expected exactly 82 signed publication artifacts")
+              expected_modules = {item["name"] for item in own} | {"export4j-bom"}
+              require({name.split("/")[3] for name in publications} == expected_modules
+                      and len(publications) == artifact_count, "Signed publication scope differs from the verified SBOM")
               for name in publications:
                   require(name + ".asc" in names and archive.read(name + ".asc"), "Missing publication signature")
                   require(archive.read(name + ".sha256").decode("ascii").strip() == hashlib.sha256(archive.read(name)).hexdigest(),
@@ -163,7 +168,7 @@ jobs:
           require((root / "public-key.asc").is_file(), "Missing publication public key")
           notes = (f"Java 21 document layout and generation engine.\n\n"
                    f"Maven BOM: `com.mirakyux.export4j:export4j-bom:{version}`.\n\n"
-                   "All 16 library JARs and the BOM were verified and consumed from Maven Central "
+                   f"All {library_count} library JARs and the BOM were verified and consumed from Maven Central "
                    "using Gradle metadata and POM-only resolution.\n\n"
                    f"Build commit: `{commit}`. Source release run: "
                    f"https://github.com/{os.environ['GH_REPO']}/actions/runs/{os.environ['SOURCE_RUN_ID']}.\n\n"
