@@ -3,13 +3,15 @@ package com.mirakyux.export4j.model;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /** Immutable, strict data binding for business documents. Expressions are dot paths only, never executable code.
- * Values are non-null strings, booleans, exact standard numeric classes, lists or string-keyed maps.
- * Input is snapshotted per render; caller-supplied collection implementations remain trusted Java code.
+ * Values are non-null strings, booleans, exact standard numeric classes, lists, string-keyed maps,
+ * records or beans with public property getters. The root must be a map, record or bean.
+ * Input is snapshotted per render; caller-supplied containers and getters remain trusted Java code.
  * literalText disables interpolation in text/metadata/links while leaving condition and iteration data paths active.
  * Existing constructors default to interpolation; the canonical constructor explicitly selects this mode.
  */
@@ -440,6 +442,11 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
 
     /** Strict render: any missing value, invalid type or expansion limit prevents returning a document. */
     public Document render(Map<String, ?> data) {
+        return render((Object) data);
+    }
+
+    /** Binds a map, record or bean using a fresh immutable property snapshot. */
+    public Document render(Object data) {
         if (!sections.isEmpty() || !pageRegions.equals(PageRegions.EMPTY)) {
             throw error(BindingException.Code.UNSUPPORTED_BLOCK, "pageRegions");
         }
@@ -451,6 +458,11 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * Use this entry for templates declaring page regions; render() rejects those declarations.
      */
     public PageDocument renderWithPageRegions(Map<String, ?> data) {
+        return renderWithPageRegions((Object) data);
+    }
+
+    /** Object-data variant sharing one snapshot between body and repeating regions. */
+    public PageDocument renderWithPageRegions(Object data) {
         if (!navigation.equals(DocumentNavigation.NONE)) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "navigation"); }
         if (!sections.isEmpty()) { throw error(BindingException.Code.UNSUPPORTED_BLOCK, "sections"); }
         requireNoNotes();
@@ -464,6 +476,11 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
      * Templates without section declarations produce a single document section.
      */
     public SectionedDocument renderSections(Map<String, ?> data) {
+        return renderSections((Object) data);
+    }
+
+    /** Object-data variant sharing one snapshot across all sections. */
+    public SectionedDocument renderSections(Object data) {
         requireNoNotes();
         return renderComplete(data).document();
     }
@@ -485,9 +502,16 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
 
     /** Binds sections, page regions and notes under one snapshot and shared work/text budgets. */
     public Rendered renderComplete(Map<String, ?> data) {
+        return renderComplete((Object) data);
+    }
+
+    /** Binds map, record or bean data, including all readable properties even when unused. */
+    public Rendered renderComplete(Object data) {
+        Objects.requireNonNull(data, "data");
+        if (!(data instanceof Map<?, ?>)) { TemplateProperties.requireObjectType(data.getClass()); }
         try (var state = new Binding()) {
-            Object frozen = state.freeze(Objects.requireNonNull(data, "data"), 0);
-            if (!(frozen instanceof Map<?, ?> map)) { throw new AssertionError(); }
+            Object frozen = state.freeze(data, 0);
+            if (!(frozen instanceof Map<?, ?> map)) { throw error(BindingException.Code.TYPE_MISMATCH, "data"); }
             var root = new Scope(map, null);
             var values = new ArrayList<Section>();
             var declarations = sections.isEmpty() ? List.of(new SectionNode("document", pageSettings, nodes, 0, pageRegions)) : sections;
@@ -528,6 +552,8 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
     }
 
     private final class Binding implements AutoCloseable {
+        private final Map<Class<?>, List<TemplateProperties.Property>> propertyPlans = new HashMap<>();
+        private final Map<Object, Boolean> activeData = new IdentityHashMap<>();
         private final Map<SourceContentParser, SourceContentParser.Session> sourceSessions = new java.util.IdentityHashMap<>();
         private final List<SourceContentParser.Session> sessionOrder = new ArrayList<>();
         private final Map<TableCell, List<Node>> cellSources = new java.util.IdentityHashMap<>();
@@ -561,29 +587,52 @@ public record DocumentTemplate(DocumentMetadata metadata, PageSettings pageSetti
         private Object freeze(Object value, int depth) {
             ExecutionContext.checkpoint();
             if (depth > limits.maxDepth() || ++dataNodes > limits.maxVisitedNodes()) { throw error(BindingException.Code.BUDGET_EXCEEDED, "data"); }
-            if (value instanceof Map<?, ?> map) {
-                Map<String, Object> copy = new HashMap<>();
-                map.forEach((key, item) -> {
-                    if (!(key instanceof String text)) { throw error(BindingException.Code.TYPE_MISMATCH, "data"); }
+            // Preserve the existing Map/List contract even for custom containers implementing other interfaces.
+            if (!(value instanceof Map<?, ?>) && !(value instanceof List<?>)) {
+                if (value instanceof String text) {
                     consume(text);
-                    copy.put(text, freeze(item, depth + 1));
-                });
+                    return text;
+                }
+                if (value instanceof java.math.BigInteger || value instanceof java.math.BigDecimal) {
+                    checkNumber(value, limits.maxCodePoints(), "data");
+                    return value;
+                }
+                if (value instanceof Boolean || value instanceof Byte || value instanceof Short || value instanceof Integer
+                        || value instanceof Long
+                        || value instanceof Double number && Double.isFinite(number)
+                        || value instanceof Float number && Float.isFinite(number)) { return value; }
+                if (value == null || value instanceof Number || value instanceof Enum<?> || value.getClass().isArray()
+                        || value instanceof Iterable<?>) {
+                    throw error(BindingException.Code.TYPE_MISMATCH, "data");
+                }
+            }
+            if (activeData.put(value, Boolean.TRUE) != null) { throw error(BindingException.Code.INVALID_VALUE, "data"); }
+            try {
+                if (value instanceof Map<?, ?> map) {
+                    Map<String, Object> copy = new HashMap<>();
+                    map.forEach((key, item) -> {
+                        if (!(key instanceof String text)) { throw error(BindingException.Code.TYPE_MISMATCH, "data"); }
+                        consume(text);
+                        copy.put(text, freeze(item, depth + 1));
+                    });
+                    return Map.copyOf(copy);
+                }
+                if (value instanceof List<?> list) { return list.stream().map(item -> freeze(item, depth + 1)).toList(); }
+                var properties = propertyPlans.computeIfAbsent(value.getClass(), TemplateProperties::describe);
+                Map<String, Object> copy = new HashMap<>();
+                for (var property : properties) {
+                    ExecutionContext.checkpoint();
+                    consume(property.name());
+                    // Do not execute application code after the next value has already exceeded its budget.
+                    if (depth + 1 > limits.maxDepth() || dataNodes >= limits.maxVisitedNodes()) {
+                        throw error(BindingException.Code.BUDGET_EXCEEDED, "data");
+                    }
+                    copy.put(property.name(), freeze(property.read(value), depth + 1));
+                }
                 return Map.copyOf(copy);
+            } finally {
+                activeData.remove(value);
             }
-            if (value instanceof List<?> list) { return list.stream().map(item -> freeze(item, depth + 1)).toList(); }
-            if (value instanceof String text) {
-                consume(text);
-                return text;
-            }
-            if (value instanceof java.math.BigInteger || value instanceof java.math.BigDecimal) {
-                checkNumber(value, limits.maxCodePoints(), "data");
-                return value;
-            }
-            if (value instanceof Boolean || value instanceof Byte || value instanceof Short || value instanceof Integer
-                    || value instanceof Long
-                    || value instanceof Double number && Double.isFinite(number)
-                    || value instanceof Float number && Float.isFinite(number)) { return value; }
-            throw error(BindingException.Code.TYPE_MISMATCH, "data");
         }
 
         private void expand(List<Node> source, Scope scope, String suffix, int depth, Map<String, String> relocations) {

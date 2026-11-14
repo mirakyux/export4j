@@ -103,6 +103,16 @@ export.xml(xml, java.util.Map.of("name", "Reader", "detail", "Result: $x^2$."))
         .pdf(pdfPath);
 ```
 
+Java callers can also pass a record or JavaBean instance directly, without a JSON conversion or a manually constructed Map:
+
+```java
+record GreetingData(String name, String detail) {}
+export.xml(xml, new GreetingData("Reader", "Result: $x^2$."))
+        .pdf(pdfPath);
+```
+
+The root accepts a Map, record, or JavaBean; nested properties can also contain Lists. They enter the same bounded snapshot at execution. Records expose components and JavaBeans expose public property getters; fields are not read. Every property read must contain the existing finite data types, including properties the template does not reference. Null, dates, enums, arrays, and Sets are not converted automatically. Getters are trusted application code; see [Java objects](xml-template-api.md#java-objects) for access, failures, cycles, and budgets. Existing Map overloads remain available.
+
 `<content source="..."/>` passes an entire field to the selected parser without evaluating `${...}` again inside that content. `fragment(key, xml)` registers an existing safe template fragment without introducing disk includes or external access.
 
 The unified entry currently accepts body XML only. Headers/footers, sections, notes, and other structures not covered by this entry's mathematical projection remain explicit failures; they are not discarded. Use the existing [XML](xml-template-api.md) and [document engine](fluent-api.md) entries for those model capabilities. This entry does not replace every XML capability. Data is borrowed until execution and snapshotted by template binding; do not mutate it concurrently during execution.

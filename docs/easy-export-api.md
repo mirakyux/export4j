@@ -103,6 +103,16 @@ export.xml(xml, java.util.Map.of("name", "Reader", "detail", "Result: $x^2$."))
         .pdf(pdfPath);
 ```
 
+Java 调用也可以直接传入 record 或 JavaBean 实例，不必先转换为 JSON 或手写 Map：
+
+```java
+record GreetingData(String name, String detail) {}
+export.xml(xml, new GreetingData("Reader", "Result: $x^2$."))
+        .pdf(pdfPath);
+```
+
+根数据接受 Map、record 或 JavaBean，嵌套属性还可包含 List；它们在执行时进入同一份有界快照。record 读取组件，JavaBean 读取公开属性 getter，不读取字段；所有读取到的属性都须满足既有有限数据类型，未被模板引用的属性也会检查。null、日期、枚举、数组和 Set 不自动转换。getter 是可信应用代码；可见性、异常、循环引用及预算规则见 [Java 对象绑定](xml-template-api.md#java-对象绑定)。原有 Map 重载保持可用。
+
 `<content source="..."/>` 将整个字段交给所选解析器；内容中的 `${...}` 不会再次插值。`fragment(key, xml)` 可登记既有安全模板片段，不增加磁盘 include 或外联权限。
 
 此统一入口当前只处理正文 XML。页眉／页脚、分节和注释等尚未被本入口的公式编译投影覆盖，仍明确拒绝，不会删除后继续导出。需要这些模型能力时，继续使用原有 [XML 模板](xml-template-api.md)和[文档引擎](fluent-api.md)入口；不能把本入口称为全部 XML 能力的替代品。数据借用到执行时，由模板绑定路径取快照；不要在执行期间并发修改输入数据。

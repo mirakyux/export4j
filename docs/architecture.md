@@ -180,7 +180,7 @@ Document + PageTemplate + Navigation + 显式字体栈
 
 ## 模板与受控导出
 
-`DocumentTemplate` 在 JDK-only 模型层快照并绑定点路径数据，条件／循环／集合表格受访问、深度、块、行和文字预算约束。它不执行反射、脚本或网络访问。
+`DocumentTemplate` 在 JDK-only 模型层快照并绑定点路径数据，Map、record／JavaBean 及嵌套 List 共用有界快照，条件／循环／集合表格受访问、深度、块、行和文字预算约束。对象绑定通过反射读取 record 组件或 JavaBean 公开属性，不读取字段；模板表达式不支持任意方法调用、脚本或网络入口。getter 属于可信应用代码，不构成沙箱；完整边界见 [Java 对象绑定](xml-template-api.md#java-对象绑定)。
 
 `ExecutionContext` 在同步调用范围中传播取消、截止时间、进度与输出字节上限；finally 恢复或移除 ThreadLocal。原子写入先完成同目录临时文件，再原子替换目标。PDF 临时存储仅转移后端流缓冲，不转移 IR、Display List 和资源。PDF/A、加密与外部 CMS 签名由 PDF 模块封装，见 [ADR-0009](adr/0009-shared-text-templates-and-controlled-export.md)。
 

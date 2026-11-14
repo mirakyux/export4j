@@ -37,6 +37,27 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 ~~~
 The example assumes explicit Chinese fonts on engine and a supplied outputPath. For file loading, the caller opens a Reader and passes it to `compile(reader)`. The compiler does not close the borrowed Reader and has no file-path or URL-loading API. Prepare dates, amounts, and localized formatting before supplying data.
 
+## Java objects
+
+The development version adds `DocumentTemplate.render(Object)` for a record or JavaBean root. Nested objects can mix with Maps and Lists without converting through JSON. `renderWithPageRegions`, `renderSections`, `renderComplete`, and the unified `Export4j.xml(template, data)` entry use the same rules; existing `Map<String, ?>` overloads remain available.
+
+```java
+record InspectionItem(String name, String result) {}
+record InspectionData(String title, List<InspectionItem> items) {}
+
+var data = new InspectionData("巡检报告",
+        List.of(new InspectionItem("东门仓", "已复核")));
+var document = template.render(data);
+```
+
+Records expose their declared components through public accessors. JavaBeans expose public, nonstatic, no-argument `getX()` methods and `isX()` methods returning `boolean` or `Boolean`; `isX()` takes precedence over `getX()` for the same property. Property names follow JavaBean capitalization: `getName()` exposes `name`, while `getURL()` exposes `URL`. `getClass()`, synthetic/bridge methods, and fields are not data properties. Binding does not call constructors, setters, or arbitrary method expressions from the template. Properties are read in a fixed order.
+
+Local or nonpublic declaring types are supported when the JVM permits access to their public accessors. Access failures report `BindingException.Code.TYPE_MISMATCH`; the library does not read private fields or open JPMS modules. Ordinary getter failures report a sanitized `INVALID_VALUE` without retaining the original exception that might contain data. Execution cancellation/timeouts and `Error` propagate unchanged.
+
+Each binding reads and snapshots all bindable properties before template expansion, including properties not referenced by the template. Leaf values remain limited to nonnull strings, booleans, and the existing standard finite numbers. Dates, enums, arrays, Sets, unknown numeric types, and other objects are not automatically stringified or serialized. An unreferenced property containing such a value also fails; prepare supported values before binding. Map keys must still be Strings, and conditions and loops use the existing snapshotted structures.
+
+Objects, Maps, and Lists share the existing node, text, and depth budgets. Cycles report `INVALID_VALUE`; shared object references are allowed and charged for every occurrence. Cooperative execution checks surround property reads, but getters remain trusted application code rather than forcibly interruptible or sandboxed scripts. Do not mutate input concurrently before binding completes. The unified entry binds during output execution; compiling a template or creating a request does not read the object in advance.
+
 ## Structural syntax
 
 All elements have no namespace. The root is `<document version="1">`, with optional `title`, `author`, and `literal-text`, and may declare source-content defaults. Root and lexical attributes are described in the [source-content guide](content-blocks-api.md). Structural whitespace and comments are permitted. Whitespace inside body text, spans, and cells is retained exactly, so avoid adding indentation/newlines merely to prettify XML body content.
@@ -63,7 +84,7 @@ All elements have no namespace. The root is `<document version="1">`, with optio
 | `table` | columns, zero or more header elements, and one or more row elements, in that order |
 | `rows` | Like table, but with exactly one template row; required items/as; expansion to an empty collection fails |
 
-`if` reads boolean, string, or numeric values according to its operator. each/list/rows values must be List. `list` and `each` share lexical variables, ID suffixes, and budgets; an empty `rows` array still fails explicitly. Map/List are structural and cannot be directly inserted into text. Data accepts only nonnull strings, booleans, standard finite numbers, Map, and List. Caller-defined containers and Readers are trusted code outside script-sandbox protection. Large numbers must be exact BigInteger/BigDecimal classes; subclasses are rejected.
+`if` reads boolean, string, or numeric values according to its operator. each/list/rows values must be List. `list` and `each` share lexical variables, ID suffixes, and budgets; an empty `rows` array still fails explicitly. Maps, Lists, and Java object snapshots are structural and cannot be directly inserted into text. Leaf values accept only nonnull strings, booleans, and standard finite numbers; see [Java objects](#java-objects) for property rules. Caller-defined containers, getters, and Readers are trusted code outside script-sandbox protection. Large numbers must be exact BigInteger/BigDecimal classes; subclasses are rejected.
 
 `${customer.name}` is the only interpolation syntax. Paths use ASCII identifiers and dots, with at most 256 UTF-16 units. Condition/loop attributes contain bare paths without `${}`. Every branch is syntax-checked at compilation, but only selected branches perform data lookups. Data containing `<p>`, `${x}`, or similar is inserted as plain text rather than reparsed as XML or expressions.
 

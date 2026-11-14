@@ -70,6 +70,10 @@ public final class EasyExportExample {
             requireResult(exporter.markdown(SOURCE).docx(output.resolve("markdown.docx")), 5);
             requireResult(exporter.xml(XML, Map.of("body", SOURCE)).pdf(output.resolve("xml.pdf")), 5);
             requireResult(exporter.xml(XML, Map.of("body", SOURCE)).docx(output.resolve("xml.docx")), 5);
+            requireResult(exporter.xml(XML, new TemplateData(SOURCE)).pdf(output.resolve("xml-record.pdf")), 5);
+            requireResult(exporter.xml(XML, new TemplateData(SOURCE)).docx(output.resolve("xml-record.docx")), 5);
+            requireResult(exporter.xml(XML, new TemplateBean(SOURCE)).pdf(output.resolve("xml-bean.pdf")), 5);
+            requireResult(exporter.xml(XML, new TemplateBean(SOURCE)).docx(output.resolve("xml-bean.docx")), 5);
             requireResult(exporter.html(HTML).pdf(output.resolve("html.pdf")), 1);
             requireResult(exporter.html(HTML).docx(output.resolve("html.docx")), 1);
             requireResult(exporter.text(LITERAL).pdf(output.resolve("text.pdf")), 0);
@@ -101,6 +105,16 @@ public final class EasyExportExample {
                  "fontCacheHits":%d}
                 """.formatted(hits));
         System.out.println("Generated configured-once PDF/DOCX source and XML examples in " + output);
+    }
+
+    /** A record exposes its components as template properties. */
+    public record TemplateData(String body) { }
+
+    /** An ordinary DTO exposes public getter properties without a JSON conversion step. */
+    public static final class TemplateBean {
+        private final String body;
+        public TemplateBean(String body) { this.body = java.util.Objects.requireNonNull(body, "body"); }
+        public String getBody() { return body; }
     }
 
     private static void requireResult(Export4j.Result result, int formulas) {

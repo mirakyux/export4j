@@ -38,6 +38,27 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 
 上例假设已显式配置 engine 的中文字体和 outputPath。加载文件时由调用方打开 Reader，再传给 `compile(reader)`；编译器不关闭借用 Reader，也没有文件路径或 URL 加载入口。日期、金额和本地化格式在传入数据前准备。
 
+## Java 对象绑定
+
+当前开发版的 `DocumentTemplate.render(Object)` 接受 record 或 JavaBean 实例作为根数据，嵌套对象也可与 Map、List 混用，无须先转 JSON。`renderWithPageRegions`、`renderSections`、`renderComplete` 和统一入口 `Export4j.xml(template, data)` 使用相同规则；原有 `Map<String, ?>` 重载继续保留。
+
+```java
+record InspectionItem(String name, String result) {}
+record InspectionData(String title, List<InspectionItem> items) {}
+
+var data = new InspectionData("巡检报告",
+        List.of(new InspectionItem("东门仓", "已复核")));
+var document = template.render(data);
+```
+
+record 按声明的组件读取公开访问器。JavaBean 读取公开、非 static、无参数的 `getX()` 和返回 `boolean`／`Boolean` 的 `isX()`；`isX()` 优先于同名 `getX()`。属性名遵循 JavaBean 首字母规则，例如 `getName()` 对应 `name`，`getURL()` 对应 `URL`。不把 `getClass()`、synthetic／bridge 方法或字段当作数据属性，不调用构造器、setter 或任意模板方法表达式。属性按固定顺序读取。
+
+本地或非 public 声明类型在 JVM 允许访问其公开访问器时也可使用。访问失败返回 `BindingException.Code.TYPE_MISMATCH`；库不读取私有字段，也不自动打开 JPMS 模块。普通 getter 执行异常返回脱敏的 `INVALID_VALUE`，不附带可能含数据的原异常；执行取消／超时和 `Error` 保持原样传播。
+
+每次绑定在展开模板前读取并快照全部可绑定属性，不只读取模板使用的路径。叶值仍限于非 null 字符串、布尔值和既有标准有限数值；日期、枚举、数组、Set、未知数值类型及其他对象不自动字符串化或序列化。包含这些值的未引用属性也会失败，需由调用方先整理为受支持的数据类型。Map 的键继续要求 String，条件和循环只使用快照后的既有数据结构。
+
+对象、Map 和 List 共同消耗既有节点、文本和深度预算。循环引用返回 `INVALID_VALUE`；共享对象引用允许，但每次出现均计费。读取前后有合作式执行检查，getter 仍是可信应用代码，不受强制中断或脚本沙箱保护。绑定完成前不要并发修改输入；统一入口在执行输出时绑定，编译模板和创建请求不会提前读取对象。
+
 ## 结构语法
 
 所有元素均无命名空间，根为 `<document version="1">`，可选 `title`、`author`、`literal-text`，也可声明源内容默认值；根／词法属性见[源内容块指南](content-blocks-api.md)。结构之间允许空白和注释；正文、span 和单元格内的空白原样保留，因此正文不要为美化 XML 而额外缩进换行。
@@ -64,7 +85,7 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 | `table` | columns、零至多个 header、一个以上 row，顺序固定 |
 | `rows` | 同 table，但恰好一个模板 row；必填 items、as；展开为空集合时失败 |
 
-`if` 按运算符读取布尔、字符串或数值；each／list／rows 的值须为 List。`list` 与 `each` 使用相同的词法变量、ID 后缀和预算；`rows` 的空数组仍明确失败。Map／List 仅作结构，不可直接插入文字。数据值仅接受非 null 字符串、布尔值、标准有限数值、Map 和 List。调用方自定义容器及 Reader 是可信代码，不受脚本沙箱保护。大数只接受精确 BigInteger／BigDecimal 类，拒绝子类。
+`if` 按运算符读取布尔、字符串或数值；each／list／rows 的值须为 List。`list` 与 `each` 使用相同的词法变量、ID 后缀和预算；`rows` 的空数组仍明确失败。Map／List 及 Java 对象的快照仅作结构，不可直接插入文字。叶值仅接受非 null 字符串、布尔值和标准有限数值；Java 对象的属性规则见[上文](#java-对象绑定)。调用方自定义容器、getter 及 Reader 是可信代码，不受脚本沙箱保护。大数只接受精确 BigInteger／BigDecimal 类，拒绝子类。
 
 `${customer.name}` 是唯一插值语法。路径使用 ASCII 标识符及点，最多 256 个 UTF-16 单元。条件／循环属性直接写路径，不加 `${}`。所有分支的语法都会编译检查，只有选中分支执行数据查找。数据中的 `<p>`、`${x}` 等内容作为普通文本插入，不再次解析为 XML 或表达式。
 

@@ -22,7 +22,10 @@ from verify_production import actual_text, contact_sheet
 ROOT = Path(__file__).resolve().parents[1]
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
       "m": "http://schemas.openxmlformats.org/officeDocument/2006/math"}
-CASES = {"markdown": (5, 1), "xml": (5, 1), "html": (1, 1), "text": (0, 0), "visual-only": (1, 0)}
+OBJECT_CASES = ("xml-record", "xml-bean")
+RICH_CASES = {"markdown", "xml", *OBJECT_CASES}
+CASES = {"markdown": (5, 1), "xml": (5, 1), **{case: (5, 1) for case in OBJECT_CASES},
+         "html": (1, 1), "text": (0, 0), "visual-only": (1, 0)}
 FORMULAS = (r"x + \text{年}", "x_1^2", r"\frac{a+b}{c}", r"\sqrt{x}", "x^2 + y^2 = z^2")
 
 
@@ -95,7 +98,7 @@ def check_pdf(path, case):
             images += int(reference.get_object().get("/Subtype") == "/Image")
         operations.update(operator.decode("ascii") for _, operator in ContentStream(page.get_contents(), reader).operations)
     require(images == expected_images, f"image count changed for {case}: {images}")
-    if case in {"markdown", "xml"}:
+    if case in RICH_CASES:
         for item in ("EASY-EXPORT / configured once", "中英文正文", "中文单元格", "bold", "italic", "both"):
             require(compact(item) in compact(text + logical), f"PDF source text missing for {case}: {item}")
         require(all(compact(tex) in compact(logical) for tex in FORMULAS), "formula ActualText lost source occurrences")
@@ -136,13 +139,30 @@ def check_docx(path, case):
         require([fonts.get("{" + NS["w"] + "}" + slot) for slot in ("ascii", "hAnsi", "eastAsia", "cs")]
                 == ["Liberation Sans", "Liberation Sans", "LXGW WenKai TC", "Liberation Sans"],
                 "Word script slots differ from the single explicit family configuration")
-        if case in {"markdown", "xml"}:
+        if case in RICH_CASES:
             require("中英文正文" in text and "中文单元格" in text and "年" in text, "native Chinese body/formula text missing")
             require(len(root.findall(".//w:tbl", NS)) == 1, "Markdown table missing from DOCX")
             require(root.findall(".//m:f", NS) and root.findall(".//m:rad", NS), "fraction/radical native structures missing")
         if expected_formulas or expected_images:
             require(root.findall(".//w:spacing[@w:lineRule='atLeast']", NS), "object lines did not use the safe Word spacing default")
         return {"nativeEquations": len(equations), "images": expected_images, "text": text, "sha256": digest(path)}
+
+
+def require_same_docx_parts(first, second):
+    with ZipFile(first) as left, ZipFile(second) as right:
+        require(set(left.namelist()) == set(right.namelist()), "object binding changed DOCX package members")
+        for name in left.namelist():
+            require(left.read(name) == right.read(name), f"object binding changed DOCX part: {name}")
+
+
+def require_same_pixels(first, second, description):
+    require(first["pages"] == second["pages"], f"{description} changed pagination")
+    for engine in ("poppler", "pdfium"):
+        for left, right in zip(first[engine], second[engine]):
+            with Image.open(left) as before, Image.open(right) as after:
+                require(before.size == after.size
+                        and ImageChops.difference(before.convert("RGB"), after.convert("RGB")).getbbox() is None,
+                        f"{description} changed {engine} pixels")
 
 
 def inspect(source, output, soffice, reader_cache):
@@ -156,6 +176,8 @@ def inspect(source, output, soffice, reader_cache):
     # Fail structural checks before starting independent reader processes.
     pdfs = {case: check_pdf(source / (case + ".pdf"), case) for case in CASES}
     docx = {case: check_docx(source / (case + ".docx"), case) for case in CASES if case != "visual-only"}
+    for case in OBJECT_CASES:
+        require_same_docx_parts(source / "xml.docx", source / (case + ".docx"))
     renders, reader = {}, {}
     for case in CASES:
         renders[case] = render_pdf(source / (case + ".pdf"), output / case)
@@ -164,7 +186,7 @@ def inspect(source, output, soffice, reader_cache):
                   "xml": ("EASY-EXPORT", "中英文正文", "中文单元格"),
                   "html": ("HTML-ENTRY", "中文正文", "bold text", "x^2", "Explicit resource."),
                   "text": ("TEXT-ENTRY", "中文", "**literal**", "<b>HTML</b>", "$x^2$"),
-                  "visual-only": ("VISUAL-ONLY", r"\bar{x}")}[case]
+                  "visual-only": ("VISUAL-ONLY", r"\bar{x}")}["xml" if case in OBJECT_CASES else case]
         for token in tokens:
             require(compact(token) in compact(renders[case]["text"]),
                     f"independent PDF extraction lost {case} source: {token}")
@@ -190,26 +212,28 @@ def inspect(source, output, soffice, reader_cache):
             rendered = render_pdf(target / (case + ".pdf"), target / "render")
             for token in ({"markdown": ("EASY-EXPORT", "中英文正文", "中文单元格"),
                            "xml": ("EASY-EXPORT", "中英文正文", "中文单元格"),
-                           "html": ("HTML-ENTRY", "中文正文"), "text": ("TEXT-ENTRY", "中文")}[case]):
+                           "html": ("HTML-ENTRY", "中文正文"), "text": ("TEXT-ENTRY", "中文")}
+                          ["xml" if case in OBJECT_CASES else case]):
                 require(compact(token) in compact(rendered["text"]), "independent DOCX renderer lost source text")
             reader[case] = {"pages": rendered["pages"], "pdfSha256": digest(target / (case + ".pdf")),
                             "docxSha256": docx_hash, "openedThisArtifact": True}
             renders[case + "-docx"] = rendered
             reader_cache[docx_hash] = (reader[case], rendered)
     require(docx["markdown"]["text"] == docx["xml"]["text"], "XML binding changed the same source's DOCX text")
-    require(renders["markdown"]["pages"] == renders["xml"]["pages"], "XML binding changed PDF pagination")
-    for engine in ("poppler", "pdfium"):
-        for left, right in zip(renders["markdown"][engine], renders["xml"][engine]):
-            with Image.open(left) as first, Image.open(right) as second:
-                require(first.size == second.size and ImageChops.difference(first.convert("RGB"), second.convert("RGB")).getbbox() is None,
-                        f"XML binding changed {engine} pixels for the same Markdown source")
+    require_same_pixels(renders["markdown"], renders["xml"], "XML binding of the same Markdown source")
+    for case in OBJECT_CASES:
+        require(renders["xml"]["text"] == renders[case]["text"], "object binding changed independent PDF text")
+        require_same_pixels(renders["xml"], renders[case], case + " binding of the same Map data")
+        if soffice:
+            require_same_pixels(renders["xml-docx"], renders[case + "-docx"], case + " independent DOCX rendering")
     sheets = [(f"{case} / {engine} / {index + 1}", path) for case, result in renders.items()
               for engine in ("poppler", "pdfium") for index, path in enumerate(result[engine])]
     contact_sheet(sheets, output)
     for item in docx.values():
         item.pop("text")
     return {"checks": "passed", "source": summary, "pdf": pdfs, "docx": docx, "independentDocxReader": reader,
-            "xmlMatchesMarkdownPixels": True, "renderedPagesPerEngine": sum(item["pages"] for item in renders.values()),
+            "xmlMatchesMarkdownPixels": True, "objectBindingMatchesMap": True,
+            "renderedPagesPerEngine": sum(item["pages"] for item in renders.values()),
             "visualReview": "Full-page dual renders and contact sheet generated; visual review recorded separately."}
 
 

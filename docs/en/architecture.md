@@ -178,7 +178,7 @@ Resource references use stable identifiers, not arbitrary backend objects. A sep
 
 ## Templates and controlled export
 
-JDK-only model `DocumentTemplate` snapshots and binds dotted-path data. Conditions, loops, and collection tables obey access, depth, block, row, and text budgets. It performs no reflection, scripts, or network access.
+JDK-only model `DocumentTemplate` snapshots and binds dotted-path data. Maps, records/JavaBeans, and nested Lists share one bounded snapshot. Conditions, loops, and collection tables obey access, depth, block, row, and text budgets. Object binding reflects record components or public JavaBean properties without reading fields; template expressions expose no arbitrary method calls, scripts, or network entry points. Getters remain trusted application code rather than a sandbox; see [Java objects](xml-template-api.md#java-objects) for the full boundaries.
 
 `ExecutionContext` propagates cancellation, deadlines, progress, and output-byte limits within synchronous calls, restoring or removing its ThreadLocal in `finally`. Atomic writes complete a same-directory temporary file before atomically replacing the target. PDF temporary storage moves backend stream buffers only, not IR, Display Lists, or resources. PDF/A, encryption, and external CMS signing are encapsulated in PDF modules; see [ADR-0009 (Chinese)](../adr/0009-shared-text-templates-and-controlled-export.md).
 

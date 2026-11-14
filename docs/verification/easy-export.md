@@ -8,6 +8,8 @@
 
 2026-11-14 修正主题语义域传递与 DOCX 字体声明校验。候选版本 `0.0.0-verification-e3` 的全量构建、公共 API、签名分发、四路隔离消费、统一入口及主题专项独立输出复验均已通过。本轮未新增或启用回退，也未改变现有预算；截至该次本地验收完成时尚未提交、推送或远程发布。
 
+同日补齐直接 DTO／record 模板绑定。候选版本 `0.0.0-verification-o5` 已通过全量构建、公共 API、签名分发、四路隔离消费、独立输出检查和视觉复查；结果在下方单独登记，不沿用 e3 的制品摘要或输出结论。
+
 ## 已知限制
 
 - 后续接入核对发现：公式文字字体合计超过 64 MiB 时，字体预算异常被错误归类为 `RENDERING_FAILED`。使用本批 e3 制品复现：默认无候选时仍严格失败；显式配置 `TEXT` 候选时会错误降级成功。该错误分类尚未修复，不满足预算超限必须为 `LIMIT_EXCEEDED` 且禁止降级的契约；本批其余验收结果不涵盖这一失败路径。
@@ -31,6 +33,22 @@
 本轮本地坐标为 `com.mirakyux.export4j:export4j-starter:0.0.0-verification-e3`，制品目录为 `build/verification/e3-final/repository/`。starter JAR SHA-256 为 `39e6faf4cdcabb5c803ee20807f7d144cb1344da850552d319db2a530b75bec4`；分发 ZIP 为 `f6a8a7d60ffe937ff5ea15e9f1fbae8bbcb59c74af4a55605f8ef835cfa4e622`；SBOM 为 `2793c050d1a522411546c4894c8fef8f5dddd61df31bc377b3403b3d762b1c7a`。签名使用临时验收身份，私钥已清除，未上传。
 
 本轮证据位于 `build/verification/e3-final/distribution-report.json`、`build/verification/starter-e3/verification.json` 与 `build/verification/theme-fix-20261114/`。专项自动检查见 `theme-verified/report.json`，完整视觉复查及跨路像素对照见 `theme-visual.json`。前期探针与未通过的验收尝试保留，未算作通过；包括新增测试的 API 调用错误、隔离消费者样例的异常类导入错误，以及将 OMML 省略的自动黑色误当作缺少颜色属性的验证器错误，均修正后重新验证。
+
+## 2026-11-14 DTO／record 绑定补齐
+
+| 检查 | 本轮结果 |
+| --- | --- |
+| 数据入口 | `DocumentTemplate` 的四个绑定入口新增 `Object` 重载，starter 新增 `xml(String, Object)`；既有 `Map<String, ?>` 重载保持，输入不用经过 JSON 转换 |
+| 快照契约 | 根数据接受 Map、record／JavaBean，嵌套属性可含 List；所有可绑定属性先进入同一份有界快照。getter 规则、异常脱敏、循环拒绝、共享引用计费和输入信任边界见 [Java 对象绑定](../xml-template-api.md#java-对象绑定) |
+| 构建与测试 | `build sbom publishLocalBundle` 和公开样例通过；2,714 项 Java 测试，0 失败、0 错误、0 跳过。本轮新增 21 项回归：模型 18 项、starter 3 项，覆盖原 Map 路径及自定义 Map 同时实现 Iterable 的兼容行为 |
+| 公共 API | 相对 RC2 基线为 804 个公共类型、109 项新增、0 不兼容声明、0 第三方类型泄漏；另从固定提交 `018ecdc` 的源码归档用 `javac --release 21` 独立编译两个受影响模块，与最终 Gradle 制品比较描述符，确认本轮仅新增五个方法、0 不兼容声明；这不是第二次全量 Gradle 构建 |
+| 签名分发 | 18 库及 BOM 共 19 个项目组件、92 项签名制品通过，篡改制品被拒绝；720 项构建／消费输入前后一致。完整依赖的 Gradle 元数据／仅 POM 两路均解析并核对全部 18 个本轮 JAR 摘要 |
+| 单依赖消费 | Gradle 元数据／仅 POM 两路均只声明 starter，一个直接依赖、无 BOM；14 个自研模块、26 个运行制品、10,463 个 Java 21 有效类、0 重复提供者；两路摘要一致并与签名仓库对应 |
+| 独立输出检查 | 示例和四路消费者共 35 份单页 PDF、30 份 DOCX 通过结构与双引擎检查；包含 DOCX 阅读器结果，每个渲染引擎共核对 65 页次。4 个唯一 DOCX 字节输入实际独立打开，其他 26 份按准确 SHA-256 相同复用，报告逐项登记 |
+| Map／对象等价 | 各路 record／JavaBean 的 PDF 独立提取文字及 Poppler／PDFium 像素均与同源 Map 输入一致；DOCX 所有解包条目逐字节一致，独立阅读器渲染像素也相同 |
+| 视觉复查 | 示例及四路消费者全部 25 张联系表均实际查看，另放大检查对象 PDF 与 DOCX 渲染页；未见缺字、裁切、对象重叠或公式／表格／图片缺失。等价对照按同一输出格式进行，不混同 PDF 与 DOCX 原有的布局差异 |
+
+本轮本地坐标为 `com.mirakyux.export4j:export4j-starter:0.0.0-verification-o5`，制品目录为 `build/verification/o5-signed/repository/`。starter JAR SHA-256 为 `d8a3fe21a276a991253096a8d6fe1512234f2e7f16ae6db8e404e445d2358d68`；model JAR 为 `3d7c9ba169b91e90cd0a4ad33f2f156934bbffa854f06d23eeefdbb542a5da57`；分发 ZIP 为 `cf534e78664621a083f7df2265385a77ee7541d90ad4c9459a61e4b1ab172984`；SBOM 为 `002b4d6f25015e3bceb45620958af8b600c348ef282f5b9376a23ba01e267065`。构建／分发与隔离消费证据分别位于 `build/verification/o5-signed/distribution-report.json` 和 `build/verification/o5-starter/`；本轮 API 描述符比较见 `build/verification/object-binding-20261114/api-head-comparison.json`，独立输出报告为 `build/verification/o5-output/report.json`。这些结果仅代表本地验收，不表示新制品已发布到 Maven Central，也不增加性能或 Microsoft Word 编辑、保存兼容结论。
 
 ## 验收契约
 

@@ -123,6 +123,15 @@ public final class Export4j implements AutoCloseable {
      * Data is borrowed until execution, when template binding snapshots it. No template is cached.
      */
     public Request xml(String source, Map<String, ?> data) {
+        return xml(source, (Object) data);
+    }
+    /** Body XML template with a Map, record or JavaBean root, under the same body-only restriction.
+     * Data is borrowed until each target executes and then snapshots through the same bounded
+     * {@link com.mirakyux.export4j.model.DocumentTemplate#render(Object) template binding path}.
+     * Properties come from record components or public getters, never fields. Getter code remains
+     * trusted caller code and must return promptly; synchronous cancellation cannot interrupt it.
+     */
+    public Request xml(String source, Object data) {
         ensureOpen(); return new Request(source, Objects.requireNonNull(data, "data"), defaultDeclarations);
     }
     private Request request(String source, ContentOptions.Format format) {
@@ -184,14 +193,14 @@ public final class Export4j implements AutoCloseable {
      */
     public final class Request {
         private final String source;
-        private final Map<String, ?> data;
+        private final Object data;
         private ContentOptions.Resolved options;
         private ContentOptions declarations;
         private ExecutionOptions controls = execution;
         private PageSettings page = pageSettings;
         private DocumentMetadata metadata = DocumentMetadata.EMPTY;
         private final Map<String, InlineImage> resources = new LinkedHashMap<>(images);
-        private Request(String source, Map<String, ?> data, ContentOptions declarations) {
+        private Request(String source, Object data, ContentOptions declarations) {
             this.source = Objects.requireNonNull(source, "source"); this.data = data; this.declarations = declarations;
             options = declarations.resolve(ContentOptions.fromTheme(theme));
         }
