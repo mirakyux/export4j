@@ -191,6 +191,139 @@ class FontFaceCacheTest {
     }
 
     @Test
+    void immutableByteSourcesRemainIsolatedAcrossReuseClearAndDisabledRetention() throws Exception {
+        byte[] original = bytes("LiberationSans-Regular.ttf");
+        byte[] input = original.clone();
+        var source = FontSource.bytes(input);
+        Arrays.fill(input, (byte) 0);
+        try (var cache = FontFaceCache.builder().build()) {
+            var first = source.load(cache);
+            assertArrayEquals(original, first.data().bytes());
+            assertSame(first, source.load(cache));
+            cache.clear();
+            assertNotSame(first, source.load(cache));
+            assertTrue(first.glyph('A').isPresent());
+        }
+        try (var cache = FontFaceCache.builder().enabled(false).build()) {
+            assertNotSame(source.load(cache), source.load(cache));
+            assertEquals(0, cache.stats().entries());
+        }
+    }
+
+    @Test
+    void unrelatedCacheHitsContinueWhileAnotherFontIsBeingParsed() throws Exception {
+        byte[] hotBytes = bytes("LiberationSans-Regular.ttf"), coldBytes = bytes("LiberationSans-Bold.ttf");
+        var coldStarted = new CountDownLatch(1); var releaseCold = new CountDownLatch(1);
+        var schedulers = new ArrayList<ManualScheduler>();
+        var workers = Executors.newFixedThreadPool(2);
+        try (var cache = new FontFaceCache(FontFaceCache.builder(), System::nanoTime,
+                () -> { var scheduler = new ManualScheduler(); schedulers.add(scheduler); return scheduler; }, snapshot -> {
+                    if (Arrays.equals(snapshot, coldBytes)) {
+                        coldStarted.countDown(); await(releaseCold);
+                    }
+                    return TrueTypeFontLoader.loadSnapshotUncached(snapshot);
+                })) {
+            var hot = cache.load(hotBytes);
+            var cold = workers.submit(() -> cache.load(coldBytes));
+            assertTrue(coldStarted.await(5, TimeUnit.SECONDS));
+            assertSame(hot, workers.submit(() -> cache.load(hotBytes)).get(5, TimeUnit.SECONDS));
+            releaseCold.countDown();
+            assertTrue(cold.get(5, TimeUnit.SECONDS).glyph('B').isPresent());
+        } finally {
+            releaseCold.countDown(); workers.shutdownNow();
+            assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void clearingOrClosingDuringAParsePreventsLateRetention() throws Exception {
+        byte[] font = bytes("LiberationSans-Regular.ttf");
+        for (boolean close : List.of(false, true)) {
+            var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+            var workers = Executors.newSingleThreadExecutor();
+            var schedulers = new ArrayList<ManualScheduler>();
+            var cache = new FontFaceCache(FontFaceCache.builder(), System::nanoTime,
+                    () -> { var scheduler = new ManualScheduler(); schedulers.add(scheduler); return scheduler; }, snapshot -> {
+                        entered.countDown(); await(release);
+                        return TrueTypeFontLoader.loadSnapshotUncached(snapshot);
+                    });
+            try (cache) {
+                var loading = workers.submit(() -> cache.load(font));
+                assertTrue(entered.await(5, TimeUnit.SECONDS));
+                if (close) { cache.close(); } else { cache.clear(); }
+                release.countDown();
+                var face = loading.get(5, TimeUnit.SECONDS);
+                assertTrue(face.glyph('A').isPresent());
+                assertEquals(0, cache.stats().entries());
+                assertTrue(schedulers.isEmpty());
+                if (close) { assertThrows(IllegalStateException.class, () -> cache.load(font)); }
+                else { assertNotSame(face, cache.load(font)); assertEquals(1, cache.stats().entries()); }
+            } finally {
+                release.countDown(); workers.shutdownNow();
+                assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+            }
+        }
+    }
+
+    @Test
+    void aParseStartedAfterClearIsNotRemovedByAnEarlierCompletion() throws Exception {
+        byte[] font = bytes("LiberationSans-Regular.ttf");
+        var firstEntered = new CountDownLatch(1); var releaseFirst = new CountDownLatch(1);
+        var secondEntered = new CountDownLatch(1); var releaseSecond = new CountDownLatch(1);
+        var calls = new AtomicInteger(); var workers = Executors.newFixedThreadPool(2);
+        try (var cache = new FontFaceCache(FontFaceCache.builder(), System::nanoTime, ManualScheduler::new, snapshot -> {
+            int call = calls.incrementAndGet();
+            if (call == 1) { firstEntered.countDown(); await(releaseFirst); }
+            if (call == 2) { secondEntered.countDown(); await(releaseSecond); }
+            return TrueTypeFontLoader.loadSnapshotUncached(snapshot);
+        })) {
+            var first = workers.submit(() -> cache.load(font));
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
+            cache.clear();
+            var second = workers.submit(() -> cache.load(font));
+            assertTrue(secondEntered.await(5, TimeUnit.SECONDS));
+            releaseFirst.countDown();
+            assertTrue(first.get(5, TimeUnit.SECONDS).glyph('A').isPresent());
+            assertEquals(0, cache.stats().entries());
+            releaseSecond.countDown();
+            assertSame(second.get(5, TimeUnit.SECONDS), cache.load(font));
+            assertEquals(2, calls.get());
+        } finally {
+            releaseFirst.countDown(); releaseSecond.countDown(); workers.shutdownNow();
+            assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    private static void await(CountDownLatch signal) throws IOException {
+        try {
+            if (!signal.await(5, TimeUnit.SECONDS)) { throw new IOException("test parse was not released"); }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt(); throw new IOException("test parse interrupted", interrupted);
+        }
+    }
+
+    @Test
+    void rejectedExpirySchedulingLeavesNoUnreapableEntryAndAllowsRetry() throws Exception {
+        var attempts = new AtomicInteger();
+        var rejected = new ScheduledThreadPoolExecutor(1) {
+            @Override public ScheduledFuture<?> schedule(Runnable task, long delay, TimeUnit unit) {
+                throw new java.util.concurrent.RejectedExecutionException("test expiry rejected");
+            }
+        };
+        byte[] font = bytes("LiberationSans-Regular.ttf");
+        try (var cache = new FontFaceCache(FontFaceCache.builder(), System::nanoTime,
+                () -> attempts.getAndIncrement() == 0 ? rejected : new ManualScheduler())) {
+            assertThrows(java.util.concurrent.RejectedExecutionException.class, () -> cache.load(font));
+            assertTrue(rejected.isShutdown());
+            assertEquals(0, cache.stats().entries());
+            assertEquals(0, cache.stats().sourceBytes());
+            var face = cache.load(font);
+            assertSame(face, cache.load(font));
+            assertEquals(2, cache.stats().loads());
+        } finally { rejected.shutdownNow(); assertTrue(rejected.awaitTermination(5, TimeUnit.SECONDS)); }
+    }
+
+    @Test
     void cleanupThreadDoesNotInheritTheLoadingThreadsApplicationContext() throws IOException {
         var inherited = new AtomicInteger();
         var context = new InheritableThreadLocal<Object>() {

@@ -9,6 +9,7 @@ import com.mirakyux.export4j.adapter.web.FormulaSyntax;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.RelativeWeights;
 import com.mirakyux.export4j.model.ColumnFlow;
 import com.mirakyux.export4j.model.GridLayout;
 import com.mirakyux.export4j.model.GridItem;
@@ -318,10 +319,12 @@ public final class MathContent {
                     output.add(BulletItem.mixed(b.id(), p.content(), b.marker(), b.level(), p.format(), b.markerStyle()));
                 } else if (block instanceof Table t) { output.add(hasSlots(t) ? table(t, width) : t); }
                 else if (block instanceof ColumnFlow c) {
-                    double total = c.columnWeights().isEmpty() ? c.columns() : c.columnWeights().stream().mapToDouble(Double::doubleValue).sum();
-                    double minimum = c.columnWeights().isEmpty() ? 1 : c.columnWeights().stream().mapToDouble(Double::doubleValue).min().orElseThrow();
-                    double inner = (width - (c.columns() - 1) * c.gap()) * minimum / total;
-                    output.add(c.toBuilder().blocks(blocks(c.blocks(), inner)).build());
+                    if (hasSlots(c)) {
+                        double available = width - (c.columns() - 1) * c.gap();
+                        double[] widths = relativeWidths(c.columnWeights(), c.columns(), available);
+                        double inner = java.util.Arrays.stream(widths).min().orElseThrow();
+                        output.add(c.toBuilder().blocks(blocks(c.blocks(), inner)).build());
+                    } else { output.add(c); }
                 } else if (block instanceof GridLayout g) {
                     double track = (width - (g.tracks() - 1) * g.columnGap()) / g.tracks();
                     var items = new ArrayList<GridItem>();
@@ -464,17 +467,33 @@ public final class MathContent {
     }
 
     private static double[] columnWidths(List<ColumnWidth> columns, double width) {
-        var result = new double[columns.size()]; double fixed = 0, weights = 0;
+        var result = new double[columns.size()]; double fixed = 0;
+        var declared = new ArrayList<Double>();
         for (int i = 0; i < columns.size(); i++) {
             if (columns.get(i) instanceof ColumnWidth.Fixed f) { result[i] = f.points(); fixed += f.points(); }
-            else if (columns.get(i) instanceof ColumnWidth.Fraction f) { weights += f.weight(); }
+            else if (columns.get(i) instanceof ColumnWidth.Fraction f) { declared.add(f.weight()); }
             else { throw new IllegalArgumentException("formula fitting requires explicit fixed or fractional table widths"); }
         }
-        if (fixed > width) { throw new IllegalArgumentException("fixed table columns exceed available width"); }
+        if (!Double.isFinite(width) || width <= 0 || !Double.isFinite(fixed) || fixed > width) {
+            throw new IllegalArgumentException("fixed table columns exceed available width");
+        }
+        var weights = declared.isEmpty() ? null : RelativeWeights.of(declared.stream().mapToDouble(Double::doubleValue).toArray());
+        int relativeColumn = 0;
         for (int i = 0; i < columns.size(); i++) {
-            if (!(columns.get(i) instanceof ColumnWidth.Fixed)) {
-                result[i] = (width - fixed) * ((ColumnWidth.Fraction) columns.get(i)).weight() / weights;
+            if (columns.get(i) instanceof ColumnWidth.Fraction) {
+                result[i] = weights.portion(relativeColumn++, width - fixed);
             }
+        }
+        return result;
+    }
+
+    private static double[] relativeWidths(List<Double> declared, int count, double available) {
+        var values = new double[count];
+        for (int index = 0; index < count; index++) { values[index] = declared.isEmpty() ? 1 : declared.get(index); }
+        var weights = RelativeWeights.of(values);
+        var result = new double[count];
+        for (int index = 0; index < count; index++) {
+            result[index] = weights.portion(index, available);
         }
         return result;
     }

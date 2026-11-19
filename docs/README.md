@@ -57,6 +57,7 @@ Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导�
 | --- | --- |
 | 参与贡献 | [贡献指南](../CONTRIBUTING.md) · [开发规约](development.md) |
 | 架构及模块边界 | [架构设计](architecture.md) · [架构决策记录](adr/README.md) |
+| 参考架构与优化取舍 | [Fesod、x-easypdf 源码研究](architecture-reference-review.md) |
 | 构建与输出验证 | [开发中的验证流程](development.md#测试策略) · [验证矩阵](../.agents/skills/develop-export4j/references/verification.md) |
 | API 兼容和发布 | [兼容规则](api-compatibility.md) · [发布规范](releasing.md) |
 | 依赖和授权 | [依赖记录](dependencies.md) · [字体记录](../assets/fonts/README.md) · [NOTICE](../NOTICE) · [第三方许可证](../third-party/licenses) |

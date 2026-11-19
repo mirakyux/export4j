@@ -61,6 +61,32 @@ The same family declaration supplies the physical body stack, explicit text font
 
 PDF does not synthesize missing physical bold, italic, or bold italic variants. This example supplies only Chinese regular and does not promise physical Chinese emphasis variants. DOCX writes the font family and bold/italic declarations associated with a registered role; the reader renders them. Registered HTML `font-family` declarations select their specific family and variant roles instead of collapsing all families into the default role. Both targets continue to reject unregistered roles. Named theme roles must match roles actually registered by the instance; arbitrary names are not inferred automatically.
 
+## Stable business font roles
+
+`fontRole(name, family)` registers one business name for Java defaults, XML `role`, and HTML `font-family`, without relying on internal `family_N` names:
+
+```java
+import com.mirakyux.export4j.model.ContentOptions;
+
+var report = FontFamily.builder("Liberation Serif",
+        FontSource.file(Path.of("fonts/LiberationSerif-Regular.ttf")))
+        .bold(FontSource.file(Path.of("fonts/LiberationSerif-Bold.ttf")))
+        .build();
+try (var export = Export4j.builder(latin).fontRole("report", report).build()) {
+    export.markdown("Body and **bold**")
+            .options(ContentOptions.builder().fontRole("report").build()).pdf(pdfPath);
+    export.html("<p style='font-family:report'>Body and <strong>bold</strong></p>").docx(docxPath);
+    export.xml("<document version='1'><p><span role='report_bold'>Bold</span></p></document>",
+            java.util.Map.of()).pdf(pdfPath);
+}
+```
+
+Variants use `report_bold`, `report_italic`, and `report_boldItalic`, and are registered only when their physical variants were supplied. Markdown/HTML emphasis selects variants within the current registered business family. Missing variants fail for both PDF and DOCX. Ordinary DOCX text still declares its family and style without requiring local glyph coverage. Themes, requests, and XML retain their existing property inheritance scopes.
+
+The unified entry validates source roles before parsing, so entirely emphasized content cannot hide an undeclared body role. Markdown/HTML require resolvable defaults for body, all six headings, and cells even when a domain is absent from that source. Literal text checks only its current body role. XML source blocks validate their actual lexical configuration while keeping the same cumulative parser session; native XML nodes are checked through their actual model roles.
+
+Business families do not automatically join the default missing-glyph stack or change Word's default script slots or formula text's default font stack. Use `eastAsia`/`complexScript`/`fallbackFont` separately when needed. Role names, including generated suffixes, must satisfy the static role identifier rules. Default roles, `bold`/`italic`/`boldItalic`, the `family_` prefix, case-insensitive alias collisions, and overlapping base/variant names are rejected. An alias matching a physical family name must reference the same `FontFamily` instance.
+
 ## Business calls and local overrides
 
 Each call creates an independent request. Reuse the exporter; do not share a mutable request between threads:
@@ -115,6 +141,18 @@ The root accepts a Map, record, or JavaBean; nested properties can also contain 
 
 `<content source="..."/>` passes an entire field to the selected parser without evaluating `${...}` again inside that content. `fragment(key, xml)` registers an existing safe template fragment without introducing disk includes or external access.
 
+Explicitly retain a syntax plan when repeating the same XML structure:
+
+```java
+var syntax = export.prepareXml(xml);
+export.xml(syntax, new GreetingData("First", "Result: $x^2$.")).pdf(firstPath);
+export.xml(syntax, new GreetingData("Second", "Result: $y^2$.")).docx(secondPath);
+```
+
+`prepareXml` checks safe XML, root/include structure, and parsing/expansion limits. It loads no fonts, parses no source content, and renders no formulas; it does not validate every attribute, expression, or resource reference. The user owns the plan's lifetime. It contains statically expanded fragments, strings, and budget counts, with no global template cache. Each execution applies current themes, resources, and configuration with a fresh compiler and content session, rechecks parsing/expansion limits, and snapshots data. The plan captures neither `MathContentSource` nor a runtime `DocumentTemplate`. Another exporter's fragment registry cannot alter its expansion. See [reusing parsed syntax](xml-template-api.md#reusing-parsed-syntax).
+
+Existing String overloads remain available. Adding syntax-plan overloads makes `xml(null, data)` ambiguous at compile time; null-rejection tests must select `xml((String) null, data)` or an explicit `XmlTemplate.Syntax` type. Valid nonnull String calls remain available.
+
 The unified entry currently accepts body XML only. Headers/footers, sections, notes, and other structures not covered by this entry's mathematical projection remain explicit failures; they are not discarded. Use the existing [XML](xml-template-api.md) and [document engine](fluent-api.md) entries for those model capabilities. This entry does not replace every XML capability. Data is borrowed until execution and snapshotted by template binding; do not mutate it concurrently during execution.
 
 ## Targets and strict failures
@@ -131,13 +169,31 @@ var export = Export4j.builder(latin).eastAsia(chinese)
         .build();
 ```
 
-`Result.degradations()` reports actual changes by occurrence index, target, candidate, and reason; `formulas()` counts occurrences. The contract prohibits fallback for limits, cancellation, and timeouts. The current development build still misclassifies an aggregate formula text font budget violation, allowing an explicitly configured `TEXT` candidate to consume that failure. The default empty candidate list still rejects it; see [known limitations (Chinese)](../verification/easy-export.md#已知限制). DOCX defaults to standard script font slots and `atLeast` spacing for object paragraphs. Java writes production output directly without Word, LibreOffice, or print services. The supported formula/format subsets remain documented in [mixed content](rich-content-api.md).
+`Result.degradations()` reports actual changes by occurrence index, target, candidate, and reason; `formulas()` counts occurrences. Font-count, individual-font-byte, and aggregate formula font limits report `LIMIT_EXCEEDED`, including deferred font preparation; an explicit `TEXT` candidate cannot consume those failures. Limits, cancellation, and timeouts cannot fall back. DOCX defaults to standard script font slots and `atLeast` spacing for object paragraphs. Java writes production output directly without Word, LibreOffice, or print services. See [mixed content](rich-content-api.md) for the supported subsets and [local fixes (Chinese)](../verification/easy-export.md#2026-11-19-修复结果) for the existing repair evidence.
 
 ## Lifetime, budgets, and output
 
 The instance owns a bounded idle-expiring `FontFaceCache` by default. Inspect or clear it with `cacheStats()`/`clearCache()`. `fontCache(cache)` borrows an external cache and does not close it; its owner must do so. One `FontSource` identity loads at most once per operation. The shared instance retains no short-lived engine or compiled document. Formula text bytes are prepared only when a formula actually needs a text group, rather than eagerly for ordinary literal exports.
 
 Expiration releases cache references without invalidating active fonts or promising an immediate RSS decrease. Caller-supplied byte sources retain their encoded snapshots. See [font caching](font-cache-api.md). Concurrent calls also require font source implementations and execution callbacks suitable for that concurrency.
+
+`pdfBackend(...)` exposes existing PDF storage, backend budgets, and parsed-font cache configuration:
+
+```java
+import com.mirakyux.export4j.backend.pdf.PdfBackend;
+import com.mirakyux.export4j.backend.pdf.PdfFontCache;
+import com.mirakyux.export4j.backend.pdf.PdfOptions;
+
+try (var programs = PdfFontCache.builder().maxEntries(4).build()) {
+    var backend = PdfBackend.builder().fontCache(programs)
+            .options(PdfOptions.storage(PdfOptions.Storage.TEMP_FILE)).build();
+    try (var export = Export4j.builder(latin).pdfBackend(backend).build()) {
+        export.text("Body").pdf(pdfPath);
+    }
+}
+```
+
+The exporter borrows the immutable backend; every output still creates its own PDF session and document. Closing the exporter does not close a caller-owned `PdfFontCache`; its owner must close it. `TEMP_FILE` moves PDF stream buffers to temporary storage and does not promise constant-memory layout or a constant-size PDF object tree. DOCX does not use this backend configuration.
 
 Structural parsing, mathematical, and layout budgets have defaults. There is no default timeout or effective output byte cap. Configure execution globally or per request:
 

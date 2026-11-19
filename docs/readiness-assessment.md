@@ -30,8 +30,8 @@
 
 | 能力 | 当前状态与后续依据 |
 | --- | --- |
-| 开发版统一入口 | 正文 XML 不覆盖完整页区／分节／注释；任意具名字体角色仍需底层 `DocumentEngine.fontRole(...)`。限制与当前可用路径见[统一入口验收](verification/easy-export.md#已知限制) |
-| 公式文字字体预算 | 已知总字体字节超限异常分类仍待修正；显式 `TEXT` 候选可能错误降级，默认无候选仍失败。该失败路径不属于对象绑定和主题验收的通过范围，见[已知限制](verification/easy-export.md#已知限制) |
+| 开发版统一入口 | 正文 XML 不覆盖完整页区／分节／注释。限制与当前可用路径见[统一入口验收](verification/easy-export.md#已知限制) |
+| 公式文字字体预算 | 当前开发版将字体数／字节上限统一报告为 `LIMIT_EXCEEDED`，显式 `TEXT` 候选不能吞掉超限；大有限列权重按比例归一化后参与公式适配。回归和本地调用方结果见[统一入口修复验收](verification/easy-export.md#2026-11-19-修复结果) |
 | 表格、文字、流式与图形 | GAP-03／08／09／21 的既定剩余目标均已由[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)验收；适用于所列输入及有限容量，不提供任意规模或无限期无泄漏保证 |
 | DOCX 编辑与应用验收 | GAP-12.1／12.2 已由[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)闭合；一般外部 Word 文件的无损往返及同分页不由固定样例推断 |
 | PDF 工具与标准 | GAP-10／11／20 的明确子项均已验收，包含 PDF/UA-1 和离线 PAdES B／T／LT／LTA；其他标准版本、任意结构或未知活动内容仍按各指南的边界处理 |

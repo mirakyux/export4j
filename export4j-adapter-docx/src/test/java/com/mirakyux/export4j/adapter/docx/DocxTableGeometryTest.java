@@ -2,6 +2,7 @@
 package com.mirakyux.export4j.adapter.docx;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,6 +14,8 @@ import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.PageRegions;
 import com.mirakyux.export4j.model.PageSettings;
+import com.mirakyux.export4j.model.PageSize;
+import com.mirakyux.export4j.model.PageMargins;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import com.mirakyux.export4j.model.Section;
@@ -23,6 +26,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,10 +36,70 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.Element;
 
 class DocxTableGeometryTest {
     private static final String W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+    @Test void finiteFractionScalesProduceTheSamePositiveStandardGridAndCellWidths() throws Exception {
+        for (double weight : new double[] {Double.MIN_VALUE, 1, 1e308, Double.MAX_VALUE}) {
+            for (int count : new int[] {1, 2}) {
+                for (boolean mixed : new boolean[] {false, true}) {
+                    var columns = new java.util.ArrayList<ColumnWidth>();
+                    if (mixed) { columns.add(new ColumnWidth.Fixed(32.15)); }
+                    for (int index = 0; index < count; index++) { columns.add(new ColumnWidth.Fraction(weight)); }
+                    String[] texts = java.util.Collections.nCopies(columns.size(), "value").toArray(String[]::new);
+                    var source = Table.builder("weights").columns(columns.toArray(ColumnWidth[]::new)).header(texts).row(texts).build();
+                    var parts = write(sectioned(new Document(DocumentMetadata.EMPTY, PageSettings.A4, List.of(source))));
+                    var root = parse(parts.get("word/document.xml"));
+                    var grid = root.getElementsByTagNameNS(W, "gridCol");
+                    long fractional = Math.round((PageSettings.A4.contentWidth() - (mixed ? 32.15 : 0)) / count * 20);
+                    long total = 0;
+                    for (int index = 0; index < grid.getLength(); index++) {
+                        long expected = mixed && index == 0 ? 643 : fractional;
+                        assertEquals(expected, Long.parseLong(((Element) grid.item(index)).getAttributeNS(W, "w")));
+                        total += expected;
+                    }
+                    assertEquals(Long.toString(total), ((Element) root.getElementsByTagNameNS(W, "tblW").item(0)).getAttributeNS(W, "w"));
+                    var cells = root.getElementsByTagNameNS(W, "tcW");
+                    assertEquals(columns.size() * 2, cells.getLength());
+                    for (int index = 0; index < cells.getLength(); index++) {
+                        long expected = mixed && index % columns.size() == 0 ? 643 : fractional;
+                        var cell = (Element) cells.item(index);
+                        assertEquals(Long.toString(expected), cell.getAttributeNS(W, "w"));
+                        assertEquals("dxa", cell.getAttributeNS(W, "type"));
+                    }
+                }
+            }
+        }
+    }
+
+    @Test void unrepresentableTableWidthsFailBeforeWritingAndPreserveTheOldTarget(@TempDir Path temporary) throws Exception {
+        var hugePage = new PageSettings(new PageSize(1e20, 500), PageMargins.uniform(0));
+        var sources = List.of(
+                new Document(DocumentMetadata.EMPTY, PageSettings.A4, List.of(Table.builder("tiny")
+                        .columns(new ColumnWidth.Fraction(Double.MIN_VALUE), new ColumnWidth.Fraction(Double.MAX_VALUE)).row("a", "b").build())),
+                new Document(DocumentMetadata.EMPTY, PageSettings.A4, List.of(Table.builder("rounded-zero")
+                        .columns(new ColumnWidth.Fixed(0.001)).row("a").build())),
+                new Document(DocumentMetadata.EMPTY, PageSettings.A4, List.of(Table.builder("no-remainder")
+                        .columns(new ColumnWidth.Fixed(PageSettings.A4.contentWidth()), new ColumnWidth.Fraction(1)).row("a", "b").build())),
+                new Document(DocumentMetadata.EMPTY, hugePage, List.of(Table.builder("too-many-twips")
+                        .columns(new ColumnWidth.Fraction(1)).row("a").build())),
+                new Document(DocumentMetadata.EMPTY, hugePage, List.of(Table.builder("grid-sum-overflow")
+                        .columns(new ColumnWidth.Fixed(2.4e17), new ColumnWidth.Fixed(2.4e17)).row("a", "b").build())));
+        byte[] original = {1, 2, 3};
+        Path target = temporary.resolve("previous.docx");
+        Files.write(target, original);
+        for (var source : sources) {
+            var output = new ByteArrayOutputStream();
+            assertThrows(IOException.class, () -> new DocxAdapter().write(source, output));
+            assertEquals(0, output.size());
+            assertThrows(IOException.class, () -> new DocxAdapter().write(source, target));
+            assertArrayEquals(original, Files.readAllBytes(target));
+        }
+        try (var files = Files.list(temporary)) { assertEquals(List.of(target), files.toList()); }
+    }
 
     @Test void adjacentDifferentGridsHaveAStandardParagraphWithoutAddingSemanticBlocks() throws Exception {
         var first = Table.builder("first").columns(new ColumnWidth.Fixed(36), new ColumnWidth.Fixed(72)).row("A", "B").build();

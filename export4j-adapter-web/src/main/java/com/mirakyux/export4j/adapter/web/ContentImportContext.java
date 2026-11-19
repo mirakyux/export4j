@@ -19,12 +19,18 @@ import java.util.Map;
 /** One call's immutable defaults, original-source mapping and temporary literal placeholders. */
 final class ContentImportContext {
     record Replacement(int start, int end, int replacementStart, int replacementEnd) { }
+    record RoleFamily(List<String> roles, int variant, boolean ambiguous) {
+        RoleFamily(List<String> roles, int variant) { this(roles, variant, false); }
+        boolean bold() { return (variant & 1) != 0; }
+        boolean italic() { return (variant & 2) != 0; }
+    }
     final ContentBudget budget;
     final ContentOptions.Resolved options;
     final SourceContentParser.Remaining remaining;
     final String namespace;
     final String source;
     final FormulaProcessor processor;
+    private final Map<String, List<String>> families;
     final Map<String, String> literals = new HashMap<>();
     final Map<String, FormulaSyntax.Span> formulaMarkers = new HashMap<>();
     boolean markdownFormulasScanned;
@@ -39,9 +45,10 @@ final class ContentImportContext {
     private final Map<InlineVector, Integer> preparedVectors = new IdentityHashMap<>();
 
     ContentImportContext(ContentBudget budget, ContentOptions.Resolved options, SourceContentParser.Remaining remaining,
-            String namespace, String source, FormulaProcessor processor) {
+            String namespace, String source, FormulaProcessor processor, Map<String, List<String>> families) {
         this.budget = budget; this.options = options; this.remaining = remaining;
         this.namespace = namespace; this.source = source; this.processor = processor;
+        this.families = families;
     }
     String id(int index) {
         block();
@@ -67,6 +74,30 @@ final class ContentImportContext {
     InlineStyle cellStyle(double size) { return style(options.styles().cellText(), size); }
     InlineStyle headingStyle(int level, double size) { return style(options.styles().heading(level).text(), size); }
     private static InlineStyle style(TextAppearance text, double size) { return new InlineStyle(text.fontRole(), size, text.rgb(), 0, false, false); }
+    RoleFamily initialFontFamily(String role) { return fontFamily(role, false); }
+    RoleFamily fontFamily(String role) { return fontFamily(role, true); }
+    private RoleFamily fontFamily(String role, boolean requireVariants) {
+        if (!role.isEmpty()) {
+            var alias = families.get(role.toLowerCase(java.util.Locale.ROOT));
+            if (alias != null && alias.getFirst().equals(role)) { return new RoleFamily(alias, 0); }
+            List<String> selected = null;
+            int variant = 0;
+            for (var roles : families.values()) {
+                int index = roles.indexOf(role);
+                if (index < 0) { continue; }
+                if (selected != null && !selected.equals(roles)) {
+                    if (!requireVariants) { return new RoleFamily(List.of(role, "bold", "italic", "boldItalic"), 0, true); }
+                    throw new IllegalArgumentException("content font role has ambiguous family variants");
+                }
+                selected = roles; variant = index;
+            }
+            if (selected != null) { return new RoleFamily(selected, variant); }
+        }
+        var global = List.of("", "bold", "italic", "boldItalic");
+        int globalVariant = global.indexOf(role);
+        return globalVariant >= 0 ? new RoleFamily(global, globalVariant)
+                : new RoleFamily(List.of(role, "bold", "italic", "boldItalic"), 0);
+    }
     String raw(int start, int end) {
         if (start < 0 || end < start) { throw new IllegalArgumentException("content original source range unavailable"); }
         var range = originalRange(start, end);

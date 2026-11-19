@@ -94,8 +94,23 @@ class MathTextFontsTest {
         assertThrows(IllegalArgumentException.class, () -> MathTextFonts.of(new byte[0]));
         byte[][] tooMany = new byte[9][];
         Arrays.fill(tooMany, new byte[] {1});
-        assertThrows(IllegalArgumentException.class, () -> MathTextFonts.of(tooMany));
+        assertEquals(MathException.Reason.LIMIT_EXCEEDED,
+                assertThrows(MathException.class, () -> MathTextFonts.of(tooMany)).reason());
         assertThrows(NullPointerException.class, () -> TexMath.vector("x", MathOptions.DEFAULT, null));
+    }
+
+    @Test void formulaFontByteBudgetsUseTheStableLimitCategory() {
+        assertEquals(MathException.Reason.LIMIT_EXCEEDED, assertThrows(MathException.class,
+                () -> MathTextFonts.of(new byte[32 * 1024 * 1024 + 1])).reason());
+        byte[][] tooMany = new byte[9][];
+        Arrays.fill(tooMany, new byte[] {1});
+        assertEquals(MathException.Reason.LIMIT_EXCEEDED, assertThrows(MathException.class,
+                () -> MathTextFonts.of(tooMany)).reason());
+        byte[][] totalTooLarge = new byte[8][];
+        var repeatedFont = new byte[8 * 1024 * 1024 + 1];
+        Arrays.fill(totalTooLarge, repeatedFont);
+        assertEquals(MathException.Reason.LIMIT_EXCEEDED, assertThrows(MathException.class,
+                () -> MathTextFonts.of(totalTooLarge)).reason());
     }
 
     @Test void fontOutlinePermissionsCannotBeBypassedByJava2d() throws IOException {

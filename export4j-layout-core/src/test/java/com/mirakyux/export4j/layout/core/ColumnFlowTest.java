@@ -473,6 +473,7 @@ class ColumnFlowTest {
         var limits = new DocumentLayoutLimits(2, 100, 20, 1);
         var result = new DocumentLayouter(new ParagraphLayouter(), limits).layout(source, List.of(font));
         var fragments = paragraphs(result, "p");
+        assertEquals(List.of(10.0, 100.0), fragments.stream().map(p -> p.layout().width()).toList());
         assertEquals(List.of(10, 9), fragments.stream().map(p -> p.layout().lines().size()).toList());
         assertEquals("A".repeat(100), logical(fragments));
         assertContained(result);
@@ -495,6 +496,45 @@ class ColumnFlowTest {
         assertEquals(ExecutionException.Code.CANCELLED, failure.code());
         ExecutionContext.checkpoint();
         assertEquals(1, layouter.layout(source, List.of(font)).pages().size());
+    }
+
+    @Test
+    void relativeColumnScaleRetainsGeometryAfterSharedWeightAllocation() {
+        var paragraph = new Paragraph("p", "A\nB\nC\nD\nE\nF", FORMAT);
+        var ordinary = layout(140, 100,
+                new ColumnFlow("flow", List.of(paragraph), 3, 10, true, List.of(1.0, 1.0, 1.0)));
+        var large = layout(140, 100,
+                new ColumnFlow("flow", List.of(paragraph), 3, 10, true,
+                        List.of(Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE)));
+        var expected = paragraphs(ordinary, "p");
+        var actual = paragraphs(large, "p");
+        assertEquals(ordinary.pages().size(), large.pages().size());
+        assertEquals(logical(expected), logical(actual));
+        assertEquals(expected.size(), actual.size());
+        for (int index = 0; index < expected.size(); index++) {
+            assertEquals(expected.get(index).origin(), actual.get(index).origin());
+            assertEquals(expected.get(index).layout().width(), actual.get(index).layout().width(), 1e-10);
+            assertEquals(expected.get(index).layout().height(), actual.get(index).layout().height(), 1e-10);
+        }
+        assertContained(large);
+    }
+
+    @Test
+    void compensatedRelativeWeightsRetainTripleColumnGlyphBoundaries() {
+        var source = document(120, 100, new ColumnFlow("flow",
+                List.of(new Paragraph("p", "A".repeat(120), FORMAT)), 3, 0, false, List.of(10.0, 1.0, 1.0)));
+        var result = new DocumentLayouter(new ParagraphLayouter(),
+                DocumentLayoutLimits.DEFAULT.toBuilder().maxPages(1).build()).layout(source, List.of(font));
+        var fragments = paragraphs(result, "p");
+        assertEquals(1, result.pages().size());
+        double narrow = 120 * (0.1 / 1.2);
+        assertEquals(List.of(100.0, narrow, narrow), fragments.stream().map(p -> p.layout().width()).toList());
+        assertEquals(List.of(10, 10, 10), fragments.stream().map(p -> p.layout().lines().size()).toList());
+        assertEquals(List.of("A".repeat(100), "A".repeat(10), "A".repeat(10)), fragments.stream()
+                .map(p -> p.layout().lines().stream().flatMap(line -> line.runs().stream()).map(run -> run.text())
+                        .collect(Collectors.joining())).toList());
+        assertEquals("A".repeat(120), logical(fragments));
+        assertContained(result);
     }
 
     private static ColumnFlow columns(String id, int count, boolean balanced, Block child) {

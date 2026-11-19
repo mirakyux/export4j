@@ -61,6 +61,32 @@ try (var export = Export4j.builder(latin).eastAsia(chinese).theme(theme).build()
 
 PDF 不合成未提供的物理粗体、斜体或组合体；上例只提供中文 regular，不能据此承诺中文强调样式的物理字体。DOCX 输出已登记角色对应的字体族与粗斜体声明，实际绘制由阅读端处理。HTML 中的已登记 `font-family` 映射到对应族及变体角色，不把所有族压成同一默认角色。两种目标都继续拒绝未登记角色；主题中的具名角色必须与实例登记一致，不能传入任意名称后期待自动映射。
 
+## 稳定的业务字体角色
+
+`fontRole(name, family)` 为 Java 默认值、XML `role` 和 HTML `font-family` 登记同一个业务名称，不必使用内部 `family_N` 名称：
+
+```java
+import com.mirakyux.export4j.model.ContentOptions;
+
+var report = FontFamily.builder("Liberation Serif",
+        FontSource.file(Path.of("fonts/LiberationSerif-Regular.ttf")))
+        .bold(FontSource.file(Path.of("fonts/LiberationSerif-Bold.ttf")))
+        .build();
+try (var export = Export4j.builder(latin).fontRole("report", report).build()) {
+    export.markdown("Body and **bold**")
+            .options(ContentOptions.builder().fontRole("report").build()).pdf(pdfPath);
+    export.html("<p style='font-family:report'>Body and <strong>bold</strong></p>").docx(docxPath);
+    export.xml("<document version='1'><p><span role='report_bold'>Bold</span></p></document>",
+            java.util.Map.of()).pdf(pdfPath);
+}
+```
+
+角色变体为 `report_bold`、`report_italic`、`report_boldItalic`，只登记实际提供的物理变体。Markdown／HTML 的强调沿当前已登记业务族选择变体；缺失变体在 PDF 和 DOCX 中都失败。普通 DOCX 文字仍只声明字体族与样式，不增加物理字形覆盖校验。主题、请求与 XML 的继承范围继续使用原有逐属性规则。
+
+统一入口在解析前检查本次源的角色配置，避免全部强调的内容掩盖未登记的正文角色。Markdown／HTML 要求正文、六级标题和单元格的完整默认角色都可解析，即使某个语义域未出现在本次源中；字面文本只检查本次正文角色。XML 源块按实际词法作用域的配置检查，并继续使用同一累计预算会话；原生 XML 节点按实际模型角色检查。
+
+业务族不会自动加入默认缺字候选栈，也不改写 Word 四脚本默认槽或公式文字的默认字体栈；需要默认候选时另外使用 `eastAsia`／`complexScript`／`fallbackFont`。角色及追加后缀后的名称须符合静态角色标识符规则；默认角色、`bold`／`italic`／`boldItalic`、`family_` 前缀、大小写别名冲突及重叠的角色／变体名称会被拒绝。角色别名与物理族名相同时，必须指向同一 `FontFamily` 实例。
+
 ## 业务调用与局部覆盖
 
 每次调用创建独立请求；实例可复用，请求不能在线程间共享：
@@ -115,6 +141,18 @@ export.xml(xml, new GreetingData("Reader", "Result: $x^2$."))
 
 `<content source="..."/>` 将整个字段交给所选解析器；内容中的 `${...}` 不会再次插值。`fragment(key, xml)` 可登记既有安全模板片段，不增加磁盘 include 或外联权限。
 
+同一 XML 结构需反复输出时，可显式持有纯语法计划：
+
+```java
+var syntax = export.prepareXml(xml);
+export.xml(syntax, new GreetingData("First", "Result: $x^2$.")).pdf(firstPath);
+export.xml(syntax, new GreetingData("Second", "Result: $y^2$.")).docx(secondPath);
+```
+
+`prepareXml` 只检查安全 XML、根／片段结构及解析／展开限额，不加载字体、不解析源内容或渲染公式，也不代表全部属性、表达式和资源语义已验证。计划保存准备时静态展开的片段、字符串与预算计数，用户决定其生命周期；没有全局模板缓存。每次执行仍按当前主题、资源与配置创建新编译器和内容会话，重新检查解析／展开限额并快照数据。计划不捕获本次 `MathContentSource` 或运行期 `DocumentTemplate`，更换执行实例不会改写计划中的片段。底层 `prepare`／`compile` 的完整规则见[模板语法复用](xml-template-api.md#复用已解析语法)。
+
+原有字符串重载保留。新增语法计划重载后，`xml(null, data)` 无法自动判定源类型；需要测试空值拒绝时，使用 `xml((String) null, data)` 或显式 `XmlTemplate.Syntax` 类型。合法的非 null 字符串调用保持可用。
+
 此统一入口当前只处理正文 XML。页眉／页脚、分节和注释等尚未被本入口的公式编译投影覆盖，仍明确拒绝，不会删除后继续导出。需要这些模型能力时，继续使用原有 [XML 模板](xml-template-api.md)和[文档引擎](fluent-api.md)入口；不能把本入口称为全部 XML 能力的替代品。数据借用到执行时，由模板绑定路径取快照；不要在执行期间并发修改输入数据。
 
 ## 目标与严格失败
@@ -131,13 +169,31 @@ var export = Export4j.builder(latin).eastAsia(chinese)
         .build();
 ```
 
-实际表示变更通过 `Result.degradations()` 返回，包含公式出现索引、目标、候选和原因；`formulas()` 返回出现次数。预算、取消和超时按契约不得降级。当前开发版仍有公式文字字体合计超限被错误归类、显式 `TEXT` 候选可吞掉该错误的问题，默认无候选时仍严格失败，见[已知限制](verification/easy-export.md#已知限制)。DOCX 默认使用标准四脚本字体槽和对象 `atLeast` 行距，生产写出由 Java 完成，不调用 Word、LibreOffice 或打印服务。公式与格式子集见[混合内容 API](rich-content-api.md)。
+实际表示变更通过 `Result.degradations()` 返回，包含公式出现索引、目标、候选和原因；`formulas()` 返回出现次数。预算、取消和超时按契约不得降级。DOCX 默认使用标准四脚本字体槽和对象 `atLeast` 行距，生产写出由 Java 完成，不调用 Word、LibreOffice 或打印服务。公式与格式子集见[混合内容 API](rich-content-api.md)及[本地修复验收](verification/easy-export.md#2026-11-19-修复结果)。
 
 ## 生命周期、预算与输出
 
 实例默认拥有有界、空闲过期的 `FontFaceCache`，可用 `cacheStats()`／`clearCache()` 观察和清理。`fontCache(cache)` 借用外部缓存，实例关闭时不关闭它；所有者负责关闭。`FontSource` 同一实例在一次操作中只加载一次，短生命周期引擎与编译结果不被全局实例保存。公式文字字节只在实际需要文字组时准备，不为普通字面导出预先建立数学文字字体快照。
 
 到期只解除缓存引用，不使在用字体失效，也不保证 RSS 立即下降。调用方提供的字节源仍持有其编码快照。缓存边界继续见[字体缓存](font-cache-api.md)。实例可并发调用的前提是提供的字体来源和执行回调也支持对应并发方式。
+
+`pdfBackend(...)` 使已有 PDF 存储策略、后端预算和解析缓存从统一入口可达：
+
+```java
+import com.mirakyux.export4j.backend.pdf.PdfBackend;
+import com.mirakyux.export4j.backend.pdf.PdfFontCache;
+import com.mirakyux.export4j.backend.pdf.PdfOptions;
+
+try (var programs = PdfFontCache.builder().maxEntries(4).build()) {
+    var backend = PdfBackend.builder().fontCache(programs)
+            .options(PdfOptions.storage(PdfOptions.Storage.TEMP_FILE)).build();
+    try (var export = Export4j.builder(latin).pdfBackend(backend).build()) {
+        export.text("Body").pdf(pdfPath);
+    }
+}
+```
+
+实例借用不可变 `PdfBackend`，每次输出仍创建独立 PDF 会话和文档。关闭 exporter 不关闭调用方的 `PdfFontCache`，由缓存所有者关闭。`TEMP_FILE` 仅将 PDF 流缓冲放入临时存储，不表示布局或完整 PDF 对象树为恒定内存；DOCX 不使用该后端配置。
 
 默认已配置解析、公式和布局的结构预算；默认没有超时或实际输出字节上限。可以在全局或单次请求上设置：
 
@@ -153,3 +209,5 @@ export.markdown(markdownSource).execution(controls).pdf(pdfPath);
 超时和取消采用同步合作式检查，不是恶意输入的强制内存沙箱。路径输出在同一父目录写临时文件，最终检查成功后原子替换；失败保留旧目标，文件系统不支持原子移动时明确失败。流输出保持借用，库不关闭调用方的流；失败时流可能已有部分内容，不提供回滚。
 
 完整公开样例见 [`EasyExportExample`](../examples/src/main/java/com/mirakyux/export4j/examples/EasyExportExample.java)，隔离制品调用方见 [`EasyExportConsumer`](../verification/consumer/src/main/java/consumer/EasyExportConsumer.java)。设计与本批结果分别见 [ADR-0118](adr/0118-configured-export-entry.md)和[统一入口验收](verification/easy-export.md)。
+
+稳定字体角色、后端借用及 XML 语法复用的制品证据另见[架构优化验收](verification/architecture-convergence.md)。

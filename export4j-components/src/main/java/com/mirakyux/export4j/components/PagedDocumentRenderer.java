@@ -8,7 +8,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,7 +37,6 @@ import com.mirakyux.export4j.layout.core.ComponentContext;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
 import com.mirakyux.export4j.layout.core.ComponentSemantics;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
-import com.mirakyux.export4j.layout.core.DocumentLayouter;
 import com.mirakyux.export4j.layout.core.DocumentPainter;
 import com.mirakyux.export4j.layout.core.PageComposer;
 import com.mirakyux.export4j.layout.core.Placement;
@@ -46,14 +44,12 @@ import com.mirakyux.export4j.layout.core.SemanticSourceRegistry;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.Document;
-import com.mirakyux.export4j.model.DocumentNavigation;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
-import com.mirakyux.export4j.text.ParagraphLayouter;
 
 /** Plans compact navigation and page signatures, then paints and releases one replayed page at a time. */
 final class PagedDocumentRenderer {
@@ -118,25 +114,19 @@ final class PagedDocumentRenderer {
             List<Note> notes, FontGroup fonts, Map<String, FontGroup> roles) throws IOException {
         templates = List.copyOf(templates);
         roles = Map.copyOf(roles);
-        if (!source.navigation().equals(DocumentNavigation.NONE)) {
-            if (!navigation.equals(Navigation.EMPTY)) { throw new IllegalStateException("portable navigation conflicts with runtime navigation"); }
-            navigation = Navigation.fromDocument(source);
-        }
+        navigation = PreparedSemanticDocument.navigation(source, navigation);
         if (!navigation.comments().isEmpty() || !navigation.fields().isEmpty()) {
             throw new IllegalArgumentException("page export cannot represent comments or editable form fields");
         }
         long fixedInteractions = navigation.bookmarks().size() + (navigation.contents().enabled() ? (long) navigation.bookmarks().size() : 0);
         if (fixedInteractions > componentLimits.maxInteractions()) { throw new IllegalArgumentException("document interaction budget exceeded"); }
-        var semantic = SemanticBlocks.compile(source, notes);
-        var document = semantic.document();
+        var prepared = PreparedSemanticDocument.compile(source, notes);
+        var semantic = prepared.semantic();
+        var document = prepared.document();
         if (templates.size() != document.sections().size()) { throw new IllegalArgumentException("one template is required per section"); }
-        var sources = new ArrayList<Block>(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
-        var layouter = new DocumentLayouter(new ParagraphLayouter(), limits, componentLimits);
-        layouter.validate(Footnotes.validationSource(new Document(document.metadata(),
-                document.sections().getFirst().pageSettings(), sources), notes, limits));
-        var reserved = new LinkedHashSet<String>();
-        SemanticTree.walk(sources, visit -> reserved.add(visit.block().id()));
-        notes.forEach(note -> reserved.add(note.id()));
+        var sources = new ArrayList<Block>(prepared.sourceBlocks());
+        prepared.validateSources(document.sections().getFirst().pageSettings(), sources, notes, limits, componentLimits);
+        var reserved = prepared.reservedIds(notes);
         var activeSources = new HashMap<String, SemanticSourceRegistry>();
         var sourceHashes = new IdentityHashMap<Table, byte[]>();
         var anchors = new HashMap<String, ResolvedAnchor>();
@@ -191,7 +181,7 @@ final class PagedDocumentRenderer {
         }
         if (!activeSources.isEmpty()) { throw new IllegalArgumentException("semantic continuation stream is incomplete"); }
         var bodySettings = templates.getFirst().bodySettings(document.sections().getFirst().pageSettings());
-        layouter.validate(Footnotes.validationSource(new Document(document.metadata(), bodySettings, sources), notes, limits));
+        prepared.validateSources(bodySettings, sources, notes, limits, componentLimits);
         for (var bookmark : navigation.bookmarks()) { anchor(anchors, bookmark.blockId()); }
         var partial = new Plan(document, List.copyOf(sections), navigation, semantic, fonts, roles, Map.copyOf(anchors), List.copyOf(sources),
                 ModelRotations.of(sources), new ContentsLayouter.Result(List.of(), List.of(), List.of()), bodyPages);

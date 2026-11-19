@@ -11,6 +11,7 @@ import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.math.MathException;
 import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.DocumentTheme;
+import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.DocumentTemplate;
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.ExecutionOptions;
@@ -55,6 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Export4jTest {
     private static final String W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     private static final String M = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+    private static final String DC = "http://purl.org/dc/elements/1.1/";
     @TempDir Path directory;
 
     @Test void oneFontDeclarationServesAllSourceFormatsAndBothOutputs() throws Exception {
@@ -118,6 +120,34 @@ class Export4jTest {
                     .options(ContentOptions.builder().fontRole("undeclared").build())
                     .docx(new ByteArrayOutputStream()));
         }
+    }
+
+    @Test void xmlRootMetadataIsPreservedUnlessTheRequestExplicitlyOverridesIt() throws Exception {
+        String xml = "<document version='1' title='XML title' author='XML author'><p>Body</p></document>";
+        var family = FontFamily.of("Liberation Sans", source("LiberationSans-Regular.ttf"));
+        try (var exporter = Export4j.builder(family).build()) {
+            assertXmlMetadata(exporter.xml(xml, Map.of()), "XML title", "XML author");
+            String overriddenXml = "<document version='1' title='${unusedTitle}' author='${unusedAuthor}'><p>Body</p></document>";
+            assertXmlMetadata(exporter.xml(overriddenXml, Map.of())
+                    .metadata(new DocumentMetadata("Request title", "Request author")),
+                    "Request title", "Request author");
+            assertXmlMetadata(exporter.xml(xml, Map.of()).metadata(DocumentMetadata.EMPTY), "", "");
+        }
+    }
+
+    private static void assertXmlMetadata(Export4j.Request request, String title, String author) throws Exception {
+        var pdfOutput = new ByteArrayOutputStream();
+        request.pdf(pdfOutput);
+        try (var pdf = Loader.loadPDF(pdfOutput.toByteArray())) {
+            assertEquals(title, pdf.getDocumentInformation().getTitle());
+            assertEquals(author, pdf.getDocumentInformation().getAuthor());
+        }
+
+        var docxOutput = new ByteArrayOutputStream();
+        request.docx(docxOutput);
+        var core = partXml(docxOutput.toByteArray(), "docProps/core.xml");
+        assertEquals(title, core.getElementsByTagNameNS(DC, "title").item(0).getTextContent());
+        assertEquals(author, core.getElementsByTagNameNS(DC, "creator").item(0).getTextContent());
     }
 
     @Test void eachOperationReopensAnIdenticalFontSourceOnlyOnceAcrossVariantsAndFormulaText() throws Exception {

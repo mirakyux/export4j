@@ -38,6 +38,25 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 
 上例假设已显式配置 engine 的中文字体和 outputPath。加载文件时由调用方打开 Reader，再传给 `compile(reader)`；编译器不关闭借用 Reader，也没有文件路径或 URL 加载入口。日期、金额和本地化格式在传入数据前准备。
 
+## 复用已解析语法
+
+当前开发版可用 `XmlTemplate.prepare(String)`／`prepare(Reader)` 保存纯语法，再由 `compile(XmlTemplate.Syntax)` 应用本次配置：
+
+```java
+var syntax = XmlTemplate.builder()
+        .fragment("summary", "<fragment version='1'><p>${summary}</p></fragment>")
+        .build().prepare("<document version='1'><include ref='summary' prefix='main'/></document>");
+var compiler = XmlTemplate.builder().theme(theme).build();
+var first = compiler.compile(syntax).render(Map.of("summary", "First report"));
+var second = compiler.compile(syntax).render(Map.of("summary", "Second report"));
+```
+
+`Syntax` 是用户显式持有的不可变对象，可供并发编译；它只保留字符串、来源位置、静态片段展开与输入／解析／展开预算计数，不保留创建它的编译器、主题、图片、字体、内容解析器、业务数据或运行期 `DocumentTemplate`。准备时检查安全 XML、根／片段结构及解析／展开限额，不打开内容会话或计算公式。正文属性、表达式与资源键等语义仍在每次 `compile(syntax)` 中按当前配置校验；准备成功不等于完整模板语义已通过。
+
+片段在准备时固定展开，执行编译器的同名 `fragment` 不会替换计划中的片段。原主源与已登记片段的输入计数、源解析和展开计数及深度会重新按执行编译器的 `Limits` 检查，不能用较宽限额准备后绕过较窄执行限额。每次调用创建新编译状态，绑定继续使用当前 `bindingLimits` 和新的数据快照；源内容在每次绑定中打开新会话，保持累计预算、取消与关闭契约。
+
+原有 `compile(String/Reader)` 仍返回 `DocumentTemplate`，并经过相同语法准备与语义编译。包含动态源块的运行模板可能持有其内容解析器；不要把捕获单次数学编译会话的模板放入长期缓存。需要按次提供解析器、主题或资源时，复用 `Syntax`，由调用方决定生命周期；库不建立全局字符串缓存。统一入口提供对应的 [`prepareXml`／`xml(syntax, data)`](easy-export-api.md#xml-模板与数据)。
+
 ## Java 对象绑定
 
 当前开发版的 `DocumentTemplate.render(Object)` 接受 record 或 JavaBean 实例作为根数据，嵌套对象也可与 Map、List 混用，无须先转 JSON。`renderWithPageRegions`、`renderSections`、`renderComplete` 和统一入口 `Export4j.xml(template, data)` 使用相同规则；原有 `Map<String, ?>` 重载继续保留。
@@ -281,3 +300,5 @@ cell 可用固定正整数 column-span／row-span 声明语义矩形合并；静
 字段与图文外链的完整例子见 [references.xml](../examples/src/main/resources/templates/references.xml)、[原生 Word 字段模板](../examples/src/main/resources/templates/references-word.xml)及 [XmlReferencesExample](../examples/src/main/java/com/mirakyux/export4j/examples/XmlReferencesExample.java)。运行 `:examples:xmlReferences` 与 `python scripts/verify_xml_references.py`，检查目录偏移、四次实际表头值、静态编号目标、被动链接矩形及原生 OOXML；证据见[阶段二十二](verification/phase-22-text-and-adapters.md)。
 
 页区还支持同类静态共享来源 `source-id`／`source-ref`，用于保留跨节、变体和多位置复用关系；详见[共享来源](xml-page-regions-api.md#共享来源)及[模型保存](xml-model-saving-api.md)。
+
+显式 `Syntax` 复用、配置／预算重验及制品消费见[架构优化验收](verification/architecture-convergence.md)。

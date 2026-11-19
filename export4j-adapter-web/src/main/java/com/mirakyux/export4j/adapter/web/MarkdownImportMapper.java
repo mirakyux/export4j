@@ -58,7 +58,11 @@ final class MarkdownImportMapper {
     private final MarkdownImporter importer;
     private final ImportSupport.State state;
     private record Frame(Node node, int depth) { }
-    private record Context(InlineStyle style, String link, boolean strong, boolean emphasis) { }
+    private record Context(InlineStyle style, String link, boolean strong, boolean emphasis, String baseRole) {
+        private Context(InlineStyle style, String link, boolean strong, boolean emphasis) {
+            this(style, link, strong, emphasis, style.fontRole());
+        }
+    }
     MarkdownImportMapper(MarkdownImporter importer, ImportSupport.State state) { this.importer = importer; this.state = state; }
 
     Document map(Node root) {
@@ -101,7 +105,7 @@ final class MarkdownImportMapper {
             var headingFormat = indent(state.content == null ? com.mirakyux.export4j.model.Heading.defaultFormat(heading.getLevel())
                     : state.content.options.styles().heading(heading.getLevel()).paragraphFormat(), (quoteDepth + listDepth) * 18);
             var headingContext = state.content == null ? context(headingFormat)
-                    : new Context(state.content.headingStyle(heading.getLevel(), headingFormat.fontSize()), "", false, false);
+                    : context(state.content.headingStyle(heading.getLevel(), headingFormat.fontSize()));
             output.add(com.mirakyux.export4j.model.Heading.mixed(id,
                     inlines(node, headingContext, location), heading.getLevel(), headingFormat));
         } else if (node instanceof ListBlock list) {
@@ -207,14 +211,13 @@ final class MarkdownImportMapper {
             }
         }
         // A header-only table has no repetition boundary. Keep its actual rows once; never invent
-        // an empty body row. Header cell text already retains the input's inline appearance.
+        // an empty body row. Default emphasis applies only to runs with no explicit font role.
         if (rows.size() == headers) {
             headers = 0;
             for (int row = 0; row < rows.size(); row++) {
                 var cells = new ArrayList<TableCell>();
                 for (var cell : rows.get(row).cells()) {
-                    var runs = cell.inlines().stream().map(text -> new InlineText(text.text(),
-                            text.style().toBuilder().fontRole(importer.strongRole).build(), text.hyperlink())).toList();
+                    var runs = cell.inlines().stream().map(text -> headerDefault(text)).toList();
                     cells.add(new TableCell(cell.text(), cell.format(), runs, cell.images(), cell.fields(), cell.vectors(),
                             cell.columnSpan(), cell.rowSpan(), cell.blocks()));
                 }
@@ -224,6 +227,12 @@ final class MarkdownImportMapper {
         var widths = new ArrayList<ColumnWidth>();
         for (int column = 0; column < columns; column++) { widths.add(new ColumnWidth.Fraction(1)); }
         output.add(new Table(id, widths, rows, headers, state.content == null ? TableFormat.DEFAULT : state.content.options.tableFormat()));
+    }
+    /** A header-only table has no repeatable header boundary, so its plain runs need the
+     * header's default emphasis. Explicit inline roles remain authoritative. */
+    private InlineText headerDefault(InlineText text) {
+        if (!text.style().fontRole().isEmpty()) { return text; }
+        return new InlineText(text.text(), text.style().toBuilder().fontRole(importer.strongRole).build(), text.hyperlink());
     }
     private List<InlineContent> inlines(Node parent, Context context, ProcessingIssue.Location location) {
         var output = new ArrayList<InlineContent>();
@@ -235,10 +244,12 @@ final class MarkdownImportMapper {
             else if (node instanceof StrongEmphasis || node instanceof Emphasis) {
                 boolean strong = context.strong() || node instanceof StrongEmphasis;
                 boolean emphasis = context.emphasis() || node instanceof Emphasis;
-                var style = context.style().toBuilder().fontRole(strong && emphasis ? importer.combinedRole : strong ? importer.strongRole : importer.emphasisRole).build();
-                output.addAll(inlines(node, new Context(style, context.link(), strong, emphasis), at));
+                String role = state.content == null ? strong && emphasis ? importer.combinedRole : strong ? importer.strongRole : importer.emphasisRole
+                        : state.content.fontFamily(context.baseRole()).roles().get((strong ? 1 : 0) + (emphasis ? 2 : 0));
+                var style = context.style().toBuilder().fontRole(role).build();
+                output.addAll(inlines(node, new Context(style, context.link(), strong, emphasis, context.baseRole()), at));
             } else if (node instanceof Strikethrough) {
-                output.addAll(inlines(node, new Context(context.style().toBuilder().strikeThrough(true).build(), context.link(), context.strong(), context.emphasis()), at));
+                output.addAll(inlines(node, new Context(context.style().toBuilder().strikeThrough(true).build(), context.link(), context.strong(), context.emphasis(), context.baseRole()), at));
             } else if (node instanceof Code code) {
                 var style = state.content == null ? context.style().toBuilder().fontRole(importer.codeRole).build() : context.style();
                 // Code is literal text: dollar delimiters and markup are never reinterpreted.
@@ -246,7 +257,7 @@ final class MarkdownImportMapper {
             } else if (node instanceof Link link) {
                 String destination = link(link.getDestination(), at);
                 if (link.getTitle() != null && !link.getTitle().isEmpty()) { loss("LINK_TITLE", at, "model has no hyperlink title", "LINK_TITLE_REMOVED"); }
-                output.addAll(inlines(node, new Context(context.style(), destination, context.strong(), context.emphasis()), at));
+                output.addAll(inlines(node, new Context(context.style(), destination, context.strong(), context.emphasis(), context.baseRole()), at));
             } else if (node instanceof Image image) {
                 var resource = importer.images.get(image.getDestination());
                 var vector = importer.vectors.get(image.getDestination());
@@ -312,8 +323,13 @@ final class MarkdownImportMapper {
         boolean discard = state.policy.resolve("MARKDOWN", feature, "IMPORT").treatment() == Treatment.DISCARD;
         return state.unsupported(feature, location, reason, List.of(discard ? "CONTENT_REMOVED" : effect), Treatment.DEGRADE, Treatment.DISCARD);
     }
-    private Context context(ParagraphFormat format) { return new Context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.style(format.fontSize()), "", false, false); }
-    private Context context(CellFormat format) { return new Context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.cellStyle(format.fontSize()), "", false, false); }
+    private Context context(InlineStyle style) {
+        if (state.content == null) { return new Context(style, "", false, false); }
+        var family = state.content.initialFontFamily(style.fontRole());
+        return new Context(style, "", family.bold(), family.italic(), family.roles().getFirst());
+    }
+    private Context context(ParagraphFormat format) { return context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.style(format.fontSize())); }
+    private Context context(CellFormat format) { return context(state.content == null ? InlineStyle.of(format.fontSize()) : state.content.cellStyle(format.fontSize())); }
     private static ParagraphFormat indent(ParagraphFormat format, double amount) {
         return format.toBuilder().firstLineIndent(format.firstLineIndent() + amount).subsequentLineIndent(format.subsequentLineIndent() + amount).build();
     }

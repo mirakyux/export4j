@@ -7,6 +7,9 @@ import com.mirakyux.export4j.adapter.docx.DocxMathDocument;
 import com.mirakyux.export4j.adapter.web.ImportLimits;
 import com.mirakyux.export4j.adapter.template.XmlTemplate;
 import com.mirakyux.export4j.model.BulletItem;
+import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.ColumnFlow;
+import com.mirakyux.export4j.model.ColumnWidth;
 import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.ExecutionContext;
@@ -16,6 +19,9 @@ import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
+import com.mirakyux.export4j.model.TableCell;
+import com.mirakyux.export4j.model.TableFormat;
+import com.mirakyux.export4j.model.TableRow;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
@@ -157,6 +163,84 @@ class MathContentTest {
         });
         assertEquals(plain, result.document().blocks().getFirst());
         assertEquals(1, result.docx().equations().size());
+    }
+
+    @Test void relativeWeightsAreNormalizedBeforeFormulaFitting() throws Exception {
+        var tableResult = MathContent.builder().build().compileVisual(importer -> {
+            var parsed = (Paragraph) importer.read("$x$").execute().document().blocks().getFirst();
+            var cell = TableCell.builder().content(parsed.content()).format(CellFormat.of(12)).build();
+            var table = new Table("weighted", List.of(new com.mirakyux.export4j.model.ColumnWidth.Fraction(1e308),
+                    new com.mirakyux.export4j.model.ColumnWidth.Fraction(1e308)),
+                    List.of(new TableRow(List.of(cell, new TableCell("other", CellFormat.of(12))))), 0,
+                    TableFormat.DEFAULT);
+            return Document.builder().add(table).build();
+        });
+        assertEquals(1, tableResult.formulas().size());
+
+        var columnsResult = MathContent.builder().build().compileVisual(importer -> {
+            var parsed = (Paragraph) importer.read("$x$").execute().document().blocks().getFirst();
+            return Document.builder().add(ColumnFlow.builder("weighted-columns")
+                    .columnWeights(List.of(1e308, 1e308)).add(parsed).build()).build();
+        });
+        assertEquals(1, columnsResult.formulas().size());
+    }
+
+    @Test void formulaFittingSharesSingleAndMixedFixedColumnsAcrossEquivalentWeightScales() throws Exception {
+        for (double weight : new double[] {Double.MIN_VALUE, 1, 1e308}) {
+            for (int count : new int[] {1, 2}) {
+                var result = MathContent.builder().build().compileVisual(importer -> {
+                    var parsed = (Paragraph) importer.read("$x$").execute().document().blocks().getFirst();
+                    var cell = TableCell.builder().content(parsed.content()).format(CellFormat.of(12)).build();
+                    var columns = new java.util.ArrayList<ColumnWidth>();
+                    var cells = new java.util.ArrayList<TableCell>();
+                    columns.add(new ColumnWidth.Fixed(40)); cells.add(new TableCell("fixed", CellFormat.of(12)));
+                    for (int index = 0; index < count; index++) {
+                        columns.add(new ColumnWidth.Fraction(weight));
+                        cells.add(index == 0 ? cell : new TableCell("other", CellFormat.of(12)));
+                    }
+                    return Document.builder().add(new Table("weighted", columns, List.of(new TableRow(cells)), 0, TableFormat.DEFAULT)).build();
+                });
+                assertEquals(1, result.formulas().size());
+                assertTrue(result.degradations().isEmpty());
+            }
+        }
+    }
+
+    @Test void formulaFittingRejectsUnrepresentableFractionWidthsAndEmptyFixedRemainders() {
+        for (var columns : List.of(
+                List.<ColumnWidth>of(new ColumnWidth.Fraction(Double.MIN_VALUE), new ColumnWidth.Fraction(Double.MAX_VALUE)),
+                List.<ColumnWidth>of(new ColumnWidth.Fixed(com.mirakyux.export4j.model.PageSettings.A4.contentWidth()), new ColumnWidth.Fraction(1)))) {
+            assertThrows(IllegalArgumentException.class, () -> MathContent.builder().build().compileVisual(importer -> {
+                var parsed = (Paragraph) importer.read("$x$").execute().document().blocks().getFirst();
+                var cell = TableCell.builder().content(parsed.content()).format(CellFormat.of(12)).build();
+                return Document.builder().add(new Table("weighted", columns,
+                        List.of(new TableRow(List.of(new TableCell("other", CellFormat.of(12)), cell))), 0, TableFormat.DEFAULT)).build();
+            }));
+        }
+    }
+
+    @Test void formulaProjectionDoesNotResolveUnusedColumnWidths() throws Exception {
+        var columns = com.mirakyux.export4j.model.ColumnFlow.builder("plain-columns")
+                .gap(1_000).columnWeights(List.of(1e308, 1e308))
+                .add(new Paragraph("plain", "ordinary text", com.mirakyux.export4j.model.ParagraphFormat.of(12))).build();
+        var result = MathContent.builder().build().compileVisual(importer -> Document.builder().add(columns).build());
+        assertEquals(columns, result.document().blocks().getFirst());
+        assertTrue(result.formulas().isEmpty());
+    }
+
+    @Test void deferredFormulaFontBudgetCannotBeSwallowedByTextFallback() throws Exception {
+        byte[] sourceFont;
+        try (var input = MathContentTest.class.getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
+            assertTrue(input != null);
+            sourceFont = input.readAllBytes();
+        }
+        byte[] padded = new byte[22 * 1024 * 1024];
+        System.arraycopy(sourceFont, 0, padded, 0, sourceFont.length);
+        var fonts = MathTextFonts.deferred(() -> MathTextFonts.of(padded, padded, padded));
+        var math = MathContent.builder().textFonts(fonts).fallbacks(List.of(MathContent.Fallback.TEXT)).build();
+
+        var failure = assertThrows(MathException.class, () -> math.readVisual("$\\text{Body}$"));
+        assertEquals(MathException.Reason.LIMIT_EXCEEDED, failure.reason());
     }
 
     @Test void nativeWordSizeRestrictionsUseTheDeclaredRepresentationCandidates() throws Exception {

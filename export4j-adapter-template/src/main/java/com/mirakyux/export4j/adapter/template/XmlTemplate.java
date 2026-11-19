@@ -225,15 +225,55 @@ public final class XmlTemplate {
         }
     }
 
-    /** Compiles a complete source snapshot. Unknown syntax and all errors fail before returning a template. */
-    public DocumentTemplate compile(String source) {
+    /** User-owned immutable parsed XML and expanded static includes. Contains only strings, source
+     * locations and structural budget counts; never retains a compiler, content parser, resources,
+     * theme, data, fonts or a bound template. Preparation checks safe XML, root/include structure and
+     * parse/expansion limits. Content-specific attributes, expressions and resource keys are validated
+     * again by the executing compiler, whose configuration is not captured by this value.
+     */
+    public static final class Syntax {
+        private final Element root;
+        private final long input, sourceElements, sourceText, expandedElements, expandedText;
+        private final int expandedDepth;
+        private Syntax(Element root, long input, Expansion expansion) {
+            this.root = root; this.input = input;
+            sourceElements = expansion.sourceBudget.elements; sourceText = expansion.sourceBudget.text;
+            expandedElements = expansion.elements; expandedText = expansion.text;
+            expandedDepth = expansion.maximumDepth;
+        }
+    }
+
+    /** Prepares static XML syntax under this compiler's limits and fragment registry. No content
+     * session is opened and no resource or formula is evaluated. The returned syntax owns its static
+     * include expansion; later compilers' fragment registries do not alter it.
+     */
+    public Syntax prepare(String source) {
         Objects.requireNonNull(source, "source");
         ExecutionContext.checkpoint();
         if (source.length() + fragmentInputCharacters > limits.maxInputCharacters()) {
             throw failure(Code.BUDGET_EXCEEDED, 1, 1);
         }
-        var expanded = new Expansion().expand(source);
-        return validated(expanded, () -> new Compiler().compile(expanded));
+        var expansion = new Expansion();
+        var expanded = expansion.expand(source);
+        return new Syntax(expanded, source.length() + fragmentInputCharacters, expansion);
+    }
+
+    /** Compiles a complete source snapshot. Unknown syntax and all errors fail before returning a template. */
+    public DocumentTemplate compile(String source) { return compile(prepare(source)); }
+
+    /** Reuses parsed syntax while applying this compiler's current theme, resources, parser and
+     * binding limits. Original input and parsing/expansion work are rechecked against current limits;
+     * each call owns fresh compiler state, and the resulting runtime template is not retained by syntax.
+     */
+    public DocumentTemplate compile(Syntax syntax) {
+        Objects.requireNonNull(syntax, "syntax");
+        ExecutionContext.checkpoint();
+        if (syntax.input > limits.maxInputCharacters() || syntax.sourceElements > limits.maxElements()
+                || syntax.sourceText > limits.maxTextCodePoints() || syntax.expandedElements > limits.maxElements()
+                || syntax.expandedText > limits.maxTextCodePoints() || syntax.expandedDepth > limits.maxDepth()) {
+            throw failure(Code.BUDGET_EXCEEDED, 1, 1);
+        }
+        return validated(syntax.root, () -> new Compiler().compile(syntax.root));
     }
 
     /** Reads at most the UTF-16 input allowance remaining after all registered sources, plus one unit;
@@ -241,6 +281,11 @@ public final class XmlTemplate {
      * Reader I/O errors propagate unchanged. Caller-supplied readers are trusted code and must cooperate with cancellation.
      */
     public DocumentTemplate compile(Reader source) throws IOException {
+        return compile(prepare(source));
+    }
+
+    /** Prepares a bounded borrowed reader using the same static-syntax contract as {@link #prepare(String)}. */
+    public Syntax prepare(Reader source) throws IOException {
         Objects.requireNonNull(source, "source");
         ExecutionContext.checkpoint();
         long remaining = limits.maxInputCharacters() - fragmentInputCharacters;
@@ -262,7 +307,7 @@ public final class XmlTemplate {
                 text.append(buffer, 0, count);
             }
         }
-        return compile(text.toString());
+        return prepare(text.toString());
     }
 
     private sealed interface Part permits Element, Text { }
@@ -382,6 +427,7 @@ public final class XmlTemplate {
         private final ArrayDeque<String> expanding = new ArrayDeque<>();
         private long elements;
         private long text;
+        private int maximumDepth;
 
         private Element expand(String source) {
             var root = read(source, "", sourceBudget, null);
@@ -530,6 +576,7 @@ public final class XmlTemplate {
 
         private void countElement(Element source, int depth, Element include) {
             ExecutionContext.checkpoint();
+            maximumDepth = Math.max(maximumDepth, depth);
             if (++elements > limits.maxElements() || depth > limits.maxDepth()) {
                 throw expansionError(source, include);
             }

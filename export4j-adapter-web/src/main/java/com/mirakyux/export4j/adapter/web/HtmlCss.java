@@ -42,6 +42,11 @@ final class HtmlCss {
         boolean relativeLine;
         boolean bold;
         boolean italic;
+        boolean roleBold;
+        boolean roleItalic;
+        boolean explicitWeight;
+        boolean explicitFontStyle;
+        boolean ambiguousRoles;
         boolean underline;
         boolean strike;
         boolean pre;
@@ -74,6 +79,9 @@ final class HtmlCss {
         Computed(Computed parent) {
             size = parent.size; explicitSize = parent.explicitSize; line = parent.line; relativeLine = parent.relativeLine;
             bold = parent.bold; italic = parent.italic; underline = parent.underline; strike = parent.strike;
+            roleBold = parent.roleBold; roleItalic = parent.roleItalic;
+            explicitWeight = parent.explicitWeight; explicitFontStyle = parent.explicitFontStyle;
+            ambiguousRoles = parent.ambiguousRoles;
             pre = parent.pre; hidden = parent.hidden; roles = parent.roles; color = parent.color; alignment = parent.alignment;
             orphans = parent.orphans; widows = parent.widows;
             contentDefaults = parent.contentDefaults; explicitLine = parent.explicitLine; explicitAlignment = parent.explicitAlignment;
@@ -82,7 +90,10 @@ final class HtmlCss {
         }
         double lineHeight() { return relativeLine ? size * line : line; }
         InlineStyle inline() {
-            return new InlineStyle(roles.get((bold ? 1 : 0) + (italic ? 2 : 0)), size, color, 0, underline, strike);
+            if (ambiguousRoles && (bold || italic || roleBold || roleItalic || explicitWeight || explicitFontStyle)) {
+                throw new IllegalArgumentException("content font role has ambiguous family variants");
+            }
+            return new InlineStyle(roles.get((bold || roleBold ? 1 : 0) + (italic || roleItalic ? 2 : 0)), size, color, 0, underline, strike);
         }
         ParagraphFormat paragraph(ParagraphFormat base, double extraIndent) {
             if (semanticFormat != null) { base = semanticFormat; }
@@ -148,7 +159,7 @@ final class HtmlCss {
             parent = new Computed(importer.format);
             if (state.content != null) {
                 var options = state.content.options;
-                parent.roles = List.of(options.fontRole(), "bold", "italic", "boldItalic"); parent.color = options.rgb();
+                defaultRoles(parent, options.fontRole()); parent.color = options.rgb();
                 parent.alignment = importer.format.alignment(); parent.line = importer.format.lineHeight(); parent.relativeLine = false;
                 parent.contentDefaults = true; parent.orphans = importer.format.pagination().minLinesBeforeBreak(); parent.widows = importer.format.pagination().minLinesAfterBreak();
             }
@@ -163,7 +174,7 @@ final class HtmlCss {
                 if (!parent.explicitLine) { value.line = cell.lineHeight(); value.relativeLine = false; }
                 if (!parent.explicitAlignment) { value.alignment = cell.alignment(); }
                 var appearance = state.content.options.styles().cellText();
-                if (!parent.explicitRoles) { value.roles = List.of(appearance.fontRole(), "bold", "italic", "boldItalic"); }
+                if (!parent.explicitRoles) { defaultRoles(value, appearance.fontRole()); }
                 if (!parent.explicitColor) { value.color = appearance.rgb(); }
             } else if (tag.matches("h[1-6]")) {
                 var heading = state.content.options.styles().heading(tag.charAt(1) - '0');
@@ -171,7 +182,7 @@ final class HtmlCss {
                 if (!parent.explicitSize) { value.size = format.fontSize(); }
                 if (!parent.explicitLine) { value.line = format.lineHeight(); value.relativeLine = false; }
                 if (!parent.explicitAlignment) { value.alignment = format.alignment(); }
-                if (!parent.explicitRoles) { value.roles = List.of(heading.text().fontRole(), "bold", "italic", "boldItalic"); }
+                if (!parent.explicitRoles) { defaultRoles(value, heading.text().fontRole()); }
                 if (!parent.explicitColor) { value.color = heading.text().rgb(); }
                 if (!parent.explicitOrphans) { value.orphans = format.pagination().minLinesBeforeBreak(); }
                 if (!parent.explicitWidows) { value.widows = format.pagination().minLinesAfterBreak(); }
@@ -195,6 +206,12 @@ final class HtmlCss {
         for (var declaration : winners.values()) { apply(value, declaration, element, parent); }
         if (value.indent + value.first < 0) { throw new IllegalArgumentException("HTML text indentation is negative"); }
         computed.put(element, value); return value;
+    }
+    private void defaultRoles(Computed value, String role) {
+        var family = state.content.initialFontFamily(role);
+        value.roles = family.roles();
+        value.ambiguousRoles = family.ambiguous();
+        value.roleBold = !value.explicitWeight && family.bold(); value.roleItalic = !value.explicitFontStyle && family.italic();
     }
     private static void select(Map<String, Declaration> winners, Declaration candidate) {
         var old = winners.get(candidate.name());
@@ -254,12 +271,12 @@ final class HtmlCss {
                     else if (text.matches("[0-9]+(?:\\.[0-9]+)?")) { value.line = positive(Double.parseDouble(text)); value.relativeLine = true; }
                     else { value.line = positive(length(text)); value.relativeLine = false; }
                 }
-                case "font-weight" -> { if (!Set.of("normal", "bold", "400", "700").contains(text)) { throw new IllegalArgumentException(); } value.bold = text.equals("bold") || text.equals("700"); }
-                case "font-style" -> { if (!Set.of("normal", "italic").contains(text)) { throw new IllegalArgumentException(); } value.italic = text.equals("italic"); }
+                case "font-weight" -> { if (!Set.of("normal", "bold", "400", "700").contains(text)) { throw new IllegalArgumentException(); } value.bold = text.equals("bold") || text.equals("700"); value.roleBold = false; value.explicitWeight = true; }
+                case "font-style" -> { if (!Set.of("normal", "italic").contains(text)) { throw new IllegalArgumentException(); } value.italic = text.equals("italic"); value.roleItalic = false; value.explicitFontStyle = true; }
                 case "font-family" -> {
                     String family = text.replaceAll("^['\"]|['\"]$", "");
                     var roles = importer.families.get(family); if (roles == null) { unsupported(owner, "CSS_FONT_FAMILY", "CSS family is not explicitly mapped to a font role"); }
-                    else { value.roles = roles; value.explicitRoles = true; }
+                    else { value.roles = roles; value.explicitRoles = true; value.ambiguousRoles = false; }
                 }
                 case "color" -> { value.color = color(text); value.explicitColor = true; }
                 case "text-align" -> { value.alignment = ParagraphAlignment.valueOf(text.toUpperCase(Locale.ROOT)); value.explicitAlignment = true; }

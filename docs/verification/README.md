@@ -11,6 +11,7 @@
 | 混合内容、格内公式、PDF／DOCX 表示及真实文献 | [富内容编译](rich-content.md) |
 | TeX／Markdown 识别、矢量与原生数学 | [公式模块](math.md) · [行内矢量](inline-vectors.md) · [学术模板](manuweave-templates.md) |
 | 缓存容量、独占租约和空闲释放 | [字体缓存](font-cache.md) |
+| 跨入口比例、字体角色、语法复用与测量状态 | [架构优化接入](architecture-convergence.md) |
 | 原生 OpenType 与静态 CFF | [原生字体](native-opentype.md) |
 | 文件、资源、字体、页面与转换短入口 | [API 易用性](api-ergonomics.md) |
 | 普通模型的逐页输出 | [逐页导出](paged-document-export.md) |

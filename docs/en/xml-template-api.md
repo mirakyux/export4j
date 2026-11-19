@@ -37,6 +37,25 @@ engine.export(document).backend(new PdfBackend()).to(outputPath);
 ~~~
 The example assumes explicit Chinese fonts on engine and a supplied outputPath. For file loading, the caller opens a Reader and passes it to `compile(reader)`. The compiler does not close the borrowed Reader and has no file-path or URL-loading API. Prepare dates, amounts, and localized formatting before supplying data.
 
+## Reusing parsed syntax
+
+The development version supports `XmlTemplate.prepare(String)`/`prepare(Reader)` followed by `compile(XmlTemplate.Syntax)` with the current execution configuration:
+
+```java
+var syntax = XmlTemplate.builder()
+        .fragment("summary", "<fragment version='1'><p>${summary}</p></fragment>")
+        .build().prepare("<document version='1'><include ref='summary' prefix='main'/></document>");
+var compiler = XmlTemplate.builder().theme(theme).build();
+var first = compiler.compile(syntax).render(Map.of("summary", "First report"));
+var second = compiler.compile(syntax).render(Map.of("summary", "Second report"));
+```
+
+`Syntax` is an immutable object explicitly retained by its owner and suitable for concurrent compilation. It contains strings, source locations, static include expansion, and input/parsing/expansion budget counts. It retains no compiler, theme, images, fonts, content parser, data, or runtime `DocumentTemplate`. Preparation checks safe XML, root/include structure, and parsing/expansion limits without opening a content session or evaluating formulas. Every `compile(syntax)` still validates content attributes, expressions, resource keys, and other semantics under the current configuration. Successful preparation does not establish complete semantic validity.
+
+Fragments are fixed during preparation; another compiler's fragment registry cannot replace them. Original main/registered-fragment input, source parsing, expanded counts, and depth are rechecked against the executing compiler's `Limits`, so a plan prepared under wider limits cannot bypass tighter execution limits. Each compile has fresh state. Binding uses current `bindingLimits` and a new data snapshot; source content opens a new session per binding and retains its cumulative budget, cancellation, and closing contracts.
+
+Existing `compile(String/Reader)` still returns a `DocumentTemplate` through the same preparation and semantic compilation. A runtime template with dynamic source blocks may retain its configured parser; do not cache a template capturing one mathematical compilation session. Reuse `Syntax` when parsers, themes, or resources must be supplied per execution. The library has no global string cache. The unified entry exposes corresponding [`prepareXml`/`xml(syntax, data)` calls](easy-export-api.md#xml-and-data).
+
 ## Java objects
 
 The development version adds `DocumentTemplate.render(Object)` for a record or JavaBean root. Nested objects can mix with Maps and Lists without converting through JSON. `renderWithPageRegions`, `renderSections`, `renderComplete`, and the unified `Export4j.xml(template, data)` entry use the same rules; existing `Map<String, ?>` overloads remain available.

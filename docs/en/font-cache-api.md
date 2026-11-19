@@ -14,6 +14,10 @@ These limits bound retained source weight, not total heap, native storage or RSS
 
 Existing `TrueTypeFontLoader.load` overloads use the shared cache by default. Keys are content SHA-256, with private input snapshots. Paths are reread; a matching path or timestamp cannot hide changed bytes. Every call checks its byte limit, including hits. Borrowed streams stay caller-owned. Failed parses and permission failures are not cached.
 
+`FontSource.bytes(...)` creates an internal `SnapshotFontSource` holding a private encoded snapshot and its SHA-256 identity. Later loads reuse that immutable identity; callers cannot independently supply bytes and an asserted digest. Public `FontFaceCache.load(byte[])` still protects external arrays on every call. File and class-resource sources continue reading on each load, so the snapshot path cannot hide file changes.
+
+Input reads, snapshot hashing, and cold parsing execute outside the cache lock. The lock coordinates hits, capacity, retirement, and result registration. Bounded same-key pending entries share an in-progress parse result. Coordination entries and source bytes have their own bounds using the cache configuration; calls exceeding those bounds parse independently under existing budgets. This does not cap the total memory of all concurrent parsing in an application.
+
 ```java
 try (var fonts = FontFaceCache.builder()
         .maxEntries(8)
@@ -28,6 +32,8 @@ try (var fonts = FontFaceCache.builder()
 ```
 
 Use `com.mirakyux.export4j.font.FontFaceCache`, `java.time.Duration` and `java.nio.file.Path`. Instance `stats()` is passive, `clear()` drops entries and `close()` rejects future loads. `TrueTypeFontLoader.cacheStats()` / `clearCache()` observe or clear the default cache. An instance built with `enabled(false)` parses without retention.
+
+`clear()` removes retained faces and retires parses already registered at that moment. Those parses may still return a face to their callers, but cannot retain that result. Clear does not cancel reads or hashing outside the lock: a call not yet registered may register after clear and become resident, as may future calls. `close()` also rejects new loads. Parsing already underway may return to its original caller without retaining its result. Neither operation invalidates faces already returned.
 
 ## Long-lived services
 
@@ -65,6 +71,8 @@ try (var programs = PdfFontCache.builder()
 ```
 
 Use `com.mirakyux.export4j.backend.pdf.PdfFontCache` / `PdfBackend`. Backends borrow custom pools; callers close them. Spooling accepts `new PdfSpoolBackend(directory, pageLimits, spoolLimits, programs)`. `PdfFontCache.defaultStats()` / `clearDefault()` observe or clear the default pool. `enabled(false)` retains the export algorithm while disabling retention.
+
+The unified entry can borrow the same backend and pool with `Export4j.builder(family).pdfBackend(backend)`. Closing the exporter does not close a caller-owned pool. See the [unified entry configuration](easy-export-api.md#lifetime-budgets-and-output). Encoded snapshots, operation-local font bindings, and PDF program leases are separate layers; shared font caches do not retain PDF documents.
 
 Clear/close remove idle entries; active entries are retired only after their borrowers finish. Closed pools reject new borrows. Failed or cancelled exports do not return unverified programs for later reuse. Asynchronous cleanup failures are observable through statistics and subsequent operations.
 

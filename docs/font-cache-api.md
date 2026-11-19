@@ -16,6 +16,10 @@
 
 原有 `TrueTypeFontLoader.load` 重载默认启用共享缓存。缓存按字体内容 SHA-256 匹配；文件每次重新读取并核对内容，不能只凭路径、文件名或修改时间命中。每次调用仍检查 `maxBytes`，调用方数组及可覆写流返回的数组先快照，借用流仍由调用方关闭。非法字体、嵌入许可失败及预算失败不进入缓存。
 
+`FontSource.bytes(...)` 在创建时用内部 `SnapshotFontSource` 保存私有编码快照及其 SHA-256 标识，后续加载复用这份不可变内容身份；调用方不能分别提供字节和摘要。公开 `FontFaceCache.load(byte[])` 仍每次保护外部数组，不按调用方对象身份信任内容。文件和类资源来源继续按次读取，不能用该快照路径掩盖文件变化。
+
+输入读取、快照摘要和冷解析在缓存锁外执行，锁只协调命中、容量、失效与结果登记。有界的同键待加载项可共享正在解析的结果；协调条目及源字节另受缓存配置限制，超过协调容量的调用仍按原预算独立解析，不转成无界排队或拒绝有效字体。该机制不等于限制整个应用所有并发解析的总内存。
+
 ```java
 import com.mirakyux.export4j.font.FontFaceCache;
 import java.nio.file.Path;
@@ -35,6 +39,8 @@ try (var fonts = FontFaceCache.builder()
 ```
 
 实例缓存支持 `stats()`、`clear()`、`close()`，关闭后新加载明确失败。`TrueTypeFontLoader.cacheStats()` 和 `clearCache()` 分别观察／清空默认加载缓存；不会关闭调用方持有的字体。需要独立解析对照时使用 `FontFaceCache.builder().enabled(false).build()`。
+
+`clear()` 移除已驻留字体并退休当时已登记的解析任务：任务可继续为已有调用方返回结果，但不再把该结果放回缓存。它不取消锁外的读取或摘要计算；尚未登记的并发调用可在清空后登记并重新驻留，后续新调用也可重新填充。`close()` 另外拒绝新加载；已开始的解析可完成并向原调用方返回，但不能再驻留。清空和关闭都不会使已返回字体失效。
 
 ## 长期服务的字体来源
 
@@ -77,6 +83,8 @@ try (var programs = PdfFontCache.builder()
 
 后端借用自定义缓存，不负责关闭它。流式入口可使用 `new PdfSpoolBackend(directory, pageLimits, spoolLimits, programs)`。默认池由 `PdfFontCache.defaultStats()`／`clearDefault()` 观察和清空；`enabled(false)` 保留同一输出流程并关闭跨导出驻留。
 
+统一入口也可通过 `Export4j.builder(family).pdfBackend(backend)` 借用该后端及解析池；关闭 exporter 不关闭调用方的池。配置示例见[统一入口](easy-export-api.md#生命周期、预算与输出)。字体快照、操作期绑定和 PDF 解析租约是不同层级，不把 PDF 文档对象放入共享字体缓存。
+
 `clear()`／`close()` 立即移除空闲项，在用项等最后一次借用归还后销毁；不会在输出中途关闭字体。实例关闭后不再接受新借用。失败或取消的导出不会把未确认可复用的解析对象交给后续导出。异步清理失败可通过统计观察，并在后续操作中显式报告。
 
 ## 释放与边界
@@ -88,3 +96,5 @@ try (var programs = PdfFontCache.builder()
 本次不添加系统字体发现、字体替代、持久化解析对象、字体文件变更监听或全格式字体解析池。静态 CFF、TTC、可变／彩色字体继续遵循各自既有入口和预算，不能从水平 TrueType 复用外推收益。
 
 验证命令与实际结果见[字体缓存验收](verification/font-cache.md)，资源所有权决定见 [ADR-0114](adr/0114-idle-expiring-font-caches.md)。
+
+不可变 bytes 来源标识复用与锁外冷解析的接入证据见[架构优化验收](verification/architecture-convergence.md)。

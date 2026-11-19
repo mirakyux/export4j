@@ -8,6 +8,7 @@ import com.mirakyux.export4j.math.MathException;
 import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.DocumentTheme;
+import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineImage;
 import java.awt.image.BufferedImage;
@@ -53,6 +54,8 @@ public final class EasyExportConsumer {
             <p>HTML-ENTRY 中文正文 with <strong>bold</strong> text and $x^2$.</p>
             <p><img src="sample:badge" alt="badge"/> Explicit resource.</p>
             """;
+    private static final String XML_METADATA_ROOT = "<document version='1' title='XML root title' author='XML root author'><p>Metadata body</p></document>";
+    private static final String XML_METADATA_OVERRIDE = "<document version='1' title='${missingTitle}' author='${missingAuthor}'><p>Metadata body</p></document>";
     private static final String LITERAL = "TEXT-ENTRY 中文 **literal** <b>HTML</b> $x^2$";
 
     private EasyExportConsumer() { }
@@ -81,6 +84,16 @@ public final class EasyExportConsumer {
             requireResult(exporter.xml(XML, new TemplateData(SOURCE)).docx(output.resolve("xml-record.docx")), 5);
             requireResult(exporter.xml(XML, new TemplateBean(SOURCE)).pdf(output.resolve("xml-bean.pdf")), 5);
             requireResult(exporter.xml(XML, new TemplateBean(SOURCE)).docx(output.resolve("xml-bean.docx")), 5);
+            var rootMetadata = exporter.xml(XML_METADATA_ROOT, Map.of());
+            rootMetadata.pdf(output.resolve("xml-metadata-root.pdf"));
+            rootMetadata.docx(output.resolve("xml-metadata-root.docx"));
+            var requestMetadata = exporter.xml(XML_METADATA_OVERRIDE, Map.of())
+                    .metadata(new DocumentMetadata("Request title", "Request author"));
+            requestMetadata.pdf(output.resolve("xml-metadata-override.pdf"));
+            requestMetadata.docx(output.resolve("xml-metadata-override.docx"));
+            var emptyMetadata = exporter.xml(XML_METADATA_ROOT, Map.of()).metadata(DocumentMetadata.EMPTY);
+            emptyMetadata.pdf(output.resolve("xml-metadata-empty.pdf"));
+            emptyMetadata.docx(output.resolve("xml-metadata-empty.docx"));
             requireResult(exporter.html(HTML).pdf(output.resolve("html.pdf")), 1);
             requireResult(exporter.html(HTML).docx(output.resolve("html.docx")), 1);
             requireResult(exporter.text(LITERAL).pdf(output.resolve("text.pdf")), 0);

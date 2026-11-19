@@ -86,6 +86,11 @@ public final class MarkdownImportExample {
                 .fontRole("code", regular).build();
         engine.export(edited).backend(new PdfBackend()).to(output.resolve("report.pdf"));
         try (var stream = Files.newOutputStream(output.resolve("report.docx"))) { new DocxAdapter().write(edited, stream); }
+        String headerOnlySource = "| ONLY-HEADER-PLAIN *ONLY-HEADER-ITALIC* **ONLY-HEADER-BOLD** "
+                + "***ONLY-HEADER-BOTH*** `ONLY-HEADER-CODE` |\n|---|";
+        var headerOnly = MarkdownImporter.builder().build().read(headerOnlySource).execute().document();
+        engine.export(headerOnly).backend(new PdfBackend()).to(output.resolve("header-only.pdf"));
+        try (var stream = Files.newOutputStream(output.resolve("header-only.docx"))) { new DocxAdapter().write(headerOnly, stream); }
         var exportPolicy = ExportPolicy.builder().defaultAction(UnsupportedAction.WARN).build();
         HtmlAdapter.builder().policy(exportPolicy).fontRole("bold", new FontStyle("sans-serif", 700, false))
                 .fontRole("italic", new FontStyle("sans-serif", 400, true)).fontRole("boldItalic", new FontStyle("sans-serif", 700, true))

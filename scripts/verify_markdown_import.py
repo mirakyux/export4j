@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import base64
+import argparse
 import csv
 from importlib.metadata import version
 import json
 from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 
@@ -58,7 +60,47 @@ def docx(path, expected, with_image):
             require(any(run.find(W + "rPr/" + W + "strike") is not None for run in root.iter(W + "r")), "GFM strike style lost")
 
 
+def header_only(path, pdf_path):
+    expected_roles = {
+        "ONLY-HEADER-PLAIN": "bold",
+        "ONLY-HEADER-ITALIC": "italic",
+        "ONLY-HEADER-BOLD": "bold",
+        "ONLY-HEADER-BOTH": "boldItalic",
+        "ONLY-HEADER-CODE": "code",
+    }
+    reader = PdfReader(pdf_path)
+    require(len(reader.pages) == 1, "header-only Markdown table should fit one page")
+    page = reader.pages[0]
+    text = re.sub(r"\s+", "", page.extract_text())
+    for marker in expected_roles:
+        require(text.count(marker) == 1, "header-only PDF text missing or duplicated: " + marker)
+    fonts = [str(reference.get_object().get("/BaseFont")) for reference in page["/Resources"]["/Font"].values()]
+    for variant in ("LiberationSans-Bold", "LiberationSans-Italic", "LiberationSans-BoldItalic"):
+        require(any(variant in name for name in fonts), "header-only PDF physical font is missing: " + variant)
+    require(any("LiberationSans" in name and "Bold" not in name and "Italic" not in name for name in fonts),
+            "header-only PDF regular font is missing")
+    with ZipFile(path) as package:
+        document = ET.fromstring(package.read("word/document.xml"))
+        tables = list(document.iter(W + "tbl"))
+        require(len(tables) == 1 and len(list(tables[0].iter(W + "tr"))) == 1,
+                "header-only DOCX table should remain a single physical row")
+        for marker, expected_role in expected_roles.items():
+            runs = [run for run in document.iter(W + "r")
+                    if marker in "".join(node.text or "" for node in run.iter(W + "t"))]
+            require(len(runs) == 1, "header-only DOCX run missing or duplicated: " + marker)
+            role = runs[0].find(W + "rPr/" + W + "rStyle")
+            require(role is not None and role.get(W + "val") == expected_role,
+                    "header-only DOCX font role differs: " + marker)
+
+
 def main():
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--output-directory", type=Path, default=OUTPUT)
+    args = cli.parse_args()
+    output = args.output_directory.resolve()
+    require(output.is_relative_to(ROOT / "build"), "verification outputs must remain under ignored build/")
+    require(not output.exists(), "choose a new verification output directory")
+    output.mkdir(parents=True)
     versions = {name: version(name) for name in ("pypdf", "pypdfium2", "Pillow", "markdown-it-py")}
     require(versions == {"pypdf": "6.10.0", "pypdfium2": "5.13.0", "Pillow": "12.3.0", "markdown-it-py": "4.0.0"}, "install pinned verification requirements")
     sample = ROOT / "examples/build/markdown-import"
@@ -78,6 +120,7 @@ def main():
     pdf(caller / "consumer-markdown-import.pdf", caller_expected, False)
     docx(sample / "report.docx", expected, True)
     docx(caller / "consumer-markdown-import.docx", caller_expected, False)
+    header_only(sample / "header-only.docx", sample / "header-only.pdf")
     for directory, prefix, markers in ((sample, "report", expected), (caller, "consumer-markdown-import", caller_expected)):
         for suffix in ("html", "md"):
             value = (directory / (prefix + "." + suffix)).read_text(encoding="utf-8")
@@ -116,14 +159,17 @@ def main():
             == "  CALLER-CODE  <tag> & value;\n    CALLER-NEXT\n", "consumer code whitespace changed")
     require((caller / "consumer-markdown-import-losses.tsv").read_text().strip() == "BLOCK_QUOTE\tIGNORE\tDEGRADE", "IGNORE actual loss disappeared")
     tiles = []
-    for label, path in (("example", sample / "report.pdf"), ("consumer", caller / "consumer-markdown-import.pdf")):
-        poppler, pdfium = render(path, OUTPUT / label)
+    for label, path in (("example", sample / "report.pdf"), ("consumer", caller / "consumer-markdown-import.pdf"),
+                        ("header-only", sample / "header-only.pdf")):
+        poppler, pdfium = render(path, output / label)
         for first, second in zip(poppler, pdfium, strict=True):
             require(difference(first, second)["meanAbsoluteChannelError"] < 1.5, "independent renderer mismatch")
             tiles.extend([(label + " Poppler", first), (label + " PDFium", second)])
-    contact_sheet(tiles, OUTPUT)
-    report = {"versions": versions, "pdf_pages": 2, "docx": 2, "web_outputs": 4, "actual_losses": 2, "checks": "passed"}
-    (OUTPUT / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    contact_sheet(tiles, output)
+    report = {"versions": versions, "pdf_pages": 3, "docx": 3, "web_outputs": 4, "actual_losses": 2,
+              "header_only_roles": "verified in PDF fonts and DOCX runs", "checks": "passed",
+              "output_directory": str(output)}
+    (output / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
 
 

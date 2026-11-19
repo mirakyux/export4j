@@ -42,6 +42,9 @@ import com.mirakyux.export4j.model.TableFormat;
 import com.mirakyux.export4j.model.TableRow;
 import com.mirakyux.export4j.model.TableRowSource;
 import com.mirakyux.export4j.text.ParagraphLayouter;
+import com.mirakyux.export4j.text.SimpleTextShaper;
+import com.mirakyux.export4j.text.TextLayoutLimits;
+import com.mirakyux.export4j.text.TextShaper;
 
 class BlockCellLayouterTest {
     private static final CellFormat CELL = CellFormat.builder().fontSize(8).lineHeight(10).build();
@@ -339,6 +342,45 @@ class BlockCellLayouterTest {
         assertThrows(ExecutionException.class, () -> ExecutionContext.execute(ExecutionOptions.builder().cancelled(() -> true).build(),
                 () -> cursor.take(40)));
         ExecutionContext.checkpoint(); assertFalse(cursor.done()); assertTrue(cursor.take(40).isPresent());
+    }
+
+    @Test void cancelledVariableRemeasurementKeepsNestedSourceAndLaterLayoutIdentical() {
+        var source = Table.builder("outer").format(format -> format.padding(0).allowRowSplit(true))
+                .row(block(new Paragraph("child", "A\nB", TEXT))).build();
+        var cancelOnShape = new java.util.concurrent.atomic.AtomicBoolean();
+        var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        var simple = new SimpleTextShaper();
+        TextShaper controlled = (text, selectedFonts, size, sourceIndex) -> {
+            var shaped = simple.shape(text, selectedFonts, size, sourceIndex);
+            if (cancelOnShape.get()) {
+                cancelled.set(true);
+                ExecutionContext.checkpoint();
+            }
+            return shaped;
+        };
+        var limits = DocumentLayoutLimits.DEFAULT.toBuilder().maxLines(2).build();
+        var layouter = new DocumentLayouter(new ParagraphLayouter(controlled, TextLayoutLimits.DEFAULT), limits);
+        var context = new ComponentContext(180, 40, fonts, 0, 0, 1);
+        var cursor = layouter.prepareVariableTable(source, context);
+        double remaining = cursor.remainingHeight();
+        cancelOnShape.set(true);
+        var failure = assertThrows(ExecutionException.class, () -> ExecutionContext.execute(
+                ExecutionOptions.builder().cancelled(cancelled::get).build(), () -> {
+                    cursor.width(80);
+                    return null;
+                }));
+        assertEquals(ExecutionException.Code.CANCELLED, failure.code());
+        assertEquals(remaining, cursor.remainingHeight());
+        assertFalse(cursor.done());
+
+        cancelOnShape.set(false);
+        cancelled.set(false);
+        ExecutionContext.checkpoint();
+        cursor.width(80);
+        var expected = new DocumentLayouter(new ParagraphLayouter(), limits).prepareVariableTable(source, context);
+        expected.width(80);
+        assertEquals(expected.take(40), cursor.take(40));
+        assertTrue(cursor.done());
     }
 
     @Test void streamingBodyRejectsBlockCellBeforeDeliveringAnyPage() throws IOException {

@@ -37,6 +37,7 @@ import com.mirakyux.export4j.layout.ComponentLayout;
 import com.mirakyux.export4j.layout.core.ComponentBlock;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
+import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.layout.core.DocumentLayouter;
 import com.mirakyux.export4j.layout.core.PageBand;
 import com.mirakyux.export4j.layout.core.PageTemplate;
@@ -45,6 +46,7 @@ import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.DocumentNavigation;
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineField;
@@ -163,6 +165,29 @@ class PagedDocumentExportTest {
         var unknown = document(Paragraph.mixed("ref", List.of(field(InlineField.Kind.REFERENCE_PAGE, "missing")), FORMAT));
         assertThrows(IllegalArgumentException.class, () -> DocumentEngine.builder(fonts).build()
                 .exportPaged(unknown).backend(sink.backend()).to(new ByteArrayOutputStream()));
+        assertEquals(0, sink.opens);
+    }
+
+    @Test void fullAndPagedPreparationRetainNavigationConflictsAndSourceFailureLocations() {
+        var portable = new SectionedDocument(DocumentMetadata.EMPTY,
+                List.of(new Section("section", PAGE, List.of(new Paragraph("p", "TEXT", FORMAT)), 0)),
+                DocumentNavigation.builder().bookmark("Portable", "p", 1).build());
+        var engine = DocumentEngine.builder(fonts).navigation(Navigation.builder().bookmark("Runtime", "p", 1).build()).build();
+        var sink = new Sink();
+        var fullConflict = assertThrows(IllegalStateException.class, () -> engine.layout(portable));
+        var pagedConflict = assertThrows(IllegalStateException.class,
+                () -> engine.exportPaged(portable).backend(sink.backend()).to(new ByteArrayOutputStream()));
+        assertEquals(fullConflict.getMessage(), pagedConflict.getMessage());
+
+        var bounded = DocumentEngine.builder(fonts).layoutLimits(limits -> limits.maxCodePoints(3)).build();
+        var fullBudget = assertThrows(DocumentLayoutException.class, () -> bounded.layout(portable));
+        var pagedBudget = assertThrows(DocumentLayoutException.class,
+                () -> bounded.exportPaged(portable).backend(sink.backend()).to(new ByteArrayOutputStream()));
+        assertEquals(fullBudget.code(), pagedBudget.code());
+        assertEquals(fullBudget.blockId(), pagedBudget.blockId());
+        assertEquals(fullBudget.blockIndex(), pagedBudget.blockIndex());
+        assertEquals(fullBudget.sourceIndex(), pagedBudget.sourceIndex());
+        assertEquals(fullBudget.sourcePath(), pagedBudget.sourcePath());
         assertEquals(0, sink.opens);
     }
 

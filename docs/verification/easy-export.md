@@ -12,8 +12,6 @@
 
 ## 已知限制
 
-- 后续接入核对发现：公式文字字体合计超过 64 MiB 时，字体预算异常被错误归类为 `RENDERING_FAILED`。使用本批 e3 制品复现：默认无候选时仍严格失败；显式配置 `TEXT` 候选时会错误降级成功。该错误分类尚未修复，不满足预算超限必须为 `LIMIT_EXCEEDED` 且禁止降级的契约；本批其余验收结果不涵盖这一失败路径。
-- starter 尚无任意具名字体角色的登记 API。HTML 可按已声明的 `font-family` 选择字体；Java／XML 的业务角色仍须通过底层 `DocumentEngine.fontRole(...)` 登记，不应依赖 starter 内部生成且随字体族顺序变化的 `family_N` 名称。
 - 本批隔离消费者不代表业务项目已经迁移。现有 RC3 使用端需要接入新制品，并对其真实模板、字体、授权图片和容量配置重新验收；正文 XML 快捷入口不覆盖页区、分节及注释。
 
 ## 2026-11-14 修正结果
@@ -81,6 +79,14 @@ Python 使用项目锁定的验证环境；输出目录必须为新的忽略目�
 本批还执行了 `scripts/verify_signed_distribution.py --version 0.0.0-verification-e2 --native-classifier natives-windows --output build/verification/e2 --gradle-home build/gradle-validation`。单依赖消费通过 `-Version 0.0.0-verification-e2 -RepositoryDirectory build/verification/e2/repository` 使用同一批制品。输出验证器接收完整消费者和单依赖消费者各两种模式的四个目录；不从工作区替换运行类。
 
 公开样例预期提供同源 Markdown／XML 各 5 次公式、1 张表和 1 幅自生成图片，另有 HTML、字面文本及视觉专用公式。消费者不依赖示例私有类，额外核对 starter JAR 和唯一类提供者。脚本使用锁定的 pypdf、PDFium、Pillow 与外部 Poppler，检查全部生成 PDF 页并生成双引擎图片；Markdown／XML 同引擎像素需相同。DOCX 独立打开后再双引擎渲染，完整页视觉复查与自动检查分开记录。
+
+## 2026-11-19 修复结果
+
+修复与回归覆盖以下可复现问题：XML 请求元数据显式覆盖现在在绑定前应用，未指定时保留模板根元数据；表格和分栏中的相对列权重先归一化再用于公式拟合，未含公式的分栏保持原模型；仅表头 Markdown 表格只为普通文本补表头默认粗体，不覆盖斜体、粗斜体、代码等显式角色；公式文字字体数／单字体／合计字节超限均报告 `LIMIT_EXCEEDED`，且延迟字体加载触发的超限不能被 `TEXT` 候选降级。
+
+验证通过：`build sbom publishLocalBundle apiCheck :examples:math :examples:easyExport :examples:markdownImport`；数学、Web 适配器与 starter 三模块共 271 项定向测试，0 失败／错误／跳过；全量隔离消费者 Gradle 元数据及仅 POM 路径；`verify_math.py`、`verify_easy_export.py` 与扩展后的 `verify_markdown_import.py`。独立消费者从本地发布制品验证了 XML 根元数据继承、请求元数据覆盖未绑定根属性、显式空值清除，且 PDF 与 DOCX 元数据都与预期一致。Markdown 检查覆盖 3 页 PDF、3 份 DOCX、4 个既有 Web 输出及新仅表头样例：PDF 双引擎字体／文字检查、DOCX 物理行和运行角色检查均通过，联系表逐页检查未发现格式丢失。公式样例和两路统一导出消费者的结构、公式及像素比较通过。
+
+Maven Central 在隔离消费首次刷新请求期间发生 TLS 握手中断；随后使用本地发布包和已缓存第三方依赖离线完成两条隔离消费路径。一次全仓执行中 Designer 的并发上传测试超时，独立重跑通过，之后全仓构建成功。此次结果是当前工作区的本地验证，不代表提交、远端发布或对 RC3 制品的修改。
 
 ## 2026-11-13 基线结果与边界
 

@@ -6,6 +6,8 @@ Development [source blocks and inherited options](content-blocks-api.md) let Jav
 
 Development [font caches](font-cache-api.md) reuse immutable faces and exclusively leased PDF programs, with entry/source limits, automatic idle release, statistics and explicit clearing. Font-format and substitution boundaries are unchanged.
 
+The unified entry supports [stable business font roles and a borrowed PDF backend](easy-export-api.md#stable-business-font-roles). XML offers an explicitly owned [parsed syntax plan](xml-template-api.md#reusing-parsed-syntax), which retains no runtime parser or loaded fonts and rechecks the current configuration and budgets. Shared proportions, semantic preparation and resource boundaries are covered by the [architecture acceptance record (Chinese)](../verification/architecture-convergence.md).
+
 The optional [math module](math-api.md) adds bounded TeX vectors, TeX-to-OMML and context-aware Markdown formula import, with explicit fallback reports and non-bypassable limits/cancellation. Core and ordinary adapters do not automatically interpret formulas.
 
 This page summarizes the available document generation, import, editing, and conversion entry points. Start with the [documentation index](README.md) and [runnable examples](examples.md); individual API guides define their precise input subsets and calling contracts. Historical verification records cited below establish only their own batch. See the [capability gap catalog](capability-gaps.md) for current completion status.

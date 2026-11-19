@@ -3,6 +3,7 @@ package com.mirakyux.export4j.font;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -10,8 +11,11 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
@@ -23,7 +27,10 @@ import java.util.function.Supplier;
  * Idle expiration removes the cache's references, leaving caller-owned faces fully usable.
  * Cleanup runs automatically at the next scheduled idle deadline, subject to JVM scheduling;
  * it needs no later load, does not force garbage collection, and stops when the cache is empty.
- * Loading, clearing and closing are serialized. A closed cache rejects new loads.
+ * Hashing and parsing run outside the cache lock. Bounded pending loads share a result for the
+ * same content without blocking hits for other fonts. Clear and close retire loads already parsing;
+ * those parses may finish with caller-owned immutable faces without repopulating the cache.
+ * A closed cache rejects new loads.
  */
 public final class FontFaceCache implements AutoCloseable {
     private final int maxEntries;
@@ -32,7 +39,10 @@ public final class FontFaceCache implements AutoCloseable {
     private final boolean enabled;
     private final LongSupplier ticker;
     private final Supplier<ScheduledThreadPoolExecutor> executorFactory;
+    private final Parser parser;
     private final LinkedHashMap<String, Entry> entries = new LinkedHashMap<>(16, .75f, true);
+    private final HashMap<String, Pending> pending = new HashMap<>();
+    private long pendingBytes;
     private long sourceBytes;
     private long hits;
     private long misses;
@@ -50,12 +60,18 @@ public final class FontFaceCache implements AutoCloseable {
 
     FontFaceCache(Builder builder, LongSupplier ticker,
             Supplier<ScheduledThreadPoolExecutor> executorFactory) {
+        this(builder, ticker, executorFactory, TrueTypeFontLoader::loadSnapshotUncached);
+    }
+
+    FontFaceCache(Builder builder, LongSupplier ticker,
+            Supplier<ScheduledThreadPoolExecutor> executorFactory, Parser parser) {
         maxEntries = builder.maxEntries;
         maxSourceBytes = builder.maxSourceBytes;
         idleNanos = builder.idleNanos;
         enabled = builder.enabled;
         this.ticker = Objects.requireNonNull(ticker, "ticker");
         this.executorFactory = Objects.requireNonNull(executorFactory, "executorFactory");
+        this.parser = Objects.requireNonNull(parser, "parser");
     }
 
     /** Creates task-confined configuration with defaults of 16 entries, 64 MiB and five idle minutes. */
@@ -118,8 +134,9 @@ public final class FontFaceCache implements AutoCloseable {
         if (bytes.length > maxBytes) {
             throw new FontLoadException(FontLoadException.Code.BUDGET_EXCEEDED, "font byte budget exceeded");
         }
+        requireOpen();
         byte[] snapshot = bytes.clone();
-        return loadSnapshot(snapshot);
+        return loadSnapshot(snapshot, enabled ? identifier(snapshot) : null);
     }
 
     /** Reads a borrowed stream under the default loader limit and never closes it. */
@@ -149,30 +166,102 @@ public final class FontFaceCache implements AutoCloseable {
         try (var input = Files.newInputStream(source)) { return load(input, maxBytes); }
     }
 
-    private synchronized FontFace loadSnapshot(byte[] snapshot) throws IOException {
-        requireOpen();
-        expire(ticker.getAsLong());
-        String id = enabled ? identifier(snapshot) : null;
-        Entry cached = enabled ? entries.get(id) : null;
-        if (cached != null) {
-            cached.lastAccess = ticker.getAsLong();
-            hits++;
-            return cached.face;
+    /** Only source-private snapshots and their computed identifiers may enter this package boundary. */
+    FontFace loadSnapshot(byte[] snapshot, String id) throws IOException {
+        Pending reservation = null;
+        Pending existing;
+        synchronized (this) {
+            requireOpen();
+            expire(ticker.getAsLong());
+            Entry cached = enabled ? entries.get(id) : null;
+            if (cached != null) {
+                cached.lastAccess = ticker.getAsLong();
+                hits++;
+                return cached.face;
+            }
+            existing = enabled ? pending.get(id) : null;
+            if (existing == null) {
+                misses++;
+                // Pending coordination is bounded separately from retained faces. Uncoordinated
+                // callers still parse locally, so retention limits never reject a valid font.
+                if (enabled && pending.size() < maxEntries && snapshot.length <= maxSourceBytes - pendingBytes) {
+                    reservation = new Pending(snapshot.length);
+                    pending.put(id, reservation);
+                    pendingBytes += snapshot.length;
+                }
+            }
         }
-        misses++;
-        FontFace loaded = TrueTypeFontLoader.loadSnapshotUncached(snapshot);
-        loads++;
-        if (!enabled || snapshot.length > maxSourceBytes) { return loaded; }
-        while (entries.size() >= maxEntries || sourceBytes > maxSourceBytes - snapshot.length) {
-            var iterator = entries.entrySet().iterator();
-            sourceBytes -= iterator.next().getValue().sourceBytes;
-            iterator.remove();
-            evictions++;
+        if (existing != null) {
+            FontFace face = await(existing);
+            synchronized (this) {
+                var current = entries.entrySet().stream().filter(entry -> entry.getKey().equals(id))
+                        .map(java.util.Map.Entry::getValue).findFirst().orElse(null);
+                if (current != null && current.face == face) {
+                    entries.get(id); // A completed waiter is another actual LRU use of this generation.
+                    current.lastAccess = ticker.getAsLong();
+                }
+                hits++;
+            }
+            return face;
         }
-        entries.put(id, new Entry(loaded, snapshot.length, ticker.getAsLong()));
-        sourceBytes += snapshot.length;
-        scheduleCleanup();
+        FontFace loaded;
+        try { loaded = parser.parse(snapshot); }
+        catch (IOException | RuntimeException | Error failure) {
+            synchronized (this) { removePending(id, reservation); }
+            if (reservation != null) { reservation.result.completeExceptionally(failure); }
+            throw failure;
+        }
+        try {
+            synchronized (this) {
+                loads++;
+                boolean retain = reservation != null && pending.get(id) == reservation && !closed;
+                removePending(id, reservation);
+                if (retain) {
+                    while (entries.size() >= maxEntries || sourceBytes > maxSourceBytes - snapshot.length) {
+                        var iterator = entries.entrySet().iterator();
+                        sourceBytes -= iterator.next().getValue().sourceBytes;
+                        iterator.remove();
+                        evictions++;
+                    }
+                    entries.put(id, new Entry(loaded, snapshot.length, ticker.getAsLong()));
+                    sourceBytes += snapshot.length;
+                    try { scheduleCleanup(); }
+                    catch (RuntimeException | Error failure) {
+                        // Retention is valid only with its autonomous expiry mechanism. Drop all
+                        // retained references if that mechanism cannot start; caller faces survive.
+                        entries.clear(); sourceBytes = 0;
+                        try { stopCleanup(); }
+                        catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+                        throw failure;
+                    }
+                }
+            }
+        } catch (RuntimeException | Error failure) {
+            if (reservation != null) { reservation.result.completeExceptionally(failure); }
+            throw failure;
+        }
+        if (reservation != null) { reservation.result.complete(loaded); }
         return loaded;
+    }
+
+    private void removePending(String id, Pending reservation) {
+        if (reservation != null && pending.remove(id, reservation)) { pendingBytes -= reservation.sourceBytes; }
+    }
+
+    private static FontFace await(Pending pending) throws IOException {
+        try { return pending.result.get(); }
+        catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            var failure = new InterruptedIOException("font load interrupted");
+            failure.initCause(interrupted);
+            throw failure;
+        } catch (ExecutionException failed) {
+            Throwable failure = failed.getCause();
+            if (failure instanceof IOException io) { throw io; }
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
+            throw new IOException("font loading failed", failure);
+        }
     }
 
     /**
@@ -187,10 +276,15 @@ public final class FontFaceCache implements AutoCloseable {
     public record Stats(int entries, long sourceBytes, long hits, long misses, long loads,
             long expirations, long evictions) { }
 
-    /** Immediately drops retained faces and stops pending cleanup, without invalidating caller-held faces. */
+    /** Immediately drops retained faces, retires registered parses and stops pending cleanup, without
+     * invalidating caller-held faces. A concurrent call still reading or hashing may register after
+     * clear returns and retain its result; clear does not cancel caller I/O or future loads.
+     */
     public synchronized void clear() {
         entries.clear();
         sourceBytes = 0;
+        pending.clear();
+        pendingBytes = 0;
         stopCleanup();
     }
 
@@ -254,7 +348,7 @@ public final class FontFaceCache implements AutoCloseable {
         return result;
     }
 
-    private static String identifier(byte[] snapshot) {
+    static String identifier(byte[] snapshot) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(snapshot));
         } catch (NoSuchAlgorithmException failure) {
@@ -278,5 +372,14 @@ public final class FontFaceCache implements AutoCloseable {
             this.sourceBytes = sourceBytes;
             this.lastAccess = lastAccess;
         }
+    }
+
+    @FunctionalInterface
+    interface Parser { FontFace parse(byte[] snapshot) throws IOException; }
+
+    private static final class Pending {
+        private final int sourceBytes;
+        private final CompletableFuture<FontFace> result = new CompletableFuture<>();
+        private Pending(int sourceBytes) { this.sourceBytes = sourceBytes; }
     }
 }

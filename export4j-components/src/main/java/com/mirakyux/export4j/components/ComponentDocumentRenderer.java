@@ -3,7 +3,6 @@ package com.mirakyux.export4j.components;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -15,7 +14,6 @@ import com.mirakyux.export4j.graphics.DocumentExtras;
 import com.mirakyux.export4j.graphics.Rect;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
-import com.mirakyux.export4j.layout.core.DocumentLayouter;
 import com.mirakyux.export4j.layout.core.DocumentPainter;
 import com.mirakyux.export4j.layout.core.ComponentSemantics;
 import com.mirakyux.export4j.layout.core.SemanticSourceRegistry;
@@ -27,7 +25,6 @@ import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.Note;
 import com.mirakyux.export4j.model.CrossReference;
-import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.graphics.AffineTransform;
 import com.mirakyux.export4j.graphics.core.DisplayListBuilder;
 import com.mirakyux.export4j.graphics.core.GraphicsResources;
@@ -37,7 +34,6 @@ import com.mirakyux.export4j.layout.LayoutFragment;
 import com.mirakyux.export4j.layout.ParagraphFragment;
 import com.mirakyux.export4j.layout.TableFragment;
 import com.mirakyux.export4j.layout.ComponentFragment;
-import com.mirakyux.export4j.text.ParagraphLayouter;
 
 /**
  * Reusable component orchestration: body pagination, contents, final anchors, page regions and interactions.
@@ -89,15 +85,12 @@ public final class ComponentDocumentRenderer {
             FontGroup fonts, Map<String, FontGroup> roles, List<Note> notes) {
         Objects.requireNonNull(source, "document");
         Objects.requireNonNull(navigation, "navigation");
-        if (!source.navigation().equals(com.mirakyux.export4j.model.DocumentNavigation.NONE)) {
-            if (!navigation.equals(Navigation.EMPTY)) { throw new IllegalStateException("portable navigation conflicts with runtime navigation"); }
-            navigation = Navigation.fromDocument(source);
-        }
+        navigation = PreparedSemanticDocument.navigation(source, navigation);
         roles = Map.copyOf(roles);
-        var semantic = SemanticBlocks.compile(source, notes);
-        SectionedDocument document = semantic.document();
-        new DocumentLayouter(new ParagraphLayouter(), layoutLimits, componentLimits).validate(Footnotes.validationSource(new Document(document.metadata(),
-                document.sections().getFirst().pageSettings(), document.sections().stream().flatMap(section -> section.blocks().stream()).toList()), notes, layoutLimits));
+        var prepared = PreparedSemanticDocument.compile(source, notes);
+        var semantic = prepared.semantic();
+        SectionedDocument document = prepared.document();
+        prepared.validateSources(document.sections().getFirst().pageSettings(), prepared.sourceBlocks(), notes, layoutLimits, componentLimits);
         Objects.requireNonNull(document, "document");
         templates = List.copyOf(templates);
         if (templates.size() != document.sections().size()) {
@@ -172,10 +165,8 @@ public final class ComponentDocumentRenderer {
         bodyPages.clear();
         PageSettings bodySettings = templates.getFirst().bodySettings(document.sections().getFirst().pageSettings());
         Map<String, ResolvedAnchor> anchors = new HashMap<>();
-        var sources = new ArrayList<com.mirakyux.export4j.model.Block>(document.sections().stream().flatMap(section -> section.blocks().stream()).toList());
-        var reservedIds = new LinkedHashSet<String>();
-        SemanticTree.walk(sources, visit -> reservedIds.add(visit.block().id()));
-        notes.forEach(note -> reservedIds.add(note.id()));
+        var sources = new ArrayList<com.mirakyux.export4j.model.Block>(prepared.sourceBlocks());
+        var reservedIds = prepared.reservedIds(notes);
         var semanticSources = new SemanticSourceRegistry(List.copyOf(reservedIds));
         long semanticPlacements = 0;
         for (var page : body.pages()) {
@@ -198,8 +189,7 @@ public final class ComponentDocumentRenderer {
         }
         sources.addAll(semanticSources.sources());
         // Nested sources share IDs, cells, images and source-text budgets across sections.
-        new DocumentLayouter(new ParagraphLayouter(), layoutLimits, componentLimits).validate(
-                Footnotes.validationSource(new Document(document.metadata(), bodySettings, sources), notes, layoutLimits));
+        prepared.validateSources(bodySettings, sources, notes, layoutLimits, componentLimits);
         for (var bookmark : navigation.bookmarks()) {
             requireAnchor(anchors, bookmark.blockId());
         }

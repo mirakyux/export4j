@@ -143,6 +143,7 @@ export const guideGroups = [
     reference('roadmap', 'Roadmap', '路线图'),
     reference('remaining-capabilities-plan', 'Execution plan', '执行计划'),
     page('architecture', 'Architecture', '架构'),
+    reference('architecture-reference-review', 'Reference architectures', '参考架构研究'),
     page('development', 'Development', '开发规约'),
     page('dependencies', 'Dependencies and licenses', '依赖与许可证'),
     page('releasing', 'Releases', '发布'),

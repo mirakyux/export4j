@@ -43,6 +43,7 @@ def main():
     parser.add_argument("--version", required=True, help="Explicit non-SNAPSHOT verification version; never published")
     parser.add_argument("--native-classifier", required=True)
     parser.add_argument("--gradle-home", type=Path)
+    parser.add_argument("--offline", action="store_true", help="Use verified cached external dependencies and the local publication; never relax TLS")
     args = parser.parse_args()
     root = args.root.resolve()
     output = args.output.resolve()
@@ -58,6 +59,8 @@ def main():
     gradle += ["--no-daemon", "--console=plain"]
     if args.gradle_home:
         gradle += ["-g", str(args.gradle_home.resolve())]
+    if args.offline:
+        gradle.append("--offline")
     gpg = shutil.which("gpg")
     if not gpg:
         raise RuntimeError("GnuPG is required for independent signature validation")

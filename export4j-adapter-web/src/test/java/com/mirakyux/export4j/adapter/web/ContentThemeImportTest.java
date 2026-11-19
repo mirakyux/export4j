@@ -7,6 +7,7 @@ import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentTheme;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineVector;
+import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.LineBreakPolicy;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ContentThemeImportTest {
     private static final VectorResource VECTOR = VectorResource.of(8, 8, 0, List.of(
@@ -31,6 +33,125 @@ class ContentThemeImportTest {
     private record Input(ContentOptions.Format format, boolean rawHtml) { }
     private static final List<Input> INPUTS = List.of(new Input(ContentOptions.Format.MARKDOWN, false),
             new Input(ContentOptions.Format.MARKDOWN, true), new Input(ContentOptions.Format.HTML, false));
+
+    @Test void registeredRoleFamiliesSupplyBodyHeadingAndCellEmphasisWithoutLosingTheBaseFamily() throws Exception {
+        var theme = DocumentTheme.builder().bodyFontRole("invoice").headingFontRole(1, "heading").cellFontRole("cell").build();
+        for (var input : INPUTS) {
+            String source = input.format() == ContentOptions.Format.HTML
+                    ? "<h1><strong>boldhead</strong></h1><p>plain <strong>bold</strong> <em>italic</em> <strong><em>both</em></strong> "
+                            + "<strong>outer <a href='https://example.org/'><em>nested</em></a></strong> <code>$literal$</code></p>"
+                            + "<table><tr><td><strong>boldcell</strong> <em>italiccell</em> <strong><em>bothcell</em></strong></td></tr></table>"
+                    : "# **boldhead**\n\nplain **bold** *italic* ***both*** **outer [*nested*](https://example.org/)** `$literal$`\n\n"
+                            + "| Header |\n|---|\n| **boldcell** *italiccell* ***bothcell*** |";
+            var document = importer(theme, input)
+                    .fontFamily("Invoice Sans", "invoice", "invoice_bold", "invoice_italic", "invoice_boldItalic")
+                    .fontFamily("Heading Sans", "heading", "heading_bold", "heading_italic", "heading_boldItalic")
+                    .fontFamily("Cell Sans", "cell", "cell_bold", "cell_italic", "cell_boldItalic").build().read(source).execute().document();
+            assertEquals("heading_bold", role(((Heading) document.blocks().getFirst()).inlines(), "boldhead"));
+            var body = (Paragraph) document.blocks().get(1);
+            assertEquals("invoice", role(body.inlines(), "plain"));
+            assertEquals("invoice_bold", role(body.inlines(), "bold"));
+            assertEquals("invoice_italic", role(body.inlines(), "italic"));
+            assertEquals("invoice_boldItalic", role(body.inlines(), "both"));
+            assertEquals("invoice_boldItalic", role(body.inlines(), "nested"));
+            assertEquals("invoice", role(body.inlines(), "$literal$"));
+            assertEquals("https://example.org/", body.inlines().stream().filter(run -> run.text().contains("nested")).findFirst().orElseThrow().hyperlink());
+            var cell = bodyCell(document);
+            assertEquals("cell_bold", role(cell.inlines(), "boldcell"));
+            assertEquals("cell_italic", role(cell.inlines(), "italiccell"));
+            assertEquals("cell_boldItalic", role(cell.inlines(), "bothcell"));
+        }
+    }
+
+    @Test void registeredBusinessAliasesRemainIndependentAndExplicitCssFamilyWins() throws Exception {
+        for (boolean rawHtml : List.of(false, true)) {
+            var importer = ContentImporter.builder().defaults(ContentOptions.builder()
+                            .format(rawHtml ? ContentOptions.Format.MARKDOWN : ContentOptions.Format.HTML).rawHtml(rawHtml).fontRole("invoice").build())
+                    .fontFamily("Invoice Sans", "invoice", "invoice_bold", "invoice_italic", "invoice_boldItalic")
+                    .fontFamily("invoice", "invoice", "invoice_bold", "invoice_italic", "invoice_boldItalic")
+                    .fontFamily("report", "report", "report_bold", "report_italic", "report_boldItalic")
+                    .fontFamily("Other Sans", "other", "other_bold", "other_italic", "other_boldItalic").build();
+            var body = (Paragraph) importer.read("<p><strong>invoice</strong> <span style='font-family:Other Sans'><em>overridden</em></span></p>")
+                    .execute().document().blocks().getFirst();
+            assertEquals("invoice_bold", role(body.inlines(), "invoice"));
+            assertEquals("other_italic", role(body.inlines(), "overridden"));
+            var report = (Paragraph) importer.read("<p><strong>report</strong></p>").options(ContentOptions.builder().fontRole("report").build())
+                    .execute().document().blocks().getFirst();
+            assertEquals("report_bold", role(report.inlines(), "report"));
+        }
+    }
+
+    @Test void aDeclaredVariantIsTheStartingStyleForFurtherEmphasis() throws Exception {
+        for (var input : INPUTS) {
+            String source = input.format() == ContentOptions.Format.HTML
+                    ? "<p>plain <em>italic</em> <strong>bold</strong></p>" : "plain *italic* **bold**";
+            var importer = ContentImporter.builder().defaults(ContentOptions.builder().format(input.format()).rawHtml(input.rawHtml()).fontRole("invoice_bold").build())
+                    .fontFamily("invoice", "invoice", "invoice_bold", "invoice_italic", "invoice_boldItalic").build();
+            var body = (Paragraph) importer.read(source).execute().document().blocks().getFirst();
+            assertEquals("invoice_bold", role(body.inlines(), "plain"));
+            assertEquals("invoice_boldItalic", role(body.inlines(), "italic"));
+            assertEquals("invoice_bold", role(body.inlines(), "bold"));
+        }
+    }
+
+    @Test void explicitNormalCssCanClearADeclaredVariantAcrossSemanticDefaults() throws Exception {
+        var importer = ContentImporter.builder().defaults(ContentOptions.builder().format(ContentOptions.Format.HTML).fontRole("invoice_boldItalic").build())
+                .fontFamily("invoice", "invoice", "invoice_bold", "invoice_italic", "invoice_boldItalic").build();
+        var document = importer.read("<div style='font-weight:normal;font-style:normal'><h1>heading</h1><table><tr><td>cell</td></tr></table></div>")
+                .execute().document();
+        assertEquals("invoice", role(((Heading) document.blocks().getFirst()).inlines(), "heading"));
+        assertEquals("invoice", role(bodyCell(document).inlines(), "cell"));
+    }
+
+    @Test void missingRegisteredVariantsRemainExplicitRolesForStrictFontValidation() throws Exception {
+        var importer = ContentImporter.builder().defaults(ContentOptions.builder().format(ContentOptions.Format.MARKDOWN).fontRole("invoice").build())
+                .fontFamily("Invoice Sans", "invoice", "missing_bold", "missing_italic", "missing_both").build();
+        var body = (Paragraph) importer.read("**bold** *italic* ***both***").execute().document().blocks().getFirst();
+        assertEquals("missing_bold", role(body.inlines(), "bold"));
+        assertEquals("missing_italic", role(body.inlines(), "italic"));
+        assertEquals("missing_both", role(body.inlines(), "both"));
+    }
+
+    @Test void unmappedRolesKeepLegacyVariantsAndTheEmptyRoleDoesNotSelectAnArbitraryFamily() throws Exception {
+        for (var input : INPUTS) {
+            String source = input.format() == ContentOptions.Format.HTML ? "<p><strong>bold</strong><em>italic</em></p>" : "**bold** *italic*";
+            var importer = ContentImporter.builder().defaults(ContentOptions.builder().format(input.format()).rawHtml(input.rawHtml()).fontRole("unmapped").build())
+                    .fontFamily("Mapped Sans", "", "mapped_bold", "mapped_italic", "mapped_boldItalic").build();
+            var body = (Paragraph) importer.read(source).execute().document().blocks().getFirst();
+            assertEquals("bold", role(body.inlines(), "bold"));
+            assertEquals("italic", role(body.inlines(), "italic"));
+            var defaults = (Paragraph) importer.read(source).options(ContentOptions.builder().fontRole("").build()).execute().document().blocks().getFirst();
+            assertEquals("bold", role(defaults.inlines(), "bold"));
+            assertEquals("italic", role(defaults.inlines(), "italic"));
+        }
+    }
+
+    @Test void conflictingImplicitRoleFamiliesRequireAnExplicitFamilyChoice() throws Exception {
+        var importer = ContentImporter.builder().defaults(ContentOptions.builder().format(ContentOptions.Format.MARKDOWN).fontRole("shared").build())
+                .fontFamily("First", "shared", "first_bold", "first_italic", "first_both")
+                .fontFamily("Second", "shared", "second_bold", "second_italic", "second_both").build();
+        assertThrows(IllegalArgumentException.class, () -> importer.read("**ambiguous**").execute());
+        var body = (Paragraph) importer.read("<p style='font-family:Second'><strong>selected</strong></p>")
+                .options(ContentOptions.builder().format(ContentOptions.Format.HTML).build()).execute().document().blocks().getFirst();
+        assertEquals("second_bold", role(body.inlines(), "selected"));
+    }
+
+    @Test void sharedRegularRolesDoNotRequireVariantInferenceUntilEmphasisIsUsed() throws Exception {
+        for (var input : INPUTS) {
+            var importer = ContentImporter.builder().defaults(ContentOptions.builder().format(input.format()).rawHtml(input.rawHtml()).fontRole("shared").build())
+                    .fontFamily("First", "shared", "first_bold", "first_italic", "first_both")
+                    .fontFamily("Second", "shared", "second_bold", "second_italic", "second_both").build();
+            String source = input.format() == ContentOptions.Format.HTML ? "<p>ordinary</p>" : "ordinary";
+            var body = (Paragraph) importer.read(source).execute().document().blocks().getFirst();
+            assertEquals("shared", role(body.inlines(), "ordinary"));
+            String emphasis = input.format() == ContentOptions.Format.HTML ? "<p><strong>ambiguous</strong></p>" : "**ambiguous**";
+            assertThrows(IllegalArgumentException.class, () -> importer.read(emphasis).execute());
+        }
+    }
+
+    private static String role(List<InlineText> runs, String token) {
+        return runs.stream().filter(run -> run.text().contains(token)).findFirst().orElseThrow().style().fontRole();
+    }
 
     @Test void allSixHeadingFormatsAndAppearancesSurviveMarkdownHtmlAndMixedMarkdown() throws Exception {
         var theme = theme();

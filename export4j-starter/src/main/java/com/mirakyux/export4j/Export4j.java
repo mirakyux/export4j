@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j;
 
-import com.mirakyux.export4j.adapter.docx.DocxAdapter;
-import com.mirakyux.export4j.adapter.docx.DocxFontFamilies;
 import com.mirakyux.export4j.adapter.template.XmlTemplate;
 import com.mirakyux.export4j.adapter.web.ImportLimits;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;
-import com.mirakyux.export4j.components.DocumentEngine;
 import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.FontFaceCache;
-import com.mirakyux.export4j.font.FontGroup;
-import com.mirakyux.export4j.font.FontSource;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
 import com.mirakyux.export4j.math.MathContent;
@@ -35,6 +30,7 @@ import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
+import com.mirakyux.export4j.model.TextAppearance;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -42,7 +38,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +67,9 @@ public final class Export4j implements AutoCloseable {
     private final FontFamily eastAsia;
     private final FontFamily complexScript;
     private final List<FontFamily> families;
+    private final List<FontFamily> defaultFamilies;
+    private final Map<String, FontFamily> namedRoles;
+    private final PdfBackend pdfBackend;
     private final DocumentTheme theme;
     private final ContentOptions defaultDeclarations;
     private final PageSettings pageSettings;
@@ -95,12 +93,30 @@ public final class Export4j implements AutoCloseable {
             if (!ordered.contains(family)) { ordered.add(family); }
         }
         for (var family : b.fallbackFonts) { if (!ordered.contains(family)) { ordered.add(family); } }
+        defaultFamilies = List.copyOf(ordered);
+        for (var family : b.fontRoles.values()) { if (!ordered.contains(family)) { ordered.add(family); } }
         families = List.copyOf(ordered);
         if (families.size() > 8) { throw new IllegalArgumentException("at most eight explicit font families are supported"); }
         var names = new HashSet<String>();
         for (var family : families) {
             if (!names.add(family.name().toLowerCase(Locale.ROOT))) { throw new IllegalArgumentException("duplicate font family name"); }
         }
+        var roleNames = new HashSet<String>(List.of("", "bold", "italic", "bolditalic"));
+        for (var role : b.fontRoles.keySet()) {
+            for (var variant : OperationFonts.variants(role)) {
+                new TextAppearance(variant, 0);
+                if (variant.toLowerCase(Locale.ROOT).startsWith("family_") || !roleNames.add(variant.toLowerCase(Locale.ROOT))) {
+                    throw new IllegalArgumentException("font role conflicts with a reserved or declared role");
+                }
+            }
+            for (var family : families) {
+                if (family.name().equalsIgnoreCase(role) && family != b.fontRoles.get(role)) {
+                    throw new IllegalArgumentException("font role alias conflicts with a physical family name");
+                }
+            }
+        }
+        namedRoles = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(b.fontRoles));
+        pdfBackend = b.pdfBackend;
         theme = b.theme;
         defaultDeclarations = ContentOptions.builder().formulas(true).build().overlay(b.defaults);
         pageSettings = b.pageSettings; execution = b.execution; importLimits = b.importLimits;
@@ -134,6 +150,20 @@ public final class Export4j implements AutoCloseable {
     public Request xml(String source, Object data) {
         ensureOpen(); return new Request(source, Objects.requireNonNull(data, "data"), defaultDeclarations);
     }
+    /** Prepares user-owned static XML syntax, including configured fragments, without loading fonts,
+     * parsing source content, binding data or creating an output document. Execution revalidates
+     * semantic declarations and resource keys under the current request configuration.
+     */
+    public XmlTemplate.Syntax prepareXml(String source) {
+        ensureOpen();
+        var xml = XmlTemplate.builder(); fragments.forEach(xml::fragment);
+        return xml.build().prepare(source);
+    }
+    /** Executes user-owned syntax with fresh fonts, content session and bounded data snapshot. */
+    public Request xml(XmlTemplate.Syntax syntax, Object data) {
+        ensureOpen(); return new Request(Objects.requireNonNull(syntax, "syntax"), Objects.requireNonNull(data, "data"), defaultDeclarations);
+    }
+    public Request xml(XmlTemplate.Syntax syntax, Map<String, ?> data) { return xml(syntax, (Object) data); }
     private Request request(String source, ContentOptions.Format format) {
         ensureOpen();
         return new Request(source, null, defaultDeclarations.overlay(ContentOptions.builder().format(format).build()));
@@ -150,6 +180,8 @@ public final class Export4j implements AutoCloseable {
         private FontFamily eastAsia;
         private FontFamily complexScript;
         private final List<FontFamily> fallbackFonts = new ArrayList<>();
+        private final Map<String, FontFamily> fontRoles = new LinkedHashMap<>();
+        private PdfBackend pdfBackend = new PdfBackend();
         private DocumentTheme theme = DocumentTheme.builder().build();
         private ContentOptions defaults = ContentOptions.builder().build();
         private PageSettings pageSettings = PageSettings.A4;
@@ -169,6 +201,24 @@ public final class Export4j implements AutoCloseable {
         public Builder eastAsia(FontFamily value) { eastAsia = Objects.requireNonNull(value, "eastAsia"); return this; }
         public Builder complexScript(FontFamily value) { complexScript = Objects.requireNonNull(value, "complexScript"); return this; }
         public Builder fallbackFont(FontFamily value) { fallbackFonts.add(Objects.requireNonNull(value, "family")); return this; }
+        /** Registers a stable business role and its explicitly declared physical variants. Variant
+         * names append _bold, _italic and _boldItalic. Missing variants remain unavailable. These
+         * families do not silently join the default missing-glyph fallback stack. Reserved/default,
+         * family_ names, case-insensitive alias collisions and overlapping base/variant names are
+         * rejected by build(). The role is also an explicit HTML CSS font-family alias; an alias may
+         * share a physical family name only when both designate the same FontFamily value.
+         */
+        public Builder fontRole(String role, FontFamily value) {
+            String name = new TextAppearance(Objects.requireNonNull(role, "role"), 0).fontRole();
+            if (name.isEmpty() || fontRoles.putIfAbsent(name, Objects.requireNonNull(value, "family")) != null) {
+                throw new IllegalArgumentException("font role must be nonempty and unique");
+            }
+            return this;
+        }
+        /** Borrows a reusable immutable PDF backend and its configured cache. This exporter never
+         * closes the backend's caller-owned PdfFontCache. Sessions and PDF documents remain per output.
+         */
+        public Builder pdfBackend(PdfBackend value) { pdfBackend = Objects.requireNonNull(value, "pdfBackend"); return this; }
         public Builder theme(DocumentTheme value) { theme = Objects.requireNonNull(value, "theme"); return this; }
         public Builder defaults(ContentOptions value) { defaults = Objects.requireNonNull(value, "defaults"); return this; }
         public Builder pageSettings(PageSettings value) { pageSettings = Objects.requireNonNull(value, "pageSettings"); return this; }
@@ -193,15 +243,20 @@ public final class Export4j implements AutoCloseable {
      */
     public final class Request {
         private final String source;
+        private final XmlTemplate.Syntax syntax;
         private final Object data;
         private ContentOptions.Resolved options;
         private ContentOptions declarations;
         private ExecutionOptions controls = execution;
         private PageSettings page = pageSettings;
-        private DocumentMetadata metadata = DocumentMetadata.EMPTY;
+        private DocumentMetadata metadata;
         private final Map<String, InlineImage> resources = new LinkedHashMap<>(images);
         private Request(String source, Object data, ContentOptions declarations) {
-            this.source = Objects.requireNonNull(source, "source"); this.data = data; this.declarations = declarations;
+            this.source = Objects.requireNonNull(source, "source"); syntax = null; this.data = data; this.declarations = declarations;
+            options = declarations.resolve(ContentOptions.fromTheme(theme));
+        }
+        private Request(XmlTemplate.Syntax syntax, Object data, ContentOptions declarations) {
+            source = null; this.syntax = syntax; this.data = data; this.declarations = declarations;
             options = declarations.resolve(ContentOptions.fromTheme(theme));
         }
         public Request options(ContentOptions value) {
@@ -243,26 +298,12 @@ public final class Export4j implements AutoCloseable {
         private Result encode(OutputStream output, boolean pdf) throws IOException {
             ensureOpen();
             ExecutionContext.progress("FONTS", "", -1, 0, 1);
-            var loaded = new IdentityHashMap<FontSource, FontFace>();
-            var roles = new LinkedHashMap<String, List<FontFace>>();
-            for (int index = 0; index < families.size(); index++) {
-                var family = families.get(index);
-                for (var variant : family.variants().entrySet()) {
-                    ExecutionContext.checkpoint();
-                    var face = loaded.get(variant.getValue());
-                    if (face == null) {
-                        face = Objects.requireNonNull(variant.getValue().load(cache), "font source result");
-                        loaded.put(variant.getValue(), face);
-                    }
-                    var faces = roles.computeIfAbsent(variant.getKey(), ignored -> new ArrayList<>());
-                    if (!faces.contains(face)) { faces.add(face); }
-                    roles.put(familyRole(index, variant.getKey()), List.of(face));
-                }
-            }
-            var regular = roles.get("");
+            var fonts = OperationFonts.load(defaultFamilies, families, namedRoles, latin, eastAsia, complexScript, cache);
+            var regular = fonts.regular();
             // Confined to this operation: create at most one encoded snapshot, only when text is used.
             var formulaFonts = new MathTextFonts[1];
-            var content = MathContent.builder().defaults(options).pageSettings(page).metadata(metadata)
+            var content = MathContent.builder().defaults(options).pageSettings(page)
+                    .metadata(metadata == null ? DocumentMetadata.EMPTY : metadata)
                     .textFonts(MathTextFonts.deferred(() -> {
                         if (formulaFonts[0] == null) {
                             formulaFonts[0] = MathTextFonts.of(regular.stream().map(face -> face.data().bytes()).toArray(byte[][]::new));
@@ -272,53 +313,38 @@ public final class Export4j implements AutoCloseable {
                     .limits(importLimits).options(mathOptions)
                     .maxFormulas(maxFormulas).fallbacks(fallbacks);
             resources.forEach(content::image);
-            for (int index = 0; index < families.size(); index++) {
-                content.fontFamily(families.get(index).name(), familyRole(index, ""), familyRole(index, "bold"),
-                        familyRole(index, "italic"), familyRole(index, "boldItalic"));
-            }
+            fonts.content(content);
             MathContent.Author author = parser -> {
-                if (data == null) { return parser.read(source).execute().document(); }
+                if (data == null) { fonts.validate(options); return parser.read(source).execute().document(); }
                 var xml = XmlTemplate.builder().theme(theme).pageSettings(page)
-                        .contentOptions(declarations).contentParser(parser);
+                        .contentOptions(declarations).contentParser(fonts.checked(parser));
                 // Content source keys may be URIs. Direct XML image references use identifiers only;
                 // URI keys remain available to Markdown/HTML content through the shared parser.
                 resources.forEach((key, image) -> {
                     if (key.matches("[A-Za-z_][A-Za-z_0-9]{0,255}")) { xml.image(key, image.resource()); }
                 });
                 fragments.forEach(xml::fragment);
-                return xml.build().compile(source).render(data);
+                var compiler = xml.build();
+                var template = syntax == null ? compiler.compile(source) : compiler.compile(syntax);
+                if (metadata != null) { template = template.toBuilder().metadata(metadata).build(); }
+                return template.render(data);
             };
             ExecutionContext.progress("CONTENT", "", -1, 0, 1);
             if (pdf) {
                 var result = content.build().compileVisual(author);
-                var engine = DocumentEngine.builder(FontGroup.strict(regular)).layoutLimits(layoutLimits).componentLimits(componentLimits);
-                roles.forEach((role, faces) -> { if (!role.isEmpty()) { engine.fontRole(role, FontGroup.strict(faces)); } });
-                engine.build().write(result.document(), new PdfBackend(), output);
+                var engine = fonts.engine().layoutLimits(layoutLimits).componentLimits(componentLimits);
+                engine.build().write(result.document(), pdfBackend, output);
                 return completed(new Result(result.formulas().size(), result.degradations()));
             }
             var result = content.build().compileDocx(author);
-            result.document().semantic().body().sections().forEach(section -> requireRoles(section.blocks(), roles));
-            var wordFonts = new DocxFontFamilies(latin.name(), latin.name(), eastAsia.name(), complexScript.name());
-            var word = DocxAdapter.builder().defaultFonts(wordFonts).lineSpacing(DocxAdapter.LineSpacing.OBJECTS_AT_LEAST);
-            for (int index = 0; index < families.size(); index++) {
-                var family = families.get(index);
-                for (var variant : family.variants().keySet()) {
-                    word.fontRole(familyRole(index, variant), DocxFontFamilies.uniform(family.name()),
-                            variant.equals("bold") || variant.equals("boldItalic"),
-                            variant.equals("italic") || variant.equals("boldItalic"));
-                }
-            }
-            word.build().writeMath(result.document(), output);
+            result.document().semantic().body().sections().forEach(section -> requireRoles(section.blocks(), fonts.roles()));
+            fonts.word().build().writeMath(result.document(), output);
             return completed(new Result(result.formulas().size(), result.degradations()));
         }
     }
 
     private static Result completed(Result result) {
         ExecutionContext.progress("COMPLETE", "", -1, 1, 1); return result;
-    }
-
-    private static String familyRole(int index, String variant) {
-        return "family_" + index + (variant.isEmpty() ? "" : "_" + variant);
     }
 
     private static void requireRoles(List<Block> blocks, Map<String, List<FontFace>> roles) {

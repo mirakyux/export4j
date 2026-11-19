@@ -32,6 +32,7 @@ import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.ColumnWidth;
+import com.mirakyux.export4j.model.RelativeWeights;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionOptions;
@@ -734,18 +735,27 @@ public final class DocxAdapter {
     private void table(StringBuilder xml, Table table, double availableWidth, Map<String, String> hyperlinks,
             DocxImages.Writer images, DocxFields.Writer fields, Set<String> roles, List<String> ancestorAnchors) throws IOException {
         double fixed = table.columns().stream().filter(ColumnWidth.Fixed.class::isInstance).map(ColumnWidth.Fixed.class::cast).mapToDouble(ColumnWidth.Fixed::points).sum();
-        double weights = table.columns().stream().mapToDouble(c -> c instanceof ColumnWidth.Fraction f ? f.weight() : c instanceof ColumnWidth.Auto ? 1 : 0).sum();
-        if (!Double.isFinite(fixed) || !Double.isFinite(weights)) { throw new IOException("DOCX column width sum is not finite"); }
-        if (fixed > availableWidth || weights > 0 && fixed >= availableWidth) { throw new IOException("DOCX table widths exceed the containing content width"); }
+        double[] weights = table.columns().stream().filter(column -> !(column instanceof ColumnWidth.Fixed))
+                .mapToDouble(column -> column instanceof ColumnWidth.Fraction f ? f.weight() : 1).toArray();
+        if (!Double.isFinite(availableWidth) || availableWidth <= 0 || !Double.isFinite(fixed)) {
+            throw new IOException("DOCX table available width and fixed sum must be finite");
+        }
+        if (fixed > availableWidth || weights.length > 0 && fixed >= availableWidth) { throw new IOException("DOCX table widths exceed the containing content width"); }
+        var proportions = weights.length == 0 ? null : RelativeWeights.of(weights);
         double[] widths = new double[table.columns().size()];
         long[] gridWidths = new long[widths.length];
         long tableWidth = 0;
+        int relativeColumn = 0;
         for (int column = 0; column < widths.length; column++) {
             var definition = table.columns().get(column);
-            widths[column] = definition instanceof ColumnWidth.Fixed f ? f.points()
-                    : (availableWidth - fixed) * (definition instanceof ColumnWidth.Fraction f ? f.weight() : 1) / weights;
-            gridWidths[column] = twips(widths[column]);
-            tableWidth += gridWidths[column];
+            try {
+                widths[column] = definition instanceof ColumnWidth.Fixed f ? f.points()
+                        : proportions.portion(relativeColumn++, availableWidth - fixed);
+                gridWidths[column] = checkedTableTwips(widths[column]);
+                tableWidth = Math.addExact(tableWidth, gridWidths[column]);
+            } catch (IllegalArgumentException | ArithmeticException failure) {
+                throw new IOException("DOCX table column width is not representable", failure);
+            }
         }
         var padding = table.format().padding();
         xml.append("<w:tbl od:id=\"").append(escape(table.id())).append("\" od:split=\"").append(table.format().allowRowSplit()).append("\" od:before=\"")
@@ -1570,6 +1580,16 @@ public final class DocxAdapter {
     private static int integer(String value) throws IOException { try { return Integer.parseInt(value); } catch (NumberFormatException failure) { throw new IOException("invalid OOXML integer", failure); } }
     static double number(String value) throws IOException { try { double n = Double.parseDouble(value); if (!Double.isFinite(n)) { throw new NumberFormatException(); } return n; } catch (NumberFormatException failure) { throw new IOException("invalid OOXML number", failure); } }
     private static long twips(double points) { return Math.round(points * 20); }
+
+    private static long checkedTableTwips(double points) throws IOException {
+        double scaled = points * 20;
+        if (!Double.isFinite(points) || points <= 0 || !Double.isFinite(scaled) || scaled >= 0x1.0p63) {
+            throw new IOException("DOCX table width exceeds the supported twip range");
+        }
+        long result = Math.round(scaled);
+        if (result <= 0) { throw new IOException("DOCX table column rounds to a nonpositive twip width"); }
+        return result;
+    }
     static String escape(String value) {
         if (value.codePoints().anyMatch(cp -> cp < 32 && cp != 9 && cp != 10 && cp != 13 || cp >= 0xd800 && cp <= 0xdfff || cp == 0xfffe || cp == 0xffff)) { throw new IllegalArgumentException("invalid XML character"); }
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;");

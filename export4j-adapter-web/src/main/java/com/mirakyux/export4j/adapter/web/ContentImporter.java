@@ -130,7 +130,7 @@ public final class ContentImporter implements SourceContentParser {
             parsing = true;
             try {
                 budget.input(source.length());
-                var context = new ContentImportContext(budget, options, remaining, prefix, source, processor);
+                var context = new ContentImportContext(budget, options, remaining, prefix, source, processor, families);
                 var state = new ImportSupport.State(limits, ProcessingPolicy.STRICT, options.format().name(), context);
                 ImportSupport.input(source, state);
                 return switch (options.format()) {

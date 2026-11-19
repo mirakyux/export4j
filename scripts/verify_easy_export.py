@@ -148,6 +148,20 @@ def check_docx(path, case):
         return {"nativeEquations": len(equations), "images": expected_images, "text": text, "sha256": digest(path)}
 
 
+def check_metadata(pdf_path, docx_path, title, author):
+    reader = PdfReader(pdf_path, strict=True)
+    pdf_title = reader.metadata.title or ""
+    pdf_author = reader.metadata.author or ""
+    require(pdf_title == title and pdf_author == author,
+            "request metadata differs in PDF document information")
+    with ZipFile(docx_path) as package:
+        core = ET.fromstring(package.read("docProps/core.xml"))
+        ns = {"dc": "http://purl.org/dc/elements/1.1/"}
+        actual = (core.findtext("dc:title", namespaces=ns), core.findtext("dc:creator", namespaces=ns))
+        require(actual == (title, author), "request metadata differs in DOCX core properties")
+    return {"title": title, "author": author, "pdf": digest(pdf_path), "docx": digest(docx_path)}
+
+
 def require_same_docx_parts(first, second):
     with ZipFile(first) as left, ZipFile(second) as right:
         require(set(left.namelist()) == set(right.namelist()), "object binding changed DOCX package members")
@@ -173,6 +187,18 @@ def inspect(source, output, soffice, reader_cache):
             and summary["visualOnlyFormulas"] == 1 and summary["strictNativeFailurePreserved"] is True
             and summary["fontCacheHits"] > 0, "configured-once fixture did not satisfy its result contract")
     require((source / "strict-native-rejection.bin").read_text() == "old-target", "strict failure replaced prior output")
+    metadata_paths = {
+        "root": ("XML root title", "XML root author"),
+        "override": ("Request title", "Request author"),
+        "empty": ("", ""),
+    }
+    metadata_outputs = {}
+    if all((source / f"xml-metadata-{name}.{suffix}").is_file()
+           for name in metadata_paths for suffix in ("pdf", "docx")):
+        metadata_outputs = {
+            name: check_metadata(source / f"xml-metadata-{name}.pdf", source / f"xml-metadata-{name}.docx", *values)
+            for name, values in metadata_paths.items()
+        }
     # Fail structural checks before starting independent reader processes.
     pdfs = {case: check_pdf(source / (case + ".pdf"), case) for case in CASES}
     docx = {case: check_docx(source / (case + ".docx"), case) for case in CASES if case != "visual-only"}
@@ -231,7 +257,8 @@ def inspect(source, output, soffice, reader_cache):
     contact_sheet(sheets, output)
     for item in docx.values():
         item.pop("text")
-    return {"checks": "passed", "source": summary, "pdf": pdfs, "docx": docx, "independentDocxReader": reader,
+    return {"checks": "passed", "source": summary, "pdf": pdfs, "docx": docx,
+            "requestMetadata": metadata_outputs or None, "independentDocxReader": reader,
             "xmlMatchesMarkdownPixels": True, "objectBindingMatchesMap": True,
             "renderedPagesPerEngine": sum(item["pages"] for item in renders.values()),
             "visualReview": "Full-page dual renders and contact sheet generated; visual review recorded separately."}
@@ -259,6 +286,8 @@ def main():
         item = inspect(build.resolve() / "output/easy-export", output / f"consumer-{index}", office, reader_cache)
         require(item["source"].get("uniqueRuntimeProviders") is True and len(item["source"].get("starterJarSha256", "")) == 64,
                 "consumer did not prove unique published starter providers")
+        require(item["requestMetadata"] is not None,
+                "consumer did not verify inherited, overridden and explicitly empty XML metadata")
         report["consumers"].append(item)
     report["docxReaderExecuted"] = office is not None
     report["uniqueDocxReaderInputs"] = len(reader_cache)

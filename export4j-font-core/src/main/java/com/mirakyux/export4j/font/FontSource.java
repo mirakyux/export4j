@@ -25,8 +25,7 @@ public interface FontSource {
         if (bytes.length == 0 || bytes.length > TrueTypeFontLoader.DEFAULT_MAX_BYTES) {
             throw new IllegalArgumentException("font source byte limit exceeded");
         }
-        byte[] snapshot = bytes.clone();
-        return cache -> cache.load(snapshot);
+        return new SnapshotFontSource(bytes);
     }
 
     /** 从明确的类资源重新打开并关闭本次拥有的流；不扫描类路径或系统字体。 */

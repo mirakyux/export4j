@@ -3,6 +3,7 @@ package com.mirakyux.export4j.adapter.web;
 
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.CellFormat;
+import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionException;
@@ -222,6 +223,23 @@ class MarkdownImportTest {
         var table = (Table) result.document().blocks().getFirst();
         assertEquals(1, table.rows().size()); assertEquals(0, table.headerRows());
         assertTrue(result.report().losses().isEmpty());
+    }
+    @Test void headerOnlyTableDefaultsOnlyUnstyledRunsAndKeepsExplicitInlineRoles() throws Exception {
+        var importer = MarkdownImporter.builder().fontRoles("STRONG_ROLE", "EMPHASIS_ROLE", "COMBINED_ROLE", "CODE_ROLE").build();
+        var result = importer.read("| plain *italic* **bold** ***both*** `code` ~~strike~~ |\n|---|").execute();
+        var table = (Table) result.document().blocks().getFirst();
+        var runs = table.rows().getFirst().cells().getFirst().inlines();
+        assertEquals("STRONG_ROLE", runs.stream().filter(run -> run.text().contains("plain")).findFirst().orElseThrow().style().fontRole());
+        assertEquals("EMPHASIS_ROLE", runs.stream().filter(run -> run.text().contains("italic")).findFirst().orElseThrow().style().fontRole());
+        assertEquals("STRONG_ROLE", runs.stream().filter(run -> run.text().contains("bold")).findFirst().orElseThrow().style().fontRole());
+        assertEquals("COMBINED_ROLE", runs.stream().filter(run -> run.text().contains("both")).findFirst().orElseThrow().style().fontRole());
+        assertEquals("CODE_ROLE", runs.stream().filter(run -> run.text().contains("code")).findFirst().orElseThrow().style().fontRole());
+        assertTrue(runs.stream().filter(run -> run.text().contains("strike")).findFirst().orElseThrow().style().strikeThrough());
+
+        var themed = ContentImporter.builder().defaults(ContentOptions.builder().format(ContentOptions.Format.MARKDOWN)
+                .fontRole("CUSTOM_ROLE").build()).build().read("| themed |\n|---|").execute();
+        var themedTable = (Table) themed.document().blocks().getFirst();
+        assertEquals("CUSTOM_ROLE", themedTable.rows().getFirst().cells().getFirst().inlines().getFirst().style().fontRole());
     }
     @Test void zeroNumberingRequiresExplicitLossWhileHeadingImagesRemainObjects() throws Exception {
         assertThrows(ProcessingException.class, () -> new MarkdownImporter().read("0. zero\n1. next").execute());

@@ -37,6 +37,8 @@ Linux／macOS x64 与 arm64 的 native JAR 校验值已按实际下载及 Centra
 
 SVG 独立渲染增加验证依赖 resvg-py 0.5.0（MIT）及其 resvg（MPL-2.0）实现；只在 Python 验证环境使用，不加入 Java 运行清单。字体检查使用 fontTools／uharfbuzz 的固定版本，字体来源、SHA-256 与原始许可独立登记于[字体记录](../assets/fonts/README.md)。
 
+相对列宽与字体角色的独立几何检查使用 pdfplumber 0.11.8（MIT），其解析依赖固定为 pdfminer.six 20251107（MIT）；Pillow 与 PDFium 继续采用验证清单中的明确版本。原始 wheel 的许可文件已核对，仅在 Python 验证环境安装，不随 Java 制品或文档站分发，不进入 Java 运行 SBOM。直接版本见 [`requirements-verification.txt`](../scripts/requirements-verification.txt)，使用范围见[架构优化验收](verification/architecture-convergence.md)。
+
 PDF 信任链、OCSP／CRL 与 PAdES 使用 Bouncy Castle 1.86：PDF 后端内部直接依赖 `bcpkix-jdk18on`，传递依赖同版本 `bcprov-jdk18on` 和 `bcutil-jdk18on`。三者采用 MIT，实际 JAR／POM 的 SHA-256、原始许可和来源均登记在依赖清单；公共 API 只使用项目类型与 JDK 密钥／证书字节，不暴露第三方类型。独立验签使用 pyHanko 0.33.0，固定在验证 requirements，仅用于验证环境，不进入 Java 制品。
 
 外部 PDF 的显式源字体映射、不透明图形状态恢复和独立合成语料由项目自主实现，没有新增运行依赖、字体文件或第三方样本。固定 AFM 度量来自既有 PDFBox 3.0.8，验收复用已登记的 Liberation Sans 及原始许可。映射字体由调用方显式提供并遵守其嵌入权限，见[字体兼容](pdf-font-compatibility-api.md)和[阶段九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)。

@@ -43,6 +43,7 @@ import com.mirakyux.export4j.model.PageSize;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
 import com.mirakyux.export4j.model.ParagraphFormat;
+import com.mirakyux.export4j.model.RelativeWeights;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableGrid;
 import com.mirakyux.export4j.model.CellLocation;
@@ -553,6 +554,31 @@ public final class DocumentLayouter {
         private java.util.function.LongConsumer retainedWork;
         private boolean suppressLineCharge;
         private boolean speculativeLines;
+        /** Restores temporary measurement policy even when shaping, validation or cancellation fails. */
+        private final class MeasurementScope implements AutoCloseable {
+            private final long savedLines = lineCount;
+            private final boolean savedVariable = measuringVariableTable;
+            private final boolean savedSuppressed = suppressLineCharge;
+            private final boolean savedSpeculative = speculativeLines;
+            private final List<CellLocation> savedPath = measuringPath;
+            private final boolean restoreLines;
+
+            private MeasurementScope(boolean restoreLines) { this.restoreLines = restoreLines; }
+            private MeasurementScope variable() { lineCount = 0; measuringVariableTable = true; return this; }
+            private MeasurementScope uncharged() { suppressLineCharge = true; return this; }
+            private MeasurementScope speculative() { speculativeLines = true; return this; }
+            private void path(List<CellLocation> value) { measuringPath = value; }
+
+            @Override public void close() {
+                if (restoreLines) { lineCount = savedLines; }
+                measuringVariableTable = savedVariable;
+                suppressLineCharge = savedSuppressed;
+                speculativeLines = savedSpeculative;
+                measuringPath = savedPath;
+            }
+        }
+
+        private MeasurementScope measurementScope(boolean restoreLines) { return new MeasurementScope(restoreLines); }
         private long logicalFragmentLimit = limits.maxPages();
         private int keptThrough = -1;
         private int activeBlockIndex;
@@ -908,13 +934,22 @@ public final class DocumentLayouter {
                 throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, source, index, pages.size(), -1,
                         -1, 0, "column gaps consume the body width", null);
             }
-            double maximum = source.columnWeights().stream().mapToDouble(Double::doubleValue).max().orElse(1);
-            double total = source.columnWeights().isEmpty() ? source.columns()
-                    : source.columnWeights().stream().mapToDouble(value -> value / maximum).sum();
+            double[] values = source.columnWeights().isEmpty() ? new double[source.columns()]
+                    : source.columnWeights().stream().mapToDouble(Double::doubleValue).toArray();
+            if (source.columnWeights().isEmpty()) { java.util.Arrays.fill(values, 1); }
+            var weights = RelativeWeights.of(values);
             var widths = new ArrayList<Double>();
             for (int column = 0; column < source.columns(); column++) {
-                double weight = source.columnWeights().isEmpty() ? 1 : source.columnWeights().get(column) / maximum;
-                double width = availableWidth * (weight / total);
+                // Keep the existing column viewport rounding: a one-ULP narrower width can wrap
+                // a glyph to another line. Only recover a share that underflowed before scaling.
+                double width = availableWidth * weights.share(column);
+                if (width == 0) {
+                    try { width = weights.portion(column, availableWidth); }
+                    catch (IllegalArgumentException invalid) {
+                        throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, source, index, pages.size(), -1,
+                                column, 0, "column weight produces an invalid width", null);
+                    }
+                }
                 if (!Double.isFinite(width) || width <= 0) {
                     throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, source, index, pages.size(), -1,
                             column, 0, "column weight produces an invalid width", null);
@@ -1047,12 +1082,12 @@ public final class DocumentLayouter {
                         settings.contentHeight()), PageMargins.uniform(0));
                 measure = new Flow(new Document(document.metadata(), viewport, source.blocks()), fontGroup, roles, 0);
                 measure.retainedWork = work;
-                measure.speculativeLines = true;
                 measure.logicalFragmentLimit = (long) limits.maxPages() * source.columns() * 65;
             }
 
             private ColumnPlan layout() {
-                try {
+                try (var scope = measure.measurementScope(false)) {
+                    scope.speculative();
                     for (var child : source.blocks()) {
                         ExecutionContext.checkpoint();
                         failedColumns = 0;
@@ -1118,9 +1153,10 @@ public final class DocumentLayouter {
                     ExecutionContext.checkpoint();
                     if (width() != shapedWidth) {
                         work.accept(Math.max(1, paragraph.text().length()));
-                        measure.suppressLineCharge = true;
-                        try { shaped = measure.shapeParagraph(paragraph, index, width()); }
-                        finally { measure.suppressLineCharge = false; }
+                        try (var scope = measure.measurementScope(false)) {
+                            scope.uncharged();
+                            shaped = measure.shapeParagraph(paragraph, index, width());
+                        }
                         shapedWidth = width();
                     }
                     int remaining = shaped.lines().size() - first;
@@ -1675,6 +1711,9 @@ public final class DocumentLayouter {
                 }
             }
             double weights = 0;
+            var fractionalWeights = table.columns().stream().filter(ColumnWidth.Fraction.class::isInstance)
+                    .map(ColumnWidth.Fraction.class::cast).mapToDouble(ColumnWidth.Fraction::weight).toArray();
+            var fractions = fractionalWeights.length == 0 ? null : RelativeWeights.of(fractionalWeights);
             for (ColumnWidth column : table.columns()) {
                 if (column instanceof ColumnWidth.Fraction value) { weights += value.weight() / maxWeight; }
             }
@@ -1742,10 +1781,19 @@ public final class DocumentLayouter {
                         -1, -1, -1, "column widths exceed the content area", null);
             }
             double[] widths = new double[table.columns().size()];
+            int fractionIndex = 0;
             for (int column = 0; column < widths.length; column++) {
+                double fractionalWidth = 0;
+                if (table.columns().get(column) instanceof ColumnWidth.Fraction) {
+                    try { fractionalWidth = fractions.portion(fractionIndex++, remaining); }
+                    catch (IllegalArgumentException invalid) {
+                        throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, table, index, pages.size(),
+                                -1, column, -1, "column has no positive width", null);
+                    }
+                }
                 widths[column] = switch (table.columns().get(column)) {
                     case ColumnWidth.Fixed value -> value.points();
-                    case ColumnWidth.Fraction value -> remaining * (value.weight() / maxWeight) / weights;
+                    case ColumnWidth.Fraction ignored -> fractionalWidth;
                     case ColumnWidth.Auto ignored -> automatic[column];
                 };
                 if (!Double.isFinite(widths[column]) || widths[column] <= 0) {
@@ -2117,12 +2165,11 @@ public final class DocumentLayouter {
                 if (width == selected) { return; }
                 work.account(work.sourceUnits, progress == null ? table.headerRows() : progress.row);
                 MeasuredTable measured;
-                long saved = lineCount;
-                lineCount = 0;
-                measuringVariableTable = true;
                 cellTables.clear();
-                try { measured = prepareMeasuredTable(table, 0, width, false); }
-                finally { lineCount = saved; measuringVariableTable = false; }
+                try (var scope = measurementScope(true)) {
+                    scope.variable();
+                    measured = prepareMeasuredTable(table, 0, width, false);
+                }
                 progress = progress == null ? new TableProgress(table, measured, 0) : progress.reflow(measured);
                 selected = width;
             }
@@ -2292,10 +2339,8 @@ public final class DocumentLayouter {
                 var measured = alternatives.get(width);
                 if (measured != null) { return measured; }
                 account(sourceUnits, row);
-                long savedLines = lineCount;
-                lineCount = 0;
-                measuringVariableTable = true;
-                try {
+                try (var scope = measurementScope(true)) {
+                    scope.variable();
                     if (headersOnly) {
                         var grid = table.grid();
                         var columns = columnWidths(table, grid, 0, width);
@@ -2303,7 +2348,6 @@ public final class DocumentLayouter {
                                 new int[0], false);
                     } else { measured = prepareMeasuredTable(table, 0, width, false); }
                 }
-                finally { lineCount = savedLines; measuringVariableTable = false; }
                 alternatives.put(width, measured);
                 cellTables.clear();
                 return measured;
@@ -3137,16 +3181,16 @@ public final class DocumentLayouter {
                     throw cause.withSourcePath(cellPath(measuringPath, table, row, column, -1));
                 }
             }
-            var savedPath = measuringPath;
+            var parentPath = measuringPath;
             var fragments = new ArrayList<LayoutFragment>();
             double height = 0;
             double previous = 0;
             long lines = 0;
-            try {
+            try (var scope = measurementScope(false)) {
                 for (int ordinal = 0; ordinal < cell.blocks().size(); ordinal++) {
                     com.mirakyux.export4j.model.ExecutionContext.checkpoint();
                     Block child = cell.blocks().get(ordinal);
-                    measuringPath = cellPath(savedPath, table, row, column, ordinal);
+                    scope.path(cellPath(parentPath, table, row, column, ordinal));
                     double before = child instanceof Paragraph paragraph ? paragraph.format().spaceBefore()
                             : ((Table) child).format().spaceBefore();
                     double after = child instanceof Paragraph paragraph ? paragraph.format().spaceAfter()
@@ -3193,7 +3237,7 @@ public final class DocumentLayouter {
                     }
                     previous = after;
                 }
-            } finally { measuringPath = savedPath; }
+            }
             return new MeasuredCell(new CellFragment.Blocks(fragments), height, lines);
         }
 

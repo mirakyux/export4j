@@ -49,15 +49,18 @@ public final class MathTextFonts {
      */
     public static MathTextFonts of(byte[]... fonts) {
         Objects.requireNonNull(fonts, "fonts");
-        if (fonts.length > MAX_FONTS) { throw new IllegalArgumentException("too many formula text fonts"); }
+        if (fonts.length > MAX_FONTS) { throw limit(); }
         byte[][] sources = fonts.clone();
         long total = 0;
         for (byte[] font : sources) {
             ExecutionContext.checkpoint();
             Objects.requireNonNull(font, "font");
             total += font.length;
-            if (font.length == 0 || font.length > MAX_FONT_BYTES || total > MAX_TOTAL_BYTES) {
-                throw new IllegalArgumentException("formula text font byte limit exceeded");
+            if (font.length == 0) {
+                throw new IllegalArgumentException("formula text font must not be empty");
+            }
+            if (font.length > MAX_FONT_BYTES || total > MAX_TOTAL_BYTES) {
+                throw limit();
             }
         }
         if (fonts.length == 0) { return EMPTY; }
@@ -74,6 +77,10 @@ public final class MathTextFonts {
             throw new MathException(MathException.Reason.RENDERING_FAILED, failure);
         }
         return new MathTextFonts(List.copyOf(snapshot));
+    }
+
+    private static MathException limit() {
+        return new MathException(MathException.Reason.LIMIT_EXCEEDED);
     }
 
     /** A deferred configuration is potentially nonempty and is not evaluated by this query. */
