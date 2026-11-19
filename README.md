@@ -43,13 +43,14 @@ Import supported PDF, DOCX, HTML and Markdown content, edit it, and convert betw
 | PDF security and standards | AES-256, selected PDF/A profiles, PDF/UA-1 and PAdES B/T/LT/LTA, with explicit keys, trust and validation evidence |
 | Large documents | Streaming tables, explicit replay for totals/references, optional disk-indexed PDF output, execution budgets, cancellation and atomic file writes |
 
-The development version adds [bounded font caching and idle release](docs/en/font-cache-api.md) for repeated exports. This is separate from published RC3.
+Choose the version before selecting an API:
 
-Development [source content blocks](docs/en/content-blocks-api.md) add per-block fonts, color, paragraph properties and explicit text/Markdown/HTML parsing, with inherited defaults and independent formula/table switches. This batch's acceptance results are recorded separately.
+| Version | Entry point |
+| --- | --- |
+| Published `0.1.0-rc.3` | Use `DocumentEngine` and the modules in the quick start below. |
+| Current `develop` | The [configured-once entry](docs/en/easy-export-api.md), `export4j-starter`, exports text, Markdown, HTML or body XML to PDF/DOCX. XML accepts Map, DTO and record data directly. |
 
-The development [configured-once entry](docs/en/easy-export-api.md), `export4j-starter`, combines source content or body XML with PDF/DOCX output from one font and style configuration. It is separate from published RC3.
-
-Support applies to the documented input subsets. See the [API guides](docs/en/README.md) for configuration and examples.
+Development also adds [source content blocks and inherited options](docs/en/content-blocks-api.md), [bounded font caching](docs/en/font-cache-api.md) and [optional formula parsing](docs/en/math-api.md). These additions are not included in published RC3. See [current status](docs/en/current-status.md) for version boundaries and known limitations, or the [API index](docs/en/README.md) for configuration.
 
 ## Getting started
 
@@ -101,6 +102,8 @@ git clone https://github.com/mirakyux/export4j.git
 cd export4j
 ```
 
+For development-only APIs, run `git switch develop` before building. Full source builds also need Node.js 22+/npm and Python 3.11+ for the designer build and API checks; see [build prerequisites](docs/en/development.md#build-commands). Applications consuming the Java libraries need Java 21.
+
 Windows PowerShell:
 
 ```powershell
@@ -118,7 +121,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | Example | Output directory | Demonstrates |
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java authoring and semantic DOCX |
-| `:examples:easyExport` | `examples/build/easy-export/` | One font/style setup for text, Markdown, HTML and body XML to PDF/DOCX |
+| `:examples:easyExport` | `examples/build/easy-export/` | Development: one font/style setup; body XML with Map/DTO/record data; PDF/DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML reports and data binding |
 | `:examples:manuWeave` | `examples/build/manuweave/` | All 286 ManuWeave academic profiles, with individual PDF and formatting reports |
 | `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | Vector PDF/SVG mathematics and native, editable Word equations |
@@ -133,7 +136,7 @@ Source builds use the development version `0.1.0-SNAPSHOT` by default. Published
 
 ## HTML template designer
 
-Run `./gradlew :export4j-designer:run` (`.\gradlew.bat` on Windows), then open the local address shown in the terminal. This optional app has an IDE-style structure/resource explorer, editor tabs, and property inspector. It supports page settings, direct canvas rich-text editing, typed properties, and highlighted XML/JSON editing. Convenient editing displays template content immediately; precise layout shows the Java engine’s bound, paginated output. Components use document flow by default; dragging reorders them with insertion indicators and preserves dynamic bindings. Text/image paragraphs and tables can explicitly use fixed coordinates, resizing, rotation and adaptive frames, with overlapping or vertically avoiding body text. Clipboard images become embedded template resources. Changes trigger a live Java-engine preview; the continuous canvas supports whole-list selection, multiple selection and drag, shared-property edits, contextual actions, and image resizing. Undo/redo, template ZIP save/reopen, and six export formats with loss previews remain available. See the [designer guide](docs/en/designer.md), [business scenarios (Chinese)](docs/verification/phase-108-designer-and-business-scenarios.md), [editing verification (Chinese)](docs/verification/phase-109-designer-editing-controls.md) and [canvas verification (Chinese)](docs/verification/phase-110-designer-canvas-and-interactions.md).
+Run `./gradlew :export4j-designer:run` (`.\gradlew.bat` on Windows), then open the local address shown in the terminal. The optional local app provides a template/resource tree, XML/JSON editing, typed properties, drag ordering, and Java-engine pagination preview. Save/reopen template ZIPs or export with explicit loss previews. See the [designer guide](docs/en/designer.md) for editing controls, supported containers and acceptance records.
 
 ## Java example
 
@@ -256,6 +259,7 @@ Start with the [FAQ](docs/faq.md) for Java requirements, module selection, fonts
 
 | Task | Start here |
 | --- | --- |
+| Check published/development differences and known limitations | [Current status](docs/en/current-status.md) |
 | Generate PDF reports and invoices in Java | [Complete Java example](#java-example) · [Authoring](docs/en/authoring-api.md) · [Tables and pagination](docs/en/table-api.md) |
 | Generate reports from XML templates | [Template example](#xml-templates) · [XML guide](docs/en/xml-template-api.md) · [Template bundles](docs/en/xml-template-bundle-api.md) |
 | Export Word documents | [DOCX semantics and editing](docs/en/docx-semantic-api.md) · [Page regions (Chinese)](docs/docx-page-regions-api.md) |

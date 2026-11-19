@@ -2,6 +2,8 @@
 
 本规约面向 Java 实现、测试、示例和构建配置。当前已建立 21 个 Gradle 子项目：18 个库、BOM、示例与可选设计器，按以下要求持续开发。
 
+发布版与开发版的模块范围见[当前状态](current-status.md)。本页规定开发流程；可运行任务及输出目录归[示例索引](examples.md)，逐类变更的验收要求归[验证矩阵](../.agents/skills/develop-export4j/references/verification.md)。
+
 ## 技术与构建
 
 - 使用 Java 21 LTS 作为初始基线，正式采用依赖前验证兼容性。
@@ -19,6 +21,8 @@
 构建输出、日志、私有配置和签名材料应放入 `.gitignore` 覆盖的目录。忽略规则只影响尚未跟踪的文件；已提交的敏感内容仍存在于 Git 历史，删除工作区文件不能清除历史。
 
 ## 构建命令
+
+全量源码构建需要 JDK 21、Node.js 22+／npm，以及可执行为 `python` 的 Python 3.11+：根 `build` 包含设计器前端编译和 Python API 门禁。Python 命令名不同时，用 `-Pexport4jVerificationPython=<Python可执行文件>` 指定；文档站另要求 Node.js 22.12+，按[文档站指南](documentation-site.md)构建。Java 库的运行时不需要 Node.js、npm 或 Python。
 
 Windows 使用 `.\gradlew.bat build`，Linux/macOS 使用 `bash ./gradlew build`。根 `build` 聚合全部模块；根 `test` 仅运行测试，`:examples:run` 运行精确绘制示例，`:examples:textPdf` 运行中英文行布局示例，`:examples:flowPdf` 运行语义段落自动分页报告，`:examples:tablePdf` 运行跨页表格报告，`:examples:componentPdf` 运行基础交互报告，`:examples:advancedPdf` 运行综合报告，`:examples:benchmark` 记录大文档布局基线。
 
@@ -105,7 +109,7 @@ Java 编译启用 `-Xlint:all -Werror`。依赖版本目录位于 `gradle/libs.v
 
 ## 异常与诊断
 
-入口参数错误应明确指向无效参数。资源读取、布局和导出失败保留原始异常原因，增加阶段与资源上下文。
+入口参数错误应明确指向无效参数。资源读取、布局和导出失败通常保留原始异常原因，增加阶段与资源上下文；可能携带正文、凭据或调用方私有信息的异常遵循对应入口的脱敏契约。模板 getter 的普通异常不保留原消息与 cause，执行取消及 Error 原样传播，见[对象绑定](xml-template-api.md#java-对象绑定)。
 
 禁止吞异常、空 `catch`、无上限重试和“失败后返回成功”。部分输出不等于成功；失败后输出流及生成文件的状态应在契约中说明。
 

@@ -1,38 +1,37 @@
 # 能力缺口与推进表
 
-当前开发版的[统一导出入口](easy-export-api.md)将现有源内容、字体缓存、公式及 PDF／DOCX 输出装配为 `export4j-starter`，使用端可只声明一个带明确版本的依赖。完整 XML 页区／分节继续使用专用 API；统一入口不扩大完整 CSS、任意 LaTeX 或通用文档往返等既有边界。已发布的 `0.1.0-rc.3` 不包含此模块。
+更新日期：2026-11-19。本文维护能力范围、缺口编号及关闭条件；发布版本与当前开发版的区别见[当前状态](current-status.md)，具体调用见[支持矩阵](capabilities-api.md)。
 
-[源内容块与继承配置](content-blocks-api.md)是 GAP-04／GAP-07 的编写入口扩展：统一 Java／XML 源格式、逐属性外观／段落声明与独立公式／表格开关，既有子集已完成[独立验收](verification/content-blocks.md)。本次富内容扩展的实现与验收单独登记于[本批记录](verification/rich-content.md)。它不改变既有父项的验收范围，不关闭完整 CSS、任意 LaTeX 或一般模板沙箱等范围外能力。
+## 当前待办
 
-当前开发版的[字体缓存](font-cache-api.md)补齐重复加载和跨导出解析复用，并提供容量、空闲自动释放及活动租约保护。源字节上限不代表总堆或 RSS 上限；字体格式覆盖与性能结论仍分别验收。
+既定路线图尚未完成的独立项共 **3 个**，归属 2 个父项。父项和子项不重复计数；已验收子集中的已知缺陷和使用限制另行登记，不因这一计数被视为不存在。
 
-可选[公式模块](math-api.md)补齐受限 TeX→矢量／OMML 及 Markdown 分隔符识别。GAP-12 的一般 Word 扩展、完整 LaTeX、MathML、OCR 和跨格式通用公式节点仍不在该子集内。
+| 条目 | 当前状态 | 后续目标 |
+| --- | --- | --- |
+| GAP-14.2 | 部分支持 | 扩充兼容语料、系统及阅读器矩阵，分别记录打开、搜索、选择、编辑、保存和回读 |
+| GAP-14.3 | 部分支持 | 保持候选版兼容与发布门禁，完成稳定 API／稳定版的独立验收 |
+| GAP-22 | 待实现 | 按新增格式和输入／输出方向分别确定映射、损失及验收 |
 
-更新日期：2026-11-13。依据当前源码和独立验收记录。目标是易用、可控的 Java 文档生产引擎；不以功能名称数量计算完成率。
+具体优先级及验收门槛见[剩余计划](remaining-capabilities-plan.md#后续扩展推进顺序)。OCR 仍在范围外，见 GAP-23。
 
-状态含义：**待实现**尚无完整实现；**推进中**已有实现但未完成验收；**部分支持**只有明确子集；**已验收**所列目标及边界均有证据；**范围外**记录未提供的能力，不进入当前执行队列。每项独立关闭，不能以 Builder 或同名方法代替行为验收。父项汇总既定目标，扩展子项单独保留；父项与子项不相加统计完成数。历史阶段记录反映当时范围，当前状态以本表及对应 API 为准。
+## 版本与开发补充
 
-能力补齐顺序见[剩余计划](remaining-capabilities-plan.md#后续扩展推进顺序)。更广文件兼容、编辑、恢复、标准及格式扩展按后文的独立缺口跟踪；已有子集验收不关闭这些扩展。OCR 不在当前范围内，见 GAP-23。
+`0.1.0-rc.3` 已发布到 Maven Central，包含 16 个库及 BOM；正式签名、上传与远端消费以[发布记录](releasing.md#已发布候选记录)为准。当前 API 门禁使用从 Central RC2 库 JAR 提取的[已发布基线](api-compatibility.md)。RC 发布不关闭稳定 API、稳定版或完整跨平台／阅读器矩阵。
 
-当前未完成项共 **3 个独立条目**：GAP-14.2、GAP-14.3、GAP-22，归属 2 个父项。GAP-12 已完成；提交 `cc132e7` 的三平台构建及临时密钥签名分发远端 CI 已通过，运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。
+| 当前开发版补充 | 归属及证据 |
+| --- | --- |
+| 一次配置生成 PDF／DOCX | [统一导出入口](easy-export-api.md)在 `export4j-starter` 装配源内容、显式字体、缓存及公式；RC3 不包含此模块。正文 XML 之外的页区／分节继续使用专用 API |
+| DTO／record 模板数据 | [Java 对象绑定](xml-template-api.md#java-对象绑定)与 Map 复用有界快照；[独立验收](verification/easy-export.md)分别记录 API、制品、消费和输出结果 |
+| 源内容和混合公式 | [源内容块](content-blocks-api.md)扩展 GAP-04／07 的编写入口；[富内容](rich-content-api.md)记录逐目标公式表示；[验收](verification/rich-content.md)与原有父项分开，不扩展为完整 CSS、LaTeX 或一般模板沙箱 |
+| 重复字体加载与空闲释放 | [字体缓存](font-cache-api.md)提供容量、活动租约与空闲自动释放；源字节上限不等于总堆或 RSS 上限 |
 
-当前候选版 `0.1.0-rc.3` 已发布到 Maven Central，16 个库与 BOM 可按该版本消费；[原发布运行](https://github.com/mirakyux/export4j/actions/runs/43349185087)中的 `release` 任务完成构建、签名、上传及远端消费验证；GitHub Release 的独立恢复结果见[发布记录与流程](releasing.md#已发布候选记录)。当前 API 门禁使用从 Central RC2 库 JAR 提取的[已发布基线](api-compatibility.md)。GAP-14.3 继续保留稳定 API、稳定版验收和后续版本的兼容要求。下文历史阶段的未发布说明仅对应当时批次。
+统一入口的已知接入限制见[验收记录](verification/easy-export.md#已知限制)。已完成 GAP 的新增输入组合或回归需重新验收，不以本表的父项状态覆盖具体缺陷。
 
-学术模板新增的[数学子集](docx-math-api.md)另行登记：DOCX 使用有类型 OMML，PDF／SVG 示例使用受限 TeX 矢量排版，具体证据见[ManuWeave 验收](verification/manuweave-templates.md)。[行内矢量资源](inline-vectors-api.md)提供调用方生成轮廓的通用模型入口及显式 HTML／Markdown 注册；段落、标题、两种列表和语义单元格保留对象，XML v1 静态路径保存完整几何、颜色、外链及字面阅读文字。矢量是有界绘制资源，不是公式语义树；普通矢量导出 DOCX／Web 仍须明确降为逻辑文字。可选公式转换不扩大 GAP-12 为任意 Word 数学或完整 LaTeX 执行器；新增混排的真实文献验收与既有样张分开记录。
+## 如何使用本表
 
-[可编辑正文分栏](column-flow-api.md)另行提供 ColumnFlow／XML／设计器入口，支持 1～3 栏连续内容、中间通栏图表及恢复分栏。[语义栅格](grid-layout-api.md)进一步提供 1～12 轨、跨部分轨道的区域、项边界编辑和整行原子分页。两者可同级组合；DOCX／Web 原生映射、跨行项、自动放置和互相嵌套仍未提供。显式转换只保留顺序内容并记录布局损失；证据分别见[分栏](verification/semantic-body-columns.md)和[栅格验收](verification/editable-grid-layout.md)，不扩大既有组件分栏与 CSS Grid 范围。
+**待实现**表示尚无完整实现；**推进中**表示已有实现但未完成验收；**部分支持**表示只有明确子集；**已验收**表示所列目标及边界已有证据；**范围外**表示未提供且不在当前队列。每项独立关闭，Builder 或同名方法不能代替行为验收。
 
-[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)补齐固定互转／拒绝语料、DOCX 完整 ZIP 校验、依赖公告门禁及 `0.1.0-rc.1` 候选 API 基线。本批 1,787 项 Java 测试、16 条路径／32 份输出／73 次控制检查和本地签名制品验证通过；新增 CI 步骤尚无远端运行证据，正式发布仍未执行。
-
-[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成本轮 Windows 可执行的 Word／PDF 阅读器打开、搜索、编辑、保存、重开及最终 JAR 回读，修复 DOCX 兼容模式声明与 PDF 阅读器应用元数据接收。最新构建 1,792 项测试通过，固定语料及无打印依赖检查通过；跨平台、浏览器前台交互及本批新 CI 仍未执行，本轮修改后的字节未重新签名。
-
-[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)完整验收 GAP-03／08／09／21 的原剩余清单及既有扩展子项；四个父项均关闭，没有增加缺口编号。各 API 仍明确输入子集、资源预算和工具兼容边界；DOCX、文档 CSS 和设计器的后续验收见各自原有条目，跨平台／阅读器及正式分发仍未关闭。历史阶段九十八及更早记录不代表当前待完成状态。
-
-[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成 GAP-13 的独立 HTML 设计器及四套完整业务样例，该阶段构建 1,804 项 Java 测试、API 兼容、隔离 Maven 调用方及无打印依赖检查通过。[阶段一百零九](verification/phase-109-designer-editing-controls.md)补齐页面／页区、表格、富文本、类型化属性及格式化／高亮控件；[阶段一百一十](verification/phase-110-designer-canvas-and-interactions.md)验收连续分页画布、直接正文编辑、常驻资源、快捷键／右键与列表排序。设计器浏览器实测与输出证据单列，不扩大 GAP-14.2 的平台矩阵。
-
-从 `0.1.0-rc.2` 起提供[普通文档逐页导出](paged-document-api.md)，在完整输入模型上释放完成页的 IR／Display List，并复用有界绘制资源；磁盘 PDF 后端直接复制完成的活页对象。[本轮验收](verification/paged-document-export.md)分别记录最终分页语义、重放一致性、失败原子性和有限容量。它不改变单次行源契约，也不表示任意完整模型、最大块或脚注计划恒定内存；较早的 `0.1.0-rc.1` 不含此入口。
-
-普通内容块还可通过 `BlockSource` 按需提供：`exportSemantic(PageSettings, Factory)` 在准确声明总页数后单遍输出，`exportReplay` 显式重开稳定快照两遍，减少完整输入驻留。此路径支持页字段和固定页区，目录、未来引用、跨节和脚注重排仍使用完整模型入口；最大块、keep 链、唯一 ID 和页摘要仍受有限预算约束，见 [ADR-0112](adr/0112-incremental-block-source.md)。
+下表及分项保留已关闭目标、适用子集和证据入口。历史复评中的测试数量、“下一项”和“未发布”只描述当时批次，不是当前待办或发布状态。完整阶段记录见[验收索引](verification)。
 
 ## 推进顺序
 
@@ -51,7 +50,7 @@
 | GAP-11 | P2 | PDF/UA、PAdES/LTV、PDF/A 范围有限 | 按标准逐项实现并用独立验证器验收；不能由标签或一次输出推断合规 | 已验收本表全部子项：[阶段九十六](verification/phase-96-pdf-standards.md)完成离线 PAdES B／T／LT／LTA、信任／撤销／时间戳／DSS 续期／DocMDP、PDF/A-1b／2b／3b／4f 生成与转换，以及 PDF/UA-1 的明确语义及已有标签处理；独立合规、验签、双渲染与生成／已有标签实际辅助阅读器分别有证据。选定版本及输入子集外不由这些结果推断支持 |
 | GAP-12 | P2 | DOCX 合并表格、复杂页区及布局互转有限 | 标准 OOXML 合并与受支持样式；Word 更新／保存回读；严格损失边界；不承诺 PDF 同分页 | 已验收本表两项明确子集：[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)完成有类型浮动图片／文本框、图片变换、深表、评论／六类修订／现代控件及旧式表单／目录；标准结构、跨格式实际损失、Word 实际编辑／字段更新／保存／重开／发布 JAR 回读、4 页原生页面及 PDF 的独立渲染和逐页复查均通过，GAP-12.1／12.2 已闭合。生成及转换不依赖 Word、打印机驱动或打印服务 |
 | GAP-13 | P2 | 可视化模板设计器与完整业务样例 | 独立可选应用，编辑／预览／保存重开／导出；报告、密集表单、长表和引用样例，记录成本及失败边界 | 已验收：[HTML 设计器](designer.md)提供源码／属性／结构编辑、显式资源、独立数据和六格式损失预检；[阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成四套可重开样例、24 份导出、11 页 PDF 双渲染及 SVG／PNG 独立像素、11 项失败控制和真实浏览器保存重开／导出。当前支持容器内部编辑、真实格外框列宽拖动及精确 pt、当前格行列／合并操作、合并跨度维护、内部块显式复制删除和光标处通栏；本地源码／数据历史最多 100 步，服务端项目／资源快照最多 8 步，数值保真、HTML 表格的分隔文本粘贴和四态预览见[后续编辑流程验收](verification/designer-workflow-v2.md)。几何不明确不提供列宽拖柄，粘贴不提供二维填格，动态作用域和最后内容块仍受保护。核心不依赖应用，不加入库发布；不承诺任意外部文件图形编辑或完整平台兼容 |
-| GAP-14 | P1 | 发布前 API、许可和兼容检查需要持续固化 | 公共 API 隔离、隔离坐标调用方、SBOM、依赖与资源声明；正式发布前核对命名空间权限 | 部分支持：[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)固定候选 API、安全门禁及兼容语料；[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)补齐 Windows Word／PDF 保存回读及兼容修复。RC1、RC2 已发布到 Central；RC2 手动发布工作流、正式签名和远端隔离消费成功，当前兼容门禁使用 Central RC2 基线，见[发布记录](releasing.md#已发布候选记录)与[API 兼容](api-compatibility.md)。稳定 API／稳定版及更广平台／阅读器仍待独立验收；历史 CI 仅对应其记录提交 |
+| GAP-14 | P1 | 发布前 API、许可和兼容检查需要持续固化 | 公共 API 隔离、隔离坐标调用方、SBOM、依赖与资源声明；正式发布前核对命名空间权限 | 部分支持：[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)固定候选 API、安全门禁及兼容语料；[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)补齐 Windows Word／PDF 保存回读及兼容修复。RC1、RC2、RC3 已发布到 Central；候选版正式签名与远端隔离消费见发布记录，当前兼容门禁使用 Central RC2 基线，见[发布记录](releasing.md#已发布候选记录)与[API 兼容](api-compatibility.md)。稳定 API／稳定版及更广平台／阅读器仍待独立验收；历史 CI 仅对应其记录提交 |
 | GAP-15 | P1 | 原缺统一的程序化编辑入口 | 按块／单元格定位、插入／删除／移动、图片替换和批量样式修改；保留输入快照，校验全树 ID、字段、列表和引用；操作适用 GAP-19 策略并报告实际变化 | 已验收：[阶段四十四](verification/phase-44-semantic-editing.md)；不可变候选、物理锚点、图文／样式、页区共享及完整性校验。只编辑已有模型，未建模源结构不在本项 |
 | GAP-16 | P1 | 原缺跨富文本运行的安全查找替换 | 明确匹配与样式继承规则，保留 Unicode／UTF-16、链接、图片和字段边界；跨对象或不适用目标按策略处理，验证未匹配内容及引用不变 | 已验收：[阶段四十四](verification/phase-44-semantic-editing.md)；字面匹配、同／异样式规则、对象与字素边界、范围回滚及预检／实际报告；PDF 内容流仍归 GAP-10.5 |
 | GAP-17 | P1 | Markdown 输入仅为严格轻量模板，通用导入缺失 | 单独定义 CommonMark 与 GFM 导入子集，逐项覆盖表格、链接、代码、引用、有序／嵌套列表、删除线及硬换行；资源显式解析，保留旧模板语法和变量行为；损失按 GAP-19 报告 | 已验收：[阶段四十五](verification/phase-45-markdown-import.md)；通用 CommonMark／GFM 子集、显式图片、列表／表格、源位置及损失报告；严格模板保持独立，不承诺任意 Markdown 无损往返 |
@@ -115,8 +114,8 @@ GAP-15～20 为新增跟踪项；GAP-17／18 细化 GAP-07 的输入方向，分
 | GAP-18.1 | P2 | HTML/CSS 的文档布局扩展 | 按业务子集扩展选择器、媒体／分页规则、Flex／Grid、尺寸与定位；先明确语义或布局映射，再验证级联、资源和跨格式损失，不以保留 CSS 原文冒充支持 | 已验收：[阶段一百零四](verification/phase-104-html-css-layout.md)完成静态选择器、级联、媒体／分页、显式尺寸、Flex／Grid 和定位的明确子集；14 页 PDF、8 份 SVG 与 Chromium 源几何、4 项负控制及真实策略降级通过。默认语义模式保持，运行时组件的跨格式损失明确；不支持组合按策略处理，不承诺完整浏览器兼容 |
 | GAP-21.1 | P2 | 绘制契约缺少高级色彩和矢量合成 | 分别表达 CMYK、ICC／专色、矢量透明度、混合模式、渐变和图案；保持模型／绘制／后端边界，各后端精确实现或报损，并独立验证色彩、透明关系与页面外观 | 已验收：[高级图形](advanced-graphics-api.md)贯通 CMYK／ICC／专色、16 种混合、隔离透明组、线性／径向渐变、图案和复合路径裁剪。原生 PDF 资源与像素独立核对；SVG／PNG 对印刷色彩按 ERROR／WARN／IGNORE 和 DEGRADE 明确报告实际损失，不以 RGB 外观冒充油墨保留 |
 | GAP-21.2 | P2 | 静态 SVG 仅支持受限子集 | 分别扩展渐变、图案、标记及复杂变换／裁剪组合；核对视口、资源、几何和透明度，安全解析与预算保持，以独立渲染验证最终内容 | 已验收：[SVG 离线资源](advanced-graphics-api.md#svg-离线输入)支持 defs／use、渐变与图案继承、marker、仿射变换及裁剪组合，循环／外联／预算仍明确失败。最终 SVG 使用 resvg、源 SVG 使用 Chromium，PDF 双引擎核对几何／透明外观；浏览器 CSS、滤镜、动画及文字布局不属于此明确矢量子集 |
-| GAP-14.2 | P1 | 兼容语料和跨平台／阅读器证据不足 | 为每项新增输入组合加入可公开或可复现语料，核对预检／实际损失；明确 JDK／系统矩阵及阅读器的打开、搜索、选择、编辑、保存和回读结果，失败与未执行分别登记 | 部分支持：固定 32 份输出／73 次控制及 8 页双渲染保持；[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成 Windows Word 四页复查、真实控件编辑／保存／重开，以及 PDF 实际搜索／视觉选择／表单填写／保存／重开，最终 JAR 回读与无打印依赖通过；DOCX 模式声明、PDF 应用元数据兼容已修复。Word 保留 334 项未映射诊断，PDF 视觉选择不代替复制文字核对；本轮浏览器前台交互、其他平台及新远端 CI 未执行，完整矩阵仍未关闭；有限容量见 GAP-09 |
-| GAP-14.3 | P1 | 稳定 API 与稳定版发布未完成 | 确定 API 冻结与版本兼容规则，验证实际远程 CI、命名空间、签名制品及 Maven 分发，保留 BOM／SBOM／许可和隔离坐标调用方；发布与本地验证分别记录 | 部分支持：[兼容规则](api-compatibility.md)以 Central 已发布的 `0.1.0-rc.2` 库 JAR 为基线，保留破坏变更门禁。RC1、RC2 已使用正式身份签名发布到 Central；RC2 的手动发布工作流已成功完成构建、BOM／SBOM／许可核对、篡改拒绝、远端字节校验、16 个库与 BOM 的隔离消费及 GitHub Release，见[发布记录](releasing.md#已发布候选记录)。稳定 API 和稳定版验收仍未完成；RC 发布不表示稳定性或生产 SLA 承诺 |
+| GAP-14.2 | P1 | 兼容语料和跨平台／阅读器证据不足 | 为每项新增输入组合加入可公开或可复现语料，核对预检／实际损失；明确 JDK／系统矩阵及阅读器的打开、搜索、选择、编辑、保存和回读结果，失败与未执行分别登记 | 部分支持：固定 32 份输出／73 次控制及 8 页双渲染保持；[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成 Windows Word 四页复查、真实控件编辑／保存／重开，以及 PDF 实际搜索／视觉选择／表单填写／保存／重开，最终 JAR 回读与无打印依赖通过；DOCX 模式声明、PDF 应用元数据兼容已修复。Word 保留 334 项未映射诊断，PDF 视觉选择不代替复制文字核对；阶段一百零七未执行的浏览器前台交互、其他平台及该批新远端 CI，不由后续候选版发布补作阅读器证据，完整矩阵仍未关闭；有限容量见 GAP-09 |
+| GAP-14.3 | P1 | 稳定 API 与稳定版发布未完成 | 确定 API 冻结与版本兼容规则，验证实际远程 CI、命名空间、签名制品及 Maven 分发，保留 BOM／SBOM／许可和隔离坐标调用方；发布与本地验证分别记录 | 部分支持：[兼容规则](api-compatibility.md)以 Central 已发布的 `0.1.0-rc.2` 库 JAR 为基线，保留破坏变更门禁。RC1、RC2、RC3 已使用正式身份签名发布到 Central；RC3 的发布任务已完成构建、BOM／SBOM／许可核对、远端字节校验和 16 个库与 BOM 的隔离消费，GitHub Release 的独立恢复结果另行记录，见[发布记录](releasing.md#已发布候选记录)。稳定 API 和稳定版验收仍未完成；RC 发布不表示稳定性或生产 SLA 承诺 |
 
 GAP-22 的候选方向包括 XLSX／PPTX 输出、EPUB／XPS 输入与输出、PS／PCL 输入。每个方向先明确目标结构及可保留内容，再独立实现与验收；图像资源加载不算文档导入，也不承诺电子表格公式或演示文稿动画的完整模型。GAP-23 仅记录扫描件识别的范围外边界；未来若启用，应作为可选模块接入，不改变当前无识别模型依赖的导入路径。
 

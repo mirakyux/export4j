@@ -43,13 +43,14 @@ Export4j 是面向报告、发票、表单和结构化文档的开源 **Java PDF
 | PDF 安全与标准 | AES-256、选定 PDF/A 等级、PDF/UA-1 及 PAdES B／T／LT／LTA；密钥、信任和验证资料显式提供 |
 | 大文档 | 流式长表、用于总数／引用的显式重放、可选磁盘索引 PDF、执行预算、取消及原子文件输出 |
 
-当前开发版新增[有界字体缓存与空闲释放](docs/font-cache-api.md)，减少重复导出的字体加载和解析；已发布 RC3 不包含此功能。
+先确认所用版本，再选择入口：
 
-当前开发版的[源内容块](docs/content-blocks-api.md)支持每块声明字体、颜色、段落属性及文本／Markdown／HTML 格式，逐项继承默认值，并独立控制公式和表格解析；本批验收结果另行登记。
+| 版本 | 使用入口 |
+| --- | --- |
+| 已发布 `0.1.0-rc.3` | 使用下方快速开始中的 `DocumentEngine` 及按需模块。 |
+| 当前 `develop` | [统一导出入口](docs/easy-export-api.md) `export4j-starter` 配置一次字体和样式，即可从文本、Markdown、HTML 或正文 XML 导出 PDF／DOCX；XML 可直接绑定 Map、DTO 和 record。 |
 
-当前开发版的[统一导出入口](docs/easy-export-api.md) `export4j-starter` 只需配置一次字体和全局样式，即可从源内容或正文 XML 直接导出 PDF／DOCX；已发布 RC3 不包含此模块。
-
-各项能力适用于文档声明的输入子集，配置与示例见 [API 指南](docs/README.md)。
+开发版还提供[源内容块与配置继承](docs/content-blocks-api.md)、[有界字体缓存](docs/font-cache-api.md)和[可选公式解析](docs/math-api.md)。这些新增能力未包含在已发布 RC3 中。版本边界及已知限制见[当前状态](docs/current-status.md)，配置方式见 [API 索引](docs/README.md)。
 
 ## 快速开始
 
@@ -101,6 +102,8 @@ git clone https://github.com/mirakyux/export4j.git
 cd export4j
 ```
 
+试用仅在开发版提供的 API 时，先执行 `git switch develop`。全量源码构建还需要 Node.js 22+／npm 和 Python 3.11+，用于设计器构建及 API 检查，详见[构建前置条件](docs/development.md#构建命令)；消费 Java 库的应用需要 Java 21。
+
 Windows PowerShell：
 
 ```powershell
@@ -118,7 +121,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 | 示例 | 输出目录 | 演示内容 |
 | --- | --- | --- |
 | `:examples:authoring` | `examples/build/authoring/` | Java 编写与语义 DOCX |
-| `:examples:easyExport` | `examples/build/easy-export/` | 一次字体／样式配置，文本、Markdown、HTML 与正文 XML 直接导出 PDF／DOCX |
+| `:examples:easyExport` | `examples/build/easy-export/` | 开发版：一次字体／样式配置，正文 XML 直接绑定 Map／DTO／record，输出 PDF／DOCX |
 | `:examples:xmlTemplates` | `examples/build/xml-templates/` | XML 报告与数据绑定 |
 | `:examples:manuWeave` | `examples/build/manuweave/` | ManuWeave 全部 286 个学术模板配置，各自输出 PDF 与格式差异报告 |
 | `:examples:manuWeaveMath` | `examples/build/manuweave-math/` | PDF／SVG 矢量数学排版与 Word 原生可编辑公式 |
@@ -133,7 +136,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 
 ## HTML 模板设计器
 
-运行 `.\gradlew.bat :export4j-designer:run`，在浏览器打开终端显示的本地地址。这个可选独立应用采用 IDE 式结构／资源管理器、编辑标签和属性检查器，支持纸张／边距、页眉页脚、表格预设、画布原位富文本、类型化属性及 XML／JSON 高亮。便捷编辑即时显示模板内容，精确排版显示 Java 引擎绑定数据后的真实分页。组件默认自动占位，拖动按插入线排序并保留动态绑定；段落、图片段落和表格可显式切为固定位置、缩放、旋转及自适应框尺寸，正文可选择遮盖或上下避让。粘贴图片随模板保存。编辑后由 Java 引擎实时分页预览；连续画布支持列表整体选框、多选拖动、批量属性、右键操作和图片缩放。另支持撤销／重做、模板 ZIP 保存重开及带损失预检的六格式导出。见[设计器指南](docs/designer.md)、[业务样例](docs/verification/phase-108-designer-and-business-scenarios.md)、[专用编辑验收](docs/verification/phase-109-designer-editing-controls.md)和[画布与交互验收](docs/verification/phase-110-designer-canvas-and-interactions.md)。
+运行 `.\gradlew.bat :export4j-designer:run`，在浏览器打开终端显示的本地地址。这个可选本地应用提供模板／资源树、XML／JSON 编辑、类型化属性、拖动排序和 Java 引擎分页预览，支持模板 ZIP 保存重开及带损失预检的导出。编辑操作、容器支持范围及验收入口见[设计器指南](docs/designer.md)。
 
 ## Java 使用示例
 
@@ -256,6 +259,7 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 
 | 任务 | 阅读入口 |
 | --- | --- |
+| 确认发布版／开发版差异及已知限制 | [当前状态](docs/current-status.md) |
 | 用 Java 生成 PDF 报告与发票 | [完整 Java 示例](#java-使用示例) · [编写指南](docs/authoring-api.md) · [表格与分页](docs/table-api.md) |
 | 从 XML 模板生成报告 | [模板示例](#xml-模板) · [XML 指南](docs/xml-template-api.md) · [模板资源包](docs/xml-template-bundle-api.md) |
 | 导出 Word 文档 | [DOCX 语义与编辑](docs/docx-semantic-api.md) · [页区](docs/docx-page-regions-api.md) |

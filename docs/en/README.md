@@ -2,7 +2,18 @@
 
 Author documents with Java or templates, or import, edit, and convert existing files. Start with the [English README](../../README.md) or [Chinese README](../../README.zh-CN.md), then use the [example index](examples.md) for tasks and output directories.
 
-See the [FAQ](../faq.md) or [Chinese FAQ](../faq.zh-CN.md) for selection, runtime requirements, fonts, conversion limits, and licenses. The primary guides below are available in English and Chinese. Advanced references and historical records currently available only in Chinese are labeled accordingly.
+See the [FAQ](../faq.md) or [Chinese FAQ](../faq.zh-CN.md) for selection, runtime requirements, fonts, conversion limits, and licenses. Primary guides are available in English and Chinese; untranslated advanced references and historical records are labeled Chinese.
+
+## First integration
+
+| Goal | Reading order |
+| --- | --- |
+| Use the candidate on Maven Central | [Published quick start](../../README.md#getting-started) → [Authoring](authoring-api.md) |
+| Evaluate development APIs with less setup | [Current status](current-status.md) → [Unified PDF/DOCX entry](easy-export-api.md) → [Development examples](examples.md#development-examples) |
+| Bind business objects to XML templates | [XML templates](xml-template-api.md) → [DTO/record binding rules](xml-template-api.md#java-objects) |
+| Inspect output or edit templates | [Examples](examples.md) → [Local designer](designer.md) |
+
+Published RC3 and current `develop` have different module and API scopes. New development APIs require a matching source build or local artifact.
 
 ## Read by task
 
@@ -14,7 +25,7 @@ See the [FAQ](../faq.md) or [Chinese FAQ](../faq.zh-CN.md) for selection, runtim
 | Adjust layout and page regions | [Layout (Chinese)](../layout-api.md) · [Editable grids](grid-layout-api.md) · [Body columns and full-width figures](column-flow-api.md) · [Continuous columns (Chinese)](../continuous-columns-api.md) · [Contour floats (Chinese)](../contour-floats-api.md) · [Page variants](page-variants-api.md) · [Background/foreground (Chinese)](../page-overlays-api.md) |
 | Write tables and long tables | [Semantic tables](table-api.md) · [Column spans](column-spans-api.md) · [Row spans](row-spans-api.md) · [Block cells/nested tables (Chinese)](../block-cells-api.md) · [Forward-only tables](streaming-table-api.md) · [Replay/disk-indexed PDF](streaming-replay-api.md) |
 | Add navigation and fields | [Inline fields (Chinese)](../inline-fields-api.md) · [Editable forms](form-styles-api.md) · [Portable navigation (Chinese)](../portable-navigation-api.md) |
-| Use the visual designer | [Designer](designer.md) · [Business acceptance (Chinese)](../verification/phase-108-designer-and-business-scenarios.md) · [Canvas/interactions (Chinese)](../verification/phase-110-designer-canvas-and-interactions.md) · [Table styles/spans (Chinese)](../verification/phase-111-designer-table-styles.md) · [Grid UX (Chinese)](../verification/designer-grid-ux.md) · [Bindings UX (Chinese)](../verification/designer-bindings-ux.md) · [Container editing UX (Chinese)](../verification/designer-container-ux.md) · [Workflow completion (Chinese)](../verification/designer-workflow-closure.md) · [Table/container/column editing (Chinese)](../verification/designer-workflow-v2.md) |
+| Use the visual designer | [Designer](designer.md) |
 | Use XML/Markdown templates | [XML](xml-template-api.md) · [Template themes (Chinese)](../xml-themes-api.md) · [Page regions (Chinese)](../xml-page-regions-api.md) · [Sections (Chinese)](../xml-sections-api.md) · [Strict Markdown templates](markdown-template-api.md) |
 | Save templates/recover documents | [Template ZIPs](xml-template-bundle-api.md) · [Save models as XML (Chinese)](../xml-model-saving-api.md) · [Optional model recovery](model-recovery-api.md) |
 | Import, edit, and convert | [Conversion](document-conversion-api.md) · [Semantic editing/loss reports (Chinese)](../semantic-editing-api.md) · [General Markdown import](markdown-import-api.md) · [HTML/CSS import](html-import-api.md) · [HTML/Markdown export](web-export-api.md) |
@@ -31,13 +42,14 @@ Each API guide describes supported inputs, calls, ownership, loss policies, and 
 
 | Question | Source of facts |
 | --- | --- |
+| Which version and known limitations apply? | [Current status](current-status.md) |
 | What works, and which API should I use? | [Capabilities](capabilities-api.md) and the corresponding guide |
 | Which scenarios are suitable for evaluation? | [Readiness assessment (Chinese)](../readiness-assessment.md) |
 | What is missing, and what counts as complete? | [Capability gaps](capability-gaps.md) |
 | How does work proceed? | [Execution plan (Chinese)](../remaining-capabilities-plan.md) · [Roadmap (Chinese)](../roadmap.md) |
-| What was actually verified? | [Acceptance records (Chinese)](../verification) and their independent evidence |
+| What was actually verified? | [Verification by topic](verification/README.md) · [Complete record catalog (Chinese)](../verification) |
 
-The remaining items are GAP-14.2, GAP-14.3, and GAP-22, without double-counting parents/children. OCR remains outside scope. The gap table owns current status. Phase records preserve their original examples, limits, and results and are not the current backlog.
+The gap table owns the current backlog. Phase records preserve their original examples, limits, and results; each feature guide links to the relevant acceptance records.
 
 ## Development and maintenance
 
@@ -46,7 +58,7 @@ The remaining items are GAP-14.2, GAP-14.3, and GAP-22, without double-counting 
 | Contribute | [Contribution guide (Chinese)](../../CONTRIBUTING.md) · [Development](development.md) |
 | Architecture/module boundaries | [Architecture](architecture.md) · [ADRs (Chinese)](../adr/README.md) |
 | Build/output verification | [Test strategy](development.md#test-strategy) · [Verification matrix (Chinese)](../../.agents/skills/develop-export4j/references/verification.md) |
-| Compatibility/releases | [API compatibility (Chinese)](../api-compatibility.md) · [Releases](releasing.md) · [Platform/signing acceptance (Chinese)](../verification/phase-105-publication-and-compatibility.md) · [Security/fixed corpus (Chinese)](../verification/phase-106-security-and-compatibility-corpus.md) · [Windows save/reopen (Chinese)](../verification/phase-107-windows-reader-compatibility.md) |
+| Compatibility/releases | [API compatibility (Chinese)](../api-compatibility.md) · [Releases](releasing.md) |
 | Dependencies/licenses | [Dependencies](dependencies.md) · [Fonts (Chinese)](../../assets/fonts/README.md) · [NOTICE](../../NOTICE) · [Third-party licenses](../../third-party/licenses) |
 | Historical background | [Project proposal (Chinese)](../project-proposal.md) and ADRs |
 

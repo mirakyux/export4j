@@ -8,6 +8,7 @@ const reference = (name, en, zh) => ({ name, en, zh, translated: false });
 export const guideGroups = [
   group('Start here', '开始使用', [
     page('README', 'Documentation', '文档导航'),
+    page('current-status', 'Versions and current status', '版本与当前状态'),
     page('capabilities-api', 'Capabilities', '能力矩阵'),
     page('examples', 'Examples', '示例')
   ]),
@@ -138,13 +139,19 @@ export const guideGroups = [
     reference('advanced-graphics-api', 'Advanced graphics', '高级图形')
   ]),
   group('Project', '项目与验证', [
+    reference('readiness-assessment', 'Integration readiness', '就绪评估'),
+    reference('roadmap', 'Roadmap', '路线图'),
+    reference('remaining-capabilities-plan', 'Execution plan', '执行计划'),
     page('architecture', 'Architecture', '架构'),
     page('development', 'Development', '开发规约'),
     page('dependencies', 'Dependencies and licenses', '依赖与许可证'),
     page('releasing', 'Releases', '发布'),
+    reference('api-compatibility', 'API compatibility', 'API 兼容'),
     page('releases/0.1.0-rc.3', 'RC3 candidate notes', 'RC3 候选说明'),
     page('releases/0.1.0-rc.2', 'RC2 release notes', 'RC2 说明'),
     page('capability-gaps', 'Remaining capabilities', '剩余能力'),
+    page('verification/README', 'Verification index', '验收导航'),
+    reference('adr/README', 'Architecture decisions', '架构决策'),
     page('documentation-site', 'Maintain this website', '文档站维护')
   ])
 ];

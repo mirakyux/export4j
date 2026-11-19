@@ -1,6 +1,6 @@
 # Architecture
 
-This document turns the [project proposal (Chinese)](../project-proposal.md) into implementation constraints. The repository currently has 19 modules: 16 libraries, a BOM, examples, and an optional designer application. The optional `export4j-opentype` module encapsulates native shaping so that the core does not require JNI. Production entry points remain in the components module. See [capabilities](capabilities-api.md), [ADR-0025 (Chinese)](../adr/0025-safe-declarative-templates.md) for declarative templates, and [ADR-0010 (Chinese)](../adr/0010-inline-image-layout-and-docx-media.md) for inline images and DOCX media.
+This document turns the [project proposal (Chinese)](../project-proposal.md) into implementation constraints. The repository currently has 21 modules: 18 libraries, a BOM, examples, and an optional designer application. The optional `export4j-opentype` module encapsulates native shaping so that the core does not require JNI. Components provide the general engine; `export4j-starter` assembles common source content, XML templates, and PDF/DOCX output at the outer layer. See [capabilities](capabilities-api.md), [ADR-0025 (Chinese)](../adr/0025-safe-declarative-templates.md) for declarative templates, and [ADR-0010 (Chinese)](../adr/0010-inline-image-layout-and-docx-media.md) for inline images and DOCX media.
 
 ## Layers and data flow
 
@@ -74,6 +74,8 @@ Modules are created when needed. This table defines responsibilities and main pr
 | `export4j-layout-model` | Layout IR, fragments, source mappings | Graphics geometry and transitive model, glyph, line data |
 | `export4j-layout-core` | Constraints, line breaking, pagination, painting conversion | Layout results, text, graphics |
 | `export4j-components` | Standard drawing components, contents, navigation orchestration | Component interfaces from layout core and graphics core |
+| `export4j-math` | Optional bounded TeX/Markdown math compilation, retaining occurrence identity and target representations | Model, Web/DOCX adapters, fonts, and graphics API; JLaTeXMath is internal |
+| `export4j-starter` | One explicit font/default-style setup for source content/XML and PDF/DOCX output | Components, math, templates, PDF backend, fonts, and DOCX adapter; core never depends on it |
 | `export4j-backend-pdf` | PDF output | Graphics and fonts |
 | `export4j-backend-svg` | SVG output | Graphics |
 | `export4j-backend-raster` | Image output and preview | Graphics |
@@ -101,7 +103,7 @@ Phase one began with the document model, graphics API/core, PDF backend, and exe
 
 The initial `export4j-model` supplied page sizes and metadata, referenced by the drawing API to support direct Display List generation. Phase three added semantic documents, paragraphs, formatting, and margins while keeping the model free of external dependencies.
 
-Phase two added font abstractions, ordinary line breaking, and line layout. Phase three established paragraph pagination and basic tables. See [capabilities](capabilities-api.md) for later semantic layout, recursive continuation, and streaming; these historical descriptions are not a current backlog. `DocumentEngine` in the components module remains the public entry point; no separate API or test-utility module has been introduced.
+Phase two added font abstractions, ordinary line breaking, and line layout. Phase three established paragraph pagination and basic tables. See [capabilities](capabilities-api.md) for later semantic layout, recursive continuation, and streaming; these historical descriptions are not a current backlog. `DocumentEngine` in components remains the general engine, while starter provides a configured-once outer entry. Neither is a separate core API or test-utility module.
 
 ## Phase-two text path
 
@@ -113,7 +115,7 @@ Explicit TrueType data → FontFace / FontData → SimpleTextShaper
 
 The font layer parses Unicode mappings and horizontal metrics in advance, returns immutable snapshots, and closes parser resources. Text uses fixed fallback and bounded line breaking, retaining original UTF-16 ranges, baselines, glyph IDs, and advances. Line layout describes paragraph-local coordinates; layout core assigns pages.
 
-Graphics core translates existing lines. The PDF backend embeds the same font bytes, validates glyph IDs, and uses `TJ` adjustments to retain established advances. Complex text consumes neutral outlines directly; pagination uses `atBaseline()` to preserve every drawing result. Font caching is output-local, reusing identical SHA-256 font bytes within a document. See [ADR-0003 (Chinese)](../adr/0003-font-text-layout.md).
+Graphics core translates existing lines. The PDF backend embeds the same font bytes, validates glyph IDs, and uses `TJ` adjustments to retain established advances. Complex text consumes neutral outlines directly; pagination uses `atBaseline()` to preserve every drawing result. PDF font objects and subsets remain document-local, reusing identical SHA-256 font bytes within that document. Development [bounded font caches](font-cache-api.md) separately reuse immutable parsed faces and exclusively borrowed parser objects across exports, with idle release; PDF objects are never shared across documents. See [ADR-0003 (Chinese)](../adr/0003-font-text-layout.md) for the original text path.
 
 ## Phase-three mixed-content pagination
 

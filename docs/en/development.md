@@ -1,6 +1,8 @@
 # Development
 
-These conventions apply to Java implementation, tests, examples, and build configuration. There are currently 19 Gradle subprojects: 16 libraries, a BOM, examples, and the optional designer.
+These conventions apply to Java implementation, tests, examples, and build configuration. There are currently 21 Gradle subprojects: 18 libraries, a BOM, examples, and the optional designer.
+
+See [current status](current-status.md) for published and development module scopes. This page defines development conventions; runnable tasks and output directories belong in the [example index](examples.md), while change-specific checks belong in the [verification matrix (Chinese)](../../.agents/skills/develop-export4j/references/verification.md).
 
 ## Technology and builds
 
@@ -19,6 +21,8 @@ Documentation, examples, and verification commands use repository-relative paths
 Build outputs, logs, private configuration, and signing material belong in ignored directories. Ignore rules affect only untracked files; committed secrets remain in history, and deleting working files does not erase that history.
 
 ## Build commands
+
+The full source build needs JDK 21, Node.js 22+ with npm, and Python 3.11+ available as `python`: root `build` includes the designer frontend and the Python API gate. Use `-Pexport4jVerificationPython=<python-executable>` when Python has another command name. The documentation site separately requires Node.js 22.12+; build it following the [site guide](documentation-site.md). Java library runtime does not require Node.js, npm, or Python.
 
 On Windows run `.\gradlew.bat build`; on Linux/macOS run `bash ./gradlew build`. Root `build` aggregates all modules, while root `test` runs tests only. `:examples:run` demonstrates precise drawing; `:examples:textPdf` Chinese/English line layout; `:examples:flowPdf` semantic paragraph pagination; `:examples:tablePdf` cross-page tables; `:examples:componentPdf` basic interactions; `:examples:advancedPdf` an integrated report; and `:examples:benchmark` a large-document layout baseline.
 
@@ -105,7 +109,7 @@ Reserve headers/footers through `PageTemplate.bodySettings` before body paginati
 
 ## Exceptions and diagnostics
 
-Invalid entry arguments identify the parameter. Reading, layout, and export failures retain original causes and add stage/resource context.
+Invalid entry arguments identify the parameter. Reading, layout, and export failures normally retain original causes and add stage/resource context; failures that can contain document text, credentials, or private application data follow the entry point's sanitization contract. Ordinary template-getter failures retain neither their original message nor cause; execution cancellation and Errors propagate unchanged. See [object binding](xml-template-api.md#java-objects).
 
 No swallowed exceptions, empty `catch`, unlimited retries, or success after failure. Partial output is not success; contracts describe stream/file state after failure.
 

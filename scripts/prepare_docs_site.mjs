@@ -9,6 +9,11 @@ import { guideGroups, translatedGuides } from '../site/.vitepress/navigation.mjs
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pagesDirectory = path.join(root, 'site', 'pages');
 const repository = 'https://github.com/mirakyux/export4j';
+// Development guides may reference sources absent from main. Pin links to the
+// revision being documented, including when a detached release tag is built.
+const sourceRevision = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], {
+  cwd: root, encoding: 'utf8',
+}).trim();
 const tracked = new Set(execFileSync('git', ['ls-files', '-z'], {
   cwd: root, encoding: 'utf8',
 }).split('\0').filter(Boolean));
@@ -129,7 +134,7 @@ function repositoryUrl(name, fragment) {
     throw new Error(`Documentation references an untracked repository path: ${name}`);
   }
   const encoded = name.split('/').map(encodeURIComponent).join('/');
-  return `${repository}/${isDirectory ? 'tree' : 'blob'}/main/${encoded}${fragment}`;
+  return `${repository}/${isDirectory ? 'tree' : 'blob'}/${sourceRevision}/${encoded}${fragment}`;
 }
 
 function rewriteTarget(target, source) {
@@ -221,13 +226,24 @@ for (const source of [...documents].sort()) {
   await writeFile(target, prepareMarkdown(markdown, source), 'utf8');
 }
 
-const verification = [...documents].filter(name => name.startsWith('docs/verification/')).sort();
+const verification = [...documents].filter(name => name.startsWith('docs/verification/')
+  && !name.endsWith('/README.md') && !name.endsWith('/index.md'));
+const phases = verification.filter(name => /\/phase-\d+/.test(name))
+  .sort((a, b) => Number(/\/phase-(\d+)/.exec(b)[1]) - Number(/\/phase-(\d+)/.exec(a)[1]) || a.localeCompare(b));
+const topics = verification.filter(name => !phases.includes(name)).sort();
 const verificationIndex = ['---', 'lang: zh-CN', '---', '', '# 验收记录', '',
   '各记录保留执行时的版本、样例、检查方法与限制。当前支持状态以[能力矩阵](/zh/docs/capabilities-api.md)和[能力缺口表](/zh/docs/capability-gaps.md)为准。', ''];
-for (const source of verification) {
-  const markdown = markdownSources.get(source);
-  const title = /^#\s+(.+)$/m.exec(markdown)?.[1] ?? path.basename(source, '.md');
-  verificationIndex.push(`- [${title}](${documentRoutes.get(source)})`);
+if (documents.has('docs/verification/README.md')) {
+  verificationIndex.push('按用途选择记录见[验收导航](/zh/docs/verification/README.md)，版本分界见[版本与当前状态](/zh/docs/current-status.md)。', '');
+}
+for (const [heading, records] of [['专题记录', topics], ['历史阶段（按编号倒序）', phases]]) {
+  verificationIndex.push(`## ${heading}`, '');
+  for (const source of records) {
+    const markdown = markdownSources.get(source);
+    const title = /^#\s+(.+)$/m.exec(markdown)?.[1] ?? path.basename(source, '.md');
+    verificationIndex.push(`- [${title}](${documentRoutes.get(source)})`);
+  }
+  verificationIndex.push('');
 }
 await writeFile(path.join(pagesDirectory, 'zh/docs/verification/index.md'), `${verificationIndex.join('\n')}\n`, 'utf8');
 

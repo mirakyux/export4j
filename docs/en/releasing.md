@@ -4,6 +4,15 @@
 
 See the [0.1.0-rc.3 notes](releases/0.1.0-rc.3.md) for changes and known limits. The workflow attaches `docs/releases/<version>.md` to the corresponding GitHub Release. Central and workflow results determine publication state.
 
+The development build adds optional `export4j-math` and configured-once `export4j-starter`, bringing its distribution to 18 libraries and the BOM. Published RC3 retains its original 16 libraries and BOM, without those two modules. Historical publication results do not extend to the additions.
+
+| Task | Read |
+| --- | --- |
+| Choose published or development artifacts | [Current status](current-status.md) |
+| Verify local artifacts and Maven consumption | [Local verification](#local-verification) · [Signing and reviewable bundles](#signing-and-reviewable-bundles) |
+| Publish a new version | [Pre-release checks](#pre-release-checks) · [Manual GitHub Actions publication](#manual-github-actions-publication) |
+| Inspect completed publications | [Published candidate record](#published-candidate-record) |
+
 ## Published candidate record
 
 The `release` job in the original `0.1.0-rc.3` [publication run](https://github.com/mirakyux/export4j/actions/runs/43349185087) succeeded for build commit `7a912d9d6c4737578ad11d5c9bd4339dae0f9adf`. Maven Central provides all 16 libraries and the BOM at this version. All 82 remote artifacts matched the signed batch and passed signature checks. Both Gradle-metadata and POM-only remote isolated consumption passed. Byte/signature evidence is in `publication-report.json`; consumption is separately recorded in `consumer-report.json`.
@@ -44,8 +53,8 @@ The workflow:
 
 1. Validates an explicit non-SNAPSHOT version, rejecting temporary verification versions, any existing same-version Central module, and existing `v<version>` tags. Records the commit and build inputs.
 2. Builds, tests, checks APIs, generates examples, and signs in memory using Java 21, Node.js 24, and the Wrapper, without exporting CI private-key files.
-3. Audits this build's SBOM and independently verifies 82 artifacts for 16 libraries and the BOM, signatures, licenses, versions, and tamper rejection; creates an upload ZIP.
-4. Resolves those signed artifacts in a fresh consumer, compares all 16 JAR SHA-256 hashes, checks production structures/dual rendering, and verifies capability sample CMS signatures and tamper rejection.
+3. Audits this build's SBOM and independently verifies 92 artifacts for the current 18 libraries and BOM, signatures, licenses, versions, and tamper rejection; creates an upload ZIP. The exact module set comes from Gradle settings.
+4. Resolves those signed artifacts in a fresh consumer, compares all 18 JAR SHA-256 hashes, generates math and configured-once samples, checks production structures/dual rendering, and verifies capability sample CMS signatures and tamper rejection.
 5. Uploads once through the official API in `AUTOMATIC` mode and waits for `PUBLISHED`. This step publicly publishes the version.
 6. Downloads exact bytes, signatures, and checksums from Central, verifies signatures/SBOM, and compiles, generates, and inspects output with a fresh Central-only consumer.
 7. Uses a separate job to recheck commit, version, package SHA-256, and remote results, then creates `v<version>` and a GitHub Release at the exact build commit. Attaches the signed Maven bundle, public key, SBOM, and reports, and generates commit notes. Suffixed RC/beta versions are prereleases; stable versions become Latest.
@@ -81,6 +90,8 @@ Do not rerun Central upload or the entire original publication flow to complete 
 
 Automation saves rendering contact sheets, but publishers still perform relevant visual/reader acceptance. The workflow does not include manual Word edit/save or built-in veraPDF; PDF/A compliance needs separate pre-release evidence.
 
+Changes to math and the configured-once entry also need their independent output checks from the [verification matrix (Chinese)](../../.agents/skills/develop-export4j/references/verification.md). The current release workflow generates these samples in the complete-module consumer, but does not automatically run `verify_math.py`, `verify_easy_export.py`, or the starter-only consumer script. Generation alone does not establish single-dependency assembly, complete formula-output verification, or page-by-page visual acceptance.
+
 ## Local verification
 
 ~~~powershell
@@ -90,11 +101,11 @@ python scripts/verify_production.py
 python scripts/verify_capabilities.py
 ~~~
 
-`publishLocalBundle` publishes 16 libraries and the BOM into `build/repository`, without remote services or the user's Maven repository. Libraries include sources, Javadoc, POMs, Gradle metadata, and licenses. SNAPSHOT artifacts are timestamped; verification resolves actual filenames through `maven-metadata.xml`.
+`publishLocalBundle` publishes 18 libraries and the BOM into `build/repository`, without remote services or the user's Maven repository; the first build can still download pinned dependencies. Libraries include sources, Javadoc, POMs, Gradle metadata, and licenses. SNAPSHOT artifacts are timestamped; verification resolves actual filenames through `maven-metadata.xml`.
 
-`sbom` writes `build/reports/sbom.cdx.json`, a CycloneDX 1.6 runtime inventory with SHA-256 for 16 project libraries and 13 third-party Java artifacts, recording Apache-2.0, BSD-2-Clause, BSD-3-Clause, and MIT by coordinate. New coordinates fail the license allowlist until reviewed. Optional OpenType native classifiers are not transitive in production POMs; applications choose explicitly. See `third-party/native-artifacts.csv` for native payloads/licenses. Fonts, JDK, testing, and build tools are separate inventories.
+`sbom` writes `build/reports/sbom.cdx.json`, a CycloneDX 1.6 runtime inventory with SHA-256 for 18 project libraries and 14 third-party Java artifacts. It records Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, and JLaTeXMath's original GPL-2.0-or-later linking-exception name by coordinate. New coordinates fail the license allowlist until reviewed. The math binary includes corresponding JLaTeXMath sources/build POMs; distribution verification checks their hashes and bytes. See [dependencies](dependencies.md) for original terms and bundled-font licenses. Optional OpenType native classifiers are not transitive in production POMs; applications choose explicitly. See `third-party/native-artifacts.csv` for native payloads/licenses. Fonts, JDK, testing, and build tools are separate inventories.
 
-The independent `verification/consumer` project uses Maven coordinates and the BOM only, restricting project-group resolution to the isolated local repository, then compiles and generates PDF/DOCX/SVG/PNG/HTML/Markdown. The script uses an independent Gradle home and refreshes SNAPSHOTs. This proves local consumption, not Central, signatures, or remote CI.
+The independent `verification/consumer` project uses Maven coordinates and the BOM only, restricting project-group resolution to the isolated local repository, then compiles and generates PDF/DOCX/SVG/PNG/HTML/Markdown. `verify_local_consumer.ps1` uses an independent Gradle home, refreshes SNAPSHOTs, runs both Gradle-metadata and POM-only consumption, and records actual runtime JAR paths and SHA-256 inventories. `verify_maven_consumer.py` performs per-JAR comparison against the specified publication repository; the signing rehearsal `verify_signed_distribution.py` also invokes that check. Record local consumption, exact-byte comparison, signatures, and remote CI separately.
 
 Root `check` includes `apiCheck`, using baselines extracted from published Central `0.1.0-rc.2` JARs. See [API compatibility (Chinese)](../api-compatibility.md) for comparison rules, per-library origins, and behavioral boundaries. Historical commit `cc132e7` passed remote Java 21 Windows/Linux/macOS builds and temporary-key signed distribution; see [phase 105 (Chinese)](../verification/phase-105-publication-and-compatibility.md#远端-ci-验收). Local phase-106 security/compatibility gates cannot inherit that historical CI result. Later RC2 publication/remote consumption use the actual workflow record above. Local repository checks do not replace upload or remote consumption.
 
@@ -129,9 +140,11 @@ Project modules in a publication share one BOM-aligned version. Third-party vers
 python scripts/prepare_maven_bundle.py --repository <local-staging-directory> --version <same-version> --public-key <public-key-file> --output build/verification/distribution
 ```
 
-Replace placeholders before running; Linux/macOS use `./gradlew`. Signed `publishSignedBundle` first runs `check` (tests and candidate API gate), `publishLocalBundle`, and `sbom`, staging only 16 libraries and the BOM locally without Central. Complete POMs include project, SCM, maintainers, and license. Binaries, sources, Javadoc, POMs, and Gradle metadata all need valid signatures. The preparation script independently uses GnuPG to verify signatures and tamper rejection, compares actual JARs/SBOM, licenses, and coordinates, and produces a standard-layout ZIP plus MD5/SHA-1/SHA-256/SHA-512 checksums. Install GnuPG and prepare a verifiable public key first.
+Replace placeholders before running; Linux/macOS use `./gradlew`. Signed `publishSignedBundle` first runs `check` (tests and candidate API gate), `publishLocalBundle`, and `sbom`, staging the current 18 libraries and BOM locally without Central. Complete POMs include project, SCM, maintainers, and license. Binaries, sources, Javadoc, POMs, and Gradle metadata all need valid signatures. The preparation script independently uses GnuPG to verify signatures and tamper rejection, compares actual JARs/SBOM, licenses, and coordinates, and produces a standard-layout ZIP plus MD5/SHA-1/SHA-256/SHA-512 checksums. Install GnuPG and prepare a verifiable public key first.
 
 `scripts/verify_signed_distribution.py` rehearses the entire flow with temporary keys and a `0.0.0-verification...` version, then compiles and generates output through a separately copied consumer. Every resolved project JAR must have the same SHA-256 as the signed repository; matching coordinates/versions alone are insufficient. An input manifest binds production code, build/verification scripts, consumer sources, and resources, failing if they change during signing/consumption. This test identity is not a release identity. The script requires a fresh ignored directory; private keys exist only in temporary keyrings and signing environments and are cleaned afterward. Rehearsal bundles are reviewable and are not automatically uploaded.
+
+Changes involving starter also run `scripts/verify_starter_consumer.ps1`, verifying a caller that declares one starter coordinate and no BOM through both Gradle metadata and POM-only routes. The complete-module consumer cannot substitute for this assembly check. Set `-Version` and `-RepositoryDirectory` to the same artifact batch and choose a new `-OutputDirectory`. See [configured-once acceptance (Chinese)](../verification/easy-export.md) for corresponding checks and page-by-page output verification.
 
 Record preparation, temporary/formal keys, ZIP creation, upload, and real remote consumption separately. Build CI rehearsals never upload; only the manual release workflow uses formal credentials to publish.
 

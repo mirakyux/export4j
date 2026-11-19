@@ -34,6 +34,9 @@ async function fixture(t) {
   await put('third-party/docs-site-licenses/README.md', '# Licenses\n');
   await put('tools/existing.txt', 'tracked repository resource\n');
   git(['add', 'README.md', 'README.zh-CN.md', 'docs', 'site/pages/public', 'third-party', 'tools']);
+  git(['-c', 'user.name=Documentation fixture', '-c', 'user.email=fixture@example.invalid',
+    '-c', 'commit.gpgSign=false', 'commit', '--quiet', '-m', 'Initial documentation fixture']);
+  const revision = git(['rev-parse', 'HEAD']).trim();
   const indexBefore = git(['ls-files', '-s']);
   await put('site/.vitepress/navigation.mjs', `
 export const guideGroups = [{ items: [{ name: 'known' }, { name: 'selected-api' }] }];
@@ -58,7 +61,7 @@ export const translatedGuides = ['known', 'selected-api'];
   await copyFile(path.join(project, 'scripts/prepare_docs_site.mjs'), path.join(directory, 'scripts/prepare_docs_site.mjs'));
   await symlink(path.join(project, 'site/node_modules'), path.join(directory, 'site/node_modules'), 'junction');
   return {
-    directory, put,
+    directory, put, git, revision,
     run() {
       const result = spawnSync(process.execPath, ['scripts/prepare_docs_site.mjs'], {
         cwd: directory, encoding: 'utf8', timeout: 20_000,
@@ -90,10 +93,10 @@ test('previews selected new guides and Java sources without staging local notes'
   const chinese = await f.read('site/pages/zh/docs/selected-api.md');
   assert.match(chinese, /\[Literature\]\(\/zh\/docs\/literature-pdf-integration\.md\)/);
   assert.match(chinese, /\[Anchor\]\(#selected-section\)/);
-  assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/export4j-model\/src\/main\/java\/example\/NewType\.java/);
-  assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/verification\/consumer\/src\/main\/java\/consumer\/NewConsumer\.java/);
-  assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/scripts\/verify_new\.py/);
-  assert.match(chinese, /https:\/\/github\.com\/mirakyux\/export4j\/blob\/main\/tools\/existing\.txt/);
+  for (const source of ['export4j-model/src/main/java/example/NewType.java',
+    'verification/consumer/src/main/java/consumer/NewConsumer.java', 'scripts/verify_new.py', 'tools/existing.txt']) {
+    assert.ok(chinese.includes(`https://github.com/mirakyux/export4j/blob/${f.revision}/${source}`));
+  }
   assert.match(await f.read('site/pages/docs/selected-api.md'), /\[Chinese\]\(\/zh\/docs\/selected-api\.md\)/);
   assert.match(await f.read('site/pages/zh/docs/literature-pdf-integration.md'), /# Literature/);
   assert.match(await f.read('site/pages/zh/docs/verification/inline-vectors.md'), /# Vector verification/);
@@ -141,4 +144,37 @@ test('rejects missing heading anchors on new public guides', { timeout: 30_000 }
   const result = f.run();
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Missing or ambiguous heading anchor/);
+});
+
+test('pins repository links when documenting a detached revision', { timeout: 30_000 }, async t => {
+  const f = await fixture(t);
+  f.git(['checkout', '--quiet', '--detach']);
+  await f.put('docs/selected-api.md', '# Selected\n\n[Source](../tools/existing.txt)\n');
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok((await f.read('site/pages/zh/docs/selected-api.md'))
+    .includes(`/blob/${f.revision}/tools/existing.txt`));
+});
+
+test('catalogs topic records once and sorts historical stages numerically', { timeout: 30_000 }, async t => {
+  const f = await fixture(t);
+  for (const [name, title] of [['README', 'Verification overview'], ['phase-2-old', 'Stage 2'],
+    ['phase-12-new', 'Stage 12'], ['phase-100-later', 'Stage 100']]) {
+    await f.put(`docs/verification/${name}.md`, `# ${title}\n`);
+  }
+  f.git(['add', 'docs/verification']);
+  // Capture a separate fixture so the usual preparation guard still compares
+  // against an unchanged index, including the newly tracked historical inputs.
+  const before = f.git(['ls-files', '-s']);
+  const result = spawnSync(process.execPath, ['scripts/prepare_docs_site.mjs'], {
+    cwd: f.directory, encoding: 'utf8', timeout: 20_000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.git(['ls-files', '-s']), before);
+  const catalog = await f.read('site/pages/zh/docs/verification/index.md');
+  assert.ok(catalog.indexOf('## 专题记录') < catalog.indexOf('## 历史阶段'));
+  assert.ok(catalog.indexOf('[Stage 100]') < catalog.indexOf('[Stage 12]'));
+  assert.ok(catalog.indexOf('[Stage 12]') < catalog.indexOf('[Stage 2]'));
+  assert.equal((catalog.match(/\[Known verification\]/g) ?? []).length, 1);
+  assert.ok(!catalog.includes('[Verification overview]'));
 });

@@ -1,14 +1,23 @@
 # Dependency and resource management
 
+This page records current dependencies, licenses, and resource provenance. Phase-specific notes retain the scope at that time; their module counts are historical. See [current status](current-status.md) for published and development scope.
+
+| What to check | Authoritative source |
+| --- | --- |
+| Java versions, coordinates, and original licenses | [Version catalog](../../gradle/libs.versions.toml) · [Dependency inventory](../../third-party/dependencies.csv) · [License directory](../../third-party/licenses) |
+| Current library runtime artifacts and exact bytes | This build's `build/reports/sbom.cdx.json`; see [local release verification](releasing.md#local-verification) for generation and checks |
+| Platform native payloads | [Native-artifact inventory](../../third-party/native-artifacts.csv) |
+| Font, website, and designer resources | [Font record (Chinese)](../../assets/fonts/README.md) and the corresponding sections below |
+
 ## Public documentation-site dependencies
 
 The standalone static documentation site uses VitePress 1.6.4 and Vue 3.5.45 (MIT). Wrangler 4.160.0 (MIT OR Apache-2.0) is used only for static Cloudflare deployment. Direct/transitive versions, sources, and integrity are pinned by `site/package.json` and `site/package-lock.json`; install with `npm --prefix site ci`. These do not enter Java POMs, the BOM, runtime, or library SBOM. The site runs no server-side JavaScript and loads no scripts or fonts through CDNs. See the [documentation-site guide](documentation-site.md) for maintenance and deployment.
 
 VitePress 1.6.4's original dependency range still uses Vite 5. This project applies a targeted override to Vite 6.4.6 for patched build/local-serving behavior; Vue plugin 5.2.4 supports Vite 6 through its peer range. This is outside VitePress's original range. Upgrades must repeat static builds, development-server checks, and page verification; successful installation alone does not establish compatibility. See [GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6) for the Vue SSR fix and [GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm) for the Vite Windows fix.
 
-Pages use operating-system font stacks. Homepage PDF/WebP assets reuse existing examples and registered fonts; see the [showcase notes (Chinese)](../../site/pages/public/showcase/README.md) for sources, licenses, and content limits. Query dependency advisories with `npm --prefix site audit --registry=https://registry.npmjs.org`. Build-tool advisories and public-site runtime resources are assessed separately; failed queries are not passes.
+Latin page text uses Inter bundled by this website; Chinese and monospace text use operating-system font stacks. Homepage PDF/WebP assets reuse existing examples and registered fonts; see the [showcase notes (Chinese)](../../site/pages/public/showcase/README.md) for sources, licenses, and content limits. Query dependency advisories with `npm --prefix site audit --registry=https://registry.npmjs.org`. Build-tool advisories and public-site runtime resources are assessed separately; failed queries are not passes.
 
-Static builds generate `THIRD-PARTY-NOTICES.txt` from actual browser modules, extracted styles, and social icons, including exact package names, versions, and original LICENSE/NOTICE text. Builds fail for missing licenses or installed versions differing from the lockfile. Originals absent from npm packages are pinned in the [supplementary license directory (Chinese)](../../third-party/docs-site-licenses/README.md). The theme uses a font-free entry point and does not distribute VitePress's built-in Inter font. Build/deployment-only tools such as Wrangler are excluded from this browser notice.
+Static builds generate `THIRD-PARTY-NOTICES.txt` from actual browser modules, extracted styles, and social icons, including exact package names, versions, and original LICENSE/NOTICE text. Builds fail for missing licenses or installed versions differing from the lockfile. Originals absent from npm packages are pinned in the [supplementary license directory (Chinese)](../../third-party/docs-site-licenses/README.md). A local `@font-face` bundles VitePress's Inter Latin font under SIL OFL 1.1; the build checks the original OFL text's hash and includes it in the browser notice. Fonts are not fetched from a CDN. Build/deployment-only tools such as Wrangler are excluded from this browser notice.
 
 ## Designer browser dependencies
 
@@ -102,7 +111,7 @@ Runtime dependencies, build plugins, test tools, native libraries, and bundled r
 
 ## Adopted dependency records
 
-See [dependency coordinates and evidence](../../third-party/dependencies.csv) for the complete inventory of 24 Maven coordinates, including BOM and test dependencies. Platform native classifier artifacts are separately listed in `third-party/native-artifacts.csv`. Original licenses and attribution files are in the [license directory](../../third-party/licenses). No external Gradle plugins are currently introduced.
+See [dependency coordinates and evidence](../../third-party/dependencies.csv) for the complete inventory of 25 Maven coordinates, including BOM and test dependencies. Platform native classifier artifacts are separately listed in `third-party/native-artifacts.csv`. Original licenses and attribution files are in the [license directory](../../third-party/licenses). No external Gradle plugins are currently introduced.
 
 | Dependency | Version | Scope | License basis and handling |
 | --- | --- | --- | --- |
@@ -117,6 +126,9 @@ See [dependency coordinates and evidence](../../third-party/dependencies.csv) fo
 | `org.commonmark:commonmark` | 0.24.0 | Internal Web-adapter runtime | BSD-2-Clause; retain original LICENSE.txt from actual JAR |
 | `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | Internal Web-adapter runtime | BSD-2-Clause; retain original LICENSE.txt from actual JAR |
 | `org.commonmark:commonmark-ext-gfm-strikethrough` | 0.24.0 | Internal Web-adapter runtime | BSD-2-Clause; retain original LICENSE.txt from actual JAR |
+| `org.lwjgl:lwjgl` | 3.4.3 | Optional OpenType internal runtime | BSD-3-Clause; retain native-payload licenses separately |
+| `org.lwjgl:lwjgl-harfbuzz` | 3.4.3 | Optional OpenType internal runtime | BSD-3-Clause; retain native-payload licenses separately |
+| `org.scilab.forge:jlatexmath` | 1.0.7 | Optional math runtime; transitive through starter | GPL-2.0-or-later with upstream linking exception; retain bundled-font terms and corresponding source material |
 | `org.junit:junit-bom` | 6.1.3 | Test-version constraints | EPL-2.0; POM and same-version JUnit license files |
 | `org.junit.jupiter:junit-jupiter` | 6.1.3 | Tests | EPL-2.0; retain LICENSE.md |
 | `org.junit.jupiter:junit-jupiter-api` | 6.1.3 | Transitive tests | EPL-2.0; retain LICENSE.md |
@@ -210,13 +222,17 @@ Local test resources that cannot be publicly distributed must stay outside the r
 
 ManuWeave academic examples derive catalog/layout facts from pinned commit `e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b` of [jiassia/manuweave](https://github.com/jiassia/manuweave/), covering 286 Profile IDs in that README. Rights holders are ManuWeave contributors under MIT; the [original license](../../examples/src/main/resources/templates/manuweave/MIT.txt) ships with example resources. Configuration records upstream relative paths and source-file SHA-256, without upstream executable code, tests, fonts, or official Word/LaTeX files. Export4j authored the renderer and fictional content. Four real Liberation Serif 2.1.5 variants were added; see the [font record (Chinese)](../../assets/fonts/README.md) for sources, OFL, and hashes. Callers may explicitly supply licensed original-font mappings. Examples neither search system fonts nor synthesize bold/italic. Font substitutions and unmapped formatting are reported per template; see the [template notes (Chinese)](../../examples/src/main/resources/templates/manuweave/README.md).
 
-Math layout adds only the main `org.scilab.forge:jlatexmath:1.0.7` JAR to `examples` runtime configuration, disabling transitive font add-ons. It uses GPL-2.0-or-later with the original upstream linking exception. Built-in math fonts retain their separate terms; complete originals are in the [JLaTeXMath license directory](../../third-party/licenses/jlatexmath-1.0.7/). Upstream classes/fonts are unmodified. Example distribution `third-party/source/` includes the pinned sources JAR and [original build POM](../../third-party/jlatexmath-source-build/); Gradle verification metadata constrains versions, source archives, and binary hashes. This dependency does not enter library POMs, BOM, or library runtime SBOM. The adapter reads/writes native Word formulas using existing JDK ZIP/XML, without JLaTeXMath or Office. Office is used only for independent compatibility verification.
+Optional `export4j-math` and mathematical examples depend on the main `org.scilab.forge:jlatexmath:1.0.7` JAR, disabling transitive font add-ons; core modules do not depend on it. Math APIs expose only Export4j types and reuse existing CommonMark, vector resources, and the DOCX math tree internally. JLaTeXMath uses GPL-2.0-or-later with the original upstream linking exception; do not label it LGPL or substitute an unverified SPDX exception. Built-in math fonts retain their separate terms; complete originals are in the [JLaTeXMath license directory](../../third-party/licenses/jlatexmath-1.0.7/). Upstream classes/fonts are unmodified.
+
+The math binary JAR includes pinned upstream sources and [original build POMs](../../third-party/jlatexmath-source-build/) under `META-INF/third-party/source/`, so direct Maven consumers receive the corresponding source material. Example distributions also include the same material under `third-party/source/`. Gradle verifies versions and archive hashes; distribution verification checks the embedded source hash and build-POM bytes. JLaTeXMath enters the math module's runtime POM and library SBOM. The BOM aligns project modules, not third-party versions; core consumers that omit math do not acquire it. Native Word math ZIP/XML handling remains a JDK implementation in the DOCX adapter. The bounded TeX-to-native-math parser also does not use JLaTeXMath; see the [math API](math-api.md) for exact boundaries. Office is used only for independent compatibility verification. This public module belongs to development after RC3 and is absent from published RC3.
 
 Root [LICENSE](../../LICENSE) uses the official full Apache text for project-authored portions. Third-party code/resources retain original declarations.
 
 Root [NOTICE](../../NOTICE) collects original attribution from current runtime dependencies. Built JARs carry project LICENSE, NOTICE, and original third-party licenses. Example distributions additionally include unmodified dependency JARs.
 
-Current `sbom` generates a CycloneDX 1.6 library-runtime inventory covering 16 project libraries and 13 third-party Java artifacts, with actual JAR SHA-256. Fields and font resources are registered separately under this document. Each batch must regenerate and verify the SBOM against final artifacts using production verifiers, without reusing previous hashes. Candidate inventories do not replace SBOMs.
+`export4j-starter` assembles existing components, math, XML templates, the PDF backend, and the DOCX adapter, without adding third-party coordinates or fonts. It transitively includes `export4j-math` and its registered JLaTeXMath dependency. Applications needing fewer dependencies can continue selecting individual modules. Starter introduces neither native OpenType nor the PDF-editing adapter, and core modules do not depend back on output implementations.
+
+Current `sbom` generates a CycloneDX 1.6 library-runtime inventory covering 18 project libraries and 14 third-party Java artifacts, with actual JAR SHA-256. JLaTeXMath's upstream linking exception is recorded by its full license name, without an unverified SPDX exception ID. Fields and font resources are registered separately under this document. Each batch must regenerate and verify the SBOM against final artifacts using production verifiers, without reusing previous hashes. Candidate inventories do not replace SBOMs.
 
 XML template source and ordinary ZIP bundling reuse existing adapters and JDK ZIP/UTF-8 APIs without new modules or third-party dependencies. Examples retain registered Liberation Sans Regular bytes; original copyright/OFL text is saved in template ZIP `licenses/` entries. Images are generated by project examples. Independent inputs use Python standard-library ZIP and existing Pillow, neither entering Java runtime inventories.
 

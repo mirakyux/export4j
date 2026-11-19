@@ -1,6 +1,16 @@
 # 研发路线与验收
 
-本文以[立项文档](project-proposal.md)为范围基线。当前提供 PDF／DOCX／HTML／Markdown 文档生成、SVG／PNG 静态输出，以及明确子集内的导入、编辑和转换；复杂排版、原生 OpenType、单向长表、PDF 编辑与标准处理分别有专项证据。已实现范围及限制以[支持矩阵](capabilities-api.md)和[缺口表](capability-gaps.md)为准，以下历史阶段不代表当前仍待完成状态。可选 [HTML 设计器](designer.md)及四套业务样例已完成；当前候选版 `0.1.0-rc.3` 已发布到 Maven Central，`release` 任务与远端隔离消费通过，GitHub Release 的独立恢复结果见[发布记录](releasing.md#已发布候选记录)。跨平台／阅读器矩阵、稳定 API／稳定版及更多格式继续按原有独立缺口验收。
+本文维护项目的阶段目标与验收原则。能力范围见[支持矩阵](capabilities-api.md)，逐项状态见[缺口表](capability-gaps.md)，具体执行顺序见[剩余计划](remaining-capabilities-plan.md#后续扩展推进顺序)。已发布 RC3 与当前开发版的区别、开发补充及已知接入限制统一见[当前状态](current-status.md)。
+
+## 当前推进方向
+
+| 方向 | 对应条目 | 当前目标 |
+| --- | --- | --- |
+| 兼容性证据 | GAP-14.2 | 从真实使用组合扩充固定语料、系统及阅读器矩阵，区分自动检查与实际应用动作 |
+| 稳定版准备 | GAP-14.3 | 在已有 RC 发布基础上明确 API 冻结、兼容策略和稳定版验收，不把候选发布视为稳定性保证 |
+| 新格式 | GAP-22 | 按格式及输入／输出方向选择独立单元，先定义语义、资源、损失和验收 |
+
+已有验收子集继续保持明确预算、资源生命周期、原子输出和失败诊断。真实缺陷优先复现和修复；新组合重新验收。OCR 暂在范围外，不计入当前交付队列。
 
 ## 阶段总览
 
@@ -12,7 +22,7 @@
 | 四 | 建立多格式适配体系 | DOCX 基础导入导出、SVG 输出和兼容性矩阵 |
 | 五 | 完善性能、稳定性与正式发布 | 性能基线、稳定 API、SBOM 和发布制品 |
 
-阶段按能力推进，不预设日期、人力或未经测量的性能指标。
+阶段按能力推进，不预设日期、人力或未经测量的性能指标。下文概括各阶段的原始目标与主要证据；早期交付限制不作为当前缺失清单，后续补齐结果以支持矩阵和缺口表为准。
 
 ## 阶段一：项目基础与 PDF 最小闭环
 
@@ -63,7 +73,7 @@
 
 当前页连续文字分栏已支持剩余高度、完整续栏、两栏／三栏、最低行数移页和后续正文接续，见[调用指南](continuous-columns-api.md)及[独立验收](verification/phase-8-continuous-columns.md)。混合组件、嵌套流与表格后续已接入区域 SPI，支持图片整块移动、逐栏表头和完整合并行组，见[混合分栏指南](mixed-columns-api.md)及[验收](verification/phase-9-mixed-columns.md)。文字／混合流变栏宽与平衡见[阶段五十九](verification/phase-59-variable-columns.md)，变宽最低多行策略见[阶段六十三](verification/phase-63-minimum-lines.md)；[原子语义表格](variable-tables-api.md)及[完整行续排](variable-table-continuation-api.md)已接入变宽区域；纵向 owner、递归子树与组件网格的变宽续排已由[阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)完成。
 
-正文行内动态字段、页码／编号引用和注释锚点已实现。字段固定宽度，最终分页后解析；脚注跟随标记实际所在行，见[字段指南](inline-fields-api.md)及[验收](verification/phase-10-inline-fields.md)。语义表格单元格进一步支持页码和引用字段、逐页重复表头及拆行来源，见[表格字段验收](verification/phase-11-table-fields.md)。DOCX 原生四类字段及显式宽度导入已补齐，见[DOCX 字段验收](verification/phase-12-docx-fields.md)。单元格注释标记、任意组件字段、长表区域流、自动字段宽度重排和结构化可访问性仍属后续范围。
+正文行内动态字段、页码／编号引用和注释锚点已实现。字段固定宽度，最终分页后解析；脚注跟随标记实际所在行，见[字段指南](inline-fields-api.md)及[验收](verification/phase-10-inline-fields.md)。语义表格单元格进一步支持页码和引用字段、逐页重复表头及拆行来源，见[表格字段验收](verification/phase-11-table-fields.md)。DOCX 原生四类字段及显式宽度导入已补齐，见[DOCX 字段验收](verification/phase-12-docx-fields.md)。这些记录只覆盖当时字段路径；长表、组件字段及可访问性等后续进展按各自指南和缺口表判断。
 
 范围：约束与尺寸计算、段落流式布局、表格列宽与行高、跨页处理、页眉页脚、页码和重复表头。
 
@@ -78,7 +88,7 @@
 
 ## 阶段四：多格式支持
 
-首批 DOCX 语义子集、SVG 和 PNG ZIP 已实现并独立验证。DOCX 后续补充富文本／行内图片单元格、标准媒体资源与外部超链接，见[行内图像验收](verification/phase-6-inline-images.md)；阶段二十五／二十六进一步接入原生 gridSpan／vMerge。[默认页区](docx-page-regions-api.md)的图片／表格／页码与分节映射已在阶段四十二验收；复杂图片变换、更广页区变体、递归格内容及交互映射仍有限。早期原生字段样例通过 Word 16.0 更新及 PDF 导出实测，新合并样例的保存／导出不能沿用该结论；重复表头 PAGE 明确拒绝，一般 Word／LibreOffice 的视觉兼容仍未覆盖。DOCX 的未知结构、继承与编号覆盖须报损或拒绝；静态输出拒绝交互 extras。静态 PDF 选页／合并／提取子集已在阶段二十二验收，通用分析／导入／编辑仍属后续范围。
+首批完成 DOCX 语义子集、SVG 和 PNG ZIP。后续已扩展原生字段、合并／递归表格、页区与有类型编辑；当前用法见[DOCX 原生语义](docx-semantic-api.md)，历史首版与完整扩展分别见[阶段四](verification/phase-4-production.md)和[阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)。PDF 的页面、对象、内容编辑及恢复使用[专用入口](pdf-adapter-api.md)，每条路径分别声明支持子集和实际损失，不能用早期静态复制能力概括当前范围。
 
 范围：DOCX 基础导入导出、SVG 输出，以及按实际需求选定的 PDF 导入、分析或编辑能力。
 
@@ -92,7 +102,7 @@
 
 ## 阶段五：性能、稳定性与正式发布
 
-首批稳定性验证通过 4 线程 24 次 PDF 导出和 2,500 段落实际导出，并完成真实 Edge 表单保存重开、隔离 Maven 调用方、BOM 与 SBOM。这些历史样例不等同于长期压力容量、RSS 测量或发布完成。后续 RC1、RC2 的远端发布及消费已有独立记录，稳定 API／稳定版和更广应用兼容仍按缺口表推进。
+首批稳定性验证通过 4 线程 24 次 PDF 导出和 2,500 段落实际导出，并完成真实 Edge 表单保存重开、隔离 Maven 调用方、BOM 与 SBOM。这些历史样例不等同于长期压力容量、RSS 测量或发布完成。后续 RC1、RC2、RC3 的远端发布及消费已有独立记录，稳定 API／稳定版和更广应用兼容仍按缺口表推进。
 
 后续补充两端对齐、可选严格中文禁则、富文本标题／列表和常用编写入口。新增 2 线程、6 份各 26 页混合报告，采样独立 JVM 的 Windows 工作集、私有字节和句柄，并验证取消／输出超限恢复。该证据仍属于有界工作负载，不代表长期泄漏或容量保证，见[阶段十三](verification/phase-13-authoring.md)。
 
@@ -114,50 +124,21 @@
 
 ## 验收记录
 
-能力补齐的逐项推进见[能力缺口表](capability-gaps.md)。第一批补充普通嵌套文字自然续页与显式合并格完整行拆分；语义表格统一、富文本字段合并、样式贯通及静态表单仍按独立验收推进，不能由同名链式入口推断完成。
+阶段细节、工具版本、样本、测试数量和当时限制保存在各自验收记录，不在路线图重复累计。以下按主题定位主要演进；完整记录见[验收索引](verification)。
 
-第二批已补充静态表单公共组件并移除 ADR 私有勾选绘制器，见[阶段十六](verification/phase-16-static-forms.md)。评估同时修正定位表格的外链损失边界。下一项先让组件 IR 保留语义、来源和变换，再贯通字段／外链并接入语义表格区域流；默认样式贯通仍独立验收。
+| 主题 | 主要证据 |
+| --- | --- |
+| 基础闭环、字体与分页 | [阶段一](verification/phase-1.md)、[阶段二](verification/phase-2.md)、[段落](verification/phase-3-paragraphs.md)、[表格](verification/phase-3-tables.md)及[组件](verification/phase-3-components.md) |
+| 编写、组件、语义续排及样式 | [编写入口](verification/phase-13-authoring.md)、[语义组合](verification/phase-17-semantic-components.md)、[表格区域流](verification/phase-18-semantic-table-flow.md)、[默认样式](verification/phase-19-style-defaults.md)、[逐属性样式](verification/phase-23-property-styles.md) |
+| XML、表格与主题 | [XML 首版](verification/phase-21-xml-templates.md)、[列合并](verification/phase-25-column-spans.md)、[行合并](verification/phase-26-row-spans.md)、[块格](verification/phase-27-block-cells.md)、[可读 XML 格](verification/phase-28-xml-block-cells.md)、[Java 主题](verification/phase-30-authoring-themes.md)、[XML 主题](verification/phase-31-xml-themes.md) |
+| 编辑、导入及转换 | [Web 导出](verification/phase-43-web-exports.md)、[语义编辑](verification/phase-44-semantic-editing.md)、[Markdown 导入](verification/phase-45-markdown-import.md)、[HTML 导入](verification/phase-46-html-import.md)、[统一转换](verification/phase-47-document-conversion.md) |
+| 复杂布局、文字、长表及图形 | [阶段九十九](verification/phase-99-layout-fonts-streaming-graphics-closure.md)汇总 GAP-03／08／09／21 的原剩余清单及有限容量 |
+| PDF 编辑、标准及自动恢复 | [扩展表单](verification/phase-94-pdf-extended-forms.md)、[自动恢复](verification/phase-95-pdf-automatic-recovery.md)、[标准](verification/phase-96-pdf-standards.md)、[编辑闭合](verification/phase-97-pdf-editing-standards-recovery-closure.md) |
+| 原生 DOCX、CSS 与兼容门禁 | [阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)、[一百零四](verification/phase-104-html-css-layout.md)、[一百零五](verification/phase-105-publication-and-compatibility.md)、[固定语料](verification/phase-106-security-and-compatibility-corpus.md)、[Windows 应用](verification/phase-107-windows-reader-compatibility.md) |
+| 设计器与业务样例 | [阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)及[当前设计器指南](designer.md)列出的后续交互验收 |
+| 开发版易用性补充 | [字体缓存](verification/font-cache.md)、[源内容](verification/content-blocks.md)、[富内容](verification/rich-content.md)、[统一入口及对象绑定](verification/easy-export.md) |
 
-第三批实现组件语义插槽和固定视口 SemanticTable，保留最终字段、图文外链、字体角色及单元格来源，见[语义组合 API](semantic-components-api.md)和[阶段十七](verification/phase-17-semantic-components.md)。长语义表格区域流、重复呈现及默认样式仍独立推进。
-
-第四批接入语义表格区域续排，保持短首区、完整行、逐栏表头字段、拆行图片与最终链接，并区分唯一来源和实际片段，见[阶段十八](verification/phase-18-semantic-table-flow.md)。固定组件仍要求单片段，DOCX 嵌套与长合并网格字段继续开放；下一优先项是默认样式贯通。
-
-第五批完成未设置文字样式／颜色的嵌套继承，贯通正文组件、网格和静态表单；保留显式覆盖、加入时快照、固定行框及原子组件宽度。329 项测试、4 页独立样式验收通过，见[阶段十九](verification/phase-19-style-defaults.md)。逐属性级联保留开放；下一优先项为长合并网格语义字段，其后为安全声明式模板。
-
-第六批完成标准长合并格内的语义表格续排及合法网格表头重复；复用一次测量游标，保留最终字段、富文本、图文外链及内 Table 来源，见[阶段二十](verification/phase-20-grid-semantic-flow.md)。345 项测试、8 页独立输出检查、15 组历史回归通过。任意递归网格拆分、DOCX 嵌套和统一合并 Table 模型仍开放；下一项为安全声明式模板子集。
-
-以下阶段记录保留当时的实现与限制；当前支持状态以缺口表及最新 API 为准，不将已被后续阶段补齐的内容继续计为缺失。
-
-每次阶段验收记录对应提交或版本、构建命令、验证工具及版本、输入资源、结果与限制。记录存入对应变更说明或独立验收文档，不能只用任务勾选代替证据。
-
-第七批补充离线声明式 XML，将文本报告结构编译到既有语义模板；支持变量、条件、循环、动态长表和显式图片，严格拒绝未知内容及外部资源。绑定同时修正大数子类、追加前预算及循环工作计费。378 项测试、4 页独立渲染、DOCX／SVG、新模块本地坐标及三组历史回归通过，见[阶段二十一](verification/phase-21-xml-templates.md)。Markdown、HTML/CSS 和设计器仍开放；下一项按 GAP-08 扩充复杂文字与阅读器语料。
-
-第八批补充六脚本两条路径的文字一致性及实际搜索／选区语料、严格 Markdown、XML 四类字段／一级编号／静态图文外链和独立静态 PDF 处理适配器。472 项测试、35 页新增输出逐页检查、18 组历史回归、最终 PDF/A、本地 SBOM／坐标及新隔离调用方通过，见[阶段二十二](verification/phase-22-text-and-adapters.md)。轮廓提取与选区、通用 PDF 编辑、HTML/CSS 和 DOCX 合并／嵌套仍有明确缺口。下一项是显式逐属性级联；所有剩余单元及依赖见[执行计划](remaining-capabilities-plan.md)。
-
-第九批完成六项组件文字属性的具名覆盖／逐项恢复，保留父级其他属性、旧完整样式语义、网格／作用域快照及固定行框。490 项测试、6 页新输出、22 组历史回归、新隔离调用方通过，见[阶段二十三](verification/phase-23-property-styles.md)。下一项是固定列单向长表源；PDFBox 页树内存与全量 IR／Display List 必须分开测量，主题及可编辑字段样式仍独立。
-
-第十批完成固定列普通文字的一次性行源、逐行测量／逐页绘制、同步 PDF 和扁平摘要。552 项测试、8 页新输出、23 组历史回归、当前隔离调用方与 7 组独立 JVM 通过，见[阶段二十四](verification/phase-24-streaming-tables.md)。采样脚本 PS5.1 空退出码修复后从新 ID 重跑，全部退出临时文件数／字节为 0；64 MiB 堆完成 100k 行布局。GAP-09 按子集改为部分支持，下一项先贯通语义 columnSpan 与标准 DOCX gridSpan，rowSpan／递归格内容及持续容量继续独立推进。
-
-第十一批贯通语义列合并、物理列来源、最终字段／图文链接、Java／XML 绑定与标准 DOCX gridSpan，见[阶段二十五](verification/phase-25-column-spans.md)。592 项测试、8 页新输出、24 组历史验收、新隔离调用方通过。Word 实际读取／字段更新成功，保存及导出阻塞，保存回读仍开放。下一项为语义 rowSpan／vMerge，首批以二维覆盖、确定行高及连通组整体移页闭环，跨页拆分纵向合并组与递归格内容单列。
-
-第十二批完成语义跨行合并、二维真实锚点、全覆盖行、确定行高／连通组及标准 DOCX vMerge，见[阶段二十六](verification/phase-26-row-spans.md)。641 项测试、7 页新输出、25 组历史验收、新隔离调用方及独立 PDF/A 验证通过。Word 只读加载和原生页码更新有证据，原探针的错误行数假设／COM 收尾失败如实保留，未保存或导出。下一单元为[块格与原子内表设计](adr/0034-atomic-block-cells.md)：先扩展全树来源、预算、模板与最终字段／链接，再接标准 DOCX 双向映射；完整递归续排、纵向拆组及一般 Word 保存兼容仍独立。
-
-第十三批完成有界多段格与两层原子内表，见[阶段二十七](verification/phase-27-block-cells.md)。694 项测试、6 页新输出、26 组历史验收、新调用方与独立 PDF/A 通过；链式结构、全树 ID／预算、层级来源、字段／图文链接及标准双网格／尾段已贯通。下一切面为 XML 可读格结构；更深递归续排、纵向拆组和 Word 保存仍开放。
-
-第十四批完成可读 XML p／table／p、独立格式和 Each／Rows 副本内引用，见[阶段二十八](verification/phase-28-xml-block-cells.md)。711 项测试、7 页新输出、27 组历史回归、新调用方及独立 PDF/A 通过。旧 DOCX 被占用时改用独立验证目录，保留原文件和进程。下一项按[单向富文本长表设计](adr/0036-streaming-rich-text.md)推进单向长表的有界纯富文本与显式字体角色，不引入未来引用或隐式资源。
-
-第十五批完成单向长表的有界纯富文本、显式字体角色、逐格／逐行空运行预算及全行预检，见[阶段二十九](verification/phase-29-streaming-rich-text.md)。732 项测试、6 页新输出、28 组历史回归、新调用方及 9 组独立 JVM 通过。容量例从手算改为实际累计并重采全部富文本组；PDFBox 累计对象、未来语义和持续容量仍开放。下一项为 GAP-04 编写时语义主题／命名完整样式，沿用六项组件继承与显式值优先。
-
-第十六批完成 Java 编写时主题快照、正文／六级标题／便利语义表格默认值、命名完整样式和组件富文本便利入口，见[阶段三十](verification/phase-30-authoring-themes.md)。753 项测试、9 页独立 PDF／SVG／DOCX 输出与新调用方通过；默认输出、显式12 pt／黑色／零值、局部继承和固定行框保持。下一独立单元为 XML 静态样式名称与主题初始化，保留 XML 旧配置范围；全局字体角色级联、可编辑字段、完整品牌主题和持续容量继续独立。
-
-阶段四十三新增语义 HTML／Markdown 导出，支持静态自包含 HTML5、CommonMark/GFM 内容与逐功能 ERROR／WARN／IGNORE。默认严格，合并／块格在 Markdown 中仅按明确策略展开，字段使用未解析标记；见[API](web-export-api.md)与[验收](verification/phase-43-web-exports.md)。
-
-阶段四十四至五十六依次完成[语义编辑／字面替换](semantic-editing-api.md)、[通用 Markdown](markdown-import-api.md)／[离线 HTML/CSS](html-import-api.md)输入、[统一转换](document-conversion-api.md)、[DOCX 原包文字](docx-editing-api.md)与[样式级联](docx-style-import-api.md)，以及 [PDF 页／被动对象编辑、组合、渲染提取、优化、文字替换、光栅脱敏及语义恢复](pdf-adapter-api.md)的明确子集。全部按实际输出、损失预检／结果和隔离制品验收。PDF 恢复按行／字号推断并需显式表格网格；脱敏新建图片 PDF，损失搜索和矢量编辑。完整标准、任意文档无损往返、设计器和长期容量仍不属于这些已交付目标；详见[执行计划](remaining-capabilities-plan.md)。
-
-[阶段九十四至九十七](verification/phase-97-pdf-editing-standards-recovery-closure.md)进一步完成跨状态文字／图片实例编辑、选择性脱敏、扩展表单／批注／FDF／XFDF／XFA，以及自动多栏／段落／有线无线表格／合并嵌套恢复的明确子集。1,634 项测试、全新 Maven 调用方和对应独立输出验收通过。选定 PDF/A、离线 PAdES 和 PDF/UA-1 的既有子项目标均已验收；生成样例及已有标签文件两页、修复后模型第一页的实际辅助阅读器证据分别登记，模型其余页未捕获读屏的覆盖限制明确保留。当前状态以[缺口表](capability-gaps.md)为准。
-
-[阶段九十八](verification/phase-98-layout-text-streaming-and-graphics.md)验收 GAP-03／08／09／21 的四个固定单元：变宽行内格纵向 owner 续排、[逐字形竖排](vertical-text-api.md)、[有界单向纵向合并](streaming-row-spans-api.md)及[填充／描边透明度与 SVG 变换](graphics-opacity-api.md)。GAP-04／07 的既定样式／模板目标按已存在的阶段证据关闭；完整 CSS 和设计器分别只在 GAP-18.1／13 跟踪。当时尚未完成的递归块格变宽续排、可变／彩色字体、PDF 累计对象控制、CMYK／专色与渐变已由阶段九十九补齐。
-
+每次新增验收都应明确对应源码或制品、输入资源、命令、独立工具及限制。构建、文件结构、渲染、实际阅读器动作和正式发布分别记录，不用同名入口或任务勾选代替证据。
 
 ## GAP-03／08／09／21：原剩余清单已完成
 
@@ -169,11 +150,11 @@
 
 [阶段一百零三](verification/phase-103-native-docx-semantic-editing.md)完成 DOCX 有类型浮动图／真实文本框、图片变换、评论／六类修订／控件／旧式表单／目录，GAP-12.1／12.2 明确子集均已验收。真实 Word 字段更新、编辑、保存重开与发布 JAR 回读通过，4 页原生页面、4 页 Word PDF 和 4 页语义投影 PDF 完成独立渲染及逐页复查；五包标准校验零错误。验收脚本改为强类型 Office 互操作后解决导出超时，生成／转换链路在无桌面且禁止加载打印类的 JVM 下通过，不依赖打印驱动、打印服务或 Word。既有目录缓存由调用方显式刷新，不以强制全局重算破坏表单当前值。
 
-[阶段一百零四](verification/phase-104-html-css-layout.md)验收 GAP-18.1 的静态选择器、媒体／分页、Flex／Grid、尺寸及定位：14 页 PDF、8 份 SVG、Chromium 源几何、四项负控制和真实损失通过。[阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成 API 固定基线和兼容门禁、本地完整签名分发及实际坐标 JAR 摘要对账。提交 `cc132e7` 的 Java 21 三平台构建和临时密钥签名分发远端 CI 均已通过；正式版本／身份／命名空间、Central 上传及远端消费继续保留未验。本地统一构建 1,783 项测试通过，跨平台应用／阅读器行为与正式发布分别验收。
+[阶段一百零四](verification/phase-104-html-css-layout.md)验收 GAP-18.1 的静态选择器、媒体／分页、Flex／Grid、尺寸及定位：14 页 PDF、8 份 SVG、Chromium 源几何、四项负控制和真实损失通过。[阶段一百零五](verification/phase-105-publication-and-compatibility.md)完成 API 固定基线和兼容门禁、本地完整签名分发及实际坐标 JAR 摘要对账。提交 `cc132e7` 的 Java 21 三平台构建和临时密钥签名分发远端 CI 均已通过；当时正式版本／身份／命名空间、Central 上传及远端消费尚未验收；后续 RC 发布结果以发布记录为准。本地统一构建 1,783 项测试通过，跨平台应用／阅读器行为与正式发布分别验收。
 
-[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)固定 `0.1.0-rc.1` 候选 API，新增依赖公告门禁与四格式 16 条路径／32 份输出的互转语料；DOCX 包完整性和完整输入预算缺陷已修复，jsoup 升至 1.23.2。1,787 项 Java 测试、73 次控制检查、互转 8 页及 CSS 14 页独立渲染、本地临时签名与实际坐标消费通过。本批新增 CI 尚无远端证据，正式发布未执行；已知公告查询无命中不等于无漏洞。
+[阶段一百零六](verification/phase-106-security-and-compatibility-corpus.md)固定 `0.1.0-rc.1` 候选 API，新增依赖公告门禁与四格式 16 条路径／32 份输出的互转语料；DOCX 包完整性和完整输入预算缺陷已修复，jsoup 升至 1.23.2。1,787 项 Java 测试、73 次控制检查、互转 8 页及 CSS 14 页独立渲染、本地临时签名与实际坐标消费通过。该阶段新增 CI 当时尚无远端证据，正式发布未执行；已知公告查询无命中不等于无漏洞。
 
-[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成 Windows Word 四页复查、控件实际编辑保存重开，以及 PDF 搜索、视觉选择、表单填写保存重开和最终 JAR 回读；修复 DOCX 现代布局模式声明及 PDF 应用元数据兼容。1,792 项测试、固定语料与无打印依赖验证通过；本轮字节未重新签名，浏览器前台交互、其他平台、新远端 CI 和正式发布分别保留未验。
+[阶段一百零七](verification/phase-107-windows-reader-compatibility.md)完成 Windows Word 四页复查、控件实际编辑保存重开，以及 PDF 搜索、视觉选择、表单填写保存重开和最终 JAR 回读；修复 DOCX 现代布局模式声明及 PDF 应用元数据兼容。1,792 项测试、固定语料与无打印依赖验证通过；该阶段字节当时未重新签名，浏览器前台交互、其他平台、新远端 CI 和正式发布分别保留未验；后续版本发布不补作未执行的应用兼容证据。
 
 [阶段一百零八](verification/phase-108-designer-and-business-scenarios.md)完成 GAP-13：独立 HTML 应用直接编辑既有 XML／ZIP，保留变量／条件／循环与显式资源，提供真实分页预览、8 步撤销、保存重开和六格式损失预检。四套业务样例共 24 份输出、11 页独立渲染及 11 项失败控制通过；构建 1,804 项 Java 测试、库 API 对比和隔离调用方通过。该阶段未完成独立项为 GAP-14.2、GAP-14.3、GAP-22，未执行正式发布。
 

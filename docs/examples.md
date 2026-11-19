@@ -2,6 +2,19 @@
 
 从仓库根目录运行 Gradle 任务。Windows 使用 `.\gradlew.bat`，Linux/macOS 使用 `bash ./gradlew`；需要 JDK 21，首次构建需要下载固定依赖。示例显式加载仓库字体，来源和许可见[字体记录](../assets/fonts/README.md)。
 
+## 开发版示例
+
+这些任务使用当前仓库源码，新增公共模块及 DTO／record 绑定未包含在已发布 RC3 中。依赖获取方式和已知限制见[当前状态](current-status.md)。
+
+| 示例任务 | 输出目录 | 阅读入口 |
+| --- | --- | --- |
+| `:examples:easyExport` | `examples/build/easy-export/` | [统一 PDF／DOCX 入口](easy-export-api.md)：一次配置字体与样式，XML 的 Map、record、JavaBean 数据生成等价输出 |
+| `:examples:contentBlocks` | `examples/build/output/content-blocks/` | [源内容块](content-blocks-api.md)：Java／XML 的局部属性、词法继承及解析开关 |
+| `:examples:math` | `examples/build/math/` | [公式 API](math-api.md)：公共 TeX／Markdown 入口、矢量 PDF／SVG／PNG 和原生 Word 公式 |
+| `:examples:inlineVectors` | `examples/build/inline-vectors/` | [行内矢量](inline-vectors-api.md)：调用方提供轮廓，段落／单元格／HTML 中保留基线与逻辑阅读文字 |
+
+从 [EasyExportExample](../examples/src/main/java/com/mirakyux/export4j/examples/EasyExportExample.java)开始可对照 `xml.pdf`／`xml.docx`、`xml-record.*` 和 `xml-bean.*`；模板源码、Markdown／HTML／字面文本及严格失败控制保存在同一目录。需要完整模板的页区、分节或注释时，继续使用下方 XML 任务及对应底层 API。
+
 ## 常用任务
 
 ```powershell
@@ -68,7 +81,7 @@
 
 `math.docx` 包含 8 条标准 OMML 原生公式，`math-edited.docx` 演示把第一条公式的分母从 `2a` 修改为 `3a`，其他公式保持。`math-standard-round-1.docx` 至 `math-standard-round-3.docx` 验证不依赖项目私有元数据的三轮读写。Word 原生公式 API 不依赖数学库或 Office；用法及受支持的类型见[数学 API](docx-math-api.md)。
 
-矢量示例新增的 JLaTeXMath 1.0.7 仅进入 `examples`，无需安装 TeX；其许可、链接例外、字体条款和源包分发见[依赖说明](dependencies.md)。只允许源码中明确列出的有限 TeX 命令及矩阵环境，拒绝宏、外联、未知命令和超预算输入。两种输出目前分别编写等价内容，没有自动 TeX↔OMML 转换器。
+这个学术样例分别编写等价的矢量与原生数学表示，用于检查排版和原生公式读写。当前开发版的 `:examples:math` 另行演示公共 `export4j-math` 的受限 TeX→矢量／OMML 转换；同一源内容生成 PDF 和 DOCX 使用 [MathContent](rich-content-api.md)。两者均无需安装 TeX。JLaTeXMath 1.0.7 用于矢量排版，当前也属于可选数学模块的运行依赖，许可、链接例外、字体条款和源包分发见[依赖说明](dependencies.md)；命令子集和预算以[公式 API](math-api.md)为准。原生 Word 数学树读写不依赖 JLaTeXMath 或 Office。
 
 ```powershell
 python scripts/verify_manuweave_math.py

@@ -2,6 +2,21 @@
 
 架构决策记录（Architecture Decision Record，ADR）保存关键取舍的背景、结论和影响，不代替使用文档。
 
+当前版本与开发能力见[版本与当前状态](../current-status.md)，实际输出证据见[验收导航](../verification/README.md)。下方编号是决策的时间顺序，不是阅读前置顺序。
+
+## 按主题查找
+
+| 主题 | 入口 |
+| --- | --- |
+| 分层与模块边界 | [0001 分层架构](0001-layered-architecture.md) · [0106 可选设计器](0106-optional-html-template-designer.md) · [0118 统一导出入口](0118-configured-export-entry.md) |
+| 字体、主题与内容继承 | [0037 主题快照](0037-authoring-theme-snapshots.md) · [0068 外观级联](0068-theme-text-appearance.md) · [0114 字体缓存](0114-idle-expiring-font-caches.md) · [0115 源内容块](0115-source-content-options.md) |
+| 模板、源码与恢复 | [0025 离线模板](0025-safe-declarative-templates.md) · [0083 模板资源包](0083-editable-xml-template-bundles.md) · [0087 恢复伴随包](0087-bound-standard-output-recovery.md) |
+| 布局、表格与流式输出 | [0065 递归格续排](0065-recursive-semantic-continuation.md) · [0102 流与重放](0102-bounded-semantic-streaming-replay-and-pdf-spool.md) · [0109 正文分栏](0109-semantic-body-columns.md) · [0110 语义栅格](0110-editable-semantic-grid.md) · [0112 按需块源](0112-incremental-block-source.md) |
+| 格式转换与损失 | [0051 语义编辑](0051-semantic-editing-and-loss-reports.md) · [0054 转换预检](0054-prepared-document-conversion.md) · [0103 DOCX 语义](0103-typed-native-docx-semantics.md) · [0104 HTML/CSS 布局](0104-bounded-html-css-layout.md) |
+| PDF 兼容、编辑与标准 | [0096 兼容路径](0096-pdf-compatibility-paths.md) · [0097 编辑、恢复与标准分离](0097-explicit-pdf-editing-recovery-and-standards.md) |
+| 公式与跨格式表示 | [0113 有界公式](0113-optional-bounded-math.md) · [0116 混合语义块](0116-mixed-semantic-blocks-and-static-vectors.md) · [0117 单次源编译](0117-single-source-math-representations.md) |
+| API 兼容与分发 | [0105 显式基线与签名](0105-explicit-api-baseline-and-signed-distribution.md) |
+
 ## 记录范围
 
 以下变化需要 ADR：
@@ -64,6 +79,18 @@
 | 0033 | [语义跨行合并与标准 vMerge](0033-semantic-row-spans.md) | 已采纳；连通行组原子分页，纵向拆组及递归格独立 |
 | 0034 | [有界块格与原子内表](0034-atomic-block-cells.md) | 已采纳；两层表深、共享全树预算、原子父组及标准尾段 |
 | 0035 | [XML 有界块级格内容](0035-xml-block-cells.md) | 已采纳；直接段／内表顺序、全分支检查及复制引用 |
+| 0036 | [单向长表的有界纯富文本与字体角色](0036-streaming-rich-text.md) | 已采纳；范围与证据见原记录 |
+| 0037 | [编写时解析的语义主题与命名样式](0037-authoring-theme-snapshots.md) | 已采纳；范围与证据见原记录 |
+| 0038 | [XML 主题快照与静态样式名称](0038-xml-theme-styles.md) | 已采纳；范围与证据见原记录 |
+| 0039 | [可编辑字段的显式外观声明](0039-editable-form-styles.md) | 已采纳；范围与证据见原记录 |
+| 0040 | [平面离线 XML 片段复用](0040-flat-offline-template-includes.md) | 已采纳；范围与证据见原记录 |
+| 0041 | [目录独立外观与默认派生](0041-contents-appearance.md) | 已采纳；范围与证据见原记录 |
+| 0042 | [XML 模板多级十进制编号](0042-xml-multilevel-numbering.md) | 已采纳；范围与证据见原记录 |
+| 0043 | [XML 静态页面几何](0043-xml-page-settings.md) | 已采纳；范围与证据见原记录 |
+| 0044 | [固定页区字体角色的上下文传递](0044-page-region-font-roles.md) | 已采纳；范围与证据见原记录 |
+| 0045 | [组件字体角色与固定纯富文本](0045-component-text-authoring.md) | 已采纳；范围与证据见原记录 |
+| 0046 | [显式列表标记样式](0046-list-marker-styles.md) | 已采纳；范围与证据见原记录 |
+| 0047 | [XML 范围内的字体与颜色默认值](0047-xml-text-defaults.md) | 已采纳；范围与证据见原记录 |
 | 0048 | [XML 固定页眉页脚与独立主题](0048-xml-page-regions.md) | 已采纳；模型声明、共享绑定和最终页区组合 |
 | 0049 | [语义页区、XML 分节与 DOCX 映射](0049-semantic-page-regions-and-sections.md) | 已采纳；有序图文／表格、共享绑定、固定几何与标准页区关系 |
 | 0050 | [语义 HTML／Markdown 导出与动作策略](0050-semantic-web-exports.md) | 已采纳；模型直出、逐功能损失、共享预算及原子输出 |

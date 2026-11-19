@@ -16,13 +16,15 @@ Import, editing and conversion apply to documented input subsets. Arbitrary PDF 
 - [常见问题](https://export4j.mirakyux.com/zh/docs/faq): 环境要求、字体、转换限制及商用许可。
 - [Documentation index](https://export4j.mirakyux.com/docs/README): Task-based navigation with English and Chinese primary guides; Chinese-only references are labeled.
 - [Capability matrix](https://export4j.mirakyux.com/docs/capabilities-api): Current entry points and supported subsets; consult the linked API guide for a specific feature.
+- [Versions and current status](https://export4j.mirakyux.com/docs/current-status): Published RC3 versus development modules, local verification versions, and known integration limits.
 
 ## Authoring and templates
 
 - [Java authoring](https://export4j.mirakyux.com/docs/authoring-api): Semantic documents, report content and export.
+- [Configured-once export](https://export4j.mirakyux.com/docs/easy-export-api): Development-only starter with explicit fonts and PDF/DOCX targets; not included in RC3.
 - [Fluent API](https://export4j.mirakyux.com/docs/fluent-api): Builders, configuration and convenience entry points.
 - [Fonts and text](https://export4j.mirakyux.com/docs/text-api): Explicit font loading, fallback, shaping and missing-glyph behavior.
-- [XML templates](https://export4j.mirakyux.com/docs/xml-template-api): Variables, conditions, loops, tables and registered includes.
+- [XML templates](https://export4j.mirakyux.com/docs/xml-template-api): Variables, conditions, loops, tables and registered includes; direct DTO/record binding is a development addition.
 - [Template playground](https://export4j.mirakyux.com/playground): Browser-only XML and JSON editing with a node tree, drag and drop, and approximate preview. Final output uses the Java engine.
 - [中文模板编辑](https://export4j.mirakyux.com/zh/playground): 节点树、拖动排序、XML 和 JSON 源码编辑与浏览器近似预览，正式输出仍使用 Java 引擎。
 - [Template resource bundles](https://export4j.mirakyux.com/docs/xml-template-bundle-api): Editable XML and resources in ZIP packages.
@@ -48,4 +50,5 @@ Import, editing and conversion apply to documented input subsets. Arbitrary PDF 
 - [Examples](https://export4j.mirakyux.com/docs/examples): Runnable tasks and output locations.
 - [Dependencies and licenses](https://export4j.mirakyux.com/docs/dependencies): Third-party dependencies and distribution obligations.
 - [Capability gaps](https://export4j.mirakyux.com/docs/capability-gaps): Remaining work and acceptance boundaries.
-- [Verification records (Chinese)](https://export4j.mirakyux.com/zh/docs/verification/): Historical checks and evidence; each record applies to its stated version and scope.
+- [Verification index](https://export4j.mirakyux.com/docs/verification/README): Topic-based evidence navigation with explicitly labeled Chinese records; each record applies to its stated version and scope.
+- [Complete verification catalog (Chinese)](https://export4j.mirakyux.com/zh/docs/verification/): Topic records and historical stages; historical results do not imply current validation.

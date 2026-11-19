@@ -1,14 +1,23 @@
 # 依赖与资源管理
 
+本页登记当前依赖、许可和资源来源；各阶段说明保留当时的新增范围，不代表当前模块数量。发布版与开发版的区别见[当前状态](current-status.md)。
+
+| 需要核对的内容 | 权威入口 |
+| --- | --- |
+| Java 版本、坐标及原始许可 | [版本目录](../gradle/libs.versions.toml) · [依赖清单](../third-party/dependencies.csv) · [许可证目录](../third-party/licenses) |
+| 当前库运行依赖和准确字节 | 本次构建的 `build/reports/sbom.cdx.json`；生成与核对见[发布规范](releasing.md#本地验证流程) |
+| 平台原生载荷 | [原生制品清单](../third-party/native-artifacts.csv) |
+| 字体、网站和设计器资源 | [字体记录](../assets/fonts/README.md)及下方对应章节 |
+
 ## 公开文档站依赖
 
 独立静态文档站使用 VitePress 1.6.4 与 Vue 3.5.45（MIT），Wrangler 4.160.0（MIT OR Apache-2.0）仅用于 Cloudflare 静态部署。直接版本、传递版本、来源和完整性由 `site/package.json` 与 `site/package-lock.json` 固定，使用 `npm --prefix site ci` 安装；它们不进入 Java POM、BOM、运行时或库 SBOM。站点不运行服务端 JavaScript，不通过 CDN 加载脚本或字体。维护和部署方法见[文档站指南](documentation-site.md)。
 
 VitePress 1.6.4 的原依赖范围仍使用 Vite 5，本项目定向 override 为 Vite 6.4.6，采用已修复版本的构建／本地服务；Vue 插件 5.2.4 的 peer 支持 Vite 6。该选择超出 VitePress 原始范围，升级时须重新执行静态构建、开发服务与页面验证，不能仅依据安装成功判断兼容。Vue SSR 修复见 [GHSA-g2v6-rqmx-r4w6](https://github.com/advisories/GHSA-g2v6-rqmx-r4w6)，Vite Windows 修复见 [GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm)。
 
-页面使用操作系统字体栈；首页 PDF／WebP 复用现有示例和已登记字体，来源、许可及内容边界见[样张说明](../site/pages/public/showcase/README.md)。依赖公告使用 `npm --prefix site audit --registry=https://registry.npmjs.org` 查询；构建工具公告与公开站点运行资源分别评估，不能将查询失败视为通过。
+页面拉丁文字使用本站打包的 Inter，中文及等宽文字使用操作系统字体栈；首页 PDF／WebP 复用现有示例和已登记字体，来源、许可及内容边界见[样张说明](../site/pages/public/showcase/README.md)。依赖公告使用 `npm --prefix site audit --registry=https://registry.npmjs.org` 查询；构建工具公告与公开站点运行资源分别评估，不能将查询失败视为通过。
 
-静态构建按实际浏览器模块、提取样式与社交图标生成 `THIRD-PARTY-NOTICES.txt`，包含确切包名、版本及原始 LICENSE／NOTICE。缺失许可或已安装版本偏离锁文件时构建失败；未随 npm 包提供的原文固定保存在[补充许可目录](../third-party/docs-site-licenses/README.md)。主题使用不携带字体的入口，不分发 VitePress 内置 Inter 字体。Wrangler 等仅用于构建／部署的工具不进入此浏览器声明。
+静态构建按实际浏览器模块、提取样式与社交图标生成 `THIRD-PARTY-NOTICES.txt`，包含确切包名、版本及原始 LICENSE／NOTICE。缺失许可或已安装版本偏离锁文件时构建失败；未随 npm 包提供的原文固定保存在[补充许可目录](../third-party/docs-site-licenses/README.md)。主题通过本地 `@font-face` 打包 VitePress 随附的 Inter 拉丁字体，使用 SIL OFL 1.1；构建核对 OFL 原文摘要并将其写入浏览器声明，不从 CDN 取字体。Wrangler 等仅用于构建／部署的工具不进入此浏览器声明。
 
 ## 设计器浏览器依赖
 
@@ -118,6 +127,9 @@ python scripts/audit_dependencies.py
 | `org.commonmark:commonmark` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
 | `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
 | `org.commonmark:commonmark-ext-gfm-strikethrough` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
+| `org.lwjgl:lwjgl` | 3.4.3 | 可选 OpenType 内部运行 | BSD-3-Clause；平台载荷另保留内嵌许可 |
+| `org.lwjgl:lwjgl-harfbuzz` | 3.4.3 | 可选 OpenType 内部运行 | BSD-3-Clause；平台载荷另保留内嵌许可 |
+| `org.scilab.forge:jlatexmath` | 1.0.7 | 可选数学模块及 starter 的传递运行依赖 | GPL-2.0-or-later 及上游原始链接例外；保留内置字体条款及对应源码材料 |
 | `org.junit:junit-bom` | 6.1.3 | 测试版本约束 | EPL-2.0；POM 与同版本 JUnit 许可文件 |
 | `org.junit.jupiter:junit-jupiter` | 6.1.3 | 测试 | EPL-2.0；保留 LICENSE.md |
 | `org.junit.jupiter:junit-jupiter-api` | 6.1.3 | 传递测试 | EPL-2.0；保留 LICENSE.md |

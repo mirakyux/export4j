@@ -2,6 +2,19 @@
 
 Run Gradle tasks from the repository root. Windows uses `.\gradlew.bat`; Linux/macOS use `bash ./gradlew`. JDK 21 is required, and the first build downloads pinned dependencies. Examples explicitly load repository fonts; see [font records (Chinese)](../../assets/fonts/README.md) for sources/licenses.
 
+## Development examples
+
+These tasks run against the current repository source. The new public modules and DTO/record binding are not included in published RC3. See [current status](current-status.md) for dependency setup and known limitations.
+
+| Task | Output | Guide |
+| --- | --- | --- |
+| `:examples:easyExport` | `examples/build/easy-export/` | [Unified PDF/DOCX entry](easy-export-api.md): one font/style configuration; equivalent XML outputs from Map, record and JavaBean data |
+| `:examples:contentBlocks` | `examples/build/output/content-blocks/` | [Source blocks](content-blocks-api.md): Java/XML local properties, scoped inheritance and parsing switches |
+| `:examples:math` | `examples/build/math/` | [Math API](math-api.md): public TeX/Markdown inputs, vector PDF/SVG/PNG and native Word equations |
+| `:examples:inlineVectors` | `examples/build/inline-vectors/` | [Inline vectors](inline-vectors-api.md): caller-supplied outlines with baselines and logical text in paragraphs, cells and HTML |
+
+Start with [EasyExportExample](../../examples/src/main/java/com/mirakyux/export4j/examples/EasyExportExample.java) to compare `xml.pdf`/`xml.docx`, `xml-record.*` and `xml-bean.*`. The same directory includes template source, Markdown/HTML/literal-text outputs and strict failure controls. For templates with page regions, sections or notes, use the XML tasks and underlying APIs below.
+
 ## Common tasks
 
 ```powershell
@@ -68,7 +81,7 @@ The [math example](../../examples/src/main/java/com/mirakyux/export4j/examples/M
 
 `math.docx` contains eight standard native OMML equations. `math-edited.docx` changes the first denominator from `2a` to `3a`, preserving others. `math-standard-round-1.docx` through `math-standard-round-3.docx` verify three rounds without project-private metadata. Native Word math APIs require neither a math library nor Office; see [Word math](docx-math-api.md) for supported types.
 
-JLaTeXMath 1.0.7 is limited to `examples`, with no TeX installation. See [dependencies](dependencies.md) for licensing, linking exception, font terms, and source distribution. Only explicitly listed TeX commands/matrix environments are allowed; macros, external links, unknown commands, and excess budgets are rejected. Equivalent content is authored separately for the two outputs; there is no automatic TeX↔OMML converter.
+This academic sample authors equivalent vector and native math representations separately to check layout and native-equation round trips. The development `:examples:math` task separately demonstrates bounded TeX-to-vector/OMML conversion through public `export4j-math` APIs; use [MathContent](rich-content-api.md) to produce PDF and DOCX from the same source. Neither requires a TeX installation. JLaTeXMath 1.0.7 renders vector formulas and is also a runtime dependency of the optional math module. See [dependencies](dependencies.md) for licensing, linking exception, font terms and source distribution, and the [math API](math-api.md) for the exact command subset and budgets. Native Word math-tree I/O requires neither JLaTeXMath nor Office.
 
 ```powershell
 python scripts/verify_manuweave_math.py

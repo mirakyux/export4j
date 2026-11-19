@@ -6,17 +6,12 @@
 
 当前开发构建新增可选 `export4j-math` 和统一导出入口 `export4j-starter`，完整分发范围为 18 个库与 BOM；已发布 RC3 仍为其原来的 16 个库与 BOM，不包含这两个模块。下述历史验收记录不扩展到新增功能。
 
-## RC3 发布前本地准备
-
-`0.1.0-rc.3` 的变化及发布前本地证据见 [RC3 说明](releases/0.1.0-rc.3.md)，正式发布结果见下方独立记录。源码默认版本继续为 `0.1.0-SNAPSHOT`，API 门禁继续对照从 Central 取得的 RC2 基线。
-
-候选构建通过 `-Pexport4jVersion=0.1.0-rc.3` 明确选定版本，并用 `-Pexport4jRepositoryDirectory=<本地候选仓库>` 隔离制品。本轮 `build`、`sbom`、`publishLocalBundle` 及 production／capabilities／inlineVectors 样例生成成功。Java 报告合计 2,441 项测试，失败、错误及跳过均为 0；部分任务从构建缓存恢复，并非全部测试逐例重新运行。API 检查覆盖 741 个可访问类型，相对 RC2 为 0 项不兼容、28 项新增、0 项第三方类型泄漏；407 页候选文档站生产构建通过。
-
-本批新 SBOM 中的 13 项第三方 Java 运行依赖在 2026-11-13 的 OSV 查询中没有已知公告命中，该时点结果不构成安全保证。16 个库二进制 JAR 与先前 17 页文献验收批次逐项字节相同，覆盖 2,151 个 ZIP 条目、1,287 个类，因此复用该批结构、提取及双引擎渲染证据，没有重新生成文献或重新测量性能。
-
-RC3 新版本的 Gradle 元数据及仅 POM 两种隔离消费均通过，每种模式的 16 个运行库 JAR 摘要与本地候选制品匹配，16 个库及 BOM 共 17 个项目组件均为 `0.1.0-rc.3`。消费者从制品编译运行新 `InlineVector` API，PDF／SVG／PNG 的真实路径、基线、逻辑文字、链接及 144 DPI 独立渲染通过；细节见 RC3 说明。production 独立验收通过，capabilities 使用临时自签测试证书完成 OpenSSL 实际验签及篡改拒绝，该测试身份不作为 Maven 正式签名身份。
-
-发布工作流已配置 inlineVectors 样例生成及独立验证，隔离消费脚本包含新 API 验证任务。正式 Maven 制品签名、Central 上传、远端重新解析及 GitHub Release 的结果见下方独立发布记录；本地候选验收不替代这些结果，已发布版本不得覆盖。
+| 任务 | 阅读入口 |
+| --- | --- |
+| 判断使用已发布版还是开发版 | [当前状态](current-status.md) |
+| 验证本地构建与 Maven 消费 | [本地验证流程](#本地验证流程) · [签名与可审查分发包](#签名与可审查分发包) |
+| 发布一个新版本 | [发布前检查](#发布前检查) · [手动 GitHub Actions 发布](#手动-github-actions-发布) |
+| 核对已完成的发布 | [已发布候选记录](#已发布候选记录) |
 
 ## 已发布候选记录
 
@@ -27,6 +22,18 @@ RC3 新版本的 Gradle 元数据及仅 POM 两种隔离消费均通过，每种
 正式分发包 `maven-central-bundle.zip` 的 SHA-256 为 `53017f437ca2898f9ef17a2ea9a4df60f718ba92388ab2980b65a773af1d04ee`，远端校验报告 `publication-report.json` 的 SHA-256 为 `718926b477e721bfb38a87e9601ef76353002c55725e849e60f970455f1d74e1`。
 
 `0.1.0-rc.2` 的[发布工作流](https://github.com/mirakyux/export4j/actions/runs/42262570964)已成功完成，`release` 与 `github-release` 任务均通过；[GitHub Release](https://github.com/mirakyux/export4j/releases/tag/v0.1.0-rc.2)于 2026-11-07（北京时间）发布，标签指向构建提交 `88d2bcd81011b1b16c9461f75fb22df247dd422f`。Maven Central 已提供同版本的 16 个库与 BOM；该运行记录构建、签名、上传及远端隔离消费结果。RC 为候选版本，不表示 API 已稳定或提供生产 SLA。
+
+### RC3 发布前本地准备
+
+`0.1.0-rc.3` 的变化及发布前本地证据见 [RC3 说明](releases/0.1.0-rc.3.md)，正式发布结果见[已发布候选记录](#已发布候选记录)。源码默认版本继续为 `0.1.0-SNAPSHOT`，API 门禁继续对照从 Central 取得的 RC2 基线。
+
+候选构建通过 `-Pexport4jVersion=0.1.0-rc.3` 明确选定版本，并用 `-Pexport4jRepositoryDirectory=<本地候选仓库>` 隔离制品。本轮 `build`、`sbom`、`publishLocalBundle` 及 production／capabilities／inlineVectors 样例生成成功。Java 报告合计 2,441 项测试，失败、错误及跳过均为 0；部分任务从构建缓存恢复，并非全部测试逐例重新运行。API 检查覆盖 741 个可访问类型，相对 RC2 为 0 项不兼容、28 项新增、0 项第三方类型泄漏；407 页候选文档站生产构建通过。
+
+本批新 SBOM 中的 13 项第三方 Java 运行依赖在 2026-11-13 的 OSV 查询中没有已知公告命中，该时点结果不构成安全保证。16 个库二进制 JAR 与先前 17 页文献验收批次逐项字节相同，覆盖 2,151 个 ZIP 条目、1,287 个类，因此复用该批结构、提取及双引擎渲染证据，没有重新生成文献或重新测量性能。
+
+RC3 新版本的 Gradle 元数据及仅 POM 两种隔离消费均通过，每种模式的 16 个运行库 JAR 摘要与本地候选制品匹配，16 个库及 BOM 共 17 个项目组件均为 `0.1.0-rc.3`。消费者从制品编译运行新 `InlineVector` API，PDF／SVG／PNG 的真实路径、基线、逻辑文字、链接及 144 DPI 独立渲染通过；细节见 RC3 说明。production 独立验收通过，capabilities 使用临时自签测试证书完成 OpenSSL 实际验签及篡改拒绝，该测试身份不作为 Maven 正式签名身份。
+
+发布工作流已配置 inlineVectors 样例生成及独立验证，隔离消费脚本包含新 API 验证任务。正式 Maven 制品签名、Central 上传、远端重新解析及 GitHub Release 的结果见[已发布候选记录](#已发布候选记录)；本地候选验收不替代这些结果，已发布版本不得覆盖。
 
 ## 手动 GitHub Actions 发布
 
@@ -59,7 +66,7 @@ gpg --armor --output <仓库外私钥文件.asc> --export-secret-keys <完整指
 1. 校验明确的非 SNAPSHOT 版本，拒绝临时验证版本、Central 已存在的任一同版本模块及已存在的 `v<版本>` 标签，记录提交与构建输入。
 2. 用 Java 21、Node.js 24 和 Gradle Wrapper 构建、测试、检查 API、生成示例并在内存中签名；不导出 CI 私钥文件。
 3. 审计本批 SBOM，独立验证当前 18 个库与 BOM 的 92 个制品、签名、许可、版本和篡改拒绝，生成上传 ZIP；实际模块范围从 Gradle settings 核对。
-4. 在新调用方中解析本批签名制品，核对全部 18 个 JAR 的 SHA-256，检查生产样例的结构和双渲染，以及能力样例的 CMS 签名和篡改拒绝。数学模块须验证原生 DOCX、矢量输出、预算和明确降级；统一入口须从单一模块依赖验证源内容／XML 与目标输出。
+4. 在新调用方中解析本批签名制品，核对全部 18 个 JAR 的 SHA-256，生成数学、统一入口等样例，检查生产样例的结构和双渲染，以及能力样例的 CMS 签名和篡改拒绝。
 5. 通过官方 API 以 `AUTOMATIC` 模式上传一次，等待 `PUBLISHED`。此步骤会对外发布指定版本。
 6. 从 Maven Central 下载准确字节、签名和校验文件，再验签、核对 SBOM，并用只配置 Maven Central 的新调用方编译、生成和检查输出。
 7. 独立任务再次核对提交、版本、发布包 SHA-256 及远端验证结果，在准确的构建提交上创建 `v<版本>` 标签和 GitHub Release。附带签名 Maven 发布包、公钥、SBOM 与验证报告，并生成提交变更说明。带版本后缀的 RC／beta 等标记为 prerelease，稳定版标记为 Latest。
@@ -95,6 +102,8 @@ gh workflow run github-release.yml -f source_run_id=43349185087 -f version=0.1.0
 
 自动验证会保存渲染联系表，发布者仍需按变更范围完成视觉及阅读器验收。该工作流不包含人工 Word 编辑保存，也不内置 veraPDF；PDF/A 合规仍需按发布前检查单独提供证据。
 
+数学与统一入口的变更还须按[验证矩阵](../.agents/skills/develop-export4j/references/verification.md)补做相应独立输出检查。当前发布工作流会在完整模块消费者中生成这些样例，但没有自动执行 `verify_math.py`、`verify_easy_export.py` 或单 starter 消费脚本；不能据此宣称单依赖装配、全部公式输出及逐页视觉已验收。
+
 ## 本地验证流程
 
 ~~~powershell
@@ -108,7 +117,7 @@ python scripts/verify_capabilities.py
 
 `sbom` 写入 `build/reports/sbom.cdx.json`，CycloneDX 1.6 库运行清单包含 18 个自研库及 14 个第三方 Java 制品的 SHA-256；按实际坐标记录 Apache-2.0、BSD-2-Clause、BSD-3-Clause、MIT 和 JLaTeXMath 的 GPL-2.0-or-later 原始链接例外名称。第三方许可白名单遇到新增坐标会失败，须先审查。数学模块二进制携带对应 JLaTeXMath sources JAR／构建 POM，分发验证器核对其摘要和字节；原文及字体条款另见[依赖记录](dependencies.md)。可选 OpenType 的 native classifier 不传递到生产 POM；应用显式选择，原生制品／内含许可另见 `third-party/native-artifacts.csv`。字体、JDK、测试工具和构建工具也单独登记，不混入 Java JAR 清单。
 
-独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。脚本用独立 Gradle home，刷新 SNAPSHOT，分别验证 Gradle 元数据和仅 POM 的消费路径，并核对实际运行 JAR 的 SHA-256；这些检查证明本地制品可消费，不代表 Maven Central、签名或远程 CI 验证。
+独立 `verification/consumer` 工程仅使用 Maven 坐标和 BOM，对项目 group 的解析限定本地隔离仓库，编译并实际输出 PDF／DOCX／SVG／PNG／HTML／Markdown。`verify_local_consumer.ps1` 使用独立 Gradle home，刷新 SNAPSHOT，分别运行 Gradle 元数据和仅 POM 的消费路径，并输出实际运行 JAR 的位置和 SHA-256 清单。逐项与指定发布仓库对照由 `verify_maven_consumer.py` 完成，签名演练 `verify_signed_distribution.py` 也调用这项检查。本地消费、准确字节对照、签名和远程 CI 分别记录结果。
 
 根 `check` 包含 `apiCheck`，使用从 Maven Central 已发布的 `0.1.0-rc.2` 库 JAR 提取的基线，差异规则、逐库来源和行为兼容边界见 [Java API 与版本兼容](api-compatibility.md)。Java 21 的 Windows／Linux／macOS 构建及临时密钥签名分发在历史提交 `cc132e7` 已远端通过，准确运行记录见[阶段一百零五](verification/phase-105-publication-and-compatibility.md#远端-ci-验收)。阶段一百零六记录的本地安全／兼容门禁不能沿用该历史提交的 CI 结论；后续 RC2 发布及远端消费以本页的实际工作流记录为准。本地构建仓库的检查仍不替代 Central 上传或真实远端仓库消费。
 
@@ -146,6 +155,8 @@ python scripts/prepare_maven_bundle.py --repository <本地暂存目录> --versi
 命令中占位符须替换后执行；Linux／macOS 使用 `./gradlew`。启用签名的 `publishSignedBundle` 先执行 `check`（含测试和候选 API 门禁）、`publishLocalBundle` 及 `sbom`，只把当前 18 个库和 BOM 暂存到本地，不连接 Central。完整 POM 包含项目、SCM、维护者和许可；二进制、源码、Javadoc、POM 及 Gradle 元数据均须有有效签名。准备脚本使用独立 GnuPG 验签并验证篡改拒绝，核对实际 JAR 与 SBOM、许可及坐标，生成标准目录结构 ZIP 和 MD5／SHA-1／SHA-256／SHA-512 校验文件。调用前须安装 GnuPG，并准备可验证的公开密钥。
 
 `scripts/verify_signed_distribution.py` 可用临时密钥和 `0.0.0-verification...` 标记版本演练整个流程，随后以独立复制的消费者编译并生成输出。消费者实际解析的每个自研 JAR 必须与该批签名仓库具有相同 SHA-256；同坐标、同版本不能替代准确字节核对。构建输入清单同时绑定生产源码、构建／验证脚本、消费者源码及资源，签名与消费期间变化即失败。此测试身份不作为正式签名身份；脚本要求全新忽略目录，私钥仅存在临时 keyring 和签名进程环境，结束后清理。演练包可审查，不自动上传。
+
+使用 starter 的变更还需运行 `scripts/verify_starter_consumer.ps1`，通过 Gradle 元数据与仅 POM 两路验证只声明一个 starter 坐标、无 BOM 的调用方；完整模块消费者不能代替这项装配检查。将脚本的 `-Version` 与 `-RepositoryDirectory` 指向同一批制品，并选择新的 `-OutputDirectory`。对应验收和逐页输出检查见[统一入口验收](verification/easy-export.md)。
 
 准备脚本、临时密钥、正式密钥、ZIP、Central 上传和真实远端消费分别记录结果。构建 CI 的临时签名演练始终不上传；只有上述手动发布工作流会以正式凭据上传。
 
