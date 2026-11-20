@@ -10,6 +10,7 @@ import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.InlineVector;
+import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.LineBreakPolicy;
@@ -91,6 +92,41 @@ class ContentImporterTest {
         var sibling = first(importer.read("b").execute());
         assertEquals("body", sibling.inlines().getFirst().style().fontRole()); assertEquals(0x123456, sibling.inlines().getFirst().style().rgb());
         assertTrue(sibling.format().keepTogether()); assertEquals(9, sibling.format().rotation());
+    }
+
+    @Test void listMarkersUseTheSameBlockAppearanceAcrossMarkdownMixedMarkdownAndHtml() throws Exception {
+        for (int path = 0; path < 3; path++) {
+            boolean html = path == 2;
+            var importer = ContentImporter.builder().defaults(ContentOptions.builder()
+                            .format(html ? ContentOptions.Format.HTML : ContentOptions.Format.MARKDOWN)
+                            .rawHtml(path == 1).fontRole("report").rgb(0xcc3300).fontSize(17).lineHeight(25).build())
+                    .fontFamily("Report", "report", "report_bold", "report_italic", "report_boldItalic").build();
+            String source = html ? "<ul><li><strong>Bullet</strong> body</li></ul><ol><li><em>Number</em> body</li></ol>"
+                    : "- **Bullet** body\n\n1. *Number* body";
+            var document = importer.read(source).execute().document();
+            var bullet = (BulletItem) document.blocks().getFirst();
+            var number = (NumberedItem) document.blocks().getLast();
+            var marker = new InlineStyle("report", 17, 0xcc3300, 0, false, false);
+            assertEquals(marker, bullet.markerStyle());
+            assertEquals(marker, number.markerStyle());
+            // A first emphasized run must not become the list marker's source of defaults.
+            assertEquals("report_bold", bullet.inlines().getFirst().style().fontRole());
+            assertEquals("report_italic", number.inlines().getFirst().style().fontRole());
+            var cleared = importer.read(source).options(ContentOptions.builder().fontRole("").rgb(0).build()).execute().document();
+            assertEquals(InlineStyle.of(17), ((BulletItem) cleared.blocks().getFirst()).markerStyle());
+            assertEquals(InlineStyle.of(17), ((NumberedItem) cleared.blocks().getLast()).markerStyle());
+        }
+    }
+
+    @Test void standaloneMarkdownImportRetainsItsIndependentDefaultMarkerStyle() throws Exception {
+        var document = MarkdownImporter.builder().paragraphFormat(com.mirakyux.export4j.model.ParagraphFormat.of(17))
+                .build().read("- **Bullet**\n\n1. *Number*").execute().document();
+        var bullet = (BulletItem) document.blocks().getFirst();
+        var number = (NumberedItem) document.blocks().getLast();
+        assertEquals(InlineStyle.of(17), bullet.markerStyle());
+        assertEquals(InlineStyle.of(17), number.markerStyle());
+        assertEquals("bold", bullet.inlines().getFirst().style().fontRole());
+        assertEquals("italic", number.inlines().getFirst().style().fontRole());
     }
 
     @Test void markdownFormulaOffProtectsOriginalTeXFromCommonMarkAndDoesNotEnableHtml() throws Exception {
@@ -259,6 +295,62 @@ class ContentImporterTest {
             SemanticTree.walk(one, visit -> assertTrue(visit.block().id().startsWith("one:")));
             SemanticTree.walk(two, visit -> assertTrue(visit.block().id().startsWith("two:")));
             assertThrows(IllegalArgumentException.class, () -> session.parse("one", "again", ContentOptions.defaults(), ROOM));
+        }
+    }
+
+    @Test void rejectedOutputPreconditionsDoNotRetainNamespacesOrConsumeTheOnlySourceSlot() {
+        var importer = ContentImporter.builder().limits(new ImportLimits(10, 10, 1, 8, 10, 1, 1, 1000)).build();
+        var exhausted = new SourceContentParser.Remaining(1, 0, 1, 1, 1);
+        try (var session = importer.openSession()) {
+            for (int index = 0; index < 1000; index++) {
+                String namespace = "rejected-" + index + "-" + "x".repeat(990);
+                assertEquals("content output allowance exhausted", assertThrows(IllegalArgumentException.class,
+                        () -> session.parse(namespace, "", ContentOptions.defaults(), exhausted)).getMessage());
+            }
+            assertEquals("x", ((Paragraph) session.parse("rejected-0-" + "x".repeat(990), "x", ContentOptions.defaults(), ROOM).getFirst()).text());
+            assertEquals("content source namespace limit exceeded", assertThrows(IllegalArgumentException.class,
+                    () -> session.parse("another", "x", ContentOptions.defaults(), ROOM)).getMessage());
+        }
+    }
+
+    @Test void missingParserConfigurationAndEarlyCancellationLeaveTheNamespaceReusable() throws Exception {
+        var importer = ContentImporter.builder().limits(new ImportLimits(10, 10, 1, 8, 10, 1, 1, 1000)).build();
+        try (var session = importer.openSession()) {
+            var needsProcessor = ContentOptions.builder().formulas(true).build().resolve(ContentOptions.defaults());
+            assertThrows(IllegalStateException.class, () -> session.parse("retry", "x", needsProcessor, ROOM));
+            var checkpoints = new AtomicInteger();
+            var cancelled = ExecutionOptions.builder().cancelled(() -> checkpoints.incrementAndGet() > 1).build();
+            assertEquals(ExecutionException.Code.CANCELLED, assertThrows(ExecutionException.class,
+                    () -> ExecutionContext.execute(cancelled, () -> session.parse("retry", "x", ContentOptions.defaults(), ROOM))).code());
+            assertEquals("x", ((Paragraph) session.parse("retry", "x", ContentOptions.defaults(), ROOM).getFirst()).text());
+            assertEquals("content source namespace already used", assertThrows(IllegalArgumentException.class,
+                    () -> session.parse("retry", "x", ContentOptions.defaults(), ROOM)).getMessage());
+        }
+    }
+
+    @Test void failedParsingRetainsItsIdentityButCannotGrowBeyondTheSessionSourceLimit() {
+        var importer = ContentImporter.builder().limits(new ImportLimits(10, 10, 2, 8, 10, 1, 1, 1000)).build();
+        try (var session = importer.openSession()) {
+            assertEquals("x", ((Paragraph) session.parse("successful", "x", ContentOptions.defaults(), ROOM).getFirst()).text());
+            assertEquals("NUL is not accepted in import input", assertThrows(IllegalArgumentException.class,
+                    () -> session.parse("failed", "\u0000", ContentOptions.defaults(), ROOM)).getMessage());
+            assertEquals("content source namespace already used", assertThrows(IllegalArgumentException.class,
+                    () -> session.parse("failed", "y", ContentOptions.defaults(), ROOM)).getMessage());
+            for (int index = 0; index < 100; index++) {
+                String namespace = "extra-" + index;
+                assertEquals("content source namespace limit exceeded", assertThrows(IllegalArgumentException.class,
+                        () -> session.parse(namespace, "y", ContentOptions.defaults(), ROOM)).getMessage());
+            }
+        }
+    }
+
+    @Test void failedParsingDoesNotRefundInputBudgetWhenAnotherNamespaceContinues() {
+        var importer = ContentImporter.builder().limits(new ImportLimits(3, 10, 4, 8, 10, 1, 1, 1000)).build();
+        try (var session = importer.openSession()) {
+            assertThrows(IllegalArgumentException.class, () -> session.parse("failed", "\u0000a", ContentOptions.defaults(), ROOM));
+            assertEquals("content input budget exceeded", assertThrows(IllegalArgumentException.class,
+                    () -> session.parse("tooMuch", "bc", ContentOptions.defaults(), ROOM)).getMessage());
+            assertEquals("x", ((Paragraph) session.parse("remaining", "x", ContentOptions.defaults(), ROOM).getFirst()).text());
         }
     }
 

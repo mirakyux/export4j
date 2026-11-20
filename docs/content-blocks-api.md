@@ -168,4 +168,6 @@ var document = template.render(Map.of("intro", "Result: $x^2$.", "name", "Reader
 
 每次模板 render 对同一解析器身份仅打开一个同步 `SourceContentParser.Session`，跨源块、循环、分节和动态单元格累计输入、语法树／工作量、表格、公式及矢量预算。`ImportLimits`、`maxFormulas`、`maxFormulaUtf16` 和 `maxVectorSegments` 不因进入子块而重置；每次解析还受模板传入的 `Remaining` 限制。输入及工作量在第三方解析边界检查，AST 节点按实际遍历累计，不按文字长度虚构节点数；失败的遍历也不退还已消耗的额度。混合内容诊断映射回原 Markdown 的 UTF-16 范围。有限预算及合作式检查不是强制内存沙箱。
 
+直接使用 `ContentImporter.openSession()` 时，调用方拥有并关闭会话；登记的来源 namespace 最多为 `ImportLimits.maxNodes()` 个。配置错误、输出前置额度耗尽及入口取消不登记名称，可纠正后用同名重试。解析开始后的失败保留来源名称及已消费预算，避免失败重试绕过累计限额；其他来源可在剩余预算内继续使用。Markdown 列表标记继承块的默认字体、颜色及字号，首个正文运行的强调不改变标记外观。
+
 成功、失败和取消均关闭 session；已有主异常保留，清理失败不会替换主异常。最终 `Document` 不包含 `Source` 或可延迟解析的字符串节点。已构建 `Paragraph`／`Table`、完整行内样式和 `Document.Builder.add(Block)` 不会被重新解析或按默认数值覆写。设计决定见 [ADR-0115](adr/0115-source-content-options.md)。

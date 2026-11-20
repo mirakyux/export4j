@@ -164,11 +164,13 @@ final class MarkdownImportMapper {
                     index++; restart = true; continue;
                 }
             }
+            var markerStyle = state.content == null ? InlineStyle.of(format.fontSize())
+                    : state.content.style(format.fontSize());
             if (ordered) {
                 int start = restart ? Math.addExact(firstNumber, index) : 0;
-                output.add(NumberedItem.mixed(id, effectiveId, runs, start, format, level));
+                output.add(NumberedItem.mixed(id, effectiveId, runs, start, format, level, markerStyle));
                 restart = false;
-            } else { output.add(BulletItem.mixed(id, runs, "•", level, format)); }
+            } else { output.add(BulletItem.mixed(id, runs, "•", level, format, markerStyle)); }
             for (var child = paragraph.getNext(); child != null; child = child.getNext()) {
                 if (child instanceof ListBlock nested) {
                     list(nested, output, quoteDepth, visualDepth + 1, effectiveId, numberDepth);

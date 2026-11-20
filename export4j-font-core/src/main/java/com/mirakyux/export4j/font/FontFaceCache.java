@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -33,6 +34,8 @@ import java.util.function.Supplier;
  * A closed cache rejects new loads.
  */
 public final class FontFaceCache implements AutoCloseable {
+    private static final Runnable NO_CHECKPOINT = () -> { };
+    private static final long WAIT_CHECK_MILLIS = 25;
     private final int maxEntries;
     private final long maxSourceBytes;
     private final long idleNanos;
@@ -124,19 +127,39 @@ public final class FontFaceCache implements AutoCloseable {
         return load(bytes, TrueTypeFontLoader.DEFAULT_MAX_BYTES);
     }
 
+    /** Loads under the default byte limit with caller-thread cooperation, as in {@link #load(byte[], int, Runnable)}. */
+    public FontFace load(byte[] bytes, Runnable checkpoint) throws IOException {
+        return load(bytes, TrueTypeFontLoader.DEFAULT_MAX_BYTES, checkpoint);
+    }
+
     /**
      * Loads under the per-call encoded byte limit, including on a cache hit. Caller bytes are never retained.
      * An oversized cache entry is returned normally without retention. Failed parses are never cached.
      */
     public FontFace load(byte[] bytes, int maxBytes) throws IOException {
+        return load(bytes, maxBytes, NO_CHECKPOINT);
+    }
+
+    /**
+     * Loads with a synchronous, non-retained caller checkpoint. It runs around source preparation,
+     * before returning, and at least every 25 ms of a same-content wait, subject to JVM scheduling.
+     * Throwing from a waiting caller's checkpoint stops only that caller; it never cancels the shared
+     * parser or other waiters. Parsing and caller I/O are synchronous and cannot be preempted by this
+     * callback. A successfully parsed immutable face may be retained even if the caller then cancels.
+     * Null arguments throw NullPointerException; invalid byte limits throw IllegalArgumentException.
+     */
+    public FontFace load(byte[] bytes, int maxBytes, Runnable checkpoint) throws IOException {
         Objects.requireNonNull(bytes, "bytes");
+        Objects.requireNonNull(checkpoint, "checkpoint").run();
         requireLimit(maxBytes);
         if (bytes.length > maxBytes) {
             throw new FontLoadException(FontLoadException.Code.BUDGET_EXCEEDED, "font byte budget exceeded");
         }
         requireOpen();
         byte[] snapshot = bytes.clone();
-        return loadSnapshot(snapshot, enabled ? identifier(snapshot) : null);
+        String id = enabled ? identifier(snapshot) : null;
+        checkpoint.run();
+        return loadSnapshot(snapshot, id, checkpoint);
     }
 
     /** Reads a borrowed stream under the default loader limit and never closes it. */
@@ -144,13 +167,24 @@ public final class FontFaceCache implements AutoCloseable {
         return load(input, TrueTypeFontLoader.DEFAULT_MAX_BYTES);
     }
 
+    /** Reads a borrowed stream under the default limit with the synchronous checkpoint contract. */
+    public FontFace load(InputStream input, Runnable checkpoint) throws IOException {
+        return load(input, TrueTypeFontLoader.DEFAULT_MAX_BYTES, checkpoint);
+    }
+
     /** Reads at most maxBytes+1 bytes from a borrowed stream, including on a cache hit; never closes it. */
     public FontFace load(InputStream input, int maxBytes) throws IOException {
+        return load(input, maxBytes, NO_CHECKPOINT);
+    }
+
+    /** Reads a borrowed stream without closing it; cooperative checks surround caller I/O and cache waiting. */
+    public FontFace load(InputStream input, int maxBytes, Runnable checkpoint) throws IOException {
         Objects.requireNonNull(input, "input");
+        Objects.requireNonNull(checkpoint, "checkpoint").run();
         requireLimit(maxBytes);
         requireOpen();
         // readNBytes can be overridden, so load(byte[]) must still snapshot its result.
-        return load(input.readNBytes(maxBytes + 1), maxBytes);
+        return load(input.readNBytes(maxBytes + 1), maxBytes, checkpoint);
     }
 
     /** Reads an explicit file under the default loader limit, closing only the stream opened here. */
@@ -158,18 +192,35 @@ public final class FontFaceCache implements AutoCloseable {
         return load(source, TrueTypeFontLoader.DEFAULT_MAX_BYTES);
     }
 
+    /** Reads an explicit file under the default limit with the synchronous checkpoint contract. */
+    public FontFace load(Path source, Runnable checkpoint) throws IOException {
+        return load(source, TrueTypeFontLoader.DEFAULT_MAX_BYTES, checkpoint);
+    }
+
     /** Reads and hashes the current file contents on every call; cached paths never hide file replacement. */
     public FontFace load(Path source, int maxBytes) throws IOException {
+        return load(source, maxBytes, NO_CHECKPOINT);
+    }
+
+    /** Reads current file contents with cooperative checks, closing only this call's opened stream. */
+    public FontFace load(Path source, int maxBytes, Runnable checkpoint) throws IOException {
         Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(checkpoint, "checkpoint").run();
         requireLimit(maxBytes);
         requireOpen();
-        try (var input = Files.newInputStream(source)) { return load(input, maxBytes); }
+        try (var input = Files.newInputStream(source)) { return load(input, maxBytes, checkpoint); }
     }
 
     /** Only source-private snapshots and their computed identifiers may enter this package boundary. */
     FontFace loadSnapshot(byte[] snapshot, String id) throws IOException {
+        return loadSnapshot(snapshot, id, NO_CHECKPOINT);
+    }
+
+    FontFace loadSnapshot(byte[] snapshot, String id, Runnable checkpoint) throws IOException {
+        Objects.requireNonNull(checkpoint, "checkpoint").run();
         Pending reservation = null;
         Pending existing;
+        FontFace cachedFace = null;
         synchronized (this) {
             requireOpen();
             expire(ticker.getAsLong());
@@ -177,22 +228,28 @@ public final class FontFaceCache implements AutoCloseable {
             if (cached != null) {
                 cached.lastAccess = ticker.getAsLong();
                 hits++;
-                return cached.face;
-            }
-            existing = enabled ? pending.get(id) : null;
-            if (existing == null) {
-                misses++;
-                // Pending coordination is bounded separately from retained faces. Uncoordinated
-                // callers still parse locally, so retention limits never reject a valid font.
-                if (enabled && pending.size() < maxEntries && snapshot.length <= maxSourceBytes - pendingBytes) {
-                    reservation = new Pending(snapshot.length);
-                    pending.put(id, reservation);
-                    pendingBytes += snapshot.length;
+                cachedFace = cached.face;
+                existing = null;
+            } else {
+                existing = enabled ? pending.get(id) : null;
+                if (existing == null) {
+                    misses++;
+                    // Pending coordination is bounded separately from retained faces. Uncoordinated
+                    // callers still parse locally, so retention limits never reject a valid font.
+                    if (enabled && pending.size() < maxEntries && snapshot.length <= maxSourceBytes - pendingBytes) {
+                        reservation = new Pending(snapshot.length);
+                        pending.put(id, reservation);
+                        pendingBytes += snapshot.length;
+                    }
                 }
             }
         }
+        if (cachedFace != null) {
+            checkpoint.run();
+            return cachedFace;
+        }
         if (existing != null) {
-            FontFace face = await(existing);
+            FontFace face = await(existing, checkpoint);
             synchronized (this) {
                 var current = entries.entrySet().stream().filter(entry -> entry.getKey().equals(id))
                         .map(java.util.Map.Entry::getValue).findFirst().orElse(null);
@@ -241,6 +298,7 @@ public final class FontFaceCache implements AutoCloseable {
             throw failure;
         }
         if (reservation != null) { reservation.result.complete(loaded); }
+        checkpoint.run();
         return loaded;
     }
 
@@ -248,9 +306,18 @@ public final class FontFaceCache implements AutoCloseable {
         if (reservation != null && pending.remove(id, reservation)) { pendingBytes -= reservation.sourceBytes; }
     }
 
-    private static FontFace await(Pending pending) throws IOException {
-        try { return pending.result.get(); }
-        catch (InterruptedException interrupted) {
+    private static FontFace await(Pending pending, Runnable checkpoint) throws IOException {
+        try {
+            while (true) {
+                checkpoint.run();
+                try {
+                    FontFace face = checkpoint == NO_CHECKPOINT ? pending.result.get()
+                            : pending.result.get(WAIT_CHECK_MILLIS, TimeUnit.MILLISECONDS);
+                    checkpoint.run();
+                    return face;
+                } catch (TimeoutException notReady) { /* Recheck only this caller; shared parsing continues. */ }
+            }
+        } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             var failure = new InterruptedIOException("font load interrupted");
             failure.initCause(interrupted);

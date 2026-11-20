@@ -51,6 +51,12 @@ public final class ContentImporter implements SourceContentParser {
         metadata = builder.metadata; pageSettings = builder.pageSettings;
     }
     public static Builder builder() { return new Builder(); }
+    /** Opens a task-confined cumulative session. At most {@link ImportLimits#maxNodes()} source
+     * namespaces are retained until close. Rejected configuration, exhausted output preconditions
+     * and cancellation before parsing reserve no namespace. Once parsing starts, its namespace and
+     * consumed budgets remain charged even if parsing fails; another distinct source may still run
+     * within the remaining limits. The caller owns and must close the session.
+     */
     @Override public Session openSession() { return new ContentSession(); }
     /** One-shot source request. String input always means source text, never a path. */
     public Request read(String source) { return read("content", source); }
@@ -123,10 +129,13 @@ public final class ContentImporter implements SourceContentParser {
         private boolean closed, parsing;
         @Override public List<Block> parse(String namespace, String source, ContentOptions.Resolved options, Remaining remaining) {
             if (closed || parsing) { throw new IllegalStateException("content session is closed or reentered"); }
+            ExecutionContext.checkpoint();
             String prefix = namespace(namespace); Objects.requireNonNull(source, "source"); Objects.requireNonNull(options, "options"); Objects.requireNonNull(remaining, "remaining");
-            if (!namespaces.add(prefix)) { throw new IllegalArgumentException("content source namespace already used"); }
             if (options.formulas() && processor == null) { throw new IllegalStateException("formula parsing requires an explicit FormulaProcessor"); }
             if (remaining.maxBlocks() == 0 || remaining.maxVisitedNodes() == 0 || remaining.maxDepth() == 0) { throw new IllegalArgumentException("content output allowance exhausted"); }
+            if (namespaces.contains(prefix)) { throw new IllegalArgumentException("content source namespace already used"); }
+            if (namespaces.size() >= limits.maxNodes()) { throw new IllegalArgumentException("content source namespace limit exceeded"); }
+            namespaces.add(prefix);
             parsing = true;
             try {
                 budget.input(source.length());

@@ -12,6 +12,20 @@ function Resolve-VerificationPath([string]$Value, [string]$Default) {
     if ([System.IO.Path]::IsPathRooted($Value)) { return [System.IO.Path]::GetFullPath($Value) }
     return [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $Value))
 }
+function Read-ArtifactHashes([string]$Path) {
+    $hashes = @{}
+    foreach ($line in (Get-Content -LiteralPath $Path)) {
+        $fields = $line.Split("`t")
+        if ($fields.Count -ne 3 -or $fields[0] -notmatch '^[^:]+:[^:]+:[^:]+$' -or
+            [string]::IsNullOrWhiteSpace($fields[1]) -or $fields[2] -notmatch '^[0-9a-f]{64}$' -or
+            $hashes.ContainsKey($fields[0])) { throw 'Malformed or duplicate runtime artifact hash' }
+        $hashes[$fields[0]] = $fields[2]
+    }
+    if ($hashes.Count -eq 0) { throw 'Runtime artifact hashes are missing' }
+    # Gradle metadata may cache SNAPSHOT names while POM resolution uses timestamped names.
+    # Coordinates and actual bytes must match regardless of that local filename difference.
+    return @($hashes.Keys | Sort-Object | ForEach-Object { "$_`t$($hashes[$_])" })
+}
 $publicationRepositoryDirectory = Resolve-VerificationPath $RepositoryDirectory 'build/repository'
 $defaultEvidence = 'build/verification/starter-single-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
 $evidenceDirectory = Resolve-VerificationPath $OutputDirectory $defaultEvidence
@@ -40,9 +54,9 @@ try {
         }
         $routes[$route] = @{ directory = $routeDirectory; audit = $audit }
     }
-    $gradleHashes = Get-Content (Join-Path $routes['gradle'].directory 'resolved-library-sha256.txt') -Raw
-    $pomHashes = Get-Content (Join-Path $routes['pom-only'].directory 'resolved-library-sha256.txt') -Raw
-    if ($gradleHashes -ne $pomHashes) { throw 'Gradle metadata and POM-only routes resolved different runtime artifacts' }
+    $gradleHashes = Read-ArtifactHashes (Join-Path $routes['gradle'].directory 'resolved-library-sha256.txt')
+    $pomHashes = Read-ArtifactHashes (Join-Path $routes['pom-only'].directory 'resolved-library-sha256.txt')
+    if (Compare-Object $gradleHashes $pomHashes) { throw 'Gradle metadata and POM-only routes resolved different runtime artifacts' }
     $result = @{ version = $Version; status = 'PASS'; routes = $routes; runtimeArtifactsEqual = $true }
     $result | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $evidenceDirectory 'verification.json') -Encoding utf8
     Write-Output "Verified one declared starter coordinate through both metadata routes: $evidenceDirectory"

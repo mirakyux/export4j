@@ -90,3 +90,46 @@ API／本地签名分发另用 `scripts/verify_signed_distribution.py --version 
 首次并行全仓运行的一项设计器 HTTP 测试超时，单独复测和后续完整构建均通过，没有放宽超时断言。仅 POM 的在线刷新曾因 Maven Central TLS 握手中断失败，离线重建及签名版本两条消费均成功并核对真实 JAR 摘要。首次临时签名目录／版本组合触发 Windows 长路径的 Python 文件检测限制，改用上述短目录和短验证版本完成全套签名及消费；未把失败日志计为通过。新增 PDF 网格验证器也先纠正了将填充边缘与内缩描边中心线混在一起的检查方式，现按真实描边外缘验证，保持 0.001 pt 容差。
 
 未执行 Microsoft Word 的打开、编辑、字段更新和保存回读；独立 DOCX 阅读器不可用时明确记录跳过，标准 OOXML 检查不能替代阅读器动作。有限样例不证明任意字体、模板、Word 分页或恶意输入沙箱。本地构建、临时签名和消费不代表正式版本上传、发布或部署。
+
+## 后续评审修复（2026-11-20）
+
+在上述验收之后，进一步修复四项边界问题：
+
+| 问题 | 修复及回归证据 |
+| --- | --- |
+| Markdown 列表标记丢失继承外观 | 标记使用块的最终字体角色、字号和颜色，不从首个强调运行推断；独立旧 `MarkdownImporter` 保留原默认值。检查 Markdown、启用 raw HTML 的 Markdown 及 HTML 三入口的 PDF 真实标记字形和 DOCX 原生编号属性 |
+| 公式 TEXT 候选丢失宿主字体角色 | 每次公式出现保留完整 `InlineStyle` 及最终链接；相同公式的不同外观分别保存。保留 `FormulaProcessor` 原五参数 SAM，新增样式重载为默认方法；未配置候选继续严格失败，预算、取消和超时不能降级 |
+| 同字体等待未响应操作取消／超时 | 每次调用可传入不保留的同步检查点，同键等待按 25 ms 间隔检查，受 JVM 调度影响；回调在缓存锁外。受控解析线程保持阻塞时，PDF／DOCX 等待请求已因取消或 deadline 退出，旧目标保留，owner 和其他使用者仍正常完成 |
+| Session 失败名称无界保留 | 前置验证失败不登记名称，同名可重试；解析开始后的失败保留名称及已用预算。名称数量受 `ImportLimits.maxNodes()` 约束，关闭后释放；验证连续前置失败、真实解析失败、重复名称及累计预算 |
+
+新增 `verification/consumer` 的 `reviewFixes` 任务，生成七组 PDF／DOCX，包括三种列表入口及 Markdown、HTML、XML、预编译 XML 的公式 TEXT 候选。默认物理字体为 Sans，业务角色为 Serif，使用明确红色；HTML 公式另采用真实粗斜体，以便独立工具识别角色丢失。失败控制还检查两个目标未配置候选时保留旧文件。
+
+```powershell
+.\gradlew.bat build sbom publishLocalBundle `
+  :examples:easyExport :examples:math :examples:contentBlocks `
+  :examples:markdownImport :examples:textPdf --no-daemon --max-workers=2 --console=plain
+python scripts/test_api_compatibility.py
+powershell -NoProfile -File scripts/verify_local_consumer.ps1 -VerificationPython python
+python scripts/verify_review_fixes.py `
+  --consumer-build-directory <本次元数据调用方目录> `
+  --consumer-build-directory <本次仅POM调用方目录> `
+  --output-directory build/verification/review-fixes-output
+```
+
+本轮外部依赖已缓存，实际构建和新隔离消费均离线运行；调用方执行 `build run math fontCache contentBlocks richContent easyExport architectureConvergence reviewFixes resolvedLibraries`，并写入锁文件。两个成功调用方目录在 `verification/consumer/build/review-fixes-gradle` 和 `verification/consumer/build/review-fixes-pom`。本地签名版本另从复制出的独立项目消费，不替换工作区类路径。
+
+| 检查 | 本轮结果 |
+| --- | --- |
+| 全仓构建、测试与 API | `build sbom publishLocalBundle` 及五项样例通过；19 个测试模块合计 2,780 项，0 失败、0 错误、0 跳过；比上一轮新增 18 项。RC2 固定发布基线对当前 API 的不兼容声明与外部实现类型均为零；兼容检查器 6 项正负控制通过 |
+| 实际制品消费 | SNAPSHOT 与本地临时签名版本，各自通过元数据／仅 POM 两条路径；每路 18 个库 JAR 与相应仓库逐项 SHA-256 一致，BOM 匹配 |
+| 仅 starter 装配 | 两路只声明一个坐标，未声明 BOM；14 个项目模块、26 个运行制品、10,476 个 Java 21 有效类，0 重复提供者。完整运行制品按坐标和 SHA-256 比较一致 |
+| 新增输出 | 每条消费路径七页 PDF、七份 DOCX；SNAPSHOT 与签名制品共四条路径全部通过标准结构、真实字体／颜色／编号检查。全部 PDF 页经 Poppler 26.07.0 与 PDFium 153.0.7999.0 渲染；等价 XML、预编译 XML 和 Markdown 同引擎全页像素一致 |
+| 既有回归 | 架构、统一入口、主题、内容块、Markdown 和数学独立验证器通过；架构两路各 23 页，双引擎 92 张页图与前轮像素一致，并逐页查看及放大复查 |
+| 临时签名分发 | 18 个库及 BOM 共 19 个组件、92 份签名、18 个 SBOM 库摘要、篡改拒绝及两种元数据消费通过；临时私钥已删除，没有上传 |
+| 文档与规则 | 中英文 API 及工程笔记已同步；文档站本地构建、项目规则校验和 `git diff --check` 通过。站点保留既有大包体积提示 |
+
+本轮证据归档在 `build/verification/review-fixes-20261120/`；临时签名版本 `0.0.0-verification-a8` 位于 `build/verification/a8-sign/repository/`。其验证包 SHA-256 为 `0386e62f32d894fd6dc72db9a769328107dce6467e1f9016184c6d9cf3d2446a`。正式开发坐标继续使用 `0.1.0-SNAPSHOT`，验证版本不用于正式发布。
+
+仅 starter 检查还发现元数据和 POM 解析可能分别缓存普通 SNAPSHOT 文件名与时间戳文件名，而实际坐标及字节完全相同。验证脚本现按唯一坐标和真实 SHA-256 比较，并拒绝空清单、重复／损坏条目及摘要变化；不把本地缓存文件名当作制品内容。
+
+取消仍是合作式边界，不能抢占正在执行的字体解析或调用方 I/O；自定义 `FontSource` lambda 默认只能在调用前后检查，需要内部等待检查时须重写新重载并传递检查点。字体 TTL 只移除缓存引用，不强制回收调用方持有的 face。DOCX 本轮完成标准 OOXML 检查，未执行独立阅读器打开／保存，未声称 Word 分页或任意字体兼容。上述结果是本地验收，不代表提交、远端发布或部署。

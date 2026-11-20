@@ -53,7 +53,7 @@ final class OperationFonts {
                 ExecutionContext.checkpoint();
                 var face = loaded.get(variant.getValue());
                 if (face == null) {
-                    face = Objects.requireNonNull(variant.getValue().load(cache), "font source result");
+                    face = Objects.requireNonNull(variant.getValue().load(cache, ExecutionContext::checkpoint), "font source result");
                     loaded.put(variant.getValue(), face);
                 }
                 if (defaults.contains(family)) {

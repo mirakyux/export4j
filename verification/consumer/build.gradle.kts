@@ -89,6 +89,14 @@ tasks.register<JavaExec>("architectureConvergence") {
     systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
 }
 
+tasks.register<JavaExec>("reviewFixes") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("consumer.ReviewFixConsumer")
+    workingDir = projectDir
+    systemProperty("java.awt.headless", "true")
+    systemProperty("consumer.outputDirectory", layout.buildDirectory.dir("output").get().asFile.absolutePath)
+}
+
 tasks.register<JavaExec>("fontCache") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("consumer.FontCacheConsumer")

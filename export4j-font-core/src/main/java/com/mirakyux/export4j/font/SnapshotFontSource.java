@@ -16,4 +16,8 @@ final class SnapshotFontSource implements FontSource {
     @Override public FontFace load(FontFaceCache cache) throws IOException {
         return cache.loadSnapshot(bytes, identifier);
     }
+
+    @Override public FontFace load(FontFaceCache cache, Runnable checkpoint) throws IOException {
+        return cache.loadSnapshot(bytes, identifier, checkpoint);
+    }
 }

@@ -20,6 +20,10 @@
 
 输入读取、快照摘要和冷解析在缓存锁外执行，锁只协调命中、容量、失效与结果登记。有界的同键待加载项可共享正在解析的结果；协调条目及源字节另受缓存配置限制，超过协调容量的调用仍按原预算独立解析，不转成无界排队或拒绝有效字体。该机制不等于限制整个应用所有并发解析的总内存。
 
+需要在同键等待期间观察取消／截止时间时，使用 `FontFaceCache.load(source, checkpoint)` 或带字节限额的 `load(source, maxBytes, checkpoint)`；`source` 可为 byte 数组、借用流或明确 Path。回调在调用线程及缓存锁外同步执行，等待期间每 25 ms 重查一次，实际响应仍受 JVM 调度影响；异常只终止当前等待者，不取消共享解析或其他使用者。调用方 I/O 与字体解析仍是不可抢占的同步阶段。
+
+`FontSource.load(cache, checkpoint)` 为兼容默认方法，原函数接口与 lambda 保持有效。内建 bytes／file／resource 来源把检查点传入缓存；自定义来源默认仅在其调用前后检查，需要在内部等待期间合作取消时，须覆盖新重载并传递检查点。starter 已传入 `ExecutionContext::checkpoint`，不向字体模块引入执行模型依赖或全局上下文。
+
 ```java
 import com.mirakyux.export4j.font.FontFaceCache;
 import java.nio.file.Path;

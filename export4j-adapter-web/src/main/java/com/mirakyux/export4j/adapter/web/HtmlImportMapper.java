@@ -336,7 +336,7 @@ final class HtmlImportMapper {
                     var span = end < 0 ? null : state.content.formulaMarkers.get(literal.substring(at, end + 3));
                     if (span == null) { throw new IllegalArgumentException("formula placeholder was not preserved"); }
                     textContent(literal.substring(cursor, at), computed, link, output, space); pendingSpace(space, output);
-                    var vector = state.content.render(span, computed.size, computed.color);
+                    var vector = state.content.render(span, computed.inline());
                     output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), link.isEmpty() ? vector.hyperlink() : link));
                     state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
                     space.beginning = false; cursor = end + 3;
@@ -352,7 +352,7 @@ final class HtmlImportMapper {
                 for (var span : spans) {
                     textContent(literal.substring(cursor, span.start()), computed, link, output, space); pendingSpace(space, output);
                     if (state.content.options.formulas()) {
-                        var vector = state.content.render(span, computed.size, computed.color);
+                        var vector = state.content.render(span, computed.inline());
                         state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
                         output.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), link.isEmpty() ? vector.hyperlink() : link));
                     } else { append(output, literal.substring(span.start(), span.end()), computed, link); }

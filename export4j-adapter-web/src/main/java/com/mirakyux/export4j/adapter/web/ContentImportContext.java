@@ -175,7 +175,7 @@ final class ContentImportContext {
                 var span = end < 0 ? null : formulaMarkers.get(literal.substring(at, end + 3));
                 if (span == null) { throw new IllegalArgumentException("formula placeholder was not preserved"); }
                 append(restored, literal.substring(cursor, at), style, link, state);
-                var vector = render(span, style.fontSize(), style.rgb());
+                var vector = render(span, style);
                 state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
                 restored.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), link.isEmpty() ? vector.hyperlink() : link));
                 cursor = end + 3;
@@ -188,7 +188,7 @@ final class ContentImportContext {
         budget.formulas(spans.size()); int cursor = 0;
         for (var span : spans) {
             append(restored, literal.substring(cursor, span.start()), style, link, state);
-            var vector = render(span, style.fontSize(), style.rgb());
+            var vector = render(span, style);
             state.text(1); state.work(vector.resource().segmentCount() + vector.logicalText().length());
             restored.add(new InlineVector(vector.resource(), vector.logicalText(), vector.rgb(), link.isEmpty() ? vector.hyperlink() : link));
             cursor = span.end();
@@ -196,7 +196,7 @@ final class ContentImportContext {
         append(restored, literal.substring(cursor), style, link, state);
         return List.copyOf(restored);
     }
-    InlineVector render(FormulaSyntax.Span span, double size, int rgb) {
+    InlineVector render(FormulaSyntax.Span span, InlineStyle style) {
         if (processor == null) { throw new IllegalStateException("formula parsing requires an explicit FormulaProcessor"); }
         int readingPoints = span.tex().codePointCount(0, span.tex().length());
         if ((long) readingPoints + 1 > remaining.maxCodePoints() - codePoints - pendingObjects) { throw new IllegalArgumentException("content code point allowance exceeded"); }
@@ -205,7 +205,7 @@ final class ContentImportContext {
         int remainingSegments = Math.min(Math.min(budget.remainingSegments(), budget.remainingWork() - futureWork),
                 remaining.maxVisitedNodes() - vectorSegments - outputNodes - futureNodes);
         if (remainingSegments <= 0) { throw new IllegalArgumentException("content vector segment budget exceeded"); }
-        var vector = java.util.Objects.requireNonNull(processor.render(span.tex(), span.display(), size, rgb, remainingSegments), "formula result");
+        var vector = java.util.Objects.requireNonNull(processor.render(span.tex(), span.display(), style, remainingSegments), "formula result");
         accountVector(vector);
         preparedVectors.merge(vector, 1, Integer::sum);
         return vector;

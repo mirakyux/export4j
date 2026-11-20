@@ -18,6 +18,10 @@ Existing `TrueTypeFontLoader.load` overloads use the shared cache by default. Ke
 
 Input reads, snapshot hashing, and cold parsing execute outside the cache lock. The lock coordinates hits, capacity, retirement, and result registration. Bounded same-key pending entries share an in-progress parse result. Coordination entries and source bytes have their own bounds using the cache configuration; calls exceeding those bounds parse independently under existing budgets. This does not cap the total memory of all concurrent parsing in an application.
 
+Use `FontFaceCache.load(source, checkpoint)` or `load(source, maxBytes, checkpoint)` to observe cancellation or deadlines while waiting for the same content; source can be bytes, a borrowed stream or an explicit Path. Checkpoints run synchronously on the caller thread outside the cache lock, with a 25 ms recheck interval during waiting, subject to JVM scheduling. A callback failure stops only that caller, leaving the shared parser and other callers intact. Synchronous I/O and font parsing remain non-preemptible phases.
+
+The default `FontSource.load(cache, checkpoint)` preserves the original functional interface and lambdas. Built-in byte/file/resource sources propagate the checkpoint into cache waiting. Custom sources are checked before and after their original method; they must override the new overload and forward the checkpoint to cooperate inside internal waits. The starter supplies `ExecutionContext::checkpoint`, without adding a model dependency or global execution context to the font module.
+
 ```java
 try (var fonts = FontFaceCache.builder()
         .maxEntries(8)

@@ -6,6 +6,7 @@ import com.mirakyux.export4j.adapter.docx.DocxMathDocument;
 import com.mirakyux.export4j.adapter.web.ContentImporter;
 import com.mirakyux.export4j.adapter.web.ImportLimits;
 import com.mirakyux.export4j.adapter.web.FormulaSyntax;
+import com.mirakyux.export4j.adapter.web.FormulaProcessor;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.ColumnWidth;
@@ -185,7 +186,7 @@ public final class MathContent {
         var builder = ContentImporter.builder().defaults(defaults).limits(limits)
                 .maxFormulas(maxFormulas).maxFormulaUtf16(options.maxSourceLength())
                 .maxVectorSegments(maxSegments).pageSettings(pageSettings).metadata(metadata)
-                .formulaProcessor(capture::render);
+                .formulaProcessor(capture);
         images.forEach(builder::image);
         families.forEach((name, roles) -> builder.fontFamily(name, roles.get(0), roles.get(1), roles.get(2), roles.get(3)));
         Document source;
@@ -245,15 +246,20 @@ public final class MathContent {
         public MathContent build() { return new MathContent(this); }
     }
 
-    private final class Capture {
+    private final class Capture implements FormulaProcessor {
         private final IdentityHashMap<VectorResource, Occurrence> occurrences = new IdentityHashMap<>();
         private final List<Occurrence> ordered = new ArrayList<>();
         private final List<Degradation> degradations = new ArrayList<>();
         private long segments;
-        private InlineVector render(String tex, boolean display, double size, int rgb, int available) {
+        @Override public InlineVector render(String tex, boolean display, double size, int rgb, int available) {
+            return render(tex, display, new InlineStyle("", size, rgb, 0, false, false), available);
+        }
+        @Override public InlineVector render(String tex, boolean display, InlineStyle appearance, int available) {
             ExecutionContext.checkpoint();
             if (ordered.size() >= maxFormulas) { throw limit(); }
             if (available <= 1) { throw limit(); }
+            double size = appearance.fontSize();
+            int rgb = appearance.rgb();
             var local = new MathOptions(size, display, options.maxSourceLength(), options.maxDepth(), options.maxCommands(),
                     options.maxPaths(), Math.min(Math.min(options.maxSegments(), VectorResource.MAX_SEGMENTS - 1), available - 1), options.maxExtent());
             InlineVector vector;
@@ -279,13 +285,14 @@ public final class MathContent {
                     vector.resource().descent(), geometry), vector.logicalText(), vector.rgb(), "");
             segments += slot.resource().segmentCount();
             if (segments > maxSegments) { throw limit(); }
-            var occurrence = new Occurrence(new Formula(ordered.size(), tex, display), local, vector, slot, failure);
+            var occurrence = new Occurrence(new Formula(ordered.size(), tex, display), local, appearance, vector, slot, failure);
             ordered.add(occurrence); occurrences.put(slot.resource(), occurrence);
             return slot;
         }
     }
 
-    private record Occurrence(Formula formula, MathOptions options, InlineVector vector, InlineVector slot, MathException failure) { }
+    private record Occurrence(Formula formula, MathOptions options, InlineStyle appearance,
+            InlineVector vector, InlineVector slot, MathException failure) { }
 
     private final class Projection {
         private final Capture capture;
@@ -416,7 +423,7 @@ public final class MathContent {
                 if (candidate == Fallback.TEXT) {
                     capture.degradations.add(new Degradation(o.formula.index(), target, candidate, reason));
                     String delimiter = o.formula.display() ? "$$" : "$";
-                    return new InlineText(delimiter + o.formula.tex() + delimiter, new InlineStyle("", o.options.fontSize(), o.vector.rgb(), 0, false, false), link);
+                    return new InlineText(delimiter + o.formula.tex() + delimiter, o.appearance, link);
                 }
             }
             if (failure != null) { throw failure; }

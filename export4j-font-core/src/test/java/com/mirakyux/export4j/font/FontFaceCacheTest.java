@@ -3,6 +3,7 @@ package com.mirakyux.export4j.font;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -18,6 +19,8 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -187,6 +190,138 @@ class FontFaceCacheTest {
             start.countDown();
             workers.shutdownNow();
             assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void cooperativeWaiterCanLeaveWithoutCancellingTheOwnerOrAnotherWaiter() throws Exception {
+        byte[] font = bytes("LiberationSans-Regular.ttf");
+        FontFace parsed = TrueTypeFontLoader.loadSnapshotUncached(font);
+        Path file = directory.resolve("cooperative.ttf"); Files.write(file, font);
+        FontSource snapshot = FontSource.bytes(font), fileSource = FontSource.file(file);
+        FontSource resource = FontSource.resource(FontFaceCacheTest.class, "/fonts/LiberationSans-Regular.ttf");
+        List<CooperativeLoad> loading = List.of(
+                (cache, check) -> cache.load(font, check),
+                (cache, check) -> cache.load(new ByteArrayInputStream(font), check),
+                (cache, check) -> cache.load(file, check),
+                snapshot::load, fileSource::load, resource::load);
+        for (var load : loading) {
+            var started = new CountDownLatch(1); var release = new CountDownLatch(1);
+            var cancelled = new AtomicBoolean(); var thread = new AtomicReference<Thread>();
+            var peerThread = new AtomicReference<Thread>();
+            var stop = new IllegalStateException("test caller stopped");
+            var workers = Executors.newFixedThreadPool(3);
+            try (var cache = new FontFaceCache(FontFaceCache.builder(), System::nanoTime, ManualScheduler::new,
+                    ignored -> { started.countDown(); await(release); return parsed; })) {
+                var owner = workers.submit(() -> cache.load(font));
+                assertTrue(started.await(5, TimeUnit.SECONDS));
+                var waiter = workers.submit(() -> {
+                    thread.set(Thread.currentThread());
+                    return load.load(cache, () -> {
+                        assertSame(thread.get(), Thread.currentThread());
+                        if (cancelled.get()) { throw stop; }
+                    });
+                });
+                var peer = workers.submit(() -> { peerThread.set(Thread.currentThread()); return cache.load(font); });
+                awaitCacheWait(thread); awaitCacheWait(peerThread);
+                cancelled.set(true);
+                var failure = assertThrows(java.util.concurrent.ExecutionException.class, () -> waiter.get(3, TimeUnit.SECONDS));
+                assertSame(stop, failure.getCause());
+                assertFalse(owner.isDone()); assertFalse(peer.isDone());
+                assertEquals(0, cache.stats().loads()); assertEquals(0, cache.stats().hits());
+                release.countDown();
+                assertSame(parsed, owner.get(5, TimeUnit.SECONDS));
+                assertSame(parsed, peer.get(5, TimeUnit.SECONDS));
+                assertEquals(1, cache.stats().loads()); assertEquals(1, cache.stats().hits());
+                assertSame(parsed, cache.load(font));
+            } finally {
+                release.countDown(); workers.shutdownNow();
+                assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+            }
+        }
+    }
+
+    @Test
+    void cancellingTheCompletedOwnerDoesNotPublishItsCancellationToOtherWaiters() throws Exception {
+        byte[] font = bytes("LiberationSans-Regular.ttf");
+        FontFace parsed = TrueTypeFontLoader.loadSnapshotUncached(font);
+        var started = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var cancelled = new AtomicBoolean(); var peerThread = new AtomicReference<Thread>();
+        var stop = new IllegalStateException("test owner stopped");
+        var workers = Executors.newFixedThreadPool(2);
+        try (var cache = new FontFaceCache(FontFaceCache.builder(), System::nanoTime, ManualScheduler::new,
+                ignored -> { started.countDown(); await(release); return parsed; })) {
+            var owner = workers.submit(() -> cache.load(font, () -> { if (cancelled.get()) { throw stop; } }));
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            var peer = workers.submit(() -> { peerThread.set(Thread.currentThread()); return cache.load(font); });
+            awaitCacheWait(peerThread);
+            cancelled.set(true); release.countDown();
+            assertSame(stop, assertThrows(java.util.concurrent.ExecutionException.class,
+                    () -> owner.get(5, TimeUnit.SECONDS)).getCause());
+            assertSame(parsed, peer.get(5, TimeUnit.SECONDS));
+            assertSame(parsed, cache.load(font));
+            assertEquals(1, cache.stats().loads()); assertEquals(2, cache.stats().hits());
+        } finally {
+            release.countDown(); workers.shutdownNow();
+            assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void interruptedWaiterPreservesItsFlagWithoutCancellingTheSharedParse() throws Exception {
+        byte[] font = bytes("LiberationSans-Regular.ttf");
+        FontFace parsed = TrueTypeFontLoader.loadSnapshotUncached(font);
+        var started = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var thread = new AtomicReference<Thread>(); var workers = Executors.newFixedThreadPool(2);
+        try (var cache = new FontFaceCache(FontFaceCache.builder(), System::nanoTime, ManualScheduler::new,
+                ignored -> { started.countDown(); await(release); return parsed; })) {
+            var owner = workers.submit(() -> cache.load(font));
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            var waiter = workers.submit(() -> {
+                thread.set(Thread.currentThread());
+                assertThrows(InterruptedIOException.class, () -> cache.load(font, () -> { }));
+                return Thread.currentThread().isInterrupted();
+            });
+            awaitCacheWait(thread); thread.get().interrupt();
+            assertTrue(waiter.get(3, TimeUnit.SECONDS)); assertFalse(owner.isDone());
+            release.countDown();
+            assertSame(parsed, owner.get(5, TimeUnit.SECONDS));
+            assertSame(parsed, cache.load(font));
+        } finally {
+            release.countDown(); workers.shutdownNow();
+            assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void checkpointFailureBeforeReadingLeavesBorrowedStreamsAndCacheUntouched() throws Exception {
+        var stop = new IllegalStateException("test stopped before input");
+        class Input extends ByteArrayInputStream {
+            boolean closed;
+            Input() throws IOException { super(bytes("LiberationSans-Regular.ttf")); }
+            @Override public void close() { closed = true; }
+        }
+        try (var cache = FontFaceCache.builder().build()) {
+            var input = new Input(); int available = input.available();
+            assertSame(stop, assertThrows(IllegalStateException.class, () -> cache.load(input, () -> { throw stop; })));
+            assertEquals(available, input.available()); assertFalse(input.closed);
+            assertEquals(0, cache.stats().loads()); assertEquals(0, cache.stats().misses());
+            assertThrows(NullPointerException.class, () -> cache.load(new byte[0], (Runnable) null));
+        }
+    }
+
+    @FunctionalInterface
+    private interface CooperativeLoad { FontFace load(FontFaceCache cache, Runnable checkpoint) throws IOException; }
+
+    private static void awaitCacheWait(AtomicReference<Thread> reference) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (true) {
+            var thread = reference.get();
+            if (thread != null && (thread.getState() == Thread.State.WAITING || thread.getState() == Thread.State.TIMED_WAITING)
+                    && Arrays.stream(thread.getStackTrace()).anyMatch(frame -> frame.getClassName().equals("java.util.concurrent.CompletableFuture")
+                            && frame.getMethodName().equals("get"))) { return; }
+            assertTrue(System.nanoTime() < deadline, "caller must enter shared cache waiting before cancellation");
+            Thread.yield();
         }
     }
 
