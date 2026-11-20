@@ -1,233 +1,197 @@
 # 架构设计
 
-本文将[立项文档](project-proposal.md)整理为实现约束。当前共 21 个模块，包含 18 个库、BOM、示例和可选设计器应用。可选 `export4j-opentype` 封装原生塑形，不让核心强制依赖 JNI；组件模块提供通用引擎，`export4j-starter` 在外围装配常用源内容、XML 模板和 PDF／DOCX 输出。实际能力见[能力指南](capabilities-api.md)，声明式模板边界见 [ADR-0025](adr/0025-safe-declarative-templates.md)，行内图片及 DOCX 媒体见 [ADR-0010](adr/0010-inline-image-layout-and-docx-media.md)。
+Export4j 以语义文档为中心，共享文本测量、布局和绘制能力。PDF／SVG／PNG 消费排版结果；DOCX／HTML／Markdown 映射语义结构，由目标阅读器重排。统一入口、模板和设计器负责装配这些能力。
+
+本文描述当前开发版的实现结构。发布版差异见[当前状态](current-status.md)，支持范围见[能力矩阵](capabilities-api.md)，具体取舍见[架构决策](adr/README.md)，已执行的验证见[验收导航](verification/README.md)。
 
 ## 分层与数据流
 
 ~~~mermaid
 flowchart TD
-    M[Document Model 文档模型] --> L[Layout Engine 布局引擎]
-    L --> IR[Layout IR 布局结果]
-    IR --> DL[Display List 绘制指令]
+    S[Java 编写 / 源内容 / XML 与数据] --> A[编写与输入编译]
+    A --> M[Document / SectionedDocument 语义模型]
+    M --> P[语义准备与布局编排]
+    P --> L[Layout Engine]
+    L --> IR[Layout IR]
+    IR --> DL[Display List + 已解析语义]
     DL --> PDF[PDF Backend]
     DL --> SVG[SVG Backend]
     DL --> R[Raster Backend]
-    DOCX[DOCX / OOXML] --> I[DOCX Importer]
-    I --> M
-    I --> DS[Typed DOCX Semantics]
-    DS -->|Explicit loss projection| M
-    M <--> Web[HTML / Markdown Adapter]
-    M --> E[DOCX Exporter]
-    DS --> E
-    E --> DOCX
-    XML[Offline XML / Markdown Template] --> T[Template Compiler]
-    T --> B[DocumentTemplate + Explicit Data]
-    B --> M
-    CSS[Offline HTML/CSS Layout] --> C[Immutable Components]
-    C --> L
-    Existing[Existing static PDF] --> PA[PDF Adapter]
-    PA --> Combined[Checked extraction / selected PDF pages]
-    PA --> Recovery[Explicit-loss semantic recovery]
-    Recovery --> M
+    M --> E[语义格式适配器]
+    E --> W[DOCX / HTML / Markdown]
+    G[精确绘制 API] --> DL
+    F[已有文件] --> I[格式读取与专用编辑]
+    I -->|显式语义导入及损失报告| M
+    I --> O[原格式处理结果]
 ~~~
 
-文档模型表达内容的含义；布局结果表达内容的位置；绘制指令表达具体绘制操作；后端负责把指令映射到目标格式。DOCX 使用独立的模型映射路径。
+图中箭头表示数据流，模块的编译依赖另见下表。各层的职责保持单向：
 
-生成、导入、编辑及转换不依赖打印机驱动、打印后台服务或 Office／浏览器进程。字体和资源由调用方显式提供，普通导出支持无桌面 JVM；Word、Chromium 等只用于独立兼容性验收，不进入运行依赖。`scripts/verify_driverless.py` 在拒绝加载全部 JDK 打印相关类的 JVM 中运行发布坐标调用方，同时检查生产字节码和运行 JAR 摘要。
-
-DOCX 专有语义由适配器内的不可变 `DocxSemanticDocument` 持有，使用项目自有类型表达浮动定位、图片变换、文本框、批注范围、修订、控件和目录声明。它包含通用分节正文及显式锚点，不持有原始包或 XML 片段。语义编辑后重建标准 OOXML；投影到通用文档时逐项报告无法表达的内容，不能把未编辑结构的丢失隐藏在普通文字修改中。
-
-HTML 默认导入路径仍映射通用语义模型；显式 CSS 布局模式将离线样式编译为不可变组件树。选择器及媒体级联在导入时确定，尺寸、Flex／Grid 和定位在布局阶段求值。文字叶使用无边框语义插槽，将链接和字段保留到最终页面解析；后端只消费已完成的布局。组件布局无法由某个语义目标表达时继续执行明确的损失策略，不以保存 CSS 原文代替实际排版。
-
-变宽递归表格与网格在布局层从完整来源重测剩余内容，已接受的行保留实际宽度，不切断原始 UTF-16 或重编号 owner；轮廓浮动也在排版阶段确定行带和锚点。原生 OpenType 模块在绘制前完成方向、轴及彩色字形处理，输出自有字形／轮廓／图像指令。后端无需持有或调用塑形引擎。
-
-高级颜色、画刷、隔离组和裁剪由后端中立绘制类型表达；各输出器保留原生资源或通过共享处理策略报告确切损失。单次语义流与显式快照重放独立于完整文档快照，重放由应用提供可重开来源并验证摘要；`PdfSpoolBackend` 使用单页对象和磁盘索引，不改变普通 `PdfBackend` 的文档持有方式。设计分别见 [ADR-0099](adr/0099-variable-recursive-grid-and-contour-flow.md)、[0100](adr/0100-native-paints-and-offline-svg-resources.md)、[0101](adr/0101-explicit-native-opentype-and-cff-embedding.md)和 [0102](adr/0102-bounded-semantic-streaming-replay-and-pdf-spool.md)。
-
-无障碍输出另由后端中立 `AccessibilityTree` 保存逻辑阅读顺序及最终命令绑定。`DocumentPainter.paintAccessible` 使用源模型 ID 和已有 Layout IR 建立受支持的标题、段落、列表、图像及表格关系，不重新测量或分页；复杂来源由调用方显式绑定。PDF 后端据此生成 PDF/UA-1 标签，其他后端拒绝不能保留的非空语义树。原对象编辑、选择性重建、自动几何推断及离线标准验证分别保持自己的资源与损失契约，见[ADR-0097](adr/0097-explicit-pdf-editing-recovery-and-standards.md)。
-
-## 核心层职责
-
-| 层 | 输入与输出 | 负责的工作 | 边界 |
+| 层 | 主要类型或入口 | 负责的工作 | 边界 |
 | --- | --- | --- | --- |
-| 文档模型 | 语义节点、样式和资源引用 | 文档结构、构建、遍历与校验 | 不携带后端对象或文件格式句柄 |
-| 字体与文本 | 字体资源、文本、塑形配置 → 字形与度量 | 字体解析抽象、测量和塑形接口 | 不将字体解析库类型暴露到公共契约 |
-| 布局引擎 | 文档模型、约束和资源环境 → Layout IR | 换行、尺寸计算、分页和布局诊断 | 不写目标文件 |
-| 布局结果 | 页面、片段、边界与来源映射 | 保存最终位置、基线和可追踪关系 | 不持有打开的后端资源 |
-| 精确绘制 | Layout IR 或调用方绘制请求 → Display List | 图形状态、变换、裁剪和绘制指令 | 不决定段落换行和分页 |
-| 输出后端 | Display List、资源 → 目标输出 | 坐标映射、资源嵌入和文件写入 | 不反向修改布局 |
-| 格式适配器 | 格式结构 ↔ 文档模型或专用处理模型 | 导入、导出、能力映射和损失诊断 | 不承诺所有格式无损互转 |
+| 语义模型 | `Document`、`SectionedDocument`、`Block`、`InlineContent` | 内容、样式、来源、资源标识和模型校验 | 不持有后端句柄、PDFBox 对象或已排版坐标 |
+| 字体与文本 | `FontSource`、`FontFace`、`FontGroup`、`ParagraphLayouter` | 显式字体、字形／轮廓、度量和局部行布局 | 不决定文档页码，不向公共 API 暴露解析库类型 |
+| 语义准备与编排 | `DocumentEngine`、内部 `PreparedSemanticDocument` | 语义展开、来源验证、导航、页区与最终字段协调 | 不替代核心分页器，不成为全局文档缓存 |
+| 布局 | `DocumentLayouter`、`DocumentLayout`、页面片段 | 约束、行带、换行、分页及来源映射 | 不写目标文件；结果保留已接受的几何 |
+| 绘制 | `DocumentPainter`、`DisplayDocument` | 将最终位置转为中立指令，绑定交互及无障碍语义 | 不重新换行／分页 |
+| 后端 | `DocumentBackend`、PDF／SVG／Raster 实现 | 坐标转换、资源嵌入与编码 | 不重新塑形或修改布局；无法保留的语义须拒绝或明确报损 |
+| 格式适配器 | DOCX、Web、模板、PDF 适配器 | 映射语义、处理原格式或显式恢复模型 | 各有支持子集，不承诺任意格式无损互转 |
 
-Graphics API 支持调用方直接生成 Display List。此路径用于精确绘制，不强制构建语义文档。
+生成、导入、编辑和转换均不依赖打印机驱动、打印服务、Office 或浏览器进程。普通路径支持无桌面 JVM。Word、Chromium 等用于独立兼容性验收，不进入库的生产调用链。
 
 ## 模块与依赖
 
-模块按实际需要创建。下表规定职责和主要生产依赖方向；实际依赖清单由构建文件给出。核心模块可以依赖 JDK 与已审查的内部基础抽象，但不得反向依赖后端或测试模块。
+仓库有 21 个 Gradle 子项目：18 个库、BOM、示例与可选设计器。下表省略 `export4j-` 前缀；依赖列只列**直接生产项目依赖**，`A` 表示 Gradle `api`，`I` 表示 `implementation`，不展开传递依赖及第三方库。实际声明以 [settings](../settings.gradle.kts)、各模块 `build.gradle.kts` 和[依赖记录](dependencies.md)为准。
 
-| 模块 | 职责 | 主要项目内依赖 |
+| 分组 | 模块 | 职责 | 直接项目依赖 |
+| --- | --- | --- | --- |
+| 基础 | `model` | 语义文档、模板绑定、样式、执行与处理契约 | 无 |
+| 基础 | `font-core` | 显式字体来源、不可变字体与有界缓存 | 无 |
+| 基础 | `text-core` | 塑形、测量及局部段落行布局 | A: `font-core`、`model` |
+| 绘制与布局 | `graphics-api` | 几何、绘制类型、Display List 与输出 SPI | A: `model`、`text-core` |
+| 绘制与布局 | `graphics-core` | 图形原语、记录与指令执行 | A: `graphics-api` |
+| 绘制与布局 | `layout-model` | 页面、片段、来源映射与 Layout IR | A: `graphics-api` |
+| 绘制与布局 | `layout-core` | 分页、区域流、核心组件 SPI 与绘制转换 | A: `layout-model`；I: `graphics-core` |
+| 绘制与布局 | `components` | 标准组件、语义编排与 `DocumentEngine` | A: `layout-core`；I: `graphics-core` |
+| 后端 | `backend-pdf` | PDF 编码、文档内字体及解析租约 | A: `graphics-api`；I: `graphics-core` |
+| 后端 | `backend-svg` | 静态 SVG 输出 | A: `graphics-api`；I: `graphics-core` |
+| 后端 | `backend-raster` | 图像及预览输出 | A: `graphics-api`；I: `graphics-core` |
+| 适配器 | `adapter-docx` | 通用正文、原生数学及类型化 OOXML 语义读写 | A: `model` |
+| 适配器 | `adapter-template` | 离线 XML／严格 Markdown 模板编译 | A: `model` |
+| 适配器 | `adapter-web` | HTML／Markdown 语义读写、离线 CSS 布局及源内容会话 | A: `model`；I: `components`、`graphics-core` |
+| 适配器 | `adapter-pdf` | 有界原对象操作、渲染、脱敏及显式语义恢复 | A: `model`、`adapter-template` |
+| 扩展与装配 | `math` | 有界 TeX 编译、逐次公式身份及目标表示 | A: `model`、`adapter-docx`、`adapter-web`；I: `font-core`、`graphics-api` |
+| 扩展与装配 | `opentype` | 原生塑形、可变／彩色字体与竖排流 | A: `layout-core`；I: `graphics-core` |
+| 扩展与装配 | `starter` | 配置一次的源内容／XML 与 PDF／DOCX 导出 | A: `components`、`math`、`adapter-template`、`backend-pdf`、`font-core`、`adapter-docx` |
+
+`export4j-bom` 只约束这 18 个库的版本，不自动引入全部模块；第三方版本由 Gradle version catalog 与锁文件管理。`examples` 组合公共 API 演示用法。`export4j-designer` 是独立本地应用，保留 XML 源码、数据和资源，通过 Java 引擎预览／导出；它与示例均不参与 Maven 库发布。
+
+`starter` 包含数学与 Web 内容装配，其传递项目依赖为 14 个库；不引入 PDF 编辑适配器、SVG／Raster 后端或原生 OpenType。需要这些能力时显式选择模块，原生扩展还须选择平台 classifier。核心不反向依赖 starter、适配器、后端、设计器或示例。
+
+PDFBox 文档类型封装在 PDF 实现模块；FontBox 与 pdfbox-io 可封装在字体层内部。JLaTeXMath、CommonMark、jsoup、LWJGL／HarfBuzz 的实现类型也不进入公共 API、异常或 SPI。专用测试使用第三方类型不改变生产边界。
+
+## 主要运行路径
+
+### 配置一次的源内容导出
+
+[Export4j](../export4j-starter/src/main/java/com/mirakyux/export4j/Export4j.java) 保存字体来源、全局配置与有界缓存。每次创建可变的 `Request`，在选择输出时进入独立同步执行范围：
+
+~~~mermaid
+flowchart TD
+    Q[Request.pdf / Request.docx] --> X[ExecutionContext]
+    X --> F[OperationFonts 按操作绑定字体]
+    F --> C[MathContent + ContentImporter]
+    C --> S[源文本 或 XML compile + render]
+    S --> V[compileVisual]
+    S --> W[compileDocx]
+    V --> D[DocumentEngine]
+    D --> P[PdfBackend]
+    W --> A[DocxAdapter.writeMath]
+~~~
+
+[OperationFonts](../export4j-starter/src/main/java/com/mirakyux/export4j/OperationFonts.java) 将同一声明投影为输入解析角色、PDF 字体组和 Word 字体槽，同一来源对象在一次操作中只载入一次。业务角色的 regular／bold／italic／boldItalic 对应显式物理变体。
+
+PDF 使用 `MathContent.compileVisual`，DOCX 使用 `compileDocx`，只执行选定的目标投影。同一 `Request` 先后导出两个目标仍是两次独立操作，会重新读取来源并绑定数据；需要一次解析同时得到两种模型时，直接使用 [MathContent](rich-content-api.md) 的双目标入口。
+
+### XML 语法准备与数据绑定
+
+[XmlTemplate.Syntax](../export4j-adapter-template/src/main/java/com/mirakyux/export4j/adapter/template/XmlTemplate.java) 是调用方拥有的不可变静态语法计划。`prepare` 安全解析结构并展开当时配置的片段，不加载字体、不打开源内容 parser、不绑定业务数据。后续 `compile(syntax)` 按当前主题、资源和解析配置生成 `DocumentTemplate`，重新校验输入／展开预算及语义声明，再由 `render(data)` 快照并绑定 Map、record 或 JavaBean；静态准备成功不代表所有语义或资源已经有效。
+
+`DocumentTemplate` 位于仅依赖 JDK 的模型层。属性访问受深度、集合、块、行和文字预算限制；表达式不允许任意方法调用。公开 getter 仍是可信应用代码，合作取消不能抢占一个阻塞的 getter。
+
+源内容在编写／绑定边界展开成现有语义块。一次 render 对同一 parser 身份共用一个 `SourceContentParser.Session`，跨循环、分节和动态单元格累计预算，完成或失败后关闭。XML／严格 Markdown 模板与通用 HTML／Markdown 导入是不同入口，最终共用语义模型及布局。详见[模板 API](xml-template-api.md)与[源内容块](content-blocks-api.md)。
+
+### 语义准备、完整布局与逐页输出
+
+[DocumentEngine](../export4j-components/src/main/java/com/mirakyux/export4j/components/DocumentEngine.java) 先将语义文档、注释和导航归一到共同准备流程。内部 [PreparedSemanticDocument](../export4j-components/src/main/java/com/mirakyux/export4j/components/PreparedSemanticDocument.java) 只保存语义准备结果和来源块快照，不是公共缓存 API，也不保存完整 Layout IR。
+
+完整布局保留各页 IR，再绘制为 Display List。普通文档的逐页输出共享语义准备及分页规则，使用轻量规划／验证后重放，逐页绘制和释放；它不先收集全部页面。按需块源的单次路径只打开一次；需要多遍重放时，由调用方提供可重开且内容稳定的同一快照。
+
+`PdfSpoolBackend` 处理单页 PDF 对象与磁盘索引；普通 `PdfBackend` 的完整文档持有方式不因此改变。后端临时流缓冲、IR 保留、源块窗口和输出对象是不同的内存边界。详见[逐页输出](paged-document-api.md)与[流式重放](streaming-replay-api.md)。
+
+### 语义格式与已有文件
+
+- DOCX／HTML／Markdown 导出直接映射语义模型，目标阅读器完成布局，不消费 Display List。DOCX 专有结构位于不可变 `DocxSemanticDocument`／`DocxMathDocument`，通过块 ID 和 UTF-16 锚点连接正文；投影到通用模型时逐项报损。
+- HTML 默认映射语义块；显式离线 CSS 布局模式在导入时解析级联，布局时求解尺寸及位置，文字通过语义插槽保留字段与链接。后端不解析 CSS。
+- 已有 PDF 的原对象编辑、页面组合、渲染提取、选择性重建和语义恢复各有独立入口。原对象处理不调用布局引擎；恢复模型之后才由调用方选择重新排版。覆盖矩形或裁剪不等于删除源内容。
+- Graphics API 可直接生成 Display List，用于精确绘制。它不要求语义文档，也不能据此推断已经具备语义导出或无障碍关系。
+
+## 配置与内容继承
+
+[DocumentTheme](themes-api.md) 提供语义样式，[ContentOptions](content-blocks-api.md) 保留逐属性声明意图。源内容按“主题／编译器默认 → 全局／请求默认 → XML document → 外到内 scope → 块显式声明”解析；不同入口的可用层级以对应 API 为准。黑色、空字体角色和 `false` 都是有效显式覆盖，不能按其数值猜测是否继承。
+
+字体、颜色和段落默认值可用于原生语义块；格式及公式／HTML／表格开关用于源内容解析，不重新解释已经构建的块或旧 `p`／`span` 的普通绑定文本。Markdown 列表标记使用块的最终默认外观，首个正文运行的强调只作用于该运行。
+
+公式出现身份由编译过程逐次绑定，不按公式字符串去重。视觉矢量、原生 OMML、IMAGE 和 TEXT 是不同目标表示；默认候选为空，只有显式配置才允许转换。TEXT 保留原 TeX、定界符、该次出现的完整 `InlineStyle` 及最终链接；预算、取消和 deadline 不能转为降级成功。详见[混合内容与跨格式公式](rich-content-api.md)。
+
+相对权重的有限正数快照与分配由模型层 `RelativeWeights` 共用；表格、分栏及目标格式继续负责自己的固定尺寸、padding、单位取整和预算。共享纯规则不使适配器依赖布局内部运行对象。
+
+## 状态与资源生命周期
+
+| 状态／资源 | 所有者与存活范围 | 释放与共享边界 |
 | --- | --- | --- |
-| `export4j-model` | 语义节点、样式和资源标识 | 保持基础层独立 |
-| `export4j-font-core` | 字体资源、度量抽象和生命周期 | 保持基础层独立 |
-| `export4j-text-core` | 自适应简单／OpenType 塑形、文本测量与段落行布局 | 字体层、模型层执行检查点 |
-| `export4j-opentype` | 可选的原生方向／特性塑形、可变轮廓、彩色字形及竖排区域流 | 布局核心和绘制核心；LWJGL／HarfBuzz 封装在内部 |
-| `export4j-graphics-api` | 绘制接口、几何与输出 SPI | 模型、文本层的字形数据 |
-| `export4j-graphics-core` | 图形原语、指令记录与执行协调 | 绘制接口 |
-| `export4j-layout-model` | Layout IR、布局片段和来源映射 | 绘制 API 的几何类型及传递的模型、字形与行数据 |
-| `export4j-layout-core` | 约束、换行、分页与绘制转换 | 布局结果、文本层与绘制层 |
-| `export4j-components` | 标准绘制组件、目录与导航编排 | 布局核心定义的组件接口与绘制核心 |
-| `export4j-math` | 可选有界 TeX／Markdown 数学编译，保留公式身份与目标表示 | 文档模型、Web／DOCX 适配器及字体／图形接口；JLaTeXMath 封装在内部 |
-| `export4j-starter` | 显式字体及全局默认值配置一次，统一源内容／XML 与 PDF／DOCX 输出 | 组件、数学、模板、PDF 后端及字体／DOCX 适配器；核心不反向依赖 |
-| `export4j-backend-pdf` | PDF 输出 | 绘制层与字体层 |
-| `export4j-backend-svg` | SVG 输出 | 绘制层 |
-| `export4j-backend-raster` | 图像输出和预览 | 绘制层 |
-| `export4j-adapter-docx` | 通用及类型化 OOXML 语义读写、编辑与显式投影 | 文档模型与资源抽象 |
-| `export4j-adapter-template` | 离线 XML／Markdown 子集编译为 DocumentTemplate | 仅文档模型与 JDK |
-| `export4j-adapter-web` | 语义 HTML5／CommonMark-GFM 读写、显式离线 CSS 布局与逐功能损失策略 | 文档模型；组件／图形核心；CommonMark／jsoup 解析封装在内部 |
-| `export4j-adapter-pdf` | 有界 PDF 读取、页／被动对象编辑和组合、渲染提取、优化、脱敏及语义恢复 | 模型及执行控制；PDFBox 隔离在内部 |
-| `export4j-bom` | 对外发布模块的版本约束 | 发布模块的制品坐标 |
-| `examples` | 可执行用例和集成方式 | 公共 API 与所用后端 |
-| `export4j-designer` | 可选本地 HTML 模板编辑／预览应用，不参与 Maven 库发布 | 组件、模板／DOCX／Web 适配器及 PDF／SVG／Raster 后端；核心不反向依赖 |
+| `Export4j` 配置 | 应用创建并关闭，可供独立请求复用 | 关闭内部拥有的 `FontFaceCache`；借用缓存及自定义 PDF 后端不由 exporter 关闭 |
+| `Request` | 一次编写任务内的可变配置 | 不作为并发编辑对象；每次导出新建执行状态，XML 数据在执行时快照 |
+| `XmlTemplate.Syntax` | 调用方显式保留的静态计划 | 不持有打开的 parser、字体或输出文档；不会成为隐式全局模板缓存 |
+| 源内容 `Session` | 一次同步 render／编译 | 累计来源及解析预算，关闭后清状态；内建 `ContentImporter` 的前置失败不占 namespace，开始解析后的失败保留名称及已用预算，名称数量有上限 |
+| `OperationFonts`、引擎及公式文字字体快照 | 当前导出操作 | 不跨操作缓存引擎；公式文字字体按需产生，操作结束释放本地引用 |
+| `FontSource.bytes` | 持有该来源的调用方 | 创建时隔离编码字节并复用内容标识；来源本身一直持有私有快照，缓存过期不释放它 |
+| `FontFaceCache` | exporter 或显式提供的应用缓存 | 按内容寻址，容量／源字节上限及空闲到期；共享不可变 face，同键冷载入有界合并，解析在锁外 |
+| `PdfFontCache` | 默认池或调用方池 | 横向 TrueType 解析程序独占借用；clear／close 先移除空闲项，在用项归还后销毁，不共享跨文档 PDF 字体对象，不外推全部字体格式 |
+| Layout IR、Display List 与返回结果 | 由保留结果的调用方持有 | 完整／逐页路径的保留量不同；已逃逸的字体、布局及结果不会被 TTL 强制失效 |
+| 输入／输出流与路径 | 借用流由调用方关闭；内部打开的流由当前操作关闭 | 流失败后可能已有前缀；路径输出按原子提交契约保护旧目标 |
 
-设计器保留 XML 源码和显式资源，以 Java 引擎生成预览及导出；数据独立保存，源码不会被已绑定模型替换。画布采用 React／TypeScript，富文本编辑与两种显示模式见 [ADR-0107](adr/0107-interactive-template-canvas.md)。应用边界见 [ADR-0106](adr/0106-optional-html-template-designer.md)和[设计器指南](designer.md)。
+Word 字体槽声明与 PDF 的物理字体校验不同：DOCX 声明接收端使用的字体族，不要求接收系统已安装，也不表示已嵌入。PDF 测量和嵌入使用同一显式字体，缺字默认失败，不隐式查找系统字体。
 
-PDFBox 文档及绘制 API 限定在 PDF 实现模块。FontBox 和 pdfbox-io 可封装在字体层内部，公共签名不暴露其类型。DOCX 专用实现依赖限定在 DOCX 实现模块。专用测试可以使用它们，但不能以此替代独立工具验证。
+字体到期只释放缓存引用；调用方持有的 face、来源快照或活动解析租约仍可延长存活。代码不调用生产 `System.gc()`，也不承诺 TTL 到点时 RSS 下降。公式库自有字体及内部缓存另有生命周期。详见[字体缓存 API](font-cache-api.md)及其验收。
 
-PDF 原对象处理不调用布局引擎；[语义恢复](adr/0064-bounded-pdf-semantic-recovery.md)使用独立显式损失通道生成模型，随后由调用方选择 DOCX／Web 或布局后端。原严格复制入口的输入快照、预检、权限与原子输出边界继续保持，见 [ADR-0027](adr/0027-pdf-operations-adapter.md)。PDFBox 的对象解析不等于进程资源沙箱。XML／Markdown 模板共用模型绑定；通用 Markdown／HTML 导入与模板语法独立，不建立平行排版器。
+## 跨层契约
 
-布局核心定义组件扩展接口，由组件模块实现，避免相互依赖。公共入口通过接口接受后端；示例或调用方选择具体实现。
+| 契约 | 共同规则 |
+| --- | --- |
+| 几何 | pt，左上角原点，X 向右／Y 向下；有限尺寸，行框与基线分开，目标坐标由后端转换 |
+| 来源 | 使用原文 UTF-16；保留节点／owner、片段顺序、原始行列及锚点，不把字形数当字符数 |
+| 测量与输出 | 共用字体、字形及 advance；已接受行保留实际宽度，静态后端不再次塑形 |
+| 分页推进 | 每轮消耗内容或推进状态；不可容纳的整块明确失败，不无限生成空页 |
+| 页区与字段 | 先预留页眉页脚再分页；物理页与显示页码分开，目录偏移确定后解析导航；动态字段占固定宽度，最终值不能改变分页 |
+| 组件 | 核心定义 `Component`／`PageableComponent`，标准模块实现；普通组件整块移动，分页组件返回有序有界片段，试探测量须确定且可重复 |
+| 语义附件 | `DocumentExtras` 保存交互，`AccessibilityTree` 保存逻辑顺序与最终命令绑定；命令变化须重建绑定，不能静默丢弃 |
+| 预算 | 源预算与实际呈现预算分别累计，重复表头、片段、字段及链接按对应契约计费；有限预算不是恶意输入的进程沙箱 |
+| 执行 | `ExecutionContext` 同步传播取消、deadline、进度和输出上限，作用域退出恢复或移除线程本地执行上下文；字体层通过中立 `Runnable` 接入，不反向依赖模型 |
+| 失败与输出 | 参数、资源、权限、预算及 I/O 失败明确传播；Path 完成临时文件及最终检查后才原子替换，借用流不保证回滚 |
+| 损失 | PREVIEW／ACTUAL 分开；ERROR／WARN／IGNORE 共享明确处理，IGNORE 仍报告实际损失，不能压制非法输入或执行失败 |
+| 确定性 | 固定输入、字体、资源与配置验证布局；视觉一致、结构一致及文件字节一致分别判断 |
 
-`export4j-bom` 对齐对外模块版本。第三方依赖版本优先由 Gradle version catalog 集中管理，不混淆两者职责。
+starter 和 `DocumentEngineProvider` 将 `ExecutionContext::checkpoint` 传入内建字体来源；同键等待每 25 ms 合作检查一次，受 JVM 调度影响。provider 还在业务回调开始前检查调用方当前的执行范围。取消等待者不取消共享解析或其他调用。旧加载接口没有自动执行上下文，自定义来源的默认重载只在调用前后检查；内部等待需要主动传递检查点。字体解析、调用方 I/O 和 getter 均不能被这一机制抢占。
 
-## 历史设计起点
+## 扩展与维护入口
 
-第一阶段从文档模型、绘制接口、绘制核心、PDF 后端和可执行示例开始。测试先放在对应模块中；存在复用需求时再提取测试工具模块。
+| 需要修改的行为 | 首先定位 | 进一步阅读 |
+| --- | --- | --- |
+| 编写结构、来源遍历、纯值规则 | `model`、`SemanticTree`、`RelativeWeights` | [开发规约](development.md)、[模型／布局 API](layout-api.md) |
+| 字体来源、缓存、度量或塑形 | `font-core`、`text-core`，原生能力另看 `opentype` | [文字 API](text-api.md)、[字体缓存](font-cache-api.md)、[原生 OpenType](native-opentype-api.md) |
+| 断行、分页、区域流和来源 | `layout-core`、`layout-model` | [布局](layout-api.md)、[表格](table-api.md)、[组件](components-api.md) |
+| 共同语义准备、页区与导航编排 | `components` 的 `DocumentEngine`／`PreparedSemanticDocument` | [逐页输出](paged-document-api.md)、[字段](inline-fields-api.md) |
+| 源解析、模板与外观继承 | `adapter-web`、`adapter-template`；公式表示看 `math` | [源内容块](content-blocks-api.md)、[XML](xml-template-api.md)、[混合内容](rich-content-api.md) |
+| 统一入口配置与目标装配 | `starter` 的 `Export4j`／`OperationFonts` | [统一导出 API](easy-export-api.md) |
+| 特定格式编码或已有文件操作 | 对应后端／适配器 | [能力矩阵](capabilities-api.md)、[转换](document-conversion-api.md) |
+| 模板编辑与预览 | `export4j-designer`，保留源码及显式资源 | [设计器](designer.md) |
+| API、运行制品和发布边界 | 根构建、BOM、验证调用方 | [API 兼容](api-compatibility.md)、[发布](releasing.md) |
 
-阶段一 `export4j-model` 提供页面尺寸与文档元数据，绘制 API 引用这两个基础类型，打通 Graphics API 直接生成 Display List 的路径。阶段三在基础模型中加入语义文档、段落、格式及页边距，保持模型无项目外部依赖。
+核心架构改变时记录 ADR；公共调用契约写入对应 API，支持状态写入能力矩阵，实际执行结果写入验收，工程取舍写入项目笔记，避免在总览重复维护全部实现细则。
 
-阶段二补齐字体抽象、普通换行与行布局，阶段三建立段落分页和基础表格。后续语义布局、递归续排和流式能力见[能力指南](capabilities-api.md)；这些历史阶段说明不作为当前未完成清单。组件模块的 `DocumentEngine` 保持通用引擎职责，starter 在外围提供配置一次的便捷入口；两者不形成独立的核心 API 或测试工具模块。
+## 关键决策与证据
 
-## 第二阶段文本路径
+| 主题 | 决策及契约 |
+| --- | --- |
+| 分层、绘制、文字与分页 | [ADR-0001](adr/0001-layered-architecture.md)、[0003](adr/0003-font-text-layout.md)、[0004](adr/0004-paragraph-pagination.md)、[0006](adr/0006-components-and-pdf-interactions.md) |
+| 最终字段与页区 | [ADR-0014](adr/0014-inline-semantic-fields.md)、[0015](adr/0015-semantic-table-fields.md)、[0049](adr/0049-semantic-page-regions-and-sections.md) |
+| 语义适配、DOCX 与 CSS 布局 | [ADR-0050](adr/0050-semantic-web-exports.md)、[0103](adr/0103-typed-native-docx-semantics.md)、[0104](adr/0104-bounded-html-css-layout.md)、[0108](adr/0108-native-docx-math-and-example-typesetting.md) |
+| 原对象 PDF 与显式恢复 | [ADR-0096](adr/0096-pdf-compatibility-paths.md)、[0097](adr/0097-explicit-pdf-editing-recovery-and-standards.md) |
+| 递归布局、图形与原生字体 | [ADR-0099](adr/0099-variable-recursive-grid-and-contour-flow.md)、[0100](adr/0100-native-paints-and-offline-svg-resources.md)、[0101](adr/0101-explicit-native-opentype-and-cff-embedding.md) |
+| 逐页、按需来源与重放 | [ADR-0102](adr/0102-bounded-semantic-streaming-replay-and-pdf-spool.md)、[0111](adr/0111-page-at-a-time-document-export.md)、[0112](adr/0112-incremental-block-source.md) |
+| 数学、源继承与统一入口 | [ADR-0113](adr/0113-optional-bounded-math.md)、[0115](adr/0115-source-content-options.md)、[0117](adr/0117-single-source-math-representations.md)、[0118](adr/0118-configured-export-entry.md) |
+| 字体缓存 | [ADR-0114](adr/0114-idle-expiring-font-caches.md)及[缓存 API](font-cache-api.md) |
+| 共同规则、操作绑定及语法计划 | [工程决策](../.agents/notes/implemented/architecture/2026-11-19-reference-architecture-convergence.md)及[架构优化验收](verification/architecture-convergence.md) |
 
-~~~text
-显式 TrueType 数据 → FontFace / FontData → SimpleTextShaper
-                    → ParagraphLayouter → ParagraphLayout
-                    → TextLayoutPainter → GlyphText → PDF
-~~~
-
-字体层提前解析 Unicode 映射和水平度量，返回不可变快照并关闭解析资源。文本层执行固定回退和有界换行，保留原文 UTF-16 范围、基线、字形编号与 advance。行布局只描述一个段落的局部坐标，页面分配由布局核心完成。
-
-绘制核心只平移已有行布局。PDF 后端嵌入同一份字体字节，校验字形编号，以 `TJ` 定位修正保留既定 advance。复杂文本直接消费中立轮廓，分页用 `atBaseline()` 保留所有绘制结果。PDF 字体对象及子集限定在各自文档内，相同 SHA-256 的字体按文档复用。开发版的[有界字体缓存](font-cache-api.md)另行跨导出复用不可变字体快照及独占借用的解析对象，并按空闲期限释放，不共享跨文档 PDF 对象。原始文本路径见 [ADR-0003](adr/0003-font-text-layout.md)。
-
-## 第三阶段混合内容分页路径
-
-~~~text
-Document.blocks / Paragraph / Table / PageSettings + 显式字体栈
-    → DocumentLayouter → DocumentLayout / LayoutPage.elements / LayoutFragment
-    → DocumentPainter → DisplayDocument → PDF Backend
-~~~
-
-模型层的 `ParagraphFormat` 保存语义格式，不依赖文本或绘制模块。布局核心负责映射为文本层的 `ParagraphStyle`，每段只换行一次，再把完整行放入页面内容区域。跨页片段保留段落 ID、索引、原始行号与 UTF-16 范围。
-
-分页按行推进，保留整块的段落按段推进；不可容纳内容明确失败。结果是不可变快照，输出转换不重新测量、换行或分页。字体回退诊断存于对应页面片段内，可由页面和节点定位。
-
-段落与表格共用有序块及页面片段。表格默认只在完整行之间分页；显式 `allowRowSplit` 按单元格完整文字行拆分，保存起始行和续行标记。续页复用已测量表头并计入输出预算。表头组与最小正文片段不能放入新页时失败，避免只含表头的无限分页。
-
-`Document` 使用统一页面设置，`SectionedDocument` 支持按节配置纸张、页边距与起始显示页码；字体组及行内角色在布局入口显式传入。页眉页脚通过核心 `PageTemplate` 预留区域，最终页码组件在分页完成后执行。基础分页规则见[文档布局 API](layout-api.md)和 [ADR-0004](adr/0004-paragraph-pagination.md)。
-
-## 组件与交互路径
-
-~~~text
-Document + PageTemplate + Navigation + 显式字体栈
-    → 预留页区 → 正文分页（含 ComponentBlock）
-    → 测量前置目录 → 解析最终页偏移和交互目标
-    → PageComposer（背景、正文、页眉页脚、前景）
-    → DisplayDocument + DocumentExtras → PDF Backend
-~~~
-
-核心定义 `Component`、`ComponentContext`、定位和页区合成，标准组件模块提供实现。组件只测量并返回局部不可变指令与诊断，正文适配器对普通组件按整块分页，对 `PageableComponent` 消费有序片段；原语义段落和表格继续支持拆分。核心不导入组件模块。
-
-`MultiFloatText` 在组件层验证多个边缘矩形、计算各固定行带的连续可用区间，并通过已有 OpenType 逐行宽度／偏移接口完成一次换行。浮动矩形只出现在首片段，续页恢复全宽；封闭行带跳过或输出有限的浮动独占片段。布局核心和后端不重新计算避让，见 [ADR-0011](adr/0011-multiple-rectangular-floats.md)。
-
-核心 `RegionFlow`／`FlowRegions` 表达相同宽度下的有限短区前缀与完整续区，返回带区域索引的局部片段。`FlowText`／`OpenTypeText` 一次换行后分配完整行；组件 `ContinuousColumns` 把首组剩余页高和完整续栏组合为物理片段，末片段保留最高栏实际高度。原 `MultiColumn` 的整页／有界平衡契约保持，见 [ADR-0012](adr/0012-continuous-text-regions.md)。
-
-`FlowColumn` 为区域子组件传递扣除内边距、已用高度和区域内间距后的剩余前缀，支持嵌套；普通组件和旧分页片段整块移动。`GridTable` 一次测量单元格，按合并连通行组分配，每个占用栏重复表头且至少包含一个正文组。共享校验检查数量、顺序、尺寸和连续推进；后端不重新布局，见 [ADR-0013](adr/0013-mixed-content-regions.md)。
-
-`DocumentExtras` 保存已解析的书签、页内链接、外部 URI、评论和字段，不持有 PDFBox 对象。目录采用固定页码列，分页不依赖最终数字；解析后使用真实页目标。PDF 后端仅转换目标坐标并建立 outline、annotation 和 AcroForm 字段，不重新布局。
-
-评论和表单是独立于绘制层的交互对象，PDF 阅读器通常在页面内容之上显示它们。当前表单含文本、复选框、下拉框与单选组，中文字段完整嵌入一个显式字体；保留当前值、默认值和外观流，不执行脚本、不默认扁平化。详见[组件 API](components-api.md)和 [ADR-0006](adr/0006-components-and-pdf-interactions.md)。
-
-## 几何与坐标约定
-
-以下约定适用于新建接口，变更时须记录 ADR：
-
-- 逻辑长度使用 point，`1 pt = 1/72 inch`；核心计算使用 `double`。
-- 页面逻辑坐标原点位于左上角，X 向右、Y 向下。
-- 页面与内容尺寸必须有限且符合各自有效范围；负坐标可以表示页外位置，不等同于负尺寸。
-- 路径、矩阵组合顺序和裁剪行为必须在接口文档及测试中明确。
-- 文本定位区分行框与基线，图片定位区分布局尺寸与原始像素尺寸。
-- PDF 等目标格式的坐标差异由后端统一转换，覆盖旋转、裁剪区域与变换场景。
-
-语义模型保存页面设置和样式，不保存排版后的绝对位置。几何类型采用项目自有类型，避免布局结果引用 PDFBox 或 AWT 实现对象。
-
-## 文本与资源
-
-文本处理区分 UTF-16 代码单元、Unicode 码点、字形和字形簇。测量与输出共用一致的字体及塑形结果。
-
-字体资源通过显式配置解析，回退顺序固定且可诊断。`FontGroup` 默认缺字报错，显式占位模式保留原文来源并返回警告。基础 `SimpleTextShaper` 仍拒绝复杂文字；默认段落布局器按需使用显式静态 TrueType／CFF 的 JDK OpenType 排版，`TextOutline` 保存中立轮廓及逻辑文字。显式 `OpenTypeText` 继续提供 kerning 等开关，不使用系统字体回退。详细边界见[生产能力 API](production-api.md)。
-
-`OutlineText` 在布局时确定轮廓，PDF 用 ActualText 保存逻辑文字；静态后端消费相同路径。`GlyphText` 转静态输出时按既定字形编号提取轮廓，禁止重新塑形。SVG／Raster 拒绝交互 extras；DOCX 直接映射语义，不经过坐标指令。详见 [ADR-0008](adr/0008-production-capabilities.md)。
-
-资源引用使用稳定标识，不持有任意后端对象。文档级资源由独立上下文管理，关闭时释放其拥有的资源。全局缓存应有容量、并发和失效策略。
-
-## 模板与受控导出
-
-`DocumentTemplate` 在 JDK-only 模型层快照并绑定点路径数据，Map、record／JavaBean 及嵌套 List 共用有界快照，条件／循环／集合表格受访问、深度、块、行和文字预算约束。对象绑定通过反射读取 record 组件或 JavaBean 公开属性，不读取字段；模板表达式不支持任意方法调用、脚本或网络入口。getter 属于可信应用代码，不构成沙箱；完整边界见 [Java 对象绑定](xml-template-api.md#java-对象绑定)。
-
-`ExecutionContext` 在同步调用范围中传播取消、截止时间、进度与输出字节上限；finally 恢复或移除 ThreadLocal。原子写入先完成同目录临时文件，再原子替换目标。PDF 临时存储仅转移后端流缓冲，不转移 IR、Display List 和资源。PDF/A、加密与外部 CMS 签名由 PDF 模块封装，见 [ADR-0009](adr/0009-shared-text-templates-and-controlled-export.md)。
-
-## 诊断与失败
-
-诊断至少能够定位处理阶段、严重程度、稳定错误代码和原因。适用时附带节点标识、页码或资源标识；页码的起始约定由契约明确。
-
-输入无效、缺少必需字体、不可恢复的布局失败和输出失败，应使对应操作明确失败。格式特性降级必须记录具体损失；只有调用方明确接受的降级才能继续。
-
-分页算法需要证明每轮消耗内容或改变分页状态。不可分割内容大于可用页面时，必须执行明确的溢出策略或失败，不能无限生成新页面。
-
-## DOCX 与 PDF 的边界
-
-DOCX 导出保留段落、表格和样式语义，由目标阅读器完成其布局。PDF 输出使用确定的页面绘制结果。
-
-DOCX 行内字段映射为原生 PAGE／NUMPAGES／PAGEREF／编号 REF，由 Word 更新；可忽略扩展只保存引擎预留宽度，不限制 Word 布局。导入解析白名单简单／扁平复杂字段，宽度缺失须显式指定，无法保留的语义按策略失败或返回缓存文字及诊断；重复表头 PAGE 明确拒绝导出。边界见 [ADR-0016](adr/0016-native-docx-fields.md)。
-
-PDF 导入不能天然恢复原始段落、表格或 Word 结构。现有 PDF 分析、编辑与语义恢复由[独立适配器](pdf-adapter-api.md)分别定义能力，不承诺从任意 PDF 无损重建 Document Model。
-
-每个适配器应声明支持、降级和不支持的特性，并为信息损失提供诊断。
-
-## 可复现性
-
-常用编写入口仍生成原有语义模型；自动 ID 不代替显式引用目标。两端对齐由布局阶段修改字形 advance 或平移物理轮廓，后端不重排。严格中文禁则按原始 UTF-16 边界判断，富文本标题／列表在模板和语义降级中保留运行，见 [ADR-0017](adr/0017-authoring-and-justification.md)。
-
-相同输入、字体、资源和布局配置应产生相同的布局结果。测试需要固定字体版本、资源标识顺序、区域设置和相关配置。
-
-布局一致性、视觉一致性和文件字节一致性分别验证。输出文件可能包含时间戳、对象顺序等元数据；只有专门声明的确定性输出模式才要求字节稳定。
-
-## 关键决策
-
-公共链式构建、组件层 `Documents` 便利入口、声明式格定位与确定性行高见 [ADR-0018](adr/0018-fluent-authoring.md)。便利入口生成原有语义文档，不改变模块依赖方向或后端布局边界。
-
-分层、DOCX 数据流和第三方边界见 [ADR-0001](adr/0001-layered-architecture.md)。字体实现、模块发布坐标和具体依赖版本在实际采用时记录验证结果。
-
-第一阶段实现范围与标准字体策略见 [ADR-0002](adr/0002-initial-pdf-output.md)。
-
-第二阶段字体实现、行框和公共接口变化见 [ADR-0003](adr/0003-font-text-layout.md)。
-
-第三阶段语义段落、片段来源与分页推进见 [ADR-0004](adr/0004-paragraph-pagination.md)。
-
-混合块兼容、列宽和重复表头见 [ADR-0005](adr/0005-basic-tables.md)，调用方式见[表格 API](table-api.md)。
-
-组件扩展、页区、定位与 PDF 交互见 [ADR-0006](adr/0006-components-and-pdf-interactions.md)。进阶能力、字体组缺字策略和有界脚注预留见 [ADR-0007](adr/0007-advanced-layout-and-font-policy.md)及[进阶 API](advanced-api.md)。
-
-行内动态字段采用固定宽度原子盒，最终分页后替换轮廓及逻辑文字，保持原始来源与几何。语义单元格复用字段盒，重复表头按实际页面解析，拆行保留原始行列及 UTF-16 来源，见 [ADR-0015](adr/0015-semantic-table-fields.md)。显式脚注标记以实际所在行决定归属，使用原有单调预留和续页算法。模型、文本、布局和后端职责见 [ADR-0014](adr/0014-inline-semantic-fields.md)与[调用指南](inline-fields-api.md)。
-
-语义 PageRegion 保存有序段落／表格，Section 携带默认重复页区；XML 分节共享绑定预算，组件桥在最终页上测量固定区及解析字段。DOCX 直接映射标准页区 part 与局部媒体关系，模型不引用组件或后端。固定几何元数据与普通 Word 显式回填策略见 [ADR-0049](adr/0049-semantic-page-regions-and-sections.md)。
-
-HTML／Markdown 通过独立语义适配器导出，由目标阅读器重排；不反向消费 Display List。ERROR／WARN／IGNORE 按功能控制损失，非法输入与执行失败不受策略压制。共享源／输出预算与原子输出契约见 [ADR-0050](adr/0050-semantic-web-exports.md)。
+早期阶段背景保留在[立项文档](project-proposal.md)、ADR 和[阶段验收](verification/README.md)，不作为当前结构或未完成清单。

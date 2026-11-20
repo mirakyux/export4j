@@ -42,7 +42,11 @@ public final class DocumentEngineProvider implements AutoCloseable {
     }
     public static Builder builder(List<FontSource> defaults) { return new Builder(defaults); }
 
-    /** 关闭后不接受新操作；已进入的操作持有独立不可变字体，不会被缓存清理或关闭破坏。 */
+    /**
+     * 关闭后不接受新操作；已进入的操作持有独立不可变字体，不会被缓存清理或关闭破坏。
+     * 字体加载与操作回调开始前检查当前同步执行范围的取消及截止时间；内建来源的同键
+     * 缓存等待也传递检查点。自定义来源的 I/O 和解析仍不可抢占。
+     */
     public <T> T withEngine(Operation<T> operation) throws IOException {
         Objects.requireNonNull(operation, "operation");
         if (closed.get()) { throw new IllegalStateException("engine provider is closed"); }
@@ -51,6 +55,7 @@ public final class DocumentEngineProvider implements AutoCloseable {
         var builder = DocumentEngine.builder(group(defaults, loaded)).layoutLimits(layoutLimits).componentLimits(componentLimits);
         for (var entry : roles.entrySet()) { builder.fontRole(entry.getKey(), group(entry.getValue(), loaded)); }
         if (closed.get()) { throw new IllegalStateException("engine provider is closed"); }
+        ExecutionContext.checkpoint();
         return operation.execute(builder.build());
     }
 
@@ -64,7 +69,10 @@ public final class DocumentEngineProvider implements AutoCloseable {
         for (var source : sources) {
             ExecutionContext.checkpoint();
             var face = loaded.get(source);
-            if (face == null) { face = Objects.requireNonNull(source.load(cache), "font source result"); loaded.put(source, face); }
+            if (face == null) {
+                face = Objects.requireNonNull(source.load(cache, ExecutionContext::checkpoint), "font source result");
+                loaded.put(source, face);
+            }
             faces.add(face);
         }
         return FontGroup.strict(faces);

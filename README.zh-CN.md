@@ -267,7 +267,7 @@ HTML 保留受支持的样式、嵌入图片及合并／嵌套表格；Markdown 
 | 导出长表与大文档 | [流式长表](docs/streaming-table-api.md) · [逐页导出](docs/paged-document-api.md) · [重放与磁盘索引 PDF](docs/streaming-replay-api.md) |
 | 导入、编辑与转换 | [统一转换](docs/document-conversion-api.md) · [DOCX 语义](docs/docx-semantic-api.md) · [HTML/CSS](docs/html-import-api.md) |
 | 处理 PDF | [PDF 适配器](docs/pdf-adapter-api.md) · [恢复](docs/pdf-semantic-import-api.md) · [标准](docs/pdf-standards-api.md) |
-| 查看示例与实现 | [示例](docs/examples.md) · [架构](docs/architecture.md) · [ADR](docs/adr/README.md) |
+| 查看示例与实现 | [示例](docs/examples.md) · [架构与模块](docs/architecture.md) · [资源生命周期](docs/architecture.md#状态与资源生命周期) · [ADR](docs/adr/README.md) |
 
 ## 构建与验证
 

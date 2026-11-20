@@ -56,7 +56,8 @@ The gap table owns the current backlog. Phase records preserve their original ex
 | Topic | Entry points |
 | --- | --- |
 | Contribute | [Contribution guide (Chinese)](../../CONTRIBUTING.md) · [Development](development.md) |
-| Architecture/module boundaries | [Architecture](architecture.md) · [ADRs (Chinese)](../adr/README.md) |
+| Understand modules, execution paths, and resource ownership | [Architecture](architecture.md) · [Execution paths](architecture.md#main-execution-paths) · [Lifecycles](architecture.md#state-and-resource-lifecycles) |
+| Find extension points and design decisions | [Maintenance entry points](architecture.md#extension-and-maintenance-entry-points) · [ADRs (Chinese)](../adr/README.md) |
 | Build/output verification | [Test strategy](development.md#test-strategy) · [Verification matrix (Chinese)](../../.agents/skills/develop-export4j/references/verification.md) |
 | Compatibility/releases | [API compatibility (Chinese)](../api-compatibility.md) · [Releases](releasing.md) |
 | Dependencies/licenses | [Dependencies](dependencies.md) · [Fonts (Chinese)](../../assets/fonts/README.md) · [NOTICE](../../NOTICE) · [Third-party licenses](../../third-party/licenses) |

@@ -56,7 +56,8 @@ Export4j 支持通过 Java 或模板编写文档，也提供已有文件的导�
 | 主题 | 入口 |
 | --- | --- |
 | 参与贡献 | [贡献指南](../CONTRIBUTING.md) · [开发规约](development.md) |
-| 架构及模块边界 | [架构设计](architecture.md) · [架构决策记录](adr/README.md) |
+| 理解模块、调用链和资源归属 | [架构总览](architecture.md) · [运行路径](architecture.md#主要运行路径) · [生命周期](architecture.md#状态与资源生命周期) |
+| 定位扩展点与设计取舍 | [维护入口](architecture.md#扩展与维护入口) · [架构决策记录](adr/README.md) |
 | 参考架构与优化取舍 | [Fesod、x-easypdf 源码研究](architecture-reference-review.md) |
 | 构建与输出验证 | [开发中的验证流程](development.md#测试策略) · [验证矩阵](../.agents/skills/develop-export4j/references/verification.md) |
 | API 兼容和发布 | [兼容规则](api-compatibility.md) · [发布规范](releasing.md) |

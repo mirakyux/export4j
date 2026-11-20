@@ -104,3 +104,34 @@ try {
 - 缓存开启、关闭、命中、过期重载与流式 PDF 的文字、字体、坐标和独立双引擎渲染一致。
 
 源字节权重、主线程累计分配、堆存量及进程 RSS 分别记录。重复加载命中或过期条目数归零不能单独证明稳定提速、RSS 降低或长期无泄漏；外部仍持有的字体与引擎不会被强制释放。
+
+## Provider 等待取消修复（2026-11-20）
+
+后续架构审视发现，`DocumentEngineProvider.withEngine` 的字体加载仍使用无检查点重载。存在同字体冷解析 owner 时，已取消或超过 deadline 的请求会等到 owner 完成，并在外层执行范围最终报错前启动业务回调。starter 的 `OperationFonts` 已接入检查点，不受该遗漏影响。
+
+provider 现对默认字体栈及具名角色栈调用 `FontSource.load(cache, ExecutionContext::checkpoint)`，并在业务回调开始前独立检查一次。它观察调用方已有的同步执行范围，不创建后台任务或默认超时；取消当前等待者不取消共享 owner／peer。自定义来源的 I/O／解析仍不可抢占，内部等待须主动传递检查点。
+
+新增 `ProviderWaitExecutionTest` 四项回归：三类内建来源的默认／具名栈取消、两种栈的 deadline、旧自定义来源返回时取消，以及自定义检查点重载未自行检查时的最终回调边界。测试用受控解析 latch 与真实 Future 等待状态建立先后关系；provider 必须在 owner 未放行时退出，业务回调不执行、旧目标不变，owner／peer 及后续操作均正常。每个等待和测试有上限，失败也释放线程。
+
+本轮从仓库根目录执行：
+
+```powershell
+.\gradlew.bat build sbom publishLocalBundle :examples:textPdf :examples:componentPdf `
+  --no-daemon --max-workers=2 --console=plain
+powershell -NoProfile -File scripts/verify_local_consumer.ps1 -VerificationPython python
+python scripts/verify_font_cache.py --consumer-build-directory <本次元数据调用方目录> `
+  --output-directory build/verification/provider-cache-output
+python scripts/verify_font_cache.py --consumer-build-directory <本次仅POM调用方目录> `
+  --output-directory build/verification/provider-cache-pom-output
+```
+
+外部依赖已缓存，实际构建与新隔离调用方使用离线模式。两种元数据路径均执行 `build run math fontCache contentBlocks richContent easyExport architectureConvergence reviewFixes resolvedLibraries`。`FontCacheConsumer` 从真实 JAR 验证默认／具名栈选择检查点重载、回调前取消、旧目标保护及失败后复用。
+
+| 检查 | 结果 |
+| --- | --- |
+| 全仓构建及测试 | `build sbom publishLocalBundle`、文字／组件样例和 API 门禁通过；19 个测试模块共 2,784 项，0 失败、0 错误、0 跳过 |
+| 本地 Maven 消费 | Gradle 元数据／仅 POM 两路通过；每路 18 个库 JAR 均与本地仓库 SHA-256 一致，provider 的默认／具名角色取消控制通过 |
+| 独立正／负探针 | 同一受控等待断言分别以当前 JAR 与旧验证版 JAR 启动独立 JVM，每次只有一个 provider 类提供者；当前版取消／deadline 均提前退出且不启动回调，旧版两种情形均按预期失败 |
+| 缓存输出 | 两路各六份完整单页 PDF 经独立结构、原文、嵌入字体和选区几何检查；Poppler／PDFium 分别全页渲染，与各自禁用缓存控制像素一致 |
+
+当前 `export4j-components:0.1.0-SNAPSHOT` JAR SHA-256 为 `e759c330f7ff1bee6b270d1f90afd5d16ce6f5b8a2807581f91de60017ece7c2`。本轮证据在 `build/verification/provider-fix-20261120/`，包括 `test-summary.json`、`artifact-audit.json`、`probe/report.json` 和两路输出报告。已查看两种引擎的控制整页，其余页面用同引擎全像素一致性核对。本轮未修改公共签名或依赖，未重新执行临时签名分发、Word 阅读器操作、远端发布或部署。

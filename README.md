@@ -267,7 +267,7 @@ Start with the [FAQ](docs/faq.md) for Java requirements, module selection, fonts
 | Export large tables and documents | [Streaming tables](docs/en/streaming-table-api.md) · [Paged export](docs/en/paged-document-api.md) · [Replay and disk-indexed PDF](docs/en/streaming-replay-api.md) |
 | Import, edit and convert | [Shared conversion](docs/en/document-conversion-api.md) · [DOCX semantics](docs/en/docx-semantic-api.md) · [HTML/CSS](docs/en/html-import-api.md) |
 | Process PDF | [PDF adapter](docs/en/pdf-adapter-api.md) · [Recovery](docs/en/pdf-semantic-import-api.md) · [Standards](docs/en/pdf-standards-api.md) |
-| Explore examples and internals | [Examples](docs/en/examples.md) · [Architecture](docs/en/architecture.md) · [ADRs (Chinese)](docs/adr/README.md) |
+| Explore examples and internals | [Examples](docs/en/examples.md) · [Architecture and modules](docs/en/architecture.md) · [Resource lifecycles](docs/en/architecture.md#state-and-resource-lifecycles) · [ADRs (Chinese)](docs/adr/README.md) |
 
 ## Build and verification
 

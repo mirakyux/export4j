@@ -22,7 +22,7 @@
 
 需要在同键等待期间观察取消／截止时间时，使用 `FontFaceCache.load(source, checkpoint)` 或带字节限额的 `load(source, maxBytes, checkpoint)`；`source` 可为 byte 数组、借用流或明确 Path。回调在调用线程及缓存锁外同步执行，等待期间每 25 ms 重查一次，实际响应仍受 JVM 调度影响；异常只终止当前等待者，不取消共享解析或其他使用者。调用方 I/O 与字体解析仍是不可抢占的同步阶段。
 
-`FontSource.load(cache, checkpoint)` 为兼容默认方法，原函数接口与 lambda 保持有效。内建 bytes／file／resource 来源把检查点传入缓存；自定义来源默认仅在其调用前后检查，需要在内部等待期间合作取消时，须覆盖新重载并传递检查点。starter 已传入 `ExecutionContext::checkpoint`，不向字体模块引入执行模型依赖或全局上下文。
+`FontSource.load(cache, checkpoint)` 为兼容默认方法，原函数接口与 lambda 保持有效。内建 bytes／file／resource 来源把检查点传入缓存；自定义来源默认仅在其调用前后检查，需要在内部等待期间合作取消时，须覆盖新重载并传递检查点。starter 和 `DocumentEngineProvider` 均传入 `ExecutionContext::checkpoint`，不向字体模块引入执行模型依赖或全局上下文。
 
 ```java
 import com.mirakyux.export4j.font.FontFaceCache;
@@ -63,6 +63,8 @@ try (var provider = DocumentEngineProvider.builder(List.of(
 `DocumentEngineProvider` 位于 `components`，`FontSource` 位于 `font`。来源可选明确文件、类资源或编码字节快照；来源配置本身不持有已解析字体，不扫描目录。字节来源会在配置存活期间保留编码快照。provider 默认拥有有界缓存，`fontCache(cache)` 则借用调用方缓存。`fontRole(name, sources)` 声明独立角色栈，容量配置继续使用原缓存入口。
 
 操作内的字体不会因 `clearCache()` 或关闭而失效；关闭后拒绝新操作。回调若返回布局或自行保存引擎，这些对象仍会持有字体，必须由应用释放。provider 不缓存文档、不强制回收，也不承诺缓存源字节上限等于总堆上限。
+
+`withEngine` 观察调用方已打开的同步 `ExecutionContext`，不自行创建超时或后台任务。默认栈及具名角色栈都传递字体加载检查点，业务回调开始前再检查一次；等待中取消／超时不会启动该回调，也不取消同字体的其他解析者。没有外层执行范围时，不额外引入取消或截止时间。
 
 ## PDF 解析对象
 

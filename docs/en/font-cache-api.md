@@ -20,7 +20,7 @@ Input reads, snapshot hashing, and cold parsing execute outside the cache lock. 
 
 Use `FontFaceCache.load(source, checkpoint)` or `load(source, maxBytes, checkpoint)` to observe cancellation or deadlines while waiting for the same content; source can be bytes, a borrowed stream or an explicit Path. Checkpoints run synchronously on the caller thread outside the cache lock, with a 25 ms recheck interval during waiting, subject to JVM scheduling. A callback failure stops only that caller, leaving the shared parser and other callers intact. Synchronous I/O and font parsing remain non-preemptible phases.
 
-The default `FontSource.load(cache, checkpoint)` preserves the original functional interface and lambdas. Built-in byte/file/resource sources propagate the checkpoint into cache waiting. Custom sources are checked before and after their original method; they must override the new overload and forward the checkpoint to cooperate inside internal waits. The starter supplies `ExecutionContext::checkpoint`, without adding a model dependency or global execution context to the font module.
+The default `FontSource.load(cache, checkpoint)` preserves the original functional interface and lambdas. Built-in byte/file/resource sources propagate the checkpoint into cache waiting. Custom sources are checked before and after their original method; they must override the new overload and forward the checkpoint to cooperate inside internal waits. Starter and `DocumentEngineProvider` supply `ExecutionContext::checkpoint`, without adding a model dependency or global execution context to the font module.
 
 ```java
 try (var fonts = FontFaceCache.builder()
@@ -56,6 +56,8 @@ try (var provider = DocumentEngineProvider.builder(List.of(
 Use `components.DocumentEngineProvider` and `font.FontSource` under the project root package. Sources accept explicit files, class resources or private encoded-byte snapshots. They retain no parsed face and scan no directories; byte sources retain their encoded snapshot while configured. A provider owns its default bounded cache or borrows one supplied with `fontCache`. Declare separate role stacks with `fontRole(name, sources)`.
 
 Clearing or closing does not invalidate active fonts. Close rejects new operations. Returned layouts or engines captured by the caller may still retain fonts until released; no document cache, forced collection or total-heap guarantee is introduced.
+
+`withEngine` observes an existing synchronous `ExecutionContext` opened by the caller; it creates no timeout or background task. Both default and named-role stacks propagate font-load checkpoints, with another check before the operation callback starts. Cancellation or timeout during a wait prevents that callback from starting without cancelling other users of the same font. Without an enclosing execution scope, no additional cancellation or deadline is introduced.
 
 ## PDF programs
 

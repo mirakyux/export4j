@@ -7,13 +7,18 @@ import com.mirakyux.export4j.backend.pdf.PdfLimits;
 import com.mirakyux.export4j.backend.pdf.PdfSpoolBackend;
 import com.mirakyux.export4j.backend.pdf.PdfSpoolLimits;
 import com.mirakyux.export4j.components.DocumentEngine;
+import com.mirakyux.export4j.components.DocumentEngineProvider;
 import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.FontFaceCache;
 import com.mirakyux.export4j.font.FontGroup;
+import com.mirakyux.export4j.font.FontSource;
 import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.graphics.DisplayDocument;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.ExecutionContext;
+import com.mirakyux.export4j.model.ExecutionException;
+import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.ParagraphFormat;
 import java.io.ByteArrayOutputStream;
 import java.lang.management.ManagementFactory;
@@ -28,6 +33,7 @@ import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 /** Published-coordinate acceptance and a separately invoked, fixed-input allocation measurement. */
@@ -58,6 +64,8 @@ public final class FontCacheConsumer {
                 && PdfFontCache.defaultStats().hits() > defaultHits, "default PDF program reuse is not enabled");
 
         var report = new Properties();
+        verifyProvider(defaultFace, output);
+        report.setProperty("providerCancellationChecked", "true");
         try (var faces = FontFaceCache.builder().idleTimeout(Duration.ofSeconds(1)).build();
                 var programs = PdfFontCache.builder().idleTimeout(Duration.ofSeconds(1)).build();
                 var disabled = PdfFontCache.builder().enabled(false).build()) {
@@ -109,6 +117,47 @@ public final class FontCacheConsumer {
         TrueTypeFontLoader.clearCache();
         PdfFontCache.clearDefault();
         System.out.println("Published font caches: default reuse, idle release, disabled, page and spool paths passed");
+    }
+
+    private static void verifyProvider(FontFace face, Path output) throws Exception {
+        require(Path.of(DocumentEngineProvider.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+                .getFileName().toString().endsWith(".jar"), "provider must be consumed from a published JAR");
+        for (boolean named : List.of(false, true)) {
+            var cancelled = new AtomicBoolean();
+            var cancelOnReturn = new AtomicBoolean(true);
+            var callback = new AtomicBoolean();
+            FontSource source = new FontSource() {
+                @Override public FontFace load(FontFaceCache cache) {
+                    throw new AssertionError("provider omitted the caller checkpoint overload");
+                }
+                @Override public FontFace load(FontFaceCache cache, Runnable checkpoint) {
+                    if (cancelOnReturn.getAndSet(false)) { cancelled.set(true); }
+                    return face;
+                }
+            };
+            var builder = DocumentEngineProvider.builder(List.of(named ? ignored -> face : source));
+            if (named) { builder.fontRole("report", List.of(source)); }
+            Path target = output.resolve("provider-cancelled-" + named + ".bin");
+            Files.writeString(target, "old-provider-target");
+            try (var provider = builder.build()) {
+                try {
+                    ExecutionContext.execute(ExecutionOptions.builder().cancelled(cancelled::get).build(), () ->
+                            provider.withEngine(engine -> {
+                                callback.set(true);
+                                Files.writeString(target, "unexpected-callback");
+                                return null;
+                            }));
+                    throw new AssertionError("cancelled provider succeeded");
+                } catch (ExecutionException expected) {
+                    require(expected.code() == ExecutionException.Code.CANCELLED && !callback.get(),
+                            "cancelled provider started its application callback");
+                    require(Files.readString(target).equals("old-provider-target"), "cancelled provider changed its old target");
+                }
+                cancelled.set(false);
+                require(provider.withEngine(engine -> engine.layout(Document.builder().paragraph(TEXT).build())
+                        .display().pages().size()) == 1, "provider was not reusable after cancellation");
+            }
+        }
     }
 
     private static DisplayDocument display(FontFace face) {
