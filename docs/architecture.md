@@ -91,7 +91,7 @@ flowchart TD
 
 [OperationFonts](../export4j-starter/src/main/java/com/mirakyux/export4j/OperationFonts.java) 将同一声明投影为输入解析角色、PDF 字体组和 Word 字体槽，同一来源对象在一次操作中只载入一次。业务角色的 regular／bold／italic／boldItalic 对应显式物理变体。
 
-PDF 使用 `MathContent.compileVisual`，DOCX 使用 `compileDocx`，只执行选定的目标投影。同一 `Request` 先后导出两个目标仍是两次独立操作，会重新读取来源并绑定数据；需要一次解析同时得到两种模型时，直接使用 [MathContent](rich-content-api.md) 的双目标入口。
+PDF 和 DOCX 各执行选定的目标投影。XML 使用 `renderComplete` 绑定分节、页区和注释，再投影到选定目标。同一 `Request` 先后导出两个目标时会分别读取来源并绑定数据。需要一次解析同时得到两种正文模型时，可使用 [MathContent](rich-content-api.md) 的双目标入口。
 
 ### XML 语法准备与数据绑定
 
@@ -141,7 +141,7 @@ PDF 使用 `MathContent.compileVisual`，DOCX 使用 `compileDocx`，只执行�
 | Layout IR、Display List 与返回结果 | 由保留结果的调用方持有 | 完整／逐页路径的保留量不同；已逃逸的字体、布局及结果不会被 TTL 强制失效 |
 | 输入／输出流与路径 | 借用流由调用方关闭；内部打开的流由当前操作关闭 | 流失败后可能已有前缀；路径输出按原子提交契约保护旧目标 |
 
-Word 字体槽声明与 PDF 的物理字体校验不同：DOCX 声明接收端使用的字体族，不要求接收系统已安装，也不表示已嵌入。PDF 测量和嵌入使用同一显式字体，缺字默认失败，不隐式查找系统字体。
+DOCX 声明接收端使用的字体族。PDF 使用同一物理字体测量和嵌入，缺字默认失败。无参 `Export4j.builder()` 在 starter 装配层从已知本地路径选择字体，再传给引擎。显式入口和核心引擎使用调用方提供的字体。
 
 字体到期只释放缓存引用；调用方持有的 face、来源快照或活动解析租约仍可延长存活。代码不调用生产 `System.gc()`，也不承诺 TTL 到点时 RSS 下降。公式库自有字体及内部缓存另有生命周期。详见[字体缓存 API](font-cache-api.md)及其验收。
 

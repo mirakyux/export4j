@@ -12,7 +12,6 @@ import com.mirakyux.export4j.math.MathException;
 import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.DocumentTheme;
 import com.mirakyux.export4j.model.DocumentMetadata;
-import com.mirakyux.export4j.model.DocumentTemplate;
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.ExecutionOptions;
 import com.mirakyux.export4j.model.ImageResource;
@@ -437,18 +436,101 @@ class Export4jTest {
         }
     }
 
-    @Test void xmlRegionsSectionsAndNotesFailRatherThanBeingDiscarded() throws Exception {
-        var bodies = List.of(
-                "<header height='30'><p>Header</p></header><p>Body</p>",
-                "<section id='one'><p>Section</p></section>",
-                "<notes><note id='n1' paragraph='body' kind='FOOTNOTE'>Note</note></notes><p id='body'>Body</p>");
+    public record SectionData(String heading, String body, String note) { }
+
+    @Test void xmlPreservesSectionsAndSharedRegionsWithNativeBodyFormulas() throws Exception {
+        String template = """
+                <document version="1" content-format="MARKDOWN">
+                  <header height="30"><p id="header">${heading}</p></header>
+                  <footer height="30"><p id="footer">PAGE <page-number width="24"/> OF <page-count width="24"/></p></footer>
+                  <section id="main"><p id="intro">Introduction</p><content id="body" source="body"/></section>
+                  <section id="appendix" first-page-number="8"><p id="appendix-content">Appendix</p></section>
+                </document>
+                """;
         try (var exporter = Export4j.builder(latin()).build()) {
-            for (String body : bodies) {
-                var request = exporter.xml("<document version='1'>" + body + "</document>", Map.of());
-                assertEquals(DocumentTemplate.BindingException.Code.UNSUPPORTED_BLOCK,
-                        assertThrows(DocumentTemplate.BindingException.class, () -> request.pdf(new ByteArrayOutputStream())).code());
-                assertEquals(DocumentTemplate.BindingException.Code.UNSUPPORTED_BLOCK,
-                        assertThrows(DocumentTemplate.BindingException.class, () -> request.docx(new ByteArrayOutputStream())).code());
+            var request = exporter.xml(exporter.prepareXml(template), new SectionData("Shared header", "Result $x^2$.", "Unused"));
+            var pdf = new ByteArrayOutputStream();
+            assertEquals(1, request.pdf(pdf).formulas());
+            try (var document = Loader.loadPDF(pdf.toByteArray())) {
+                assertEquals(2, document.getNumberOfPages());
+                var text = new PDFTextStripper();
+                text.setStartPage(1); text.setEndPage(1);
+                String first = text.getText(document);
+                assertTrue(first.contains("Shared header"));
+                assertTrue(first.contains("Introduction"));
+                assertTrue(first.contains("Result"));
+                assertTrue(first.contains("PAGE 1 OF 2"), first);
+                text.setStartPage(2); text.setEndPage(2);
+                String second = text.getText(document);
+                assertTrue(second.contains("Shared header"));
+                assertTrue(second.contains("Appendix"));
+                assertTrue(second.contains("PAGE 8 OF 2"), second);
+            }
+            var docx = new ByteArrayOutputStream();
+            assertEquals(1, request.docx(docx).formulas());
+            var parts = zip(docx.toByteArray());
+            String body = new String(parts.get("word/document.xml"), StandardCharsets.UTF_8);
+            assertTrue(body.contains("<m:oMath>") || body.contains("<m:oMath "), body);
+            assertTrue(body.contains("<w:pgNumType w:start=\"8\""), body);
+            String header = new String(parts.get("word/header1.xml"), StandardCharsets.UTF_8);
+            assertTrue(header.contains("Shared header"), header);
+            String footer = new String(parts.get("word/footer1.xml"), StandardCharsets.UTF_8);
+            assertTrue(footer.contains("PAGE") && footer.contains("NUMPAGES"), footer);
+        }
+    }
+
+    @Test void xmlPreservesPdfNotesAndRejectsDocxNotesBeforeWriting() throws Exception {
+        String xml = """
+                <document version="1">
+                  <notes>
+                    <note id="foot" paragraph="body" kind="FOOTNOTE">${note}</note>
+                    <note id="end" paragraph="appendix-body" kind="ENDNOTE">Last note</note>
+                  </notes>
+                  <section id="main"><p id="body">Body<note-marker target="foot" width="24"/> after.</p></section>
+                  <section id="appendix"><p id="appendix-body">Appendix</p></section>
+                </document>
+                """;
+        try (var exporter = Export4j.builder(latin()).build()) {
+            var request = exporter.xml(xml, new SectionData("Unused", "Unused", "Footnote content"));
+            var pdf = new ByteArrayOutputStream();
+            request.pdf(pdf);
+            try (var document = Loader.loadPDF(pdf.toByteArray())) {
+                assertEquals(2, document.getNumberOfPages());
+                String text = new PDFTextStripper().getText(document);
+                assertTrue(text.contains("Footnote content"), text);
+                assertTrue(text.contains("Last note"), text);
+            }
+            var docx = new ByteArrayOutputStream();
+            var failure = assertThrows(IOException.class, () -> request.docx(docx));
+            assertTrue(failure.getMessage().contains("footnotes or endnotes"), failure.getMessage());
+            assertEquals(0, docx.size());
+        }
+    }
+
+    @Test void xmlNativeBodyFormulaAllowsSharedHeaderTableAcrossDifferentSectionWidths() throws Exception {
+        String template = """
+                <document version="1" content-format="MARKDOWN">
+                  <header height="48">
+                    <table id="header-table"><columns><column weight="1"/></columns>
+                      <row><cell><p id="header-cell">Shared table</p></cell></row>
+                    </table>
+                  </header>
+                  <section id="main"><content id="body">Equation $x^2$.</content></section>
+                  <section id="appendix">
+                    <page size="LETTER" orientation="LANDSCAPE"/>
+                    <p id="appendix-content">Appendix</p>
+                  </section>
+                </document>
+                """;
+        try (var exporter = Export4j.builder(latin()).build()) {
+            var docx = new ByteArrayOutputStream();
+            assertEquals(1, exporter.xml(template, Map.of()).docx(docx).formulas());
+            var parts = zip(docx.toByteArray());
+            String body = new String(parts.get("word/document.xml"), StandardCharsets.UTF_8);
+            assertTrue(body.contains("<m:oMath>") || body.contains("<m:oMath "), body);
+            for (String part : List.of("word/header1.xml", "word/header2.xml")) {
+                String header = new String(parts.get(part), StandardCharsets.UTF_8);
+                assertTrue(header.contains("Shared table"), header);
             }
         }
     }

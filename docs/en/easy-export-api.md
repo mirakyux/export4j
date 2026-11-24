@@ -1,6 +1,6 @@
 # Configure once, export directly
 
-The development module `export4j-starter` provides the `Export4j` entry point. Declare fonts, global styles, and shared images at application startup. Business calls choose text, Markdown, HTML, or a body XML template and a PDF/DOCX destination. They do not need to assemble an importer, formula processor, layout engine, and DOCX adapter separately. Published `0.1.0-rc.3` does not contain this module.
+The development module `export4j-starter` provides the `Export4j` entry point. Choose text, Markdown, HTML, or an XML template and a PDF/DOCX destination. Applications can use installed fonts or configure fonts, styles, and shared images at startup. Published `0.1.0-rc.3` does not contain this module.
 
 ## One dependency and a minimal call
 
@@ -12,7 +12,27 @@ dependencies {
 }
 ```
 
-Applications directly using other Export4j modules can also import the matching BOM to align versions. See [verification (Chinese)](../verification/easy-export.md) for both metadata modes with only the starter dependency.
+Maven applications can use the same coordinate and set `export4j.version` to the actual development version. The starter works without a separately declared BOM. See the [release guide](releasing.md) for building a local Maven repository.
+
+```xml
+<dependency>
+  <groupId>com.mirakyux.export4j</groupId>
+  <artifactId>export4j-starter</artifactId>
+  <version>${export4j.version}</version>
+</dependency>
+```
+
+```java
+import com.mirakyux.export4j.Export4j;
+import java.nio.file.Path;
+
+try (var export = Export4j.builder().build()) {
+    export.text("Export report").pdf(Path.of("report.pdf"));
+    export.markdown("Report **summary**").docx(Path.of("report.docx"));
+}
+```
+
+The no-argument builder checks a fixed set of system font paths during export. Windows prefers Arial and Microsoft YaHei. macOS tries Arial and Hiragino Sans GB first. On Linux, Latin candidates include Liberation Sans, DejaVu Sans, and Noto Sans, with Noto Sans CJK SC for Chinese. The actual choice depends on installed fonts, supported formats, and embedding permissions. Minimal containers may need font packages. PDF export reports missing glyphs. Use explicit fonts as shown below when layout must match across hosts.
 
 ```java
 import com.mirakyux.export4j.Export4j;
@@ -28,7 +48,7 @@ try (var export = Export4j.builder(body).build()) {
 }
 ```
 
-The current entry still reads the declared font sources, so the files must be valid. Create the output parent directory first. PDF uses explicit physical fonts and strictly checks required glyphs. DOCX preserves ordinary body text, list markers, font families, and style declarations without requiring those local fonts to contain every character. Installed fonts and missing-font or missing-glyph handling belong to the reader's system. The library does not scan system fonts or embed fonts in DOCX. A service can reuse the exporter and close it during application shutdown rather than recreate it for every request.
+Create the output parent directory first. PDF measures and draws with the same physical fonts and honors their embedding flags. DOCX declares font families and styles for the reader to resolve. An application can reuse the exporter and close it at shutdown. Use `FontSource.resource(App.class, "/fonts/body.ttf")` for a classpath resource or `FontSource.collection(path, postScriptName)` for a named font collection member.
 
 The starter transitively includes the existing mathematical module and its reviewed JLaTeXMath dependency. Applications needing fewer dependencies can continue selecting individual modules. See [dependencies and licenses (Chinese)](../dependencies.md).
 
@@ -153,7 +173,7 @@ export.xml(syntax, new GreetingData("Second", "Result: $y^2$.")).docx(secondPath
 
 Existing String overloads remain available. Adding syntax-plan overloads makes `xml(null, data)` ambiguous at compile time; null-rejection tests must select `xml((String) null, data)` or an explicit `XmlTemplate.Syntax` type. Valid nonnull String calls remain available.
 
-The unified entry currently accepts body XML only. Headers/footers, sections, notes, and other structures not covered by this entry's mathematical projection remain explicit failures; they are not discarded. Use the existing [XML](xml-template-api.md) and [document engine](fluent-api.md) entries for those model capabilities. This entry does not replace every XML capability. Data is borrowed until execution and snapshotted by template binding; do not mutate it concurrently during execution.
+The same `xml(...)` entry supports [sections, headers, and footers (Chinese)](../xml-sections-api.md). PDF also supports XML footnotes and endnotes. DOCX explicitly rejects templates with footnotes or endnotes. Template binding snapshots the data during execution. Keep the data unchanged until the request completes.
 
 ## Targets and strict failures
 

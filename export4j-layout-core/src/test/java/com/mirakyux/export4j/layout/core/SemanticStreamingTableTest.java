@@ -114,6 +114,7 @@ class SemanticStreamingTableTest {
         var failure = assertThrows(DocumentLayoutException.class, () -> new SemanticStreamingTableLayouter().layout(specification, source, fonts, Map.of(), limits, Map.of(),
                 (page, notes, sources) -> fail("no page before budget rejection")));
         assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code()); assertEquals(1, source.reads);
+        assertTrue(failure.getMessage().contains("maxBufferedRows exceeded (actual=3, limit=2)"));
     }
 
     @Test void errorsInLaterNestedGroupsRetainGlobalOuterSourceRowsAndUtf16() {

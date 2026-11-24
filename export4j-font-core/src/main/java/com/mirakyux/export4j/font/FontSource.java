@@ -39,6 +39,45 @@ public interface FontSource {
         };
     }
 
+    /**
+     * Reopens an explicit TTC/OTC file and extracts the given zero-based member under the default
+     * collection and font byte limit. A negative member throws IllegalArgumentException.
+     */
+    static FontSource collection(Path file, int member) {
+        if (member < 0) { throw new IllegalArgumentException("font collection member must be nonnegative"); }
+        return collectionSource(file, member, null);
+    }
+
+    /**
+     * Reopens an explicit TTC/OTC file and extracts the unique member with the exact, case-sensitive
+     * PostScript name (OpenType name ID 6). The default collection and font byte limit applies.
+     * A missing or ambiguous member fails when loaded. Invalid PostScript names throw
+     * IllegalArgumentException.
+     */
+    static FontSource collection(Path file, String postScriptName) {
+        Objects.requireNonNull(postScriptName, "postScriptName");
+        if (postScriptName.isEmpty() || postScriptName.length() > 63
+                || postScriptName.chars().anyMatch(ch -> ch < 33 || ch > 126 || "[](){}<>/%".indexOf(ch) >= 0)) {
+            throw new IllegalArgumentException("invalid font collection PostScript name");
+        }
+        return collectionSource(file, -1, postScriptName);
+    }
+
+    private static FontSource collectionSource(Path file, int member, String postScriptName) {
+        var source = Objects.requireNonNull(file, "file").toAbsolutePath().normalize();
+        return new FontSource() {
+            @Override public FontFace load(FontFaceCache cache) throws IOException {
+                return load(cache, () -> { });
+            }
+            @Override public FontFace load(FontFaceCache cache, Runnable checkpoint) throws IOException {
+                Objects.requireNonNull(cache, "cache");
+                Objects.requireNonNull(checkpoint, "checkpoint");
+                byte[] snapshot = FontCollectionLoader.extract(source, member, postScriptName, checkpoint);
+                return cache.loadSnapshot(snapshot, FontFaceCache.identifier(snapshot), checkpoint);
+            }
+        };
+    }
+
     /** 保存编码字节的私有快照，不保存 FontFace。来源本身的编码字节随来源对象存活。 */
     static FontSource bytes(byte[] bytes) {
         Objects.requireNonNull(bytes, "bytes");

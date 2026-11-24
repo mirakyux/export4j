@@ -2,6 +2,9 @@
 package com.mirakyux.export4j.layout.core;
 
 import java.util.Objects;
+import java.util.function.Consumer;
+
+import com.mirakyux.export4j.model.StreamingTable;
 
 /** Positive streaming budgets. Document table rows include source headers and body rows once;
  * output lines and diagnostics include every repeated header presentation. Per-cell and per-row
@@ -65,6 +68,13 @@ public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCod
                 .maxFields(maxFields).maxGeneratedCodePoints(maxGeneratedCodePoints)
                 .maxBufferedRows(maxBufferedRows).maxBufferedCodePoints(maxBufferedCodePoints);
     }
+
+    static String overBudget(String budget, long limit, long used, long additional) {
+        // Each count fits in a signed long, but the attempted sum can exceed Long.MAX_VALUE.
+        return "streaming " + budget + " exceeded (actual=" + Long.toUnsignedString(used + additional)
+                + ", limit=" + limit + ")";
+    }
+
     /** Task-confined builder; build() takes an immutable snapshot. */
     public static final class Builder {
         private DocumentLayoutLimits document = DEFAULT.document;
@@ -80,6 +90,34 @@ public record StreamingTableLimits(DocumentLayoutLimits document, int maxCellCod
         private long bufferedCodePoints = DEFAULT.maxBufferedCodePoints;
         private Builder() { }
         public Builder document(DocumentLayoutLimits value) { document = Objects.requireNonNull(value, "document"); return this; }
+
+        /** Configures the current document limits and snapshots the result when the callback returns. */
+        public Builder documentLimits(Consumer<DocumentLayoutLimits.Builder> configure) {
+            var builder = document.toBuilder();
+            Objects.requireNonNull(configure, "configure").accept(builder);
+            return document(builder.build());
+        }
+
+        /**
+         * Raises the source row, column, and grid slot budgets as needed for the outer table.
+         * Includes source headers once. Nested tables, text, pages, and output have separate budgets.
+         * @param table table specification with its source headers and fixed columns
+         * @param maxBodyRows nonnegative number of body rows to allow
+         * @throws IllegalArgumentException if the body row count is negative or the total exceeds the row index range
+         */
+        public Builder allowTableSize(StreamingTable table, int maxBodyRows) {
+            Objects.requireNonNull(table, "table");
+            long rows = (long) maxBodyRows + table.headerRows().size();
+            if (maxBodyRows < 0 || rows > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("streaming body and header rows exceed the supported row range");
+            }
+            int columns = table.columnWidths().size();
+            return documentLimits(builder -> builder
+                    .maxTableRows(Math.max(document.maxTableRows(), (int) rows))
+                    .maxTableColumns(Math.max(document.maxTableColumns(), columns))
+                    .maxCells(Math.max(document.maxCells(), rows * columns)));
+        }
+
         public Builder maxCellCodePoints(int value) { cell = value; return this; }
         public Builder maxRowCodePoints(int value) { row = value; return this; }
         public Builder maxDiagnostics(long value) { diagnostics = value; return this; }

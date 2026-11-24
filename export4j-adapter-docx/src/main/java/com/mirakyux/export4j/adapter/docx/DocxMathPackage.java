@@ -119,10 +119,15 @@ final class DocxMathPackage {
         var sourceParagraphs = DocxSemanticSupport.paragraphs(document.semantic().body(), document.semantic().drawings());
         for (var comment : document.semantic().comments()) { DocxSemanticSupport.collect(comment.blocks(), sourceParagraphs); }
         var parts = adapter.unzip(new ByteArrayInputStream(encoded)); var roots = DocxPackageEditor.validateSemanticPackage(parts);
+        var equationParagraphIds = new HashSet<String>();
+        for (var equation : document.equations()) { equationParagraphIds.add(equation.anchor().paragraphId()); }
         var paragraphs = new HashMap<String, Element>();
         for (var root : roots.values()) {
             for (var paragraph : DocxSemanticXml.all(root, W, "p")) {
-                String id = paragraph.getAttributeNS(OD, "id"); if (!id.isEmpty() && paragraphs.putIfAbsent(id, paragraph) != null) { throw new IOException("duplicate equation paragraph ID"); }
+                String id = paragraph.getAttributeNS(OD, "id");
+                if (equationParagraphIds.contains(id) && paragraphs.putIfAbsent(id, paragraph) != null) {
+                    throw new IOException("native equation anchor appears in multiple Word parts");
+                }
             }
         }
         var ordered = new ArrayList<>(document.equations()); ordered.sort(Comparator.comparing((DocxMathDocument.Equation equation) -> equation.anchor().paragraphId()).thenComparing(Comparator.comparingInt((DocxMathDocument.Equation equation) -> equation.anchor().utf16()).reversed()));

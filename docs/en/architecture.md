@@ -91,7 +91,7 @@ flowchart TD
 
 [OperationFonts](../../export4j-starter/src/main/java/com/mirakyux/export4j/OperationFonts.java) projects one declaration into input-parser roles, PDF font groups, and Word font slots. It loads each source object once per operation. A business role's regular/bold/italic/boldItalic entries map to explicit physical variants.
 
-PDF uses `MathContent.compileVisual`; DOCX uses `compileDocx`. Only the selected target projection runs. Exporting both targets sequentially from the same `Request` still performs two independent operations, loading sources and binding data again. To parse once and obtain both models, use the dual-target [MathContent](rich-content-api.md) entry directly.
+PDF and DOCX each run their own projection. XML uses `renderComplete` to bind sections, page regions, and notes before projection. Exporting both targets from the same `Request` reads sources and binds data twice. For both body models from one parse, use the dual-target [MathContent](rich-content-api.md) entry directly.
 
 ### XML syntax preparation and data binding
 
@@ -141,7 +141,7 @@ Model-layer `RelativeWeights` shares finite-positive weight snapshots and alloca
 | Layout IR, Display List, and returned results | Caller retaining the result | Complete/page-at-a-time paths retain different amounts; TTL does not invalidate font, layout, or result objects already held by callers |
 | Input/output streams and paths | Caller closes borrowed streams; the operation closes streams it opens | A failed stream may contain an output prefix; path output protects the previous target under its atomic-commit contract |
 
-Word font-slot declarations and PDF physical-font validation are different. DOCX declares font families for the receiving application without requiring installation there or implying embedding. PDF measures and embeds the same explicit font, fails on missing glyphs by default, and performs no implicit system-font lookup.
+DOCX declares font families for the receiving application. PDF measures and embeds the same physical font and fails on missing glyphs by default. The no-argument `Export4j.builder()` selects fonts from known local paths at the starter boundary. The explicit entry point and core engine use the fonts supplied by the caller.
 
 Font expiry releases cache references only. Caller-held faces, source snapshots, and active parser leases can extend object lifetimes. Production code does not call `System.gc()` or promise an RSS drop at the TTL deadline. The formula library's own fonts and internal caches have separate lifecycles. See the [font-cache API](font-cache-api.md) and its verification record.
 

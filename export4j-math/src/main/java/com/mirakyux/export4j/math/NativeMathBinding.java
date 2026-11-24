@@ -18,6 +18,7 @@ import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.NumberedItem;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphFormat;
+import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.Section;
 import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.SemanticTree;
@@ -55,11 +56,22 @@ final class NativeMathBinding {
     }
 
     static DocxMathDocument bind(Document source, Map<String, Equation> expressions, boolean preserveAppearance) {
+        return bind(new SectionedDocument(source.metadata(), List.of(
+                new Section("math-body", source.pageSettings(), source.blocks(), 0))), expressions, preserveAppearance);
+    }
+
+    static DocxMathDocument bind(SectionedDocument source, Map<String, Equation> expressions, boolean preserveAppearance) {
         var state = new NativeMathBinding(expressions, preserveAppearance);
-        var blocks = state.rewrite(source.blocks());
+        var regions = new HashMap<PageRegion, PageRegion>();
+        var sections = new ArrayList<Section>();
+        for (var section : source.sections()) {
+            var blocks = state.rewrite(section.blocks());
+            var bands = section.pageRegions().map((name, band) -> regions.computeIfAbsent(band,
+                    value -> value.toBuilder().blocks(state.rewrite(value.blocks())).build()));
+            sections.add(new Section(section.id(), section.pageSettings(), blocks, section.firstPageNumber(), bands));
+        }
         if (state.bound.size() != expressions.size()) { throw unsupported(); }
-        return new DocxMathDocument(new SectionedDocument(source.metadata(), List.of(
-                new Section("math-body", source.pageSettings(), blocks, 0))), state.equations);
+        return new DocxMathDocument(new SectionedDocument(source.metadata(), sections, source.navigation()), state.equations);
     }
 
     static void verifySlots(Document source, Collection<InlineVector> slots) {

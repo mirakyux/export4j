@@ -93,14 +93,18 @@ final class OperationFonts {
     Map<String, List<FontFace>> roles() { return roles; }
     void validate(ContentOptions.Resolved options) {
         ExecutionContext.checkpoint();
-        requireRole(options.fontRole());
+        requireRole(options.fontRole(), "body");
         if (options.format() == ContentOptions.Format.MARKDOWN || options.format() == ContentOptions.Format.HTML) {
-            requireRole(options.styles().cellText().fontRole());
-            for (int level = 1; level <= 6; level++) { requireRole(options.styles().heading(level).text().fontRole()); }
+            requireRole(options.styles().cellText().fontRole(), "table cells");
+            for (int level = 1; level <= 6; level++) {
+                requireRole(options.styles().heading(level).text().fontRole(), "heading level " + level);
+            }
         }
     }
-    private void requireRole(String role) {
-        if (!roles.containsKey(role)) { throw new IllegalArgumentException("content requires an undeclared physical font role"); }
+    private void requireRole(String role, String area) {
+        if (!roles.containsKey(role)) {
+            throw new IllegalArgumentException("undeclared font role '" + role + "' for " + area);
+        }
     }
     SourceContentParser checked(SourceContentParser parser) {
         return () -> {

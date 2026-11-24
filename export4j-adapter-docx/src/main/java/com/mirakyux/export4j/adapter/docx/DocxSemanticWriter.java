@@ -81,7 +81,12 @@ final class DocxSemanticWriter {
         if (settings != null) { var update = child(settings, "updateFields"); if (update != null) { settings.removeChild(update); } }
         for (var root : roots.values()) { for (var field : all(root, W, "fldSimple")) { field.removeAttributeNS(W, "dirty"); } }
         sourceParagraphs = DocxSemanticSupport.paragraphs(document.body(), document.drawings());
-        index();
+        // Only native edits need an addressable paragraph index. The ordinary writer may
+        // repeat the same semantic header table in parts with different section widths.
+        if (!document.drawings().isEmpty() || !document.comments().isEmpty() || !document.revisions().isEmpty()
+                || !document.controls().isEmpty() || !document.contents().isEmpty()) {
+            index();
+        }
         for (var root : roots.values()) { for (var properties : all(root, WP, "docPr")) { nextIdentity = Math.max(nextIdentity, Integer.parseInt(properties.getAttribute("id")) + 1); } }
         // Nested textboxes require their anchors to exist first. Iterate only while real progress occurs.
         var remaining = new ArrayList<>(document.drawings());

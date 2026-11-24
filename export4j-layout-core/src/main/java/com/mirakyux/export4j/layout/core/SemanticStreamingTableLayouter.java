@@ -80,7 +80,9 @@ public final class SemanticStreamingTableLayouter {
             var settings = table.pageSettings();
             bounds = new Rect(settings.margins().left(), settings.margins().top(), settings.contentWidth(), settings.contentHeight());
             layouter = new DocumentLayouter(new ParagraphLayouter(), limits.document());
-            if (table.columnWidths().size() > limits.document().maxTableColumns()) { throw fail("streaming column budget exceeded", -1); }
+            if (table.columnWidths().size() > limits.document().maxTableColumns()) {
+                throw budget(-1, "maxTableColumns", limits.document().maxTableColumns(), 0, table.columnWidths().size());
+            }
             for (var entry : notes.entrySet()) {
                 if (entry.getKey() < 0 || !Double.isFinite(entry.getValue()) || entry.getValue() <= 0) {
                     throw new IllegalArgumentException("invalid streaming footnote reservation");
@@ -195,7 +197,9 @@ public final class SemanticStreamingTableLayouter {
             int required = 1;
             long before = points;
             while (rows.size() < required) {
-                if (rows.size() == limits.maxBufferedRows()) { throw fail("streaming buffered row budget exceeded", rowIndex()); }
+                if (rows.size() == limits.maxBufferedRows()) {
+                    throw budget(rowIndex(), "maxBufferedRows", limits.maxBufferedRows(), rows.size(), 1);
+                }
                 TableRow row = rows.isEmpty() ? first : Objects.requireNonNull(source.next(), "row source returned null")
                         .orElseThrow(() -> geometry("streaming source ended within vertical span", rowIndex(), -1));
                 int relative = rows.size(); int column = 0;
@@ -204,7 +208,9 @@ public final class SemanticStreamingTableLayouter {
                     if (cell.rowSpan() > 1 && !table.allowRowSpans()) { throw new DocumentLayoutException(DocumentLayoutException.Code.UNSUPPORTED_COMPONENT,
                             table.id(), 0, page, rowIndex(), column, -1, "streaming vertical spans require allowRowSpans", null); }
                     if (cell.columnSpan() > until.length - column) { throw geometry("streaming group exceeds column grid", rowIndex(), column); }
-                    if ((long) relative + cell.rowSpan() > limits.maxBufferedRows()) { throw fail("streaming connected group budget exceeded", rowIndex()); }
+                    if ((long) relative + cell.rowSpan() > limits.maxBufferedRows()) {
+                        throw budget(rowIndex(), "maxBufferedRows", limits.maxBufferedRows(), relative, cell.rowSpan());
+                    }
                     for (int covered = column; covered < column + cell.columnSpan(); covered++) {
                         if (until[covered] > relative) { throw geometry("streaming vertical spans overlap", rowIndex(), column); }
                         until[covered] = relative + cell.rowSpan();
@@ -215,7 +221,9 @@ public final class SemanticStreamingTableLayouter {
                 while (column < until.length && until[column] > relative) { column++; }
                 if (column != until.length) { throw geometry("streaming group does not cover all columns", rowIndex(), column); }
                 countRow(row, rowIndex()); rows.add(row); bodyRows++;
-                if (points - before > limits.maxBufferedCodePoints()) { throw fail("streaming buffered text budget exceeded", rowIndex() - 1); }
+                if (points - before > limits.maxBufferedCodePoints()) {
+                    throw budget(rowIndex() - 1, "maxBufferedCodePoints", limits.maxBufferedCodePoints(), 0, points - before);
+                }
             }
             return List.copyOf(rows);
         }
@@ -223,16 +231,25 @@ public final class SemanticStreamingTableLayouter {
         private int rowIndex() { return Math.toIntExact(table.headerRows().size() + bodyRows); }
 
         private void countRow(TableRow row, int index) {
-            if (index >= limits.document().maxTableRows()) { throw fail("streaming source row budget exceeded", index); }
+            if (index >= limits.document().maxTableRows()) {
+                throw budget(index, "maxTableRows", limits.document().maxTableRows(), index, 1);
+            }
             long before = points; long[] runs = {0};
             for (var cell : row.cells()) { countCell(cell, index, runs); }
-            if (points - before > limits.maxRowCodePoints() || runs[0] > limits.maxRowInlines()) { throw fail("streaming source row budget exceeded", index); }
+            if (points - before > limits.maxRowCodePoints()) {
+                throw budget(index, "maxRowCodePoints", limits.maxRowCodePoints(), 0, points - before);
+            }
+            if (runs[0] > limits.maxRowInlines()) {
+                throw budget(index, "maxRowInlines", limits.maxRowInlines(), 0, runs[0]);
+            }
         }
 
         private void countCell(TableCell cell, int row, long[] runs) {
             ExecutionContext.checkpoint();
             long coverage = (long) cell.columnSpan() * cell.rowSpan();
-            if (coverage > limits.document().maxCells() - slots) { throw fail("streaming source cell budget exceeded", row); }
+            if (coverage > limits.document().maxCells() - slots) {
+                throw budget(row, "maxCells", limits.document().maxCells(), slots, coverage);
+            }
             slots += coverage; cells++;
             if (cell.hasBlocks()) {
                 for (var block : cell.blocks()) { countBlock(block, row, runs); }
@@ -241,12 +258,17 @@ public final class SemanticStreamingTableLayouter {
 
         private void countBlock(Block block, int row, long[] runs) {
             ExecutionContext.checkpoint();
-            if (++nodes > limits.document().maxParagraphs()) { throw fail("streaming semantic node budget exceeded", row); }
+            if (++nodes > limits.document().maxParagraphs()) {
+                throw budget(row, "maxParagraphs", limits.document().maxParagraphs(), 0, nodes);
+            }
             if (!sourceIds.add(block.id())) { throw new IllegalArgumentException("streaming semantic block IDs must be unique"); }
             if (block instanceof Paragraph paragraph) { countText(paragraph.text(), paragraph.inlines().size(), paragraph.vectors(), row, runs); }
             else if (block instanceof Table nested) {
-                if (nested.rows().size() > limits.document().maxTableRows() || nested.columns().size() > limits.document().maxTableColumns()) {
-                    throw fail("streaming nested grid budget exceeded", row);
+                if (nested.rows().size() > limits.document().maxTableRows()) {
+                    throw budget(row, "maxTableRows", limits.document().maxTableRows(), 0, nested.rows().size());
+                }
+                if (nested.columns().size() > limits.document().maxTableColumns()) {
+                    throw budget(row, "maxTableColumns", limits.document().maxTableColumns(), 0, nested.columns().size());
                 }
                 for (var nestedRow : nested.rows()) { for (var cell : nestedRow.cells()) { countCell(cell, row, runs); } }
             } else { throw new IllegalArgumentException("unsupported streaming cell block"); }
@@ -265,16 +287,28 @@ public final class SemanticStreamingTableLayouter {
                     throw fail("streaming vector source geometry budget exceeded", row);
                 }
             }
-            if (count > limits.maxCellCodePoints() || count > limits.document().maxCodePoints() - points
-                    || Math.max(1, explicitRuns) > limits.maxCellInlines()) { throw fail("streaming leaf text budget exceeded", row); }
-            points += count; runs[0] += Math.max(1, explicitRuns);
+            int inlineCount = Math.max(1, explicitRuns);
+            if (count > limits.maxCellCodePoints()) {
+                throw budget(row, "maxCellCodePoints", limits.maxCellCodePoints(), 0, count);
+            }
+            if (count > limits.document().maxCodePoints() - points) {
+                throw budget(row, "maxCodePoints", limits.document().maxCodePoints(), points, count);
+            }
+            if (inlineCount > limits.maxCellInlines()) {
+                throw budget(row, "maxCellInlines", limits.maxCellInlines(), 0, inlineCount);
+            }
+            points += count; runs[0] += inlineCount;
         }
 
         private void emit() throws IOException {
             ExecutionContext.checkpoint();
-            if (page >= limits.document().maxPages()) { throw fail("streaming page budget exceeded", -1); }
+            if (page >= limits.document().maxPages()) {
+                throw budget(-1, "maxPages", limits.document().maxPages(), page, 1);
+            }
             long added = current.stream().flatMap(row -> row.cells().stream()).mapToLong(CellFragment::lineCount).sum();
-            if (added > limits.document().maxLines() - lines) { throw fail("streaming output line budget exceeded", -1); }
+            if (added > limits.document().maxLines() - lines) {
+                throw budget(-1, "maxLines", limits.document().maxLines(), lines, added);
+            }
             lines += added;
             var elements = current.isEmpty() ? List.<com.mirakyux.export4j.layout.LayoutFragment>of() :
                     List.<com.mirakyux.export4j.layout.LayoutFragment>of(new TableFragment(table.id(), 0,
@@ -283,6 +317,10 @@ public final class SemanticStreamingTableLayouter {
             ExecutionContext.checkpoint();
         }
         private void nextPage() { page++; current.clear(); currentNotes.clear(); pageSources.clear(); used = 0; notesHeight = 0; pageHasBody = false; }
+        private DocumentLayoutException budget(int row, String name, long limit, long used, long additional) {
+            return fail(StreamingTableLimits.overBudget(name, limit, used, additional), row);
+        }
+
         private DocumentLayoutException fail(String message, int row) {
             return new DocumentLayoutException(DocumentLayoutException.Code.BUDGET_EXCEEDED, table.id(), 0, page, row, -1, -1, message, null);
         }

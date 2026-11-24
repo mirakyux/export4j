@@ -146,8 +146,7 @@ public final class StreamingTableLayouter {
             this.roles = roles;
             this.diagnostics = diagnostics; this.limits = limits;
             if (table.columnWidths().size() > limits.document().maxTableColumns()) {
-                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, -1, -1, -1,
-                        "streaming column budget exceeded", null);
+                throw budget(-1, -1, -1, "maxTableColumns", limits.document().maxTableColumns(), 0, table.columnWidths().size());
             }
             var settings = table.pageSettings();
             bounds = new Rect(settings.margins().left(), settings.margins().top(), settings.contentWidth(), settings.contentHeight());
@@ -161,11 +160,10 @@ public final class StreamingTableLayouter {
         Summary layout() throws IOException {
             ExecutionContext.progress("STREAMING_TABLE", table.id(), 0, 0, -1);
             if (table.headerRows().size() > limits.document().maxTableRows()) {
-                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, -1, -1, -1, "streaming row budget exceeded", null);
+                throw budget(-1, -1, -1, "maxTableRows", limits.document().maxTableRows(), 0, table.headerRows().size());
             }
             if (table.expectedPages() > limits.document().maxPages()) {
-                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, -1, -1, -1,
-                        "declared page total exceeds streaming page budget", null);
+                throw budget(-1, -1, -1, "maxPages", limits.document().maxPages(), 0, table.expectedPages());
             }
             for (int row = 0; row < table.headerRows().size(); row++) {
                 var measured = measure(table.headerRows().get(row), row);
@@ -227,7 +225,7 @@ public final class StreamingTableLayouter {
         private MeasuredRow measure(TableRow row, int rowIndex, int[] coveredUntil, int groupStart) {
             ExecutionContext.checkpoint();
             if (rowIndex >= limits.document().maxTableRows()) {
-                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, -1, -1, "streaming source row budget exceeded", null);
+                throw budget(rowIndex, -1, -1, "maxTableRows", limits.document().maxTableRows(), rowIndex, 1);
             }
             long rowPoints = 0;
             int rowInlines = 0;
@@ -250,12 +248,11 @@ public final class StreamingTableLayouter {
                 }
                 if (coveredUntil != null) {
                     if ((long) rowIndex - groupStart + cell.rowSpan() > limits.maxBufferedRows()) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, -1,
-                                "streaming connected row group exceeds buffered row budget", null);
+                        throw budget(rowIndex, column, -1, "maxBufferedRows", limits.maxBufferedRows(),
+                                rowIndex - groupStart, cell.rowSpan());
                     }
                     if ((long) rowIndex + cell.rowSpan() > limits.document().maxTableRows()) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, -1,
-                                "streaming vertical span exceeds source row budget", null);
+                        throw budget(rowIndex, column, -1, "maxTableRows", limits.document().maxTableRows(), rowIndex, cell.rowSpan());
                     }
                     for (int covered = column; covered < column + cell.columnSpan(); covered++) {
                         if (coveredUntil[covered] > rowIndex) {
@@ -276,8 +273,7 @@ public final class StreamingTableLayouter {
                 }
                 if (cell.inlines().isEmpty()) {
                     if (rowInlines == limits.maxRowInlines()) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, 0,
-                                "streaming source inline run budget exceeded", null);
+                        throw budget(rowIndex, column, 0, "maxRowInlines", limits.maxRowInlines(), rowInlines, 1);
                     }
                     rowInlines++;
                 } else {
@@ -285,9 +281,11 @@ public final class StreamingTableLayouter {
                     int offset = 0;
                     for (var inline : cell.inlines()) {
                         ExecutionContext.checkpoint();
-                        if (cellInlines == limits.maxCellInlines() || rowInlines == limits.maxRowInlines()) {
-                            throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, offset,
-                                    "streaming source inline run budget exceeded", null);
+                        if (cellInlines == limits.maxCellInlines()) {
+                            throw budget(rowIndex, column, offset, "maxCellInlines", limits.maxCellInlines(), cellInlines, 1);
+                        }
+                        if (rowInlines == limits.maxRowInlines()) {
+                            throw budget(rowIndex, column, offset, "maxRowInlines", limits.maxRowInlines(), rowInlines, 1);
                         }
                         cellInlines++; rowInlines++;
                         String role = inline.style().fontRole();
@@ -300,19 +298,14 @@ public final class StreamingTableLayouter {
                 }
                 long slots = (long) cell.columnSpan() * cell.rowSpan();
                 if (slots > limits.document().maxCells() - sourceSlots) {
-                    throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, -1, "streaming source cell budget exceeded", null);
+                    throw budget(rowIndex, column, -1, "maxCells", limits.document().maxCells(), sourceSlots, slots);
                 }
                 sourceSlots += slots;
                 sourceCells++;
                 int cellPoints = 0;
                 for (int offset = 0; offset < cell.text().length();) {
                     if ((cellPoints & 1023) == 0) { ExecutionContext.checkpoint(); }
-                    if (cellPoints == limits.maxCellCodePoints() || rowPoints == limits.maxRowCodePoints()
-                            || sourceCodePoints == limits.document().maxCodePoints()
-                            || coveredUntil != null && sourceCodePoints - groupStartCodePoints == limits.maxBufferedCodePoints()) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, offset,
-                                "streaming source code point budget exceeded", null);
-                    }
+                    checkCodePointBudget(rowIndex, column, offset, cellPoints, rowPoints, 1, coveredUntil != null);
                     offset += Character.charCount(cell.text().codePointAt(offset));
                     cellPoints++; rowPoints++; sourceCodePoints++;
                 }
@@ -320,12 +313,7 @@ public final class StreamingTableLayouter {
                     ExecutionContext.checkpoint();
                     var vector = span.vector();
                     int points = vector.logicalText().codePointCount(0, vector.logicalText().length());
-                    if (points > limits.maxCellCodePoints() - cellPoints || points > limits.maxRowCodePoints() - rowPoints
-                            || points > limits.document().maxCodePoints() - sourceCodePoints
-                            || coveredUntil != null && points > limits.maxBufferedCodePoints() - (sourceCodePoints - groupStartCodePoints)) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, rowIndex, column, span.sourceIndex(),
-                                "streaming vector logical text budget exceeded", null);
-                    }
+                    checkCodePointBudget(rowIndex, column, span.sourceIndex(), cellPoints, rowPoints, points, coveredUntil != null);
                     cellPoints += points; rowPoints += points; sourceCodePoints += points;
                     // Count occurrences conservatively; do not retain an unbounded resource-ID set across a stream.
                     sourceVectorSegments += vector.resource().segmentCount();
@@ -534,7 +522,7 @@ public final class StreamingTableLayouter {
         private void beginPage() {
             ExecutionContext.checkpoint();
             if (pageIndex >= limits.document().maxPages()) {
-                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, -1, -1, -1, "streaming page budget exceeded", null);
+                throw budget(-1, -1, -1, "maxPages", limits.document().maxPages(), pageIndex, 1);
             }
             if (table.expectedPages() > 0 && pageIndex >= table.expectedPages()) {
                 throw failure(DocumentLayoutException.Code.INVALID_GEOMETRY, -1, -1, -1,
@@ -576,14 +564,13 @@ public final class StreamingTableLayouter {
                 for (var box : line.fields()) {
                     ExecutionContext.checkpoint();
                     if (outputFields == limits.maxFields()) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, box.sourceIndex(),
-                                "streaming field presentation budget exceeded", null);
+                        throw budget(row, column, box.sourceIndex(), "maxFields", limits.maxFields(), outputFields, 1);
                     }
                     outputFields++;
                     String value = Integer.toString(box.field().kind() == InlineField.Kind.PAGE ? pageIndex + 1 : table.expectedPages());
                     if (value.length() > limits.maxGeneratedCodePoints() - generatedCodePoints) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, box.sourceIndex(),
-                                "streaming generated field value budget exceeded", null);
+                        throw budget(row, column, box.sourceIndex(), "maxGeneratedCodePoints", limits.maxGeneratedCodePoints(),
+                                generatedCodePoints, value.length());
                     }
                     generatedCodePoints += value.length();
                     var style = box.field().style();
@@ -599,8 +586,7 @@ public final class StreamingTableLayouter {
                     ink.set(box.outlineIndex(), resolved.outline());
                     for (var diagnostic : resolved.diagnostics()) {
                         if (diagnosticCount == limits.maxDiagnostics()) {
-                            throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, box.sourceIndex(),
-                                    "streaming diagnostic budget exceeded", null);
+                            throw budget(row, column, box.sourceIndex(), "maxDiagnostics", limits.maxDiagnostics(), diagnosticCount, 1);
                         }
                         diagnosticCount++;
                         diagnostics.accept(new StreamingTableDiagnostic(table.id(), pageIndex, row, column, diagnostic,
@@ -626,8 +612,7 @@ public final class StreamingTableLayouter {
                 }
             }
             if (outputLinks == limits.maxLinks()) {
-                throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, offset,
-                        "streaming output link budget exceeded, including repeated headers", null);
+                throw budget(row, column, offset, "maxLinks", limits.maxLinks(), outputLinks, 1);
             }
             outputLinks++;
             currentLinks.add(link);
@@ -637,16 +622,16 @@ public final class StreamingTableLayouter {
             ExecutionContext.checkpoint();
             for (var row : current) {
                 for (var cell : row.cells()) {
-                    if (cell.layout().lines().size() > limits.document().maxLines() - outputLines) {
-                        throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row.rowIndex(), cell.columnIndex(), -1,
-                                "streaming output line budget exceeded, including repeated headers", null);
+                    int lineCount = cell.layout().lines().size();
+                    if (lineCount > limits.document().maxLines() - outputLines) {
+                        throw budget(row.rowIndex(), cell.columnIndex(), -1, "maxLines", limits.document().maxLines(), outputLines, lineCount);
                     }
-                    outputLines += cell.layout().lines().size();
+                    outputLines += lineCount;
                     for (var diagnostic : cell.layout().diagnostics()) {
                         ExecutionContext.checkpoint();
                         if (diagnosticCount == limits.maxDiagnostics()) {
-                            throw failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row.rowIndex(), cell.columnIndex(), diagnostic.sourceStart(),
-                                    "streaming diagnostic budget exceeded", null);
+                            throw budget(row.rowIndex(), cell.columnIndex(), diagnostic.sourceStart(), "maxDiagnostics",
+                                    limits.maxDiagnostics(), diagnosticCount, 1);
                         }
                         diagnosticCount++;
                         diagnostics.accept(new StreamingTableDiagnostic(table.id(), pageIndex, row.rowIndex(), cell.columnIndex(), diagnostic));
@@ -660,6 +645,30 @@ public final class StreamingTableLayouter {
             ExecutionContext.progress("STREAMING_PAGE", table.id(), pageIndex, pageIndex, -1);
             pages.accept(page, List.copyOf(currentLinks));
             ExecutionContext.checkpoint();
+        }
+
+        private void checkCodePointBudget(int row, int column, int offset, int cellPoints, long rowPoints,
+                int additional, boolean bufferedGroup) {
+            if (additional > limits.maxCellCodePoints() - cellPoints) {
+                throw budget(row, column, offset, "maxCellCodePoints", limits.maxCellCodePoints(), cellPoints, additional);
+            }
+            if (additional > limits.maxRowCodePoints() - rowPoints) {
+                throw budget(row, column, offset, "maxRowCodePoints", limits.maxRowCodePoints(), rowPoints, additional);
+            }
+            if (additional > limits.document().maxCodePoints() - sourceCodePoints) {
+                throw budget(row, column, offset, "maxCodePoints", limits.document().maxCodePoints(), sourceCodePoints, additional);
+            }
+            if (bufferedGroup) {
+                long buffered = sourceCodePoints - groupStartCodePoints;
+                if (additional > limits.maxBufferedCodePoints() - buffered) {
+                    throw budget(row, column, offset, "maxBufferedCodePoints", limits.maxBufferedCodePoints(), buffered, additional);
+                }
+            }
+        }
+
+        private DocumentLayoutException budget(int row, int column, int offset, String name, long limit, long used, long additional) {
+            return failure(DocumentLayoutException.Code.BUDGET_EXCEEDED, row, column, offset,
+                    StreamingTableLimits.overBudget(name, limit, used, additional), null);
         }
 
         private DocumentLayoutException failure(DocumentLayoutException.Code code, int row, int column,

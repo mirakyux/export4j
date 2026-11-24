@@ -22,14 +22,21 @@ import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineContent;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.InlineField;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.InlineText;
 import com.mirakyux.export4j.model.InlineVector;
 import com.mirakyux.export4j.model.NumberedItem;
+import com.mirakyux.export4j.model.Note;
+import com.mirakyux.export4j.model.DocumentTemplate;
+import com.mirakyux.export4j.model.PageOverlay;
+import com.mirakyux.export4j.model.PageRegion;
 import com.mirakyux.export4j.model.PageSettings;
 import com.mirakyux.export4j.model.Paragraph;
 import com.mirakyux.export4j.model.ParagraphAlignment;
 import com.mirakyux.export4j.model.ParagraphFormat;
+import com.mirakyux.export4j.model.Section;
+import com.mirakyux.export4j.model.SectionedDocument;
 import com.mirakyux.export4j.model.SemanticTree;
 import com.mirakyux.export4j.model.Table;
 import com.mirakyux.export4j.model.TableCell;
@@ -41,6 +48,7 @@ import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -104,9 +112,23 @@ public final class MathContent {
         }
     }
 
+    /** Visual projection of a complete document. Its notes remain available for layout. */
+    public record SectionedVisualResult(DocumentTemplate.Rendered document, List<Formula> formulas,
+            List<Degradation> degradations) {
+        public SectionedVisualResult {
+            Objects.requireNonNull(document, "document");
+            formulas = List.copyOf(formulas);
+            degradations = List.copyOf(degradations);
+        }
+    }
+
     /** 可用同一个解析器编写 Java 模板或编译 XML；返回后不保留编写器及中间文档。 */
     @FunctionalInterface
     public interface Author { Document compile(MathContentSource importer) throws IOException; }
+
+    /** Binds sections, regions and notes within a single synchronous source session. */
+    @FunctionalInterface
+    public interface SectionedAuthor { DocumentTemplate.Rendered compile(MathContentSource importer) throws IOException; }
 
     private final ContentOptions.Resolved defaults;
     private final ImportLimits limits;
@@ -156,8 +178,8 @@ public final class MathContent {
     /** 所有公式额度跨回调内的源块累计，预算与取消异常不能进入降级分支。 */
     public Result compile(Author author) throws IOException {
         var capture = new Capture();
-        var source = source(author, capture);
-        var visual = new Projection(capture, Target.VISUAL, source).document(source);
+        var source = source(author::compile, capture);
+        var visual = new Projection(capture, Target.VISUAL).document(source);
         var docx = docx(source, capture);
         return new Result(visual, docx, formulas(capture), capture.degradations);
     }
@@ -167,8 +189,8 @@ public final class MathContent {
      */
     public VisualResult compileVisual(Author author) throws IOException {
         var capture = new Capture();
-        var source = source(author, capture);
-        var visual = new Projection(capture, Target.VISUAL, source).document(source);
+        var source = source(author::compile, capture);
+        var visual = new Projection(capture, Target.VISUAL).document(source);
         return new VisualResult(visual, formulas(capture), capture.degradations);
     }
 
@@ -178,18 +200,44 @@ public final class MathContent {
      */
     public DocxResult compileDocx(Author author) throws IOException {
         var capture = new Capture();
-        var source = source(author, capture);
+        var source = source(author::compile, capture);
         return new DocxResult(docx(source, capture), formulas(capture), capture.degradations);
     }
 
-    private Document source(Author author, Capture capture) throws IOException {
+    /** Compiles a complete document for visual layout using each section's available width. */
+    public SectionedVisualResult compileSectionedVisual(SectionedAuthor author) throws IOException {
+        var capture = new Capture();
+        var source = source(author::compile, capture);
+        var projection = new Projection(capture, Target.VISUAL);
+        var visual = projection.sectioned(source);
+        return new SectionedVisualResult(visual, formulas(capture), capture.degradations);
+    }
+
+    /** Compiles sections and repeating bands for native Word output. Footnotes and endnotes
+     * require a native Word mapping and cause an IOException. */
+    public DocxResult compileSectionedDocx(SectionedAuthor author) throws IOException {
+        var capture = new Capture();
+        var source = source(author::compile, capture);
+        if (!source.notes().isEmpty()) {
+            throw new IOException("DOCX export does not support XML footnotes or endnotes");
+        }
+        var projection = new Projection(capture, Target.DOCX);
+        var body = projection.sectioned(source).document();
+        return new DocxResult(NativeMathBinding.bind(body, projection.nativeEquations, true),
+                formulas(capture), capture.degradations);
+    }
+
+    @FunctionalInterface
+    private interface SourceAuthor<T> { T compile(MathContentSource importer) throws IOException; }
+
+    private <T> T source(SourceAuthor<T> author, Capture capture) throws IOException {
         var builder = ContentImporter.builder().defaults(defaults).limits(limits)
                 .maxFormulas(maxFormulas).maxFormulaUtf16(options.maxSourceLength())
                 .maxVectorSegments(maxSegments).pageSettings(pageSettings).metadata(metadata)
                 .formulaProcessor(capture);
         images.forEach(builder::image);
         families.forEach((name, roles) -> builder.fontFamily(name, roles.get(0), roles.get(1), roles.get(2), roles.get(3)));
-        Document source;
+        T source;
         try (var sources = new MathContentSource(builder.build(), defaults, limits, metadata, pageSettings)) {
             source = Objects.requireNonNull(Objects.requireNonNull(author, "author").compile(sources), "document");
         }
@@ -198,7 +246,7 @@ public final class MathContent {
     }
 
     private DocxMathDocument docx(Document source, Capture capture) throws IOException {
-        var nativeProjection = new Projection(capture, Target.DOCX, source);
+        var nativeProjection = new Projection(capture, Target.DOCX);
         var nativeSource = nativeProjection.document(source);
         return NativeMathBinding.bind(nativeSource, nativeProjection.nativeEquations, true);
     }
@@ -294,22 +342,93 @@ public final class MathContent {
     private record Occurrence(Formula formula, MathOptions options, InlineStyle appearance,
             InlineVector vector, InlineVector slot, MathException failure) { }
 
+    private record RegionSource(String kind, PageRegion content) { }
+
     private final class Projection {
         private final Capture capture;
         private final Target target;
         private final Set<String> ids = new HashSet<>();
         private final Set<Occurrence> visited = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
         private final Map<String, NativeMathBinding.Equation> nativeEquations = new LinkedHashMap<>();
+        private final Map<String, String> noteMarkers = new LinkedHashMap<>();
+        private final Map<String, String> trailingParagraphs = new LinkedHashMap<>();
         private int sequence;
-        private Projection(Capture capture, Target target, Document source) {
+        private Projection(Capture capture, Target target) {
             this.capture = capture; this.target = target;
-            SemanticTree.walk(source.blocks(), visit -> ids.add(visit.block().id()));
         }
         private Document document(Document source) throws IOException {
+            rememberIds(source.blocks());
             var blocks = blocks(source.blocks(), source.pageSettings().contentWidth());
-            if (visited.size() != capture.ordered.size()) { throw new IllegalArgumentException("compiled formula was omitted or duplicated by author"); }
+            checkOccurrences();
             return new Document(source.metadata(), source.pageSettings(), blocks);
         }
+
+        private DocumentTemplate.Rendered sectioned(DocumentTemplate.Rendered source) throws IOException {
+            var document = source.document();
+            var widths = new LinkedHashMap<RegionSource, Double>();
+            for (var section : document.sections()) {
+                rememberIds(section.blocks());
+                section.pageRegions().map((name, band) -> {
+                    var key = regionSource(name, band);
+                    if (!widths.containsKey(key)) { rememberIds(band.blocks()); }
+                    widths.merge(key, regionWidth(section, name, band), Math::min);
+                    return band;
+                });
+            }
+            source.notes().forEach(note -> ids.add(note.id()));
+            var projectedRegions = new LinkedHashMap<RegionSource, PageRegion>();
+            var sections = new ArrayList<Section>();
+            for (var section : document.sections()) {
+                var body = blocks(section.blocks(), section.pageSettings().contentWidth());
+                com.mirakyux.export4j.model.PageRegions regions;
+                try {
+                    regions = section.pageRegions().map((name, band) ->
+                            projectedRegions.computeIfAbsent(regionSource(name, band), key -> {
+                                if (band.blocks().stream().noneMatch(this::hasSlots)) { return band; }
+                                try { return band.toBuilder().blocks(blocks(band.blocks(), widths.get(key))).build(); }
+                                catch (IOException failure) { throw new UncheckedIOException(failure); }
+                            }));
+                } catch (UncheckedIOException failure) {
+                    throw failure.getCause();
+                }
+                sections.add(new Section(section.id(), section.pageSettings(), body, section.firstPageNumber(), regions));
+            }
+            checkOccurrences();
+            var notes = source.notes().stream().map(note -> {
+                String anchor = noteMarkers.getOrDefault(note.id(),
+                        trailingParagraphs.getOrDefault(note.paragraphId(), note.paragraphId()));
+                return new Note(note.id(), anchor, note.text(), note.kind());
+            }).toList();
+            return new DocumentTemplate.Rendered(new SectionedDocument(document.metadata(), sections, document.navigation()), notes);
+        }
+
+        private void rememberIds(List<Block> source) {
+            SemanticTree.walk(source, visit -> ids.add(visit.block().id()));
+        }
+
+        private void checkOccurrences() {
+            if (visited.size() != capture.ordered.size()) { throw new IllegalArgumentException("compiled formula was omitted or duplicated by author"); }
+        }
+
+        private static RegionSource regionSource(String name, PageRegion band) {
+            int suffix = Math.max(name.indexOf('_'), name.indexOf(':'));
+            return new RegionSource(suffix < 0 ? name : name.substring(0, suffix), band);
+        }
+
+        private double regionWidth(Section section, String name, PageRegion region) {
+            int separator = name.indexOf(':');
+            var page = section.pageSettings();
+            if (separator >= 0) {
+                var layer = name.startsWith("BACKGROUND:") ? section.pageRegions().background() : section.pageRegions().foreground();
+                var box = layer.get(Integer.parseInt(name.substring(separator + 1)));
+                return box.widthMode() == PageOverlay.SizeMode.FILL ? page.size().width() - box.x() : box.width();
+            }
+            if (target == Target.DOCX) { return page.contentWidth(); }
+            double left = region.leftInset() < 0 ? page.margins().left() : region.leftInset();
+            double right = region.rightInset() < 0 ? page.margins().right() : region.rightInset();
+            return page.size().width() - left - right;
+        }
+
         private List<Block> blocks(List<Block> source, double width) throws IOException {
             var output = new ArrayList<Block>();
             for (var block : source) {
@@ -358,6 +477,16 @@ public final class MathContent {
                 } else { chunk.add(item); }
             }
             if (!chunk.isEmpty() || result.isEmpty()) { result.add(paragraph(Paragraph.mixed(id, chunk, p.format()), width)); }
+            if (result.size() > 1) {
+                trailingParagraphs.put(p.id(), result.getLast().id());
+                for (var part : result) {
+                    for (var field : ((Paragraph) part).fields()) {
+                        if (field.field().kind() == InlineField.Kind.NOTE_MARKER) {
+                            noteMarkers.put(field.field().targetId(), part.id());
+                        }
+                    }
+                }
+            }
             return List.copyOf(result);
         }
         private Paragraph paragraph(Paragraph p, double width) throws IOException {

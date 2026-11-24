@@ -1,6 +1,6 @@
 # 统一导出入口验收
 
-本记录用于当前开发版 `export4j-starter`，验证字体／样式配置一次后直接从文本、Markdown、HTML 或正文 XML 生成 PDF／DOCX。它不属于已发布 RC3，也不继承上一批 17 个库的签名与渲染结果。
+本记录用于当前开发版 `export4j-starter`。各批分别记录文本、Markdown、HTML 或 XML 导出 PDF／DOCX 的本地验证结果。
 
 ## 本批状态
 
@@ -12,7 +12,15 @@
 
 ## 已知限制
 
-- 本批隔离消费者不代表业务项目已经迁移。现有 RC3 使用端需要接入新制品，并对其真实模板、字体、授权图片和容量配置重新验收；正文 XML 快捷入口不覆盖页区、分节及注释。
+- RC3 使用端需要接入新制品，再用实际模板、字体、图片和容量配置验证。当前版支持 XML 分节与页眉页脚。脚注和尾注仅支持 PDF。
+- 无参入口的字体取决于运行机器。缺少字体包时可安装支持的字体或显式指定文件。macOS 和 Linux 本轮只验证了候选路径的隔离测试。
+
+## 2026-11-24 系统字体与复杂 XML
+
+- 本地运行 `build sbom publishLocalBundle :examples:easyExport`，API 兼容检查通过。仅依赖 starter 的 Gradle 元数据和仅 POM 两条消费路径解析到相同运行制品，既有 PDF 和 DOCX 独立文件检查通过。
+- Windows 上使用无参 Builder 导出中文纯文本 PDF 及带分节、页眉、粗体和公式的 XML。纯文本 PDF 实际嵌入 Arial 和 Microsoft YaHei。Poppler 与 PDFium 检查全部三页。DOCX 包保留标准字体槽、两节和原生 OMML，LibreOffice 独立打开后生成两页，页眉与正文检查通过。
+- 另用两节不同纸张的模板验证共享页区、页码重启、PDF 脚注与公式，以及 DOCX 页区和 OMML。DOCX 注释拒绝时保留原目标。包含按节宽重复的共享表格的原生 DOCX 读回未纳入验收。
+- 中英文长表指南示例各导出 100,000 行、3,125 页。PDFium 核对每一行的编号、值与顺序，同时检查两次流关闭和无临时文件残留。
 
 ## 2026-11-14 修正结果
 
@@ -109,4 +117,4 @@ HTML 混排和视觉专用公式的部分普通文字通过 ActualText 表达；
 
 本地证据分别为 `build/verification/e2/distribution-report.json`、`build/verification/starter-e2/verification.json` 及 `build/verification/easy-export-20261113/output-verified/report.json`。starter 坐标为 `com.mirakyux.export4j:export4j-starter:0.0.0-verification-e2`，本地 JAR 位于 `build/verification/e2/repository/com/mirakyux/export4j/export4j-starter/0.0.0-verification-e2/`，SHA-256 为 `f6a813dc8f4c5784a439c746567990e725e655a3faf1701561beff55c09c7216`。本批分发 ZIP 的 SHA-256 为 `043eda083c660077f6772c79b916004fe7e0bc315b7132952048beed4314ee39`；SBOM 为 `692fe86c6e7a914fdd69485a00d865ae15965a55159425b4f30e41926a3cf6ca`。
 
-正文 XML 以外的页区／分节／注释目前明确拒绝；不承诺任意 HTML、LaTeX、复杂字体脚本或 Word 无损转换。默认无超时和实际输出字节上限，但解析／数学／布局结构预算仍生效；本批不引入新的性能或 RSS 结论。设计与调用约束见[统一入口](../easy-export-api.md)和 [ADR-0118](../adr/0118-configured-export-entry.md)。
+该历史基线只支持正文 XML。当前范围见[统一入口](../easy-export-api.md)和 [ADR-0118](../adr/0118-configured-export-entry.md)。

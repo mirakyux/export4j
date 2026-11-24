@@ -40,9 +40,38 @@ var result = prepared.to(Path.of("report.md"));
 assert preview.issues().equals(result.report().issues());
 ```
 
-导入器上的 `.conversion(source)`、DOCX 的 `.conversion(packageBytes)` 和 `DocumentConversion.from(document)` 返回同一请求类型。DOCX 输入字节在入口复制；Web 导入器保留显式资源快照。预检时读取一次源，调用一次编辑回调，编码一次目标。请求和回调均限当前任务线程使用。
+导入器上的 `.conversion(source)`、DOCX 的 `.conversion(Path)`／`.conversion(byte[])` 和 `DocumentConversion.from(document)` 返回同一请求类型。DOCX 输入字节在入口复制，文件路径在预检时打开。Web 导入器保留显式资源快照。每次预检读取一次源、执行每个编辑回调一次，并编码一次目标。请求和回调均限当前任务线程使用。
 
-PDF 示例：以 `DocumentEngine.builder(explicitFonts).build().conversionTarget("PDF", new PdfBackend())` 作为目标。字体、角色及运行时配置来自引擎快照；模型中的页区和[导航声明](portable-navigation-api.md)由默认引擎自动消费，与非空运行时配置冲突时拒绝。注释从转换输入传入，引擎预配置注释会冲突并被拒绝。后端中立的格式键由调用方如实指定；适配器内置键为 HTML、MARKDOWN、DOCX 和 XML_TEMPLATE。
+### 从 DOCX 文件转为 PDF
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxAdapter;
+import com.mirakyux.export4j.backend.pdf.PdfBackend;
+import com.mirakyux.export4j.components.DocumentEngine;
+import com.mirakyux.export4j.font.FontGroup;
+import com.mirakyux.export4j.font.TrueTypeFontLoader;
+import com.mirakyux.export4j.model.processing.ProcessingPolicy;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+var font = TrueTypeFontLoader.load(Files.readAllBytes(Path.of("assets/fonts/LiberationSans-Regular.ttf")));
+var engine = DocumentEngine.builder(FontGroup.strict(List.of(font))).build();
+var pdf = engine.conversionTarget("PDF", new PdfBackend());
+var policy = ProcessingPolicy.builder()
+        .feature("STYLE_GRAPH", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+        .feature("OOXML_MARKUP", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+        .build();
+var result = new DocxAdapter()
+        .conversion(Path.of("source.docx"))
+        .policy(policy)
+        .prepare(pdf)
+        .to(Path.of("report.pdf"));
+```
+
+示例从仓库根目录运行，`source.docx` 由调用方提供。实际字体组应覆盖文档文字。转换为 PDF 时会重新排版。示例明确允许简化 Word 样式定义和未映射的 OOXML 结构，实际变化可通过 `result.report().warnings()` 查看。其他不支持的功能仍按严格策略处理。
+
+字体、角色及运行时配置来自引擎快照。默认引擎使用模型中的页区和导航声明，与非空运行时配置冲突时拒绝。注释由转换输入提供，引擎预配置注释会被拒绝。后端中立的格式键由调用方如实指定，适配器内置键为 HTML、MARKDOWN、DOCX 和 XML_TEMPLATE。参见[导航声明](portable-navigation-api.md)。
 
 ## 动作与实际损失
 

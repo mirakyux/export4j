@@ -1,6 +1,6 @@
 # 配置一次，直接导出
 
-当前开发版的 `export4j-starter` 提供 `Export4j` 统一入口。字体、全局样式和公共图片在应用初始化时声明一次；业务调用选择文本、Markdown、HTML 或正文 XML 模板，再指定 PDF／DOCX 目标。使用端不必另外装配解析器、公式处理器、布局引擎和 DOCX 适配器。已发布的 `0.1.0-rc.3` 不包含此模块。
+当前开发版的 `export4j-starter` 提供 `Export4j` 统一入口。业务调用选择文本、Markdown、HTML 或 XML 模板，再指定 PDF／DOCX 目标。应用可以直接使用已安装字体，也可在初始化时设置字体、主题和公共图片。已发布的 `0.1.0-rc.3` 不包含此模块。
 
 ## 一个依赖与最小调用
 
@@ -12,7 +12,27 @@ dependencies {
 }
 ```
 
-同时直接使用其他 Export4j 模块时，可以另外引入同版本 BOM 统一版本。仅依赖 starter 的两种元数据模式消费见[本批验收](verification/easy-export.md)。
+也可以在 Maven 中声明同一坐标，把 `export4j.version` 设为实际开发版本。可按[发布指南](releasing.md)构建本地 Maven 仓库。仅依赖 starter 无需单独声明 BOM。
+
+```xml
+<dependency>
+  <groupId>com.mirakyux.export4j</groupId>
+  <artifactId>export4j-starter</artifactId>
+  <version>${export4j.version}</version>
+</dependency>
+```
+
+```java
+import com.mirakyux.export4j.Export4j;
+import java.nio.file.Path;
+
+try (var export = Export4j.builder().build()) {
+    export.text("导出报告 / Export report").pdf(Path.of("report.pdf"));
+    export.markdown("Report **summary**").docx(Path.of("report.docx"));
+}
+```
+
+无参 `builder()` 在导出时检查运行机器上的几处标准字体路径。Windows 优先使用 Arial 和 Microsoft YaHei。macOS 优先尝试 Arial 和 Hiragino Sans GB。Linux 使用发行版已安装的 Liberation Sans、DejaVu Sans 或 Noto Sans，中文可用 Noto Sans CJK SC。实际字体取决于本机安装、格式和嵌入权限。精简容器可能没有字体包，PDF 遇到缺字会明确失败。需要跨机器复现版式时，使用下面的显式方式。
 
 ```java
 import com.mirakyux.export4j.Export4j;
@@ -28,7 +48,7 @@ try (var export = Export4j.builder(body).build()) {
 }
 ```
 
-当前入口仍读取声明的字体源，示例中的字体文件须有效，输出父目录须事先创建。PDF 使用显式物理字体并严格检查所需字形。DOCX 的普通正文与列表标记保留文字、字体族和样式声明，不因本地物理字体缺少这些字形而拒绝；阅读端是否安装字体、如何处理缺失字体或字形，由其所在系统决定。库不扫描系统字体，也不在 DOCX 中嵌入字体。生产服务可以长期复用 `export`，在应用关闭时再调用 `close()`，不必每次请求重新创建。
+输出父目录须事先创建。PDF 使用同一套物理字体测量和绘制，遵守字体嵌入限制。DOCX 声明字体族和样式，由阅读端选用实际字体。应用可长期复用 exporter 并在关闭时释放缓存。可用 `FontSource.resource(App.class, "/fonts/body.ttf")` 读取应用资源，或用 `FontSource.collection(path, postScriptName)` 按名称选择字体集合成员。
 
 该模块传递引入现有数学模块及其已登记的 JLaTeXMath 依赖。需要更小的依赖集合时，继续按需使用原有模块；许可见[依赖记录](dependencies.md)。
 
@@ -153,7 +173,7 @@ export.xml(syntax, new GreetingData("Second", "Result: $y^2$.")).docx(secondPath
 
 原有字符串重载保留。新增语法计划重载后，`xml(null, data)` 无法自动判定源类型；需要测试空值拒绝时，使用 `xml((String) null, data)` 或显式 `XmlTemplate.Syntax` 类型。合法的非 null 字符串调用保持可用。
 
-此统一入口当前只处理正文 XML。页眉／页脚、分节和注释等尚未被本入口的公式编译投影覆盖，仍明确拒绝，不会删除后继续导出。需要这些模型能力时，继续使用原有 [XML 模板](xml-template-api.md)和[文档引擎](fluent-api.md)入口；不能把本入口称为全部 XML 能力的替代品。数据借用到执行时，由模板绑定路径取快照；不要在执行期间并发修改输入数据。
+同一个 `xml(...)` 入口支持[分节、页眉和页脚](xml-sections-api.md)。PDF 也支持 XML 脚注和尾注。DOCX 遇到脚注或尾注会明确拒绝。数据在执行时由模板绑定路径取快照，执行期间不得并发修改输入数据。
 
 ## 目标与严格失败
 

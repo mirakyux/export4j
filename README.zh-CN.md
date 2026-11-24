@@ -48,7 +48,7 @@ Export4j 是面向报告、发票、表单和结构化文档的开源 **Java PDF
 | 版本 | 使用入口 |
 | --- | --- |
 | 已发布 `0.1.0-rc.3` | 使用下方快速开始中的 `DocumentEngine` 及按需模块。 |
-| 当前 `develop` | [统一导出入口](docs/easy-export-api.md) `export4j-starter` 配置一次字体和样式，即可从文本、Markdown、HTML 或正文 XML 导出 PDF／DOCX；XML 可直接绑定 Map、DTO 和 record。 |
+| 当前 `develop` | [统一导出入口](docs/easy-export-api.md) `export4j-starter` 可使用已安装字体，从文本、Markdown、HTML 或 XML 导出 PDF／DOCX。XML 可直接绑定 Map、DTO 和 record。 |
 
 开发版还提供[源内容块与配置继承](docs/content-blocks-api.md)、[有界字体缓存](docs/font-cache-api.md)和[可选公式解析](docs/math-api.md)。这些新增能力未包含在已发布 RC3 中。版本边界及已知限制见[当前状态](docs/current-status.md)，配置方式见 [API 索引](docs/README.md)。
 
@@ -140,7 +140,7 @@ bash ./gradlew :examples:authoring :examples:xmlTemplates :examples:production
 
 ## Java 使用示例
 
-在配置好上述依赖的应用中，将完整类保存为 `src/main/java/QuickStart.java`。在运行目录下的 `assets/fonts/` 中准备 `LiberationSans-Regular.ttf` 和 `LXGWWenKaiTC-Regular.ttf`，或将路径改为自行提供的授权字体。[仓库字体样例](assets/fonts/README.md)提供这两个示例文件；业务应用始终显式提供字体。
+在配置好上述 RC3 依赖的应用中，将完整类保存为 `src/main/java/QuickStart.java`。在运行目录下的 `assets/fonts/` 中准备 `LiberationSans-Regular.ttf` 和 `LXGWWenKaiTC-Regular.ttf`，或将路径改为自行提供的授权字体。[仓库字体样例](assets/fonts/README.md)提供这两个文件。
 
 ```java
 import java.io.IOException;

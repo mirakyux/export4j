@@ -1,6 +1,6 @@
 # Capabilities and API navigation
 
-Start with the development [unified export entry point](easy-export-api.md): declare one explicitly versioned `export4j-starter` dependency, configure fonts, a theme and shared resources once, then export text, Markdown, HTML or body-only XML to PDF/DOCX. This assembles existing capabilities without expanding their input subsets; complete sections, page regions and annotations retain their dedicated APIs. Published `0.1.0-rc.3` does not include this module.
+Use the development [unified export entry point](easy-export-api.md) to export text, Markdown, HTML, or XML to PDF/DOCX with one `export4j-starter` dependency. The builder can use installed system fonts or accept explicit fonts, a theme, and shared resources. XML sections, headers, and footers work with both targets. PDF also supports XML footnotes and endnotes. Published `0.1.0-rc.3` does not include this module.
 
 Development [source blocks and inherited options](content-blocks-api.md) let Java/XML inputs select text, Markdown or HTML and declare fonts, color, paragraph properties and formula/table switches per source. Compilation produces the existing semantic model. The original subset passed [independent acceptance (Chinese)](../verification/content-blocks.md); the current rich-content extension has a [separate record (Chinese)](../verification/rich-content.md). It does not add arbitrary webpages, full LaTeX or automatic reparsing of final model strings.
 

@@ -40,9 +40,38 @@ var result = prepared.to(Path.of("report.md"));
 assert preview.issues().equals(result.report().issues());
 ```
 
-Importers' `.conversion(source)`, DOCX `.conversion(packageBytes)` and `DocumentConversion.from(document)` return the same request type. DOCX copies input bytes at the entry point; Web importers retain explicit resource snapshots. Preparation reads the source once, invokes each edit callback once and encodes the target once. Requests and callbacks are confined to the current task thread.
+Importers' `.conversion(source)`, DOCX `.conversion(Path)` or `.conversion(byte[])`, and `DocumentConversion.from(document)` return the same request type. DOCX copies input bytes when creating the request and opens file paths during preparation. Web importers retain explicit resource snapshots. Preparation reads the source once, invokes each edit callback once, and encodes the target once. Requests and callbacks are confined to the current task thread.
 
-For PDF, use `DocumentEngine.builder(explicitFonts).build().conversionTarget("PDF", new PdfBackend())` as the target. Fonts, roles and runtime configuration come from the engine snapshot. The default engine consumes model page regions and [navigation declarations (Chinese)](../portable-navigation-api.md) automatically, rejecting conflicts with nonempty runtime configuration. Notes come from the conversion input; preconfigured engine notes conflict and are rejected. The caller must truthfully name backend-neutral format keys. Built-in adapter keys are HTML, MARKDOWN, DOCX and XML_TEMPLATE.
+### Convert a DOCX file to PDF
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxAdapter;
+import com.mirakyux.export4j.backend.pdf.PdfBackend;
+import com.mirakyux.export4j.components.DocumentEngine;
+import com.mirakyux.export4j.font.FontGroup;
+import com.mirakyux.export4j.font.TrueTypeFontLoader;
+import com.mirakyux.export4j.model.processing.ProcessingPolicy;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+var font = TrueTypeFontLoader.load(Files.readAllBytes(Path.of("assets/fonts/LiberationSans-Regular.ttf")));
+var engine = DocumentEngine.builder(FontGroup.strict(List.of(font))).build();
+var pdf = engine.conversionTarget("PDF", new PdfBackend());
+var policy = ProcessingPolicy.builder()
+        .feature("STYLE_GRAPH", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+        .feature("OOXML_MARKUP", ProcessingPolicy.Action.WARN, ProcessingPolicy.Treatment.DEGRADE)
+        .build();
+var result = new DocxAdapter()
+        .conversion(Path.of("source.docx"))
+        .policy(policy)
+        .prepare(pdf)
+        .to(Path.of("report.pdf"));
+```
+
+Run the example from the repository root and supply `source.docx`. Use a font group that covers your document's text. Conversion lays out the supported content again for PDF. The example allows simplification of Word style definitions and unmapped OOXML structures and reports changes through `result.report().warnings()`. Other unsupported features follow the strict policy.
+
+Fonts, roles, and runtime configuration come from the engine snapshot. The default engine uses model page regions and navigation declarations, rejecting conflicts with nonempty runtime configuration. Notes come from the conversion input. The engine rejects preconfigured notes. The caller must accurately name backend-neutral format keys. Built-in adapter keys are HTML, MARKDOWN, DOCX and XML_TEMPLATE. See [navigation declarations (Chinese)](../portable-navigation-api.md).
 
 ## Actions and actual losses
 

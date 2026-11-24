@@ -17,6 +17,7 @@ import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CrossReference;
 import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.DocumentTemplate;
 import com.mirakyux.export4j.model.DocumentTheme;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
@@ -48,8 +49,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Reusable offline export entry point. Declare font families and global defaults once; create an
- * independent request for text, Markdown, HTML or a body XML template, then select PDF or DOCX.
- * No system fonts, external resources, macro execution or implicit representation fallback are used.
+ * independent request for text, Markdown, HTML or XML, then select PDF or DOCX.
+ * The no-argument builder uses known local system fonts. An explicit initial family keeps all
+ * default font selection under application control.
  * The instance owns a bounded idle-expiring font cache unless a caller-owned cache is supplied.
  * Parsed fonts, engines, formula text byte snapshots and documents exist only within each operation.
  * Calls may run concurrently if the supplied font sources and execution callbacks support it.
@@ -66,8 +68,8 @@ public final class Export4j implements AutoCloseable {
     private final FontFamily latin;
     private final FontFamily eastAsia;
     private final FontFamily complexScript;
-    private final List<FontFamily> families;
-    private final List<FontFamily> defaultFamilies;
+    private final List<FontFamily> fallbackFonts;
+    private final SystemFonts systemFonts;
     private final Map<String, FontFamily> namedRoles;
     private final PdfBackend pdfBackend;
     private final DocumentTheme theme;
@@ -88,19 +90,16 @@ public final class Export4j implements AutoCloseable {
 
     private Export4j(Builder b) {
         latin = b.latin; eastAsia = b.eastAsia; complexScript = b.complexScript;
-        var ordered = new ArrayList<FontFamily>();
-        for (var family : List.of(latin, eastAsia, complexScript)) {
-            if (!ordered.contains(family)) { ordered.add(family); }
-        }
-        for (var family : b.fallbackFonts) { if (!ordered.contains(family)) { ordered.add(family); } }
-        defaultFamilies = List.copyOf(ordered);
-        for (var family : b.fontRoles.values()) { if (!ordered.contains(family)) { ordered.add(family); } }
-        families = List.copyOf(ordered);
-        if (families.size() > 8) { throw new IllegalArgumentException("at most eight explicit font families are supported"); }
-        var names = new HashSet<String>();
-        for (var family : families) {
-            if (!names.add(family.name().toLowerCase(Locale.ROOT))) { throw new IllegalArgumentException("duplicate font family name"); }
-        }
+        systemFonts = b.systemFonts;
+        fallbackFonts = List.copyOf(b.fallbackFonts);
+        namedRoles = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(b.fontRoles));
+        var declaredFamilies = new ArrayList<FontFamily>();
+        addFamily(declaredFamilies, latin);
+        addFamily(declaredFamilies, eastAsia);
+        addFamily(declaredFamilies, complexScript);
+        fallbackFonts.forEach(family -> addFamily(declaredFamilies, family));
+        namedRoles.values().forEach(family -> addFamily(declaredFamilies, family));
+        validateFamilies(declaredFamilies, namedRoles);
         var roleNames = new HashSet<String>(List.of("", "bold", "italic", "bolditalic"));
         for (var role : b.fontRoles.keySet()) {
             for (var variant : OperationFonts.variants(role)) {
@@ -109,13 +108,7 @@ public final class Export4j implements AutoCloseable {
                     throw new IllegalArgumentException("font role conflicts with a reserved or declared role");
                 }
             }
-            for (var family : families) {
-                if (family.name().equalsIgnoreCase(role) && family != b.fontRoles.get(role)) {
-                    throw new IllegalArgumentException("font role alias conflicts with a physical family name");
-                }
-            }
         }
-        namedRoles = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(b.fontRoles));
         pdfBackend = b.pdfBackend;
         theme = b.theme;
         defaultDeclarations = ContentOptions.builder().formulas(true).build().overlay(b.defaults);
@@ -128,20 +121,63 @@ public final class Export4j implements AutoCloseable {
     }
 
     /** The initial family supplies Latin and, until overridden, all Word script slots. */
-    public static Builder builder(FontFamily latin) { return new Builder(latin); }
+    public static Builder builder(FontFamily latin) { return new Builder(Objects.requireNonNull(latin, "latin"), null); }
+
+    /** Uses known physical font files installed on Windows, macOS or Linux. Fonts are resolved
+     * during export under normal font and execution budgets. Missing local fonts or glyphs fail
+     * PDF export. Use {@link #builder(FontFamily)} for reproducible fonts across hosts.
+     */
+    public static Builder builder() { return systemBuilder(SystemFonts.host()); }
+
+    static Builder systemBuilder(SystemFonts systemFonts) { return new Builder(null, systemFonts); }
+
+    private OperationFonts loadFonts() throws IOException {
+        var system = systemFonts == null ? null : systemFonts.load(eastAsia, cache);
+        var body = system == null ? latin : system.latin();
+        var cjk = system == null ? eastAsia : system.eastAsia();
+        var complex = complexScript == null ? body : complexScript;
+        var defaults = new ArrayList<FontFamily>();
+        addFamily(defaults, body);
+        addFamily(defaults, cjk);
+        addFamily(defaults, complex);
+        fallbackFonts.forEach(family -> addFamily(defaults, family));
+        var families = new ArrayList<>(defaults);
+        namedRoles.values().forEach(family -> addFamily(families, family));
+        if (system != null) { validateFamilies(families, namedRoles); }
+        return OperationFonts.load(defaults, families, namedRoles, body, cjk, complex, cache);
+    }
+
+    private static void addFamily(List<FontFamily> families, FontFamily family) {
+        if (family != null && !families.contains(family)) { families.add(family); }
+    }
+
+    private static void validateFamilies(List<FontFamily> families, Map<String, FontFamily> namedRoles) {
+        if (families.size() > 8) { throw new IllegalArgumentException("at most eight font families are supported"); }
+        var names = new HashSet<String>();
+        for (var family : families) {
+            if (!names.add(family.name().toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("duplicate font family name: " + family.name());
+            }
+            for (var alias : namedRoles.entrySet()) {
+                if (family.name().equalsIgnoreCase(alias.getKey()) && family != alias.getValue()) {
+                    throw new IllegalArgumentException("font role alias conflicts with a physical family name: " + alias.getKey());
+                }
+            }
+        }
+    }
     public Request markdown(String source) { return request(source, ContentOptions.Format.MARKDOWN); }
     public Request html(String source) { return request(source, ContentOptions.Format.HTML); }
     /** Literal text; formula parsing is disabled unless explicitly re-enabled on this request. */
     public Request text(String source) {
         return request(source, ContentOptions.Format.TEXT).options(ContentOptions.builder().formulas(false).build());
     }
-    /** Body XML template; regions, sections and notes retain the template's explicit rejection.
+    /** XML template with sections and repeating page regions. PDF also supports notes.
      * Data is borrowed until execution, when template binding snapshots it. No template is cached.
      */
     public Request xml(String source, Map<String, ?> data) {
         return xml(source, (Object) data);
     }
-    /** Body XML template with a Map, record or JavaBean root, under the same body-only restriction.
+    /** XML template with a Map, record or JavaBean root. DOCX rejects footnotes and endnotes.
      * Data is borrowed until each target executes and then snapshots through the same bounded
      * {@link com.mirakyux.export4j.model.DocumentTemplate#render(Object) template binding path}.
      * Properties come from record components or public getters, never fields. Getter code remains
@@ -177,6 +213,7 @@ public final class Export4j implements AutoCloseable {
     /** Task-confined builder. All options and collections are snapshotted by build(). */
     public static final class Builder {
         private final FontFamily latin;
+        private final SystemFonts systemFonts;
         private FontFamily eastAsia;
         private FontFamily complexScript;
         private final List<FontFamily> fallbackFonts = new ArrayList<>();
@@ -195,8 +232,8 @@ public final class Export4j implements AutoCloseable {
         private DocumentLayoutLimits layoutLimits = DocumentLayoutLimits.DEFAULT;
         private ComponentLimits componentLimits = ComponentLimits.DEFAULT;
         private FontFaceCache cache;
-        private Builder(FontFamily latin) {
-            this.latin = Objects.requireNonNull(latin, "latin"); eastAsia = latin; complexScript = latin;
+        private Builder(FontFamily latin, SystemFonts systemFonts) {
+            this.latin = latin; this.systemFonts = systemFonts; eastAsia = latin; complexScript = latin;
         }
         public Builder eastAsia(FontFamily value) { eastAsia = Objects.requireNonNull(value, "eastAsia"); return this; }
         public Builder complexScript(FontFamily value) { complexScript = Objects.requireNonNull(value, "complexScript"); return this; }
@@ -298,7 +335,7 @@ public final class Export4j implements AutoCloseable {
         private Result encode(OutputStream output, boolean pdf) throws IOException {
             ensureOpen();
             ExecutionContext.progress("FONTS", "", -1, 0, 1);
-            var fonts = OperationFonts.load(defaultFamilies, families, namedRoles, latin, eastAsia, complexScript, cache);
+            var fonts = loadFonts();
             var regular = fonts.regular();
             // Confined to this operation: create at most one encoded snapshot, only when text is used.
             var formulaFonts = new MathTextFonts[1];
@@ -314,30 +351,52 @@ public final class Export4j implements AutoCloseable {
                     .maxFormulas(maxFormulas).fallbacks(fallbacks);
             resources.forEach(content::image);
             fonts.content(content);
-            MathContent.Author author = parser -> {
-                if (data == null) { fonts.validate(options); return parser.read(source).execute().document(); }
-                var xml = XmlTemplate.builder().theme(theme).pageSettings(page)
-                        .contentOptions(declarations).contentParser(fonts.checked(parser));
-                // Content source keys may be URIs. Direct XML image references use identifiers only;
-                // URI keys remain available to Markdown/HTML content through the shared parser.
-                resources.forEach((key, image) -> {
-                    if (key.matches("[A-Za-z_][A-Za-z_0-9]{0,255}")) { xml.image(key, image.resource()); }
-                });
-                fragments.forEach(xml::fragment);
-                var compiler = xml.build();
-                var template = syntax == null ? compiler.compile(source) : compiler.compile(syntax);
-                if (metadata != null) { template = template.toBuilder().metadata(metadata).build(); }
-                return template.render(data);
-            };
             ExecutionContext.progress("CONTENT", "", -1, 0, 1);
+            var compiler = content.build();
+            if (data != null) {
+                MathContent.SectionedAuthor author = parser -> bindXml(fonts.checked(parser));
+                if (pdf) {
+                    var result = compiler.compileSectionedVisual(author);
+                    var rendered = result.document();
+                    var engine = fonts.engine().layoutLimits(layoutLimits).componentLimits(componentLimits).notes(rendered.notes());
+                    engine.build().write(rendered.document(), pdfBackend, output);
+                    return completed(new Result(result.formulas().size(), result.degradations()));
+                }
+                return writeDocx(compiler.compileSectionedDocx(author), fonts, output);
+            }
+            MathContent.Author author = parser -> {
+                fonts.validate(options);
+                return parser.read(source).execute().document();
+            };
             if (pdf) {
-                var result = content.build().compileVisual(author);
+                var result = compiler.compileVisual(author);
                 var engine = fonts.engine().layoutLimits(layoutLimits).componentLimits(componentLimits);
                 engine.build().write(result.document(), pdfBackend, output);
                 return completed(new Result(result.formulas().size(), result.degradations()));
             }
-            var result = content.build().compileDocx(author);
-            result.document().semantic().body().sections().forEach(section -> requireRoles(section.blocks(), fonts.roles()));
+            return writeDocx(compiler.compileDocx(author), fonts, output);
+        }
+
+        private DocumentTemplate.Rendered bindXml(com.mirakyux.export4j.model.SourceContentParser parser) {
+            var xml = XmlTemplate.builder().theme(theme).pageSettings(page)
+                    .contentOptions(declarations).contentParser(parser);
+            // URI keys remain available to Markdown/HTML content through the shared parser.
+            resources.forEach((key, image) -> {
+                if (key.matches("[A-Za-z_][A-Za-z_0-9]{0,255}")) { xml.image(key, image.resource()); }
+            });
+            fragments.forEach(xml::fragment);
+            var compiler = xml.build();
+            var template = syntax == null ? compiler.compile(source) : compiler.compile(syntax);
+            if (metadata != null) { template = template.toBuilder().metadata(metadata).build(); }
+            return template.renderComplete(data);
+        }
+
+        private Result writeDocx(MathContent.DocxResult result, OperationFonts fonts, OutputStream output) throws IOException {
+            result.document().semantic().body().sections().forEach(section -> {
+                requireRoles(section.blocks(), fonts.roles());
+                section.pageRegions().headers().forEach(band -> requireRoles(band.blocks(), fonts.roles()));
+                section.pageRegions().footers().forEach(band -> requireRoles(band.blocks(), fonts.roles()));
+            });
             fonts.word().build().writeMath(result.document(), output);
             return completed(new Result(result.formulas().size(), result.degradations()));
         }
@@ -377,7 +436,9 @@ public final class Export4j implements AutoCloseable {
     }
 
     private static void requireRole(String role, Map<String, List<FontFace>> roles) {
-        if (!roles.containsKey(role)) { throw new IllegalArgumentException("text requires an undeclared physical font role"); }
+        if (!roles.containsKey(role)) {
+            throw new IllegalArgumentException("undeclared font role '" + new TextAppearance(role, 0).fontRole() + "'");
+        }
     }
 
     private static void requireText(InlineText text, Map<String, List<FontFace>> roles) {

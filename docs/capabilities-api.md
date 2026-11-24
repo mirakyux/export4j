@@ -1,6 +1,6 @@
 # 能力与 API 导航
 
-当前开发版可从[统一导出入口](easy-export-api.md)开始：一个带明确版本的 `export4j-starter` 依赖，一次配置字体、主题和公共资源，再以文本、Markdown、HTML 或正文 XML 输出 PDF／DOCX。它装配既有能力，不扩大各输入子集；完整分节、页区及注释继续使用对应专用 API。已发布的 `0.1.0-rc.3` 不包含此模块。
+当前开发版可通过[统一导出入口](easy-export-api.md)从文本、Markdown、HTML 或 XML 输出 PDF／DOCX。只需一个 `export4j-starter` 依赖。无参 Builder 可使用已安装的系统字体，应用也可以显式配置字体、主题和资源。XML 分节、页眉和页脚可写入两个目标，脚注和尾注支持 PDF。已发布的 `0.1.0-rc.3` 不包含此模块。
 
 当前开发版提供[源内容块与继承配置](content-blocks-api.md)：Java／XML 按源块选择文本、Markdown 或 HTML，逐项声明字体、颜色、段落属性及公式／表格开关，编写时生成既有模型。既有子集已完成[独立验收](verification/content-blocks.md)，本次富内容扩展单独见[验收记录](verification/rich-content.md)；不等于任意网页、完整 LaTeX 或最终模型字符串的自动重解析。
 

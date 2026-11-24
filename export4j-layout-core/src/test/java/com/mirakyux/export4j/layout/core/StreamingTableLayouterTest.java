@@ -391,13 +391,39 @@ class StreamingTableLayouterTest {
 
     @Test void structuralSourceBudgetsIncludeHeadersOnceAndReportCorrectCell() {
         var cases = List.of(document(100, 100, 10, 2, 1, 100), document(100, 100, 10, 100, 1, 1), document(4, 100, 10, 100, 1, 100));
+        var messages = List.of("maxTableRows exceeded (actual=3, limit=2)", "maxCells exceeded (actual=2, limit=1)",
+                "maxCodePoints exceeded (actual=5, limit=4)");
         for (int index = 0; index < cases.size(); index++) {
             var limit = StreamingTableLimits.DEFAULT.toBuilder().document(cases.get(index)).build(); var source = new Source(3);
             var failure = assertThrows(DocumentLayoutException.class, () -> layout(table(), source, new ArrayList<>(), limit));
             assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
+            assertTrue(failure.getMessage().contains(messages.get(index)));
             assertEquals(index == 0 ? 2 : 1, failure.rowIndex());
             assertEquals(index == 0 ? -1 : 0, failure.columnIndex());
         }
+    }
+
+    @Test void tableSizeRaisesOnlySourceGeometryBudgetsAndIncludesHeaders() throws IOException {
+        var spec = table().toBuilder().columns(50, 50)
+                .headerRows(List.of(TableRow.text(FORMAT, "HA", "HB"))).build();
+        var configured = StreamingTableLimits.builder()
+                .document(document(100, 100, 10, 1, 1, 1))
+                .allowTableSize(spec, 2);
+        var exactlyTwoRows = new Source(2, index -> TableRow.text(FORMAT, "A", "B"));
+        assertEquals(2, layout(spec, exactlyTwoRows, new ArrayList<>(), configured.build()).bodyRows());
+
+        var thirdRow = new Source(3, index -> TableRow.text(FORMAT, "A", "B"));
+        var failure = assertThrows(DocumentLayoutException.class, () ->
+                layout(spec, thirdRow, new ArrayList<>(), configured.build()));
+        assertEquals(3, failure.rowIndex());
+        assertTrue(failure.getMessage().contains("maxTableRows exceeded (actual=4, limit=3)"));
+
+        var shortenedTextBudget = configured.documentLimits(limits -> limits.maxCodePoints(4)).build();
+        var tooMuchText = new Source(1, index -> TableRow.text(FORMAT, "A", "B"));
+        var textFailure = assertThrows(DocumentLayoutException.class, () ->
+                layout(spec, tooMuchText, new ArrayList<>(), shortenedTextBudget));
+        assertTrue(textFailure.getMessage().contains("maxCodePoints exceeded (actual=5, limit=4)"));
+        assertThrows(IllegalArgumentException.class, () -> configured.allowTableSize(spec, Integer.MAX_VALUE));
     }
 
     @Test void columnBudgetFailsBeforeSourceRead() {
@@ -455,6 +481,7 @@ class StreamingTableLayouterTest {
         var failure = assertThrows(DocumentLayoutException.class, () -> layout(table(), source, pages, limits));
         assertEquals(DocumentLayoutException.Code.BUDGET_EXCEEDED, failure.code());
         assertEquals(1, failure.pageIndex()); assertEquals(0, failure.rowIndex()); assertEquals(1, pages.size());
+        assertTrue(failure.getMessage().contains("maxLines exceeded (actual=5, limit=4)"));
     }
 
     @Test void pageCapStopsBeforeDeliveringAnExtraPage() {
