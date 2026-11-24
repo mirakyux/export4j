@@ -20,7 +20,7 @@
 
 | 当前开发版补充 | 归属及证据 |
 | --- | --- |
-| 一次配置生成 PDF／DOCX | [统一导出入口](easy-export-api.md)在 `export4j-starter` 装配源内容、显式字体、缓存及公式；RC3 不包含此模块。正文 XML 之外的页区／分节继续使用专用 API |
+| 一次配置生成 PDF／DOCX | 开发版 `export4j-starter` 支持源内容、Java `Document` 和含分节与页眉页脚的 XML。PDF 可使用已安装字体，普通 DOCX 可在无字体包时导出。[统一导出入口](easy-export-api.md) |
 | DTO／record 模板数据 | [Java 对象绑定](xml-template-api.md#java-对象绑定)与 Map 复用有界快照；[独立验收](verification/easy-export.md)分别记录 API、制品、消费和输出结果 |
 | 源内容和混合公式 | [源内容块](content-blocks-api.md)扩展 GAP-04／07 的编写入口；[富内容](rich-content-api.md)记录逐目标公式表示；[验收](verification/rich-content.md)与原有父项分开，不扩展为完整 CSS、LaTeX 或一般模板沙箱 |
 | 重复字体加载与空闲释放 | [字体缓存](font-cache-api.md)提供容量、活动租约与空闲自动释放；源字节上限不等于总堆或 RSS 上限 |

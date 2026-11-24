@@ -3,6 +3,7 @@ description = "Simple horizontal text measurement and paragraph line layout"
 dependencies {
     api(project(":export4j-font-core"))
     api(project(":export4j-model"))
+    testRuntimeOnly(project(":export4j-font-fontbox"))
 }
 sourceSets.test {
     resources.srcDir(rootProject.file("assets"))

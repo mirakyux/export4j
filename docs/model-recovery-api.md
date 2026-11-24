@@ -195,7 +195,7 @@ PNG 封装只做有界块结构、签名、IHDR／PLTE／连续 IDAT／IEND 顺�
 
 ## PDF、DOCX 与 PNG 页 ZIP 可选内嵌恢复
 
-PDF 使用 `EmbeddedFiles` 附件，DOCX 使用 `customXml/export4j-recovery.xml`，多页 PNG ZIP 使用 `export4j/recovery.zip`。PDF 的编码器位于 PDF 适配器，须显式传入；其他两种容器直接使用模板模块的内嵌入口。
+PDF 使用 `EmbeddedFiles` 附件。添加同版本的 `com.mirakyux.export4j:export4j-pdf-recovery`，并显式传入 `com.mirakyux.export4j.pdf.recovery.PdfRecoveryCodec`。DOCX 的 `customXml/export4j-recovery.xml` 和多页 PNG ZIP 的 `export4j/recovery.zip` 由模板模块的内嵌入口处理。
 
 ```java
 var saved = XmlModelRecovery.capture(conversion.prepare(target))

@@ -11,10 +11,10 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import com.mirakyux.export4j.backend.pdf.PdfPades;
-import com.mirakyux.export4j.backend.pdf.PdfSignatureVerifier;
-import com.mirakyux.export4j.backend.pdf.PdfSigner;
-import com.mirakyux.export4j.backend.pdf.PdfTrust;
+import com.mirakyux.export4j.pdf.signatures.PdfPades;
+import com.mirakyux.export4j.pdf.signatures.PdfSignatureVerifier;
+import com.mirakyux.export4j.pdf.signatures.PdfSigner;
+import com.mirakyux.export4j.pdf.signatures.PdfTrust;
 
 /** Real private-key/CMS/OCSP/CRL/RFC3161 operations against original offline fixtures. */
 final class PdfPadesConsumer {

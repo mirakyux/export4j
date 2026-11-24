@@ -124,10 +124,14 @@ tasks.register("publishLocalBundle") {
     dependsOn(subprojects.filter { it.name != "examples" && it.name != "export4j-designer" }.map { "${it.path}:publishLibraryPublicationToIsolatedRepository" })
 }
 
+val inventoryLibraries = subprojects.filter { it.name != "examples" && it.name != "export4j-bom" && it.name != "export4j-designer" }
 tasks.register("publishSignedBundle") {
     group = "publishing"
     description = "Stages explicitly signed Maven artifacts locally; never uploads or chooses a release version."
-    if (signPublications) { dependsOn("check", "publishLocalBundle", "sbom") }
+    if (signPublications) {
+        dependsOn("apiCheck", "publishLocalBundle", "sbom")
+        dependsOn(inventoryLibraries.map { "${it.path}:check" })
+    }
     doFirst {
         check(signPublications) { "Use -Pexport4jSign=true and externally supplied signing material" }
         check(!publicationVersion.endsWith("-SNAPSHOT")) { "Signed distribution verification requires an explicit non-SNAPSHOT version" }
@@ -138,7 +142,7 @@ val verificationPython = providers.gradleProperty("export4jVerificationPython").
 tasks.register<Exec>("apiSnapshot") {
     group = "verification"
     description = "Snapshots public/protected Java 21 declarations from the assembled library JARs."
-    dependsOn("assemble")
+    dependsOn(inventoryLibraries.map { "${it.path}:jar" })
     commandLine(verificationPython.get(), "scripts/verify_api_compatibility.py", "snapshot",
         "--root", rootDir.absolutePath, "--version", publicationVersion,
         "--output", layout.buildDirectory.file("reports/api/current.json").get().asFile.absolutePath)
@@ -153,7 +157,6 @@ tasks.register<Exec>("apiCheck") {
         "--report", layout.buildDirectory.file("reports/api/compatibility.json").get().asFile.absolutePath)
 }
 
-val inventoryLibraries = subprojects.filter { it.name != "examples" && it.name != "export4j-bom" && it.name != "export4j-designer" }
 val reviewedRuntimeLicenses = mapOf(
     "org.jsoup:jsoup:1.23.2" to "MIT",
     "org.apache.pdfbox:pdfbox:3.0.8" to "Apache-2.0",

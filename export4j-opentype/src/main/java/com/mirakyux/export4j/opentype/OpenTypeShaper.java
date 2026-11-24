@@ -20,7 +20,7 @@ import org.lwjgl.util.harfbuzz.hb_feature_t;
 /**
  * Synchronous explicit shaping of one directional/script run. Performs GSUB/GPOS, variations and
  * color-paint evaluation before backend rendering. It does not perform the Unicode bidi algorithm;
- * use {@link OpenTypeText} for mixed-direction paragraphs and pagination.
+ * use {@code OpenTypeText} from {@code export4j-opentype-layout} for mixed-direction paragraphs and pagination.
  */
 public final class OpenTypeShaper {
     public enum Direction { AUTO, LEFT_TO_RIGHT, RIGHT_TO_LEFT, TOP_TO_BOTTOM, BOTTOM_TO_TOP }

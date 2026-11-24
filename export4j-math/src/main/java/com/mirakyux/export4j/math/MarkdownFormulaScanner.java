@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.math;
 
+import com.mirakyux.export4j.math.api.MathException;
+
 import com.mirakyux.export4j.adapter.web.FormulaSyntax;
 import java.util.List;
 

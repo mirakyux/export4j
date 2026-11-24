@@ -4,8 +4,8 @@ package consumer;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
-import com.mirakyux.export4j.backend.pdf.PdfSignatureVerifier;
-import com.mirakyux.export4j.backend.pdf.PdfSigner;
+import com.mirakyux.export4j.pdf.signatures.PdfSignatureVerifier;
+import com.mirakyux.export4j.pdf.signatures.PdfSigner;
 
 /** Exercises the public rejection channel using deliberately invalid CMS, never reporting it as valid. */
 final class PdfSignatureVerificationConsumer {

@@ -65,9 +65,8 @@ def snapshot_jar(archive: Path) -> dict:
 
 def snapshot(root: Path, reference: str, version: str = "0.1.0-SNAPSHOT") -> dict:
     modules = {}
-    for module in sorted(root.glob("export4j-*")):
-        if not module.is_dir() or module.name in {"export4j-bom", "export4j-designer"}:
-            continue
+    for name in sorted(published_libraries(root)):
+        module = root / name
         archives = list((module / "build/libs").glob(module.name + "-" + version + ".jar"))
         if len(archives) != 1:
             raise RuntimeError(f"Assemble exactly one candidate JAR for {module.name}; found {len(archives)}")
@@ -77,11 +76,34 @@ def snapshot(root: Path, reference: str, version: str = "0.1.0-SNAPSHOT") -> dic
     return {"schema": 1, "reference": reference, "jdk": "21", "modules": modules}
 
 
+def relocations(previous_module, previous_package, required_module, new_package, *types):
+    return {(previous_module, f"com.mirakyux.export4j.{previous_package}.{name}"):
+            (required_module, f"com.mirakyux.export4j.{new_package}.{name}") for name in types}
+
+
+RELOCATIONS = {
+    **relocations("export4j-adapter-pdf", "adapter.pdf", "export4j-pdf-recovery", "pdf.recovery", "PdfRecoveryCodec"),
+    **relocations("export4j-opentype", "opentype", "export4j-opentype-layout", "opentype.layout", "OpenTypeText"),
+    **relocations("export4j-backend-pdf", "backend.pdf", "export4j-pdf-signatures", "pdf.signatures",
+                  "PdfDocMdp", "PdfPades", "PdfSigner", "PdfSignatureVerifier", "PdfTrust"),
+    **relocations("export4j-math", "math", "export4j-math-core", "math.core", "MathTextFonts"),
+    **relocations("export4j-math", "math", "export4j-math-api", "math.api", "MathOptions", "MathException"),
+}
+
+_NAMES = {old: new for (_, old), (_, new) in RELOCATIONS.items()}
+_NAMES.update({old.replace(".", "/"): new.replace(".", "/") for old, new in list(_NAMES.items())})
+_REFERENCE = re.compile(r'"(?:\\.|[^"\\])*"|(?:' + "|".join(map(re.escape, _NAMES)) + r")(?![\w])")
+
+
+def migrated_declaration(value):
+    return _REFERENCE.sub(lambda match: _NAMES.get(match[0], match[0]), value)
+
+
 def compare(baseline: dict, candidate: dict) -> dict:
     if baseline.get("schema") != 1 or candidate.get("schema") != 1:
         raise ValueError("Unsupported API snapshot schema")
     breaks, additions = [], []
-    foreign = []
+    foreign, relocated = [], []
     for module, classes in candidate["modules"].items():
         for name, item in classes.items():
             for declaration in (item["declaration"], *item["members"].values()):
@@ -95,18 +117,27 @@ def compare(baseline: dict, candidate: dict) -> dict:
         current = candidate["modules"].get(module, {})
         for name, previous in classes.items():
             location = module + ":" + name
-            if name not in current:
+            outer, separator, nested = name.partition("$")
+            target, new_outer = RELOCATIONS.get((module, outer), (module, outer))
+            new_name = new_outer + separator + nested
+            actual = candidate["modules"].get(target, {}).get(new_name)
+            if (target, new_name) != (module, name):
+                if actual is not None:
+                    relocated.append({"type": name, "previousModule": module, "requiredModule": target,
+                                      "requiredType": new_name, "binaryNameChanged": new_name != name})
+            if actual is None:
                 breaks.append({"api": location, "reason": "type removed or no longer accessible"})
                 continue
-            actual = current[name]
-            if actual["declaration"] != previous["declaration"]:
+            if actual["declaration"] != migrated_declaration(previous["declaration"]):
                 breaks.append({"api": location, "reason": "type declaration changed",
                                "before": previous["declaration"], "after": actual["declaration"]})
-            for key, declaration in previous["members"].items():
+            previous_members = {migrated_declaration(key): migrated_declaration(value)
+                                for key, value in previous["members"].items()}
+            for key, declaration in previous_members.items():
                 if actual["members"].get(key) != declaration:
                     breaks.append({"api": location + "#" + key, "reason": "member removed or declaration/constant changed",
                                    "before": declaration, "after": actual["members"].get(key)})
-            for key in sorted(actual["members"].keys() - previous["members"].keys()):
+            for key in sorted(actual["members"].keys() - previous_members.keys()):
                 declaration = actual["members"][key]
                 item = {"api": location + "#" + key, "declaration": declaration}
                 # Existing client implementors/subclasses cannot acquire a newly required abstract method.
@@ -117,7 +148,7 @@ def compare(baseline: dict, candidate: dict) -> dict:
         additions.append({"api": module, "reason": "module added"})
     return {"schema": 1, "baseline": baseline["reference"], "candidate": candidate["reference"],
             "compatible": not breaks and not foreign, "breaking": breaks, "additions": additions,
-            "foreignApiTypes": foreign,
+            "foreignApiTypes": foreign, "relocationsRequiringCoordinateMigration": relocated,
             "scope": "public/protected JVM descriptors, generic/throws declarations, inheritance, modifiers and constants; behavior excluded"}
 
 
@@ -148,7 +179,9 @@ def main() -> int:
     result = compare(json.loads(args.baseline.read_text(encoding="utf-8")),
                      json.loads(args.candidate.read_text(encoding="utf-8")))
     write_json(args.report, result)
-    print(f"API comparison: {len(result['breaking'])} incompatible declarations, {len(result['additions'])} additions, {len(result['foreignApiTypes'])} foreign API types")
+    print(f"API comparison: {len(result['breaking'])} incompatible declarations, {len(result['additions'])} additions, "
+          f"{len(result['foreignApiTypes'])} foreign API types, "
+          f"{len(result['relocationsRequiringCoordinateMigration'])} relocated declarations requiring coordinate migration")
     return 0 if result["compatible"] else 1
 
 

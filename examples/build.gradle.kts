@@ -17,7 +17,10 @@ dependencies {
     implementation(project(":export4j-adapter-docx"))
     implementation(project(":export4j-adapter-template"))
     implementation(project(":export4j-adapter-pdf"))
+    implementation(project(":export4j-pdf-recovery"))
+    implementation(project(":export4j-pdf-signatures"))
     implementation(project(":export4j-adapter-web"))
+    implementation(project(":export4j-web-layout"))
     implementation(project(":export4j-math"))
     implementation(project(":export4j-starter"))
     implementation(libs.jlatexmath) {

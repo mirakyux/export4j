@@ -1,6 +1,6 @@
 # Development
 
-These conventions apply to Java implementation, tests, examples, and build configuration. There are currently 21 Gradle subprojects: 18 libraries, a BOM, examples, and the optional designer.
+These conventions apply to Java implementation, tests, examples, and build configuration. There are currently 32 Gradle subprojects: 29 libraries, a BOM, examples, and the optional designer.
 
 See [current status](current-status.md) for published and development module scopes. This page defines development conventions; runnable tasks and output directories belong in the [example index](examples.md), while change-specific checks belong in the [verification matrix (Chinese)](../../.agents/skills/develop-export4j/references/verification.md).
 

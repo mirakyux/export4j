@@ -6,6 +6,16 @@
 
 ## 引入与直接转换
 
+| 需求 | 坐标 | 入口 |
+| --- | --- | --- |
+| TeX 矢量轮廓 | `export4j-math-core` | `TexVectorMath.vector(...)` |
+| Markdown／HTML 等语义输入中的视觉公式 | `export4j-math-web` | `ContentImporter.builder().formulaProcessor(VisualMathContent.processor())` |
+| Word 可编辑公式树 | `export4j-math-docx` | `DocxTexMath.parse(...)` |
+| Markdown／HTML 整篇导出可编辑 Word 公式 | `export4j-math-docx-web` | `DocxMathContent.read(...)`、`DocxAdapter.writeMath(...)` |
+| 同源跨格式导出 | `export4j-math` | `TexMath`、`MarkdownMath`、`MathContent` |
+
+公式类型按职责归入 `com.mirakyux.export4j.math` 下的不同包。`api` 提供 `MathOptions` 和 `MathException`，`core` 提供 `TexVectorMath` 和 `MathTextFonts`，`web` 提供 `VisualMathContent`，`docx` 提供 `DocxTexMath`，`docx.web` 提供 `DocxMathContent`。只使用原生 Word 公式时可使用 `math-docx` 或 `math-docx-web` 的对应入口。
+
 使用与其余 Export4j 模块相同的开发版本，通过 BOM 对齐：
 
 ```kotlin
@@ -16,7 +26,7 @@ dependencies {
 ```
 
 ```java
-import com.mirakyux.export4j.math.MathOptions;
+import com.mirakyux.export4j.math.api.MathOptions;
 import com.mirakyux.export4j.math.TexMath;
 
 var options = MathOptions.builder().fontSize(14).display(true).build();
@@ -29,6 +39,24 @@ var nativeMath = TexMath.docx("\\frac{a+b}{c}", options);
 矢量坐标与字号单位是 pt，轮廓相对基线。`logicalText` 保存 TeX，仅将换行、回车和制表符替换为空格，以满足行内阅读文字契约；原 Markdown 源码范围由 `FormulaSpan` 保留。PDF ActualText、搜索和逐字选区是不同能力，不能把阅读文字当成逐个 TeX 字符的轮廓坐标。
 
 `docx` 返回既有 `DocxMath` 类型树，可绑定到 `DocxMathDocument` 后交给 `DocxAdapter.writeMath`。原生公式字号继承宿主段落，`fontSize` 只控制矢量排版。原生树不自动参与 PDF 排版。
+
+## 将 Markdown 或 HTML 导出为可编辑的 Word 文档
+
+使用 `export4j-math-docx-web` 和同版本 BOM。`DocxMathContent.read` 将正文、表格和支持的 TeX 公式编译成 `DocxMathDocument`。`DocxAdapter.writeMath` 将它写入调用方持有的流，Word 负责公式宽度和分页。`read` 的配置回调接受导入样式、元数据、页面设置、图片和额度。遇到不支持的 TeX 或额度错误时，编译明确失败。需要公式宽度预检或图片回退时，可选择 `MathContent`。 [混合内容与跨格式公式](rich-content-api.md)
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxAdapter;
+import com.mirakyux.export4j.math.docx.web.DocxMathContent;
+import com.mirakyux.export4j.model.ContentOptions;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+var document = DocxMathContent.read("# Report\n\nThe result is $x^2$.", ContentOptions.Format.MARKDOWN);
+var adapter = DocxAdapter.builder().lineSpacing(DocxAdapter.LineSpacing.OBJECTS_AT_LEAST).build();
+try (var output = Files.newOutputStream(Path.of("report.docx"))) {
+    adapter.writeMath(document, output);
+}
+```
 
 ## Markdown 一步导入
 
@@ -72,7 +100,7 @@ new DocxAdapter().writeMath(wordInput.document(), output);
 公式中的中文单位等文字使用显式字体，而不是系统字体回退：
 
 ```java
-import com.mirakyux.export4j.math.MathTextFonts;
+import com.mirakyux.export4j.math.core.MathTextFonts;
 
 var textFonts = MathTextFonts.of(explicitStaticFontBytes);
 var withUnit = TexMath.vector("24\\text{岁}", options, textFonts);

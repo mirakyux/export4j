@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.adapter.web;
 
+import com.mirakyux.export4j.adapter.web.internal.HtmlLayoutProvider;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionOptions;
@@ -38,16 +39,16 @@ public final class HtmlImporter {
     final Map<String, InlineVector> vectors;
     final Map<String, java.util.List<String>> families;
     final URI baseUri;
-    final boolean layoutMode;
+    final HtmlLayoutProvider layout;
     final Media media;
     final com.mirakyux.export4j.model.PageSize viewport;
-    public HtmlImporter() { this(new Builder()); }
-    private HtmlImporter(Builder builder) {
+    public HtmlImporter() { this(new Builder(), null); }
+    private HtmlImporter(Builder builder, HtmlLayoutProvider layout) {
         policy = builder.policy; limits = builder.limits; metadata = builder.metadata;
         pageSettings = builder.pageSettings; format = builder.format; images = Map.copyOf(builder.images);
         vectors = Map.copyOf(builder.vectors);
         families = Map.copyOf(builder.families); baseUri = builder.baseUri;
-        layoutMode = builder.layoutMode; media = builder.media; viewport = builder.viewport == null ? pageSettings.size() : builder.viewport;
+        this.layout = layout; media = builder.media; viewport = builder.viewport == null ? pageSettings.size() : builder.viewport;
     }
     public static Builder builder() { return new Builder(); }
     public Request read(String source) { return new Request(Objects.requireNonNull(source, "source"), this); }
@@ -92,8 +93,8 @@ public final class HtmlImporter {
         return com.mirakyux.export4j.model.processing.DocumentConversion.from("HTML", shared -> {
             var builder = new Builder().policy(shared).limits(limits).metadata(metadata).pageSettings(pageSettings).paragraphFormat(format);
             builder.images.putAll(images); builder.vectors.putAll(vectors); builder.families.putAll(families); builder.baseUri = baseUri;
-            builder.layoutMode = layoutMode; builder.media = media; builder.viewport = viewport;
-            var imported = builder.build().read(source.read()).execute();
+            builder.media = media; builder.viewport = viewport;
+            var imported = new HtmlImporter(builder, layout).read(source.read()).execute();
             return com.mirakyux.export4j.model.processing.DocumentConversion.Input.of(imported.document(), imported.report());
         }).policy(policy);
     }
@@ -118,6 +119,7 @@ public final class HtmlImporter {
         public Builder pageSettings(PageSettings value) { pageSettings = Objects.requireNonNull(value, "pageSettings"); return this; }
         public Builder paragraphFormat(ParagraphFormat value) { format = Objects.requireNonNull(value, "format"); return this; }
         /** Enables bounded CSS boxes, flex/grid and positioning, compiled to runtime layout components.
+         * Include {@code export4j-web-layout} at runtime when enabling this mode.
          * The default remains editable semantic flow. Component descendants are not a generic editable
          * document model; conversions without a layout representation require an explicit loss policy.
          * Physical fonts are supplied later by DocumentEngine, never by the importer.
@@ -156,7 +158,10 @@ public final class HtmlImporter {
             if (!uri.getScheme().equalsIgnoreCase("http") && !uri.getScheme().equalsIgnoreCase("https")) { throw new IllegalArgumentException("HTML base must be HTTP(S)"); }
             baseUri = uri; return this;
         }
-        public HtmlImporter build() { return new HtmlImporter(this); }
+        /** Takes an immutable snapshot. Enabling layout without its provider fails with
+         * IllegalStateException.
+         */
+        public HtmlImporter build() { return new HtmlImporter(this, layoutMode ? HtmlLayoutProvider.load() : null); }
         private static String key(String value) {
             if (Objects.requireNonNull(value, "key").isBlank()) { throw new IllegalArgumentException("empty HTML resource key"); } return value;
         }

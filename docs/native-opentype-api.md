@@ -2,14 +2,16 @@
 
 `export4j-opentype` 在排版阶段完成 GSUB／GPOS、可变轴插值、CFF2 轮廓和字体着色，并输出后端中立绘制指令。通用竖排使用真实 TTB 度量及 `vert`／`vrt2` 替换，按列换行、分页，可显式组合纵中横。PDF／SVG／PNG 后端消费已确定的轮廓与彩色图像，不再次塑形。
 
-普通 Java 核心保持现有入口；新增模块和平台二进制均由应用显式选择。它与组件模块已有 `OpenTypeText` 不同，使用时需注意完整包名 `com.mirakyux.export4j.opentype.OpenTypeText`。
+普通 Java 核心保持现有入口；新增模块和平台二进制均由应用显式选择。它与组件模块已有 `OpenTypeText` 不同，使用时需注意完整包名 `com.mirakyux.export4j.opentype.layout.OpenTypeText`。
 
 ## 依赖及平台
+
+只用 `OpenTypeShaper` 时声明 `export4j-opentype`。用 `OpenTypeText` 做行列排版、分页或纵中横时声明 `export4j-opentype-layout`。
 
 ~~~kotlin
 dependencies {
     implementation(platform("com.mirakyux.export4j:export4j-bom:0.1.0-SNAPSHOT"))
-    implementation("com.mirakyux.export4j:export4j-opentype")
+    implementation("com.mirakyux.export4j:export4j-opentype-layout")
     implementation("com.mirakyux.export4j:export4j-backend-pdf")
     runtimeOnly("org.lwjgl:lwjgl:3.4.3:natives-windows")
     runtimeOnly("org.lwjgl:lwjgl-harfbuzz:3.4.3:natives-windows")
@@ -50,7 +52,7 @@ var selectedPalette = instance.withPalette(1);
 ## 换行、分页与竖排
 
 ~~~java
-import com.mirakyux.export4j.opentype.OpenTypeText;
+import com.mirakyux.export4j.opentype.layout.OpenTypeText;
 import java.util.List;
 
 String text = "天地12玄黃，Hello 世界。";

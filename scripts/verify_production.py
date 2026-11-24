@@ -111,7 +111,8 @@ def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", reposi
     components = sbom["components"]
     require(len(components) == len({c["bom-ref"] for c in components}), "SBOM runtime inventory differs")
     own = [c for c in components if c["group"] == "com.mirakyux.export4j"]
-    require({c["name"] for c in own} == published_libraries(ROOT) and len(own) == len(published_libraries(ROOT)), "SBOM library scope differs")
+    libraries = published_libraries(ROOT)
+    require({c["name"] for c in own} == libraries and len(own) == len(libraries), "SBOM library scope differs")
     with (ROOT / "third-party/dependencies.csv").open(encoding="utf-8", newline="") as source:
         reviewed = {row["coordinate"]: row for row in csv.DictReader(source)}
     for component in components:
@@ -143,7 +144,7 @@ def check_bundle(consumer_build_directory=None, version="0.1.0-SNAPSHOT", reposi
         name, component_version = component["name"], component["version"]
         require(component_version == version, f"SBOM version differs: {name}")
         artifact = published(name, component_version, "jar")
-        if name == "export4j-math":
+        if name == ("export4j-math-core" if "export4j-math-core" in libraries else "export4j-math"):
             verify_math_source_bundle(artifact, ROOT)
         require(hashlib.sha256(artifact.read_bytes()).hexdigest() == component["hashes"][0]["content"], f"SBOM hash differs: {name}")
         require(published(name, component_version, "jar", "sources").exists(), f"sources missing: {name}")

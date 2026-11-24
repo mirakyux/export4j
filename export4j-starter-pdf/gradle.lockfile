@@ -1,0 +1,8 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+commons-logging:commons-logging:1.4.0=runtimeClasspath
+org.apache.pdfbox:fontbox:3.0.8=runtimeClasspath
+org.apache.pdfbox:pdfbox-io:3.0.8=runtimeClasspath
+org.apache.pdfbox:pdfbox:3.0.8=runtimeClasspath
+empty=annotationProcessor,compileClasspath

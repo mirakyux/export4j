@@ -27,6 +27,7 @@ RICH_CASES = {"markdown", "xml", *OBJECT_CASES}
 CASES = {"markdown": (5, 1), "xml": (5, 1), **{case: (5, 1) for case in OBJECT_CASES},
          "html": (1, 1), "text": (0, 0), "visual-only": (1, 0)}
 FORMULAS = (r"x + \text{年}", "x_1^2", r"\frac{a+b}{c}", r"\sqrt{x}", "x^2 + y^2 = z^2")
+DOCUMENT_TOKENS = ("Authored report", "Literal $x^2$ and **plain**", "Item", "Count", "Widget", "2")
 
 
 def require(condition, message):
@@ -78,8 +79,7 @@ def render_pdf(path, output):
     return {"pages": len(poppler), "poppler": poppler, "pdfium": pdfium_images, "text": "\n".join(text)}
 
 
-def check_pdf(path, case):
-    expected_formulas, expected_images = CASES[case]
+def check_pdf(path, case, expected_formulas, expected_images):
     reader = PdfReader(path, strict=True)
     fonts, images, operations = set(), 0, Counter()
     text = "\n".join(page.extract_text() for page in reader.pages)
@@ -111,6 +111,11 @@ def check_pdf(path, case):
         require("**literal**" in text and "<b>HTML</b>" in text and "$x^2$" in text,
                 "literal source was parsed despite the text entry point")
         require(not logical, "literal source produced formula anchors")
+    elif case == "document":
+        require(len(reader.pages) == 1 and tuple(reader.pages[0].mediabox) == (0, 0, 360, 480),
+                "authored PDF page size changed")
+        require(not logical and all(token in text for token in DOCUMENT_TOKENS),
+                "authored PDF document text was changed or reparsed")
     else:
         require("VISUAL-ONLY" in text + logical and r"\bar{x}" in logical, "PDF-only formula was not rendered")
     if expected_formulas:
@@ -119,8 +124,7 @@ def check_pdf(path, case):
             "formulas": expected_formulas, "curvedPaths": operations["c"], "sha256": digest(path)}
 
 
-def check_docx(path, case):
-    expected_formulas, expected_images = CASES[case]
+def check_docx(path, case, expected_formulas, expected_images):
     with ZipFile(path) as archive:
         names = archive.namelist()
         require(len(names) == len(set(names)) and archive.testzip() is None, "invalid DOCX ZIP")
@@ -136,9 +140,19 @@ def check_docx(path, case):
                 "temporary formula identity leaked into DOCX")
         fonts = styles.find(".//w:docDefaults/w:rPrDefault/w:rPr/w:rFonts", NS)
         require(fonts is not None, "shared family declaration did not generate Word font defaults")
+        east_asia = "Liberation Sans" if case == "document" else "LXGW WenKai TC"
         require([fonts.get("{" + NS["w"] + "}" + slot) for slot in ("ascii", "hAnsi", "eastAsia", "cs")]
-                == ["Liberation Sans", "Liberation Sans", "LXGW WenKai TC", "Liberation Sans"],
+                == ["Liberation Sans", "Liberation Sans", east_asia, "Liberation Sans"],
                 "Word script slots differ from the single explicit family configuration")
+        if case == "document":
+            size = root.find(".//w:sectPr/w:pgSz", NS)
+            require(size is not None and (size.get(f"{{{NS['w']}}}w"), size.get(f"{{{NS['w']}}}h")) == ("7200", "9600"),
+                    "authored DOCX page size changed")
+            require(len(root.findall(".//w:tbl", NS)) == 1 and all(token in text for token in DOCUMENT_TOKENS),
+                    "authored DOCX text or table changed")
+            require(root.find(".//w:rPr/w:color[@w:val='37649A']", NS) is not None
+                    and root.find(".//w:rPr/w:sz[@w:val='32']", NS) is not None,
+                    "authored DOCX text style changed")
         if case in RICH_CASES:
             require("中英文正文" in text and "中文单元格" in text and "年" in text, "native Chinese body/formula text missing")
             require(len(root.findall(".//w:tbl", NS)) == 1, "Markdown table missing from DOCX")
@@ -199,20 +213,27 @@ def inspect(source, output, soffice, reader_cache):
             name: check_metadata(source / f"xml-metadata-{name}.pdf", source / f"xml-metadata-{name}.docx", *values)
             for name, values in metadata_paths.items()
         }
+    cases = dict(CASES)
+    model_pdf, model_docx = source / "document.pdf", source / "document.docx"
+    if model_pdf.exists() or model_docx.exists():
+        cases["document"] = (0, 0)
+        metadata_outputs["document"] = check_metadata(model_pdf, model_docx, "Model title", "Model author")
     # Fail structural checks before starting independent reader processes.
-    pdfs = {case: check_pdf(source / (case + ".pdf"), case) for case in CASES}
-    docx = {case: check_docx(source / (case + ".docx"), case) for case in CASES if case != "visual-only"}
+    pdfs = {case: check_pdf(source / (case + ".pdf"), case, *counts) for case, counts in cases.items()}
+    docx = {case: check_docx(source / (case + ".docx"), case, *counts)
+            for case, counts in cases.items() if case != "visual-only"}
     for case in OBJECT_CASES:
         require_same_docx_parts(source / "xml.docx", source / (case + ".docx"))
     renders, reader = {}, {}
-    for case in CASES:
+    for case in cases:
         renders[case] = render_pdf(source / (case + ".pdf"), output / case)
         require(renders[case]["pages"] == pdfs[case]["pages"], "structural and rendered page counts differ")
         tokens = {"markdown": ("EASY-EXPORT", "中英文正文", "中文单元格"),
                   "xml": ("EASY-EXPORT", "中英文正文", "中文单元格"),
                   "html": ("HTML-ENTRY", "中文正文", "bold text", "x^2", "Explicit resource."),
                   "text": ("TEXT-ENTRY", "中文", "**literal**", "<b>HTML</b>", "$x^2$"),
-                  "visual-only": ("VISUAL-ONLY", r"\bar{x}")}["xml" if case in OBJECT_CASES else case]
+                  "visual-only": ("VISUAL-ONLY", r"\bar{x}"),
+                  "document": DOCUMENT_TOKENS}["xml" if case in OBJECT_CASES else case]
         for token in tokens:
             require(compact(token) in compact(renders[case]["text"]),
                     f"independent PDF extraction lost {case} source: {token}")
@@ -238,7 +259,8 @@ def inspect(source, output, soffice, reader_cache):
             rendered = render_pdf(target / (case + ".pdf"), target / "render")
             for token in ({"markdown": ("EASY-EXPORT", "中英文正文", "中文单元格"),
                            "xml": ("EASY-EXPORT", "中英文正文", "中文单元格"),
-                           "html": ("HTML-ENTRY", "中文正文"), "text": ("TEXT-ENTRY", "中文")}
+                           "html": ("HTML-ENTRY", "中文正文"), "text": ("TEXT-ENTRY", "中文"),
+                           "document": DOCUMENT_TOKENS}
                           ["xml" if case in OBJECT_CASES else case]):
                 require(compact(token) in compact(rendered["text"]), "independent DOCX renderer lost source text")
             reader[case] = {"pages": rendered["pages"], "pdfSha256": digest(target / (case + ".pdf")),

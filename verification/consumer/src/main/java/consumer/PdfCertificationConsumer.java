@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;
-import com.mirakyux.export4j.backend.pdf.PdfSigner;
+import com.mirakyux.export4j.pdf.signatures.PdfSigner;
 import com.mirakyux.export4j.components.DocumentEngine;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.math;
 
+import com.mirakyux.export4j.math.api.MathException;
+import com.mirakyux.export4j.math.api.MathOptions;
+import com.mirakyux.export4j.math.core.MathTextFonts;
+
 import com.mirakyux.export4j.model.ExecutionContext;
 import com.mirakyux.export4j.model.ExecutionException;
 import com.mirakyux.export4j.model.ExecutionOptions;
@@ -19,6 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MathTextFontsTest {
+    @Test void matrixRowSeparatorFollowedByLettersDoesNotResolveTextFonts() {
+        var fonts = MathTextFonts.deferred(() -> { throw new AssertionError("unexpected font source access"); });
+        String tex = "\\begin{matrix}x\\\\text\\end{matrix}";
+        assertEquals(TexMath.vector(tex), TexMath.vector(tex, MathOptions.DEFAULT, fonts));
+    }
+
     @Test void literatureUnitsAndBarAreTrueExplicitFontOutlines() throws IOException {
         var fonts = cjkFonts();
         for (String tex : List.of("(\\bar{x} \\pm s) / \\text{岁}",

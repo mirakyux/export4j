@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.math;
 
+import com.mirakyux.export4j.math.docx.NativeMathBinding;
+
 import com.mirakyux.export4j.adapter.docx.DocxAdapter;
 import com.mirakyux.export4j.adapter.docx.DocxMath;
 import com.mirakyux.export4j.model.ContentOptions;

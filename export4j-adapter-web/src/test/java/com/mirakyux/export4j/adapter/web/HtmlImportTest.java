@@ -33,6 +33,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HtmlImportTest {
+    @Test void cssLayoutRequiresItsOptionalRuntime() throws Exception {
+        var builder = HtmlImporter.builder().layoutMode(true);
+        var missing = assertThrows(IllegalStateException.class, builder::build);
+        assertTrue(missing.getMessage().contains("export4j-web-layout"));
+        var document = builder.layoutMode(false).build().read("<p>Editable text</p>").execute().document();
+        assertEquals("Editable text", ((Paragraph) document.blocks().getFirst()).text());
+    }
+
     @Test void cssFontFamilyAcceptsExplicitDefaultFontRoleAlongsideNamedVariants() throws Exception {
         var importer = HtmlImporter.builder().fontFamily("Fixture Sans", "", "bold", "italic", "boldItalic").build();
         var paragraph = (Paragraph) importer.read("<p style='font-family:Fixture Sans'>plain <b>bold</b> <i>italic</i> <b><i>both</i></b></p>").execute().document().blocks().getFirst();

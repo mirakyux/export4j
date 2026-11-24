@@ -4,7 +4,7 @@ dependencies {
     api(project(":export4j-graphics-api"))
     implementation(project(":export4j-graphics-core"))
     implementation(libs.pdfbox)
-    implementation(libs.bcpkix)
+    runtimeOnly(project(":export4j-font-fontbox"))
     testImplementation(project(":export4j-graphics-core"))
     testImplementation(project(":export4j-layout-core"))
     testImplementation(project(":export4j-components"))

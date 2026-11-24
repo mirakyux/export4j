@@ -5,18 +5,33 @@ import java.util.jar.JarFile
 plugins { application }
 
 val publicationVersion = providers.gradleProperty("export4jVersion").orElse("0.1.0-SNAPSHOT").get()
+val starterTarget = providers.gradleProperty("starterTarget").orElse("full").get()
+val starterArtifact = when (starterTarget) {
+    "full" -> "export4j-starter"
+    "pdf" -> "export4j-starter-pdf"
+    "docx" -> "export4j-adapter-docx"
+    else -> error("Unknown starter target: $starterTarget")
+}
+val fixture = when (starterTarget) {
+    "pdf" -> "PdfStarterConsumer"
+    "docx" -> "DocxStarterConsumer"
+    else -> "EasyExportConsumer"
+}
 layout.buildDirectory.set(file(providers.gradleProperty("consumerBuildDirectory").orElse("build").get()))
 java { toolchain.languageVersion.set(JavaLanguageVersion.of(21)) }
-dependencyLocking { lockAllConfigurations() }
+dependencyLocking {
+    lockAllConfigurations()
+    if (starterTarget != "full") { lockFile.set(file("gradle-$starterTarget.lockfile")) }
+}
 
 // This is intentionally the entire dependency declaration: no BOM, additional library or native runtime.
-dependencies { implementation("com.mirakyux.export4j:export4j-starter:$publicationVersion") }
+dependencies { implementation("com.mirakyux.export4j:$starterArtifact:$publicationVersion") }
 
 sourceSets.main {
-    java.setSrcDirs(listOf("../consumer/src/main/java"))
-    java.include("consumer/EasyExportConsumer.java")
+    java.setSrcDirs(listOf("../consumer/src/main/java", "src/main/java"))
+    java.include("consumer/$fixture.java")
 }
-application { mainClass.set("consumer.EasyExportConsumer") }
+application { mainClass.set("consumer.$fixture") }
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
@@ -47,18 +62,26 @@ tasks.register("resolvedLibraries") {
     doLast {
         val configuration = runtime.get()
         val artifacts = configuration.resolvedConfiguration.resolvedArtifacts.sortedBy { it.moduleVersion.id.toString() }
-        val expected = setOf("export4j-starter", "export4j-components", "export4j-math", "export4j-adapter-template",
-            "export4j-adapter-docx", "export4j-adapter-web", "export4j-backend-pdf", "export4j-font-core",
-            "export4j-graphics-api", "export4j-graphics-core", "export4j-layout-core", "export4j-layout-model",
-            "export4j-model", "export4j-text-core")
+        val pdf = setOf("export4j-components", "export4j-backend-pdf", "export4j-font-core", "export4j-font-fontbox", "export4j-graphics-api",
+            "export4j-graphics-core", "export4j-layout-core", "export4j-layout-model", "export4j-model", "export4j-text-core")
+        val docx = setOf("export4j-adapter-docx", "export4j-model")
+        val expected = when (starterTarget) {
+            "docx" -> docx + starterArtifact
+            "pdf" -> pdf + starterArtifact
+            else -> pdf + docx + setOf(starterArtifact, "export4j-math", "export4j-adapter-template",
+            "export4j-math-api", "export4j-math-core", "export4j-math-web", "export4j-math-docx",
+            "export4j-adapter-web")
+        }
         val own = artifacts.filter { it.moduleVersion.id.group == "com.mirakyux.export4j" }
         check(own.map { it.moduleVersion.id.name }.toSet() == expected) { "Starter transitive project module scope differs" }
         check(own.all { it.moduleVersion.id.version == publicationVersion }) { "Starter modules use mixed versions" }
         check(artifacts.none { it.moduleVersion.id.group == "org.lwjgl" || it.classifier?.startsWith("natives") == true
-            || it.moduleVersion.id.name in setOf("export4j-opentype", "export4j-adapter-pdf") }) { "Unrelated native/PDF-edit runtime was included" }
+            || it.moduleVersion.id.group == "org.bouncycastle"
+            || it.moduleVersion.id.name in setOf("export4j-opentype", "export4j-adapter-pdf", "export4j-pdf-recovery",
+                "export4j-pdf-signatures", "export4j-web-layout") }) { "Unrelated optional runtime was included" }
         val direct = configurations.getByName("implementation").dependencies
         check(direct.size == 1 && direct.single().group == "com.mirakyux.export4j"
-            && direct.single().name == "export4j-starter" && direct.single().version == publicationVersion) {
+            && direct.single().name == starterArtifact && direct.single().version == publicationVersion) {
             "Single-coordinate consumer acquired an additional direct dependency"
         }
         check(configuration.incoming.resolutionResult.allComponents.none {

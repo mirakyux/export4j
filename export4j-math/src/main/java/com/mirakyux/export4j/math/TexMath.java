@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.math;
 
+import com.mirakyux.export4j.math.api.MathException;
+import com.mirakyux.export4j.math.api.MathOptions;
+import com.mirakyux.export4j.math.core.MathTextFonts;
+import com.mirakyux.export4j.math.core.TexVectorMath;
+import com.mirakyux.export4j.math.docx.DocxTexMath;
+import com.mirakyux.export4j.math.web.VisualMathContent;
+
 import com.mirakyux.export4j.adapter.docx.DocxMath;
 import com.mirakyux.export4j.adapter.web.FormulaProcessor;
 import com.mirakyux.export4j.model.InlineVector;
-import java.util.Objects;
 
 /** Offline conversion of a bounded TeX subset. All lengths use points. No external resources,
  * macros or implicit system fonts are permitted. Methods own no caller resources and may be
@@ -26,7 +32,7 @@ public final class TexMath {
      * @throws MathException for unsupported syntax, invalid input, limits or rendering failure
      */
     public static InlineVector vector(String tex, MathOptions options) {
-        return TexVectorRenderer.prepare(tex, options);
+        return TexVectorMath.vector(tex, options);
     }
 
     /** Prepares vector mathematics with explicit physical fonts for literal text groups,
@@ -38,7 +44,7 @@ public final class TexMath {
      * Supplied font byte snapshots remain owned by {@code textFonts}.
      */
     public static InlineVector vector(String tex, MathOptions options, MathTextFonts textFonts) {
-        return TexVectorRenderer.prepare(tex, options, textFonts);
+        return TexVectorMath.vector(tex, options, textFonts);
     }
 
     /** Creates the optional strict formula processor for source-content imports, with default
@@ -65,17 +71,7 @@ public final class TexMath {
      * by the returned processor; invocation-local parsed fonts are released after each render.
      */
     public static FormulaProcessor processor(MathOptions options, MathTextFonts textFonts) {
-        var limits = Objects.requireNonNull(options, "options");
-        var explicitFonts = Objects.requireNonNull(textFonts, "textFonts");
-        return (tex, display, fontSize, rgb, maxSegments) -> {
-            if (maxSegments <= 0) { throw new MathException(MathException.Reason.LIMIT_EXCEEDED); }
-            if (rgb < 0 || rgb > 0xffffff) { throw new IllegalArgumentException("invalid formula color"); }
-            var occurrence = new MathOptions(fontSize, display, limits.maxSourceLength(), limits.maxDepth(),
-                    limits.maxCommands(), limits.maxPaths(), Math.min(limits.maxSegments(), maxSegments),
-                    limits.maxExtent());
-            var rendered = vector(tex, occurrence, explicitFonts);
-            return new InlineVector(rendered.resource(), rendered.logicalText(), rgb, "");
-        };
+        return VisualMathContent.processor(options, textFonts);
     }
 
     /** Converts the supported semantic subset to editable Word mathematics, using default limits.
@@ -88,5 +84,5 @@ public final class TexMath {
      * vector rendering: unsupported constructs fail instead of becoming misleading plain runs.
      * @throws MathException for unsupported syntax, invalid input or limits
      */
-    public static DocxMath docx(String tex, MathOptions options) { return TexToDocx.parse(tex, options); }
+    public static DocxMath docx(String tex, MathOptions options) { return DocxTexMath.parse(tex, options); }
 }

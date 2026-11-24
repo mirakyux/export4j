@@ -41,32 +41,43 @@ flowchart TD
 
 ## 模块与依赖
 
-仓库有 21 个 Gradle 子项目：18 个库、BOM、示例与可选设计器。下表省略 `export4j-` 前缀；依赖列只列**直接生产项目依赖**，`A` 表示 Gradle `api`，`I` 表示 `implementation`，不展开传递依赖及第三方库。实际声明以 [settings](../settings.gradle.kts)、各模块 `build.gradle.kts` 和[依赖记录](dependencies.md)为准。
+仓库包含 29 个库、BOM、示例与可选设计器。下表省略 `export4j-` 前缀，列出直接生产项目依赖。`A` 表示 Gradle `api`，`I` 表示 `implementation`，`R` 表示 `runtimeOnly`。 [模块配置](../settings.gradle.kts) · [依赖记录](dependencies.md)
 
 | 分组 | 模块 | 职责 | 直接项目依赖 |
 | --- | --- | --- | --- |
 | 基础 | `model` | 语义文档、模板绑定、样式、执行与处理契约 | 无 |
 | 基础 | `font-core` | 显式字体来源、不可变字体与有界缓存 | 无 |
+| 基础 | `font-fontbox` | 静态 TrueType 和 CFF 字体文件解析实现 | I: `font-core` |
 | 基础 | `text-core` | 塑形、测量及局部段落行布局 | A: `font-core`、`model` |
 | 绘制与布局 | `graphics-api` | 几何、绘制类型、Display List 与输出 SPI | A: `model`、`text-core` |
 | 绘制与布局 | `graphics-core` | 图形原语、记录与指令执行 | A: `graphics-api` |
 | 绘制与布局 | `layout-model` | 页面、片段、来源映射与 Layout IR | A: `graphics-api` |
-| 绘制与布局 | `layout-core` | 分页、区域流、核心组件 SPI 与绘制转换 | A: `layout-model`；I: `graphics-core` |
-| 绘制与布局 | `components` | 标准组件、语义编排与 `DocumentEngine` | A: `layout-core`；I: `graphics-core` |
-| 后端 | `backend-pdf` | PDF 编码、文档内字体及解析租约 | A: `graphics-api`；I: `graphics-core` |
+| 绘制与布局 | `layout-core` | 分页、区域流、核心组件 SPI 与绘制转换 | A: `layout-model`、`graphics-core` |
+| 绘制与布局 | `components` | 标准组件、语义编排与 `DocumentEngine` | A: `layout-core` · I: `graphics-core` · R: `font-fontbox` |
+| 后端 | `backend-pdf` | PDF 编码、文档内字体及解析租约 | A: `graphics-api` · I: `graphics-core` · R: `font-fontbox` |
 | 后端 | `backend-svg` | 静态 SVG 输出 | A: `graphics-api`；I: `graphics-core` |
 | 后端 | `backend-raster` | 图像及预览输出 | A: `graphics-api`；I: `graphics-core` |
-| 适配器 | `adapter-docx` | 通用正文、原生数学及类型化 OOXML 语义读写 | A: `model` |
+| 适配器 | `adapter-docx` | `DocxExport`、原生数学及类型化 OOXML 语义读写 | A: `model` |
 | 适配器 | `adapter-template` | 离线 XML／严格 Markdown 模板编译 | A: `model` |
-| 适配器 | `adapter-web` | HTML／Markdown 语义读写、离线 CSS 布局及源内容会话 | A: `model`；I: `components`、`graphics-core` |
-| 适配器 | `adapter-pdf` | 有界原对象操作、渲染、脱敏及显式语义恢复 | A: `model`、`adapter-template` |
-| 扩展与装配 | `math` | 有界 TeX 编译、逐次公式身份及目标表示 | A: `model`、`adapter-docx`、`adapter-web`；I: `font-core`、`graphics-api` |
-| 扩展与装配 | `opentype` | 原生塑形、可变／彩色字体与竖排流 | A: `layout-core`；I: `graphics-core` |
+| 适配器 | `adapter-web` | HTML／Markdown 语义读写及源内容会话 | A: `model` |
+| 适配器 | `adapter-pdf` | 有界原对象操作、渲染、脱敏及语义提取 | A: `model` |
+| 扩展与装配 | `web-layout` | HTML CSS 盒布局 | A: `adapter-web`；I: `components`、`graphics-core` |
+| 扩展与装配 | `pdf-signatures` | PDF 签名、认证、验签及信任验证 | I: `model` |
+| 扩展与装配 | `pdf-recovery` | PDF 内嵌模型恢复 | A: `adapter-template`；I: `adapter-pdf` |
+| 扩展与装配 | `math-api` | 共享公式选项与错误类型 | 无 |
+| 扩展与装配 | `math-core` | 有界 TeX 矢量轮廓 | A: `math-api`、`model` · I: `font-core` · R: `font-fontbox` |
+| 扩展与装配 | `math-web` | 语义输入中的视觉公式 | A: `math-core`、`adapter-web` |
+| 扩展与装配 | `math-docx` | 受限 TeX 到 Word 原生数学树 | A: `math-api`、`adapter-docx` |
+| 扩展与装配 | `math-docx-web` | 语义输入中的 Word 原生公式 | A: `math-docx`、`adapter-web` |
+| 扩展与装配 | `math` | 一次源编译、公式身份与双目标装配 | A: `math-web`、`math-docx` |
+| 扩展与装配 | `opentype` | 原生塑形、可变／彩色字体 | A: `graphics-api`；I: `graphics-core` |
+| 扩展与装配 | `opentype-layout` | OpenType 段落分页、竖排和纵中横 | A: `opentype`、`layout-core` |
+| 扩展与装配 | `starter-pdf` | 从 Java `Document` 导出 PDF | A: `components`、`backend-pdf` |
 | 扩展与装配 | `starter` | 配置一次的源内容／XML 与 PDF／DOCX 导出 | A: `components`、`math`、`adapter-template`、`backend-pdf`、`font-core`、`adapter-docx` |
 
-`export4j-bom` 只约束这 18 个库的版本，不自动引入全部模块；第三方版本由 Gradle version catalog 与锁文件管理。`examples` 组合公共 API 演示用法。`export4j-designer` 是独立本地应用，保留 XML 源码、数据和资源，通过 Java 引擎预览／导出；它与示例均不参与 Maven 库发布。
+`export4j-bom` 提供库版本约束，第三方版本由 Gradle version catalog 和锁文件管理。`examples` 演示公共 API。`export4j-designer` 独立提供 XML 模板的编辑、预览和导出。
 
-`starter` 包含数学与 Web 内容装配，其传递项目依赖为 14 个库；不引入 PDF 编辑适配器、SVG／Raster 后端或原生 OpenType。需要这些能力时显式选择模块，原生扩展还须选择平台 classifier。核心不反向依赖 starter、适配器、后端、设计器或示例。
+`starter` 装配常用语义输入和两种输出。按格式选择 `starter-pdf` 或 `adapter-docx` 后，可单独引入需要的模板、Web 和公式能力。直接使用 `font-core` 解析字体文件时，需要在运行时引入 `font-fontbox`。 [模块选择](easy-export-api.md#按输出格式选择依赖)
 
 PDFBox 文档类型封装在 PDF 实现模块；FontBox 与 pdfbox-io 可封装在字体层内部。JLaTeXMath、CommonMark、jsoup、LWJGL／HarfBuzz 的实现类型也不进入公共 API、异常或 SPI。专用测试使用第三方类型不改变生产边界。
 

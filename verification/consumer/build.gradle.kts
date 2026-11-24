@@ -15,13 +15,20 @@ dependencies {
     implementation("com.mirakyux.export4j:export4j-adapter-docx")
     implementation("com.mirakyux.export4j:export4j-adapter-template")
     implementation("com.mirakyux.export4j:export4j-adapter-pdf")
+    implementation("com.mirakyux.export4j:export4j-pdf-recovery")
+    implementation("com.mirakyux.export4j:export4j-pdf-signatures")
     implementation("com.mirakyux.export4j:export4j-adapter-web")
-    implementation("com.mirakyux.export4j:export4j-opentype")
+    implementation("com.mirakyux.export4j:export4j-web-layout")
+    implementation("com.mirakyux.export4j:export4j-opentype-layout")
+    implementation("com.mirakyux.export4j:export4j-starter-pdf")
+    implementation("com.mirakyux.export4j:export4j-math-docx-web")
+    runtimeOnly("com.mirakyux.export4j:export4j-font-fontbox")
     implementation("com.mirakyux.export4j:export4j-math")
     implementation("com.mirakyux.export4j:export4j-starter")
-    val nativeClassifier = rootProject.extra["export4jNativeClassifierResolved"] as String
-    runtimeOnly("org.lwjgl:lwjgl:3.4.3:$nativeClassifier")
-    runtimeOnly("org.lwjgl:lwjgl-harfbuzz:3.4.3:$nativeClassifier")
+    @Suppress("UNCHECKED_CAST")
+    val nativeClassifier = rootProject.extra["export4jNativeClassifier"] as Provider<String>
+    addProvider("runtimeOnly", nativeClassifier.map { "org.lwjgl:lwjgl:3.4.3:$it" })
+    addProvider("runtimeOnly", nativeClassifier.map { "org.lwjgl:lwjgl-harfbuzz:3.4.3:$it" })
 }
 application { mainClass.set("consumer.Consumer") }
 

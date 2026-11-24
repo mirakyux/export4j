@@ -2,7 +2,7 @@
 
 当前已发布候选版为 `0.1.0-rc.3`，尚无稳定版。自动兼容检查继续使用已发布 `0.1.0-rc.2` 的 [API 基线](../verification/api/baseline-0.1.0-rc.2.json)，直接从 Central 已发布的 16 个库 JAR 提取，共 733 个可访问类型，覆盖其中已有的公共／受保护声明。[来源清单](../verification/api/baseline-0.1.0-rc.2.provenance.json)记录逐库坐标、下载地址、上游 SHA-256 校验值、类型数量，以及基线摘要和提取工具；不使用当前候选构建代替已发布字节。
 
-开发版新增模块与已发布版的区别见[当前状态](current-status.md)。基线保留发布时的 16 库范围；候选快照按当前 Gradle settings 检查全部 18 个库，新模块记为增加项，不改变历史基线。
+发布基线覆盖原来的 16 个库，候选快照按当前 Gradle settings 检查 29 个库。门禁核对已登记的类型迁移与公共方法。 [版本状态](current-status.md) · [模块迁移](adr/0119-independent-feature-coordinates.md)
 
 历史 `verification/api/baseline-0.1.0-rc.1.json` 保留提交 `b9c8f77b0872566614984a76bdcd1edaf2f39db9` 独立构建的 16 库／670 类型快照；`verification/api/baseline-0.1.0-preview.json` 保留提交 `1665cd7597609e9c7db561cea12b8ca1083e99bb` 的开发期快照。新基线必须来自记录提交的独立源码构建或校验过的已发布制品，不能从当前候选源码反推，也不能自动覆盖历史基线。
 

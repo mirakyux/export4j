@@ -38,50 +38,71 @@ final class OperationFonts {
         this.defaultWord = defaultWord;
     }
 
-    static OperationFonts load(List<FontFamily> defaults, List<FontFamily> families,
-            Map<String, FontFamily> named, FontFamily latin, FontFamily eastAsia,
-            FontFamily complexScript, FontFaceCache cache) throws IOException {
+    static OperationFonts bind(List<FontFamily> defaults, List<FontFamily> families,
+            Map<String, FontFamily> named, DocxFontFamilies defaultWord,
+            boolean systemWordStyles, FontFaceCache physicalCache) throws IOException {
         var loaded = new IdentityHashMap<FontSource, FontFace>();
         var roles = new LinkedHashMap<String, List<FontFace>>();
         var familyRoles = new LinkedHashMap<String, List<String>>();
         var wordRoles = new LinkedHashMap<String, WordRole>();
+        if (systemWordStyles) {
+            List.of("", "bold", "italic", "boldItalic").forEach(role -> roles.put(role, List.of()));
+        }
         for (int index = 0; index < families.size(); index++) {
             var family = families.get(index);
             String base = "family_" + index;
             familyRoles.put(family.name(), variants(base));
             for (var variant : family.variants().entrySet()) {
                 ExecutionContext.checkpoint();
-                var face = loaded.get(variant.getValue());
-                if (face == null) {
-                    face = Objects.requireNonNull(variant.getValue().load(cache, ExecutionContext::checkpoint), "font source result");
-                    loaded.put(variant.getValue(), face);
-                }
+                var faces = physicalCache == null ? List.<FontFace>of()
+                        : List.of(load(variant.getValue(), physicalCache, loaded));
                 if (defaults.contains(family)) {
                     var values = new ArrayList<>(roles.getOrDefault(variant.getKey(), List.of()));
-                    if (!values.contains(face)) { values.add(face); }
+                    if (!values.containsAll(faces)) { values.addAll(faces); }
                     roles.put(variant.getKey(), List.copyOf(values));
                 }
-                bind(roles, wordRoles, role(base, variant.getKey()), family.name(), variant.getKey(), face);
+                bind(roles, wordRoles, role(base, variant.getKey()), family.name(), variant.getKey(), faces);
             }
         }
         for (var alias : named.entrySet()) {
             var family = alias.getValue();
             familyRoles.put(family.name(), variants(alias.getKey()));
             for (var variant : family.variants().entrySet()) {
+                var faces = physicalCache == null ? List.<FontFace>of() : List.of(loaded.get(variant.getValue()));
                 bind(roles, wordRoles, role(alias.getKey(), variant.getKey()), family.name(),
-                        variant.getKey(), loaded.get(variant.getValue()));
+                        variant.getKey(), faces);
             }
         }
         named.keySet().forEach(alias -> familyRoles.put(alias, variants(alias)));
-        return new OperationFonts(roles, familyRoles, wordRoles,
-                new DocxFontFamilies(latin.name(), latin.name(), eastAsia.name(), complexScript.name()));
+        return new OperationFonts(roles, familyRoles, wordRoles, defaultWord);
     }
 
     private static void bind(Map<String, List<FontFace>> roles, Map<String, WordRole> wordRoles,
-            String role, String family, String variant, FontFace face) {
-        roles.put(role, List.of(face));
+            String role, String family, String variant, List<FontFace> faces) {
+        roles.put(role, faces);
         wordRoles.put(role, new WordRole(family, variant.equals("bold") || variant.equals("boldItalic"),
                 variant.equals("italic") || variant.equals("boldItalic")));
+    }
+
+    static List<FontFace> loadRegular(List<FontFamily> defaults, FontFaceCache cache) throws IOException {
+        var loaded = new IdentityHashMap<FontSource, FontFace>();
+        var regular = new ArrayList<FontFace>();
+        for (var family : defaults) {
+            var face = load(family.variants().get(""), cache, loaded);
+            if (!regular.contains(face)) { regular.add(face); }
+        }
+        return regular;
+    }
+
+    private static FontFace load(FontSource source, FontFaceCache cache, Map<FontSource, FontFace> loaded)
+            throws IOException {
+        ExecutionContext.checkpoint();
+        var face = loaded.get(source);
+        if (face == null) {
+            face = Objects.requireNonNull(source.load(cache, ExecutionContext::checkpoint), "font source result");
+            loaded.put(source, face);
+        }
+        return face;
     }
 
     static List<String> variants(String role) {
@@ -90,7 +111,9 @@ final class OperationFonts {
 
     private static String role(String base, String variant) { return base + (variant.isEmpty() ? "" : "_" + variant); }
     List<FontFace> regular() { return roles.get(""); }
-    Map<String, List<FontFace>> roles() { return roles; }
+    void requireRole(String role) {
+        if (!roles.containsKey(role)) { throw new IllegalArgumentException("undeclared font role '" + role + "'"); }
+    }
     void validate(ContentOptions.Resolved options) {
         ExecutionContext.checkpoint();
         requireRole(options.fontRole(), "body");

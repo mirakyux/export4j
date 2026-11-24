@@ -48,7 +48,7 @@ Choose the version before selecting an API:
 | Version | Entry point |
 | --- | --- |
 | Published `0.1.0-rc.3` | Use `DocumentEngine` and the modules in the quick start below. |
-| Current `develop` | The [unified export entry](docs/en/easy-export-api.md) can use installed fonts to export text, Markdown, HTML, or XML to PDF/DOCX. XML accepts Maps, DTOs, and records directly. |
+| Current `develop` | Export text, Markdown, HTML, XML, or a Java `Document` to PDF/DOCX. PDF can use installed fonts, and ordinary DOCX can export without font packages. XML accepts Maps, DTOs, and records directly. [Unified export entry](docs/en/easy-export-api.md) |
 
 Development also adds [source content blocks and inherited options](docs/en/content-blocks-api.md), [bounded font caching](docs/en/font-cache-api.md) and [optional formula parsing](docs/en/math-api.md). These additions are not included in published RC3. See [current status](docs/en/current-status.md) for version boundaries and known limitations, or the [API index](docs/en/README.md) for configuration.
 

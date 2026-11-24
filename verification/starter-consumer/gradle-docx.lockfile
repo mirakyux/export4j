@@ -1,0 +1,6 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+com.mirakyux.export4j:export4j-adapter-docx:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+com.mirakyux.export4j:export4j-model:0.1.0-SNAPSHOT=compileClasspath,runtimeClasspath
+empty=annotationProcessor

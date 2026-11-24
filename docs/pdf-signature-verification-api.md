@@ -1,5 +1,7 @@
 # PDF 签名字节完整性校验 API
 
+添加同版本的 `com.mirakyux.export4j:export4j-pdf-signatures`，从 `com.mirakyux.export4j.pdf.signatures` 导入验签类型。
+
 `PdfSignatureVerifier` 从一个有界 PDF 快照中读取当前表单树的签名字段，严格准备每份签名的 ByteRange 和 DER CMS，再调用显式的离线 `CmsVerifier`。结果分别报告签名字节完整性及当前文件是否被某份签名完整覆盖；证书身份、信任链、撤销、时间戳、DocMDP 修改许可和 PAdES 需要独立校验。
 
 ```java

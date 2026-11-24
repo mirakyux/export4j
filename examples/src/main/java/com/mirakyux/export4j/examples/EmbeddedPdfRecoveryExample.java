@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.examples;
 
-import com.mirakyux.export4j.adapter.pdf.PdfRecoveryCodec;
+import com.mirakyux.export4j.pdf.recovery.PdfRecoveryCodec;
 import com.mirakyux.export4j.adapter.template.XmlModelRecovery;
 import com.mirakyux.export4j.adapter.template.XmlTemplateBundle;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;

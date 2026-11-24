@@ -2,6 +2,8 @@
 
 Each API has its own input subset and loss contract. Support for an object in one API does not relax another API's rejection rules.
 
+`export4j-adapter-pdf` provides the entries in this table. Add `export4j-pdf-recovery` to read or write embedded model attachments. Use `export4j-pdf-signatures` for signing and offline verification. See [embedded recovery](model-recovery-api.md#optional-embedded-recovery-in-pdf-docx-and-png-page-zip) and [offline signing](pdf-standards-api.md#pades-and-offline-trust).
+
 | Task | API and guide |
 | --- | --- |
 | Read pages, extract ordinary glyph text, select/merge static pages | `read`/`copy`/`merge`; see below |

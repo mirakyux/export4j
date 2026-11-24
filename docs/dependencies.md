@@ -39,7 +39,7 @@ SVG 独立渲染增加验证依赖 resvg-py 0.5.0（MIT）及其 resvg（MPL-2.0
 
 相对列宽与字体角色的独立几何检查使用 pdfplumber 0.11.8（MIT），其解析依赖固定为 pdfminer.six 20251107（MIT）；Pillow 与 PDFium 继续采用验证清单中的明确版本。原始 wheel 的许可文件已核对，仅在 Python 验证环境安装，不随 Java 制品或文档站分发，不进入 Java 运行 SBOM。直接版本见 [`requirements-verification.txt`](../scripts/requirements-verification.txt)，使用范围见[架构优化验收](verification/architecture-convergence.md)。
 
-PDF 信任链、OCSP／CRL 与 PAdES 使用 Bouncy Castle 1.86：PDF 后端内部直接依赖 `bcpkix-jdk18on`，传递依赖同版本 `bcprov-jdk18on` 和 `bcutil-jdk18on`。三者采用 MIT，实际 JAR／POM 的 SHA-256、原始许可和来源均登记在依赖清单；公共 API 只使用项目类型与 JDK 密钥／证书字节，不暴露第三方类型。独立验签使用 pyHanko 0.33.0，固定在验证 requirements，仅用于验证环境，不进入 Java 制品。
+PDF 信任链、OCSP／CRL 与 PAdES 使用 Bouncy Castle 1.86：`export4j-pdf-signatures` 内部直接依赖 `bcpkix-jdk18on`，传递依赖同版本 `bcprov-jdk18on` 和 `bcutil-jdk18on`。三者采用 MIT，实际 JAR／POM 的 SHA-256、原始许可和来源均登记在依赖清单；公共 API 只使用项目类型与 JDK 密钥／证书字节，不暴露第三方类型。独立验签使用 pyHanko 0.33.0，固定在验证 requirements，仅用于验证环境，不进入 Java 制品。
 
 外部 PDF 的显式源字体映射、不透明图形状态恢复和独立合成语料由项目自主实现，没有新增运行依赖、字体文件或第三方样本。固定 AFM 度量来自既有 PDFBox 3.0.8，验收复用已登记的 Liberation Sans 及原始许可。映射字体由调用方显式提供并遵守其嵌入权限，见[字体兼容](pdf-font-compatibility-api.md)和[阶段九十一](verification/phase-91-pdf-source-fonts-and-graphics-state.md)。
 
@@ -67,7 +67,7 @@ python scripts/audit_dependencies.py
 
 通用 Markdown 导入使用 commonmark-java 0.24.0 及同版本 GFM tables／strikethrough 扩展，作为 Web 适配器内部实现依赖，公共签名不暴露解析器类型。三者采用 BSD-2-Clause，原始许可从实际 JAR 提取并随分发保留；源码目标 Java 11、实际 class major 55，与 Java 21 基线兼容。Maven Central 的 7 个 POM／JAR 与上游 SHA-1 对照，并将实际 SHA-256 写入依赖验证元数据和制品清单。没有新增字体或第三方样本。
 
-2026-10-21 新增自研 `export4j-adapter-web`，当时工程共 17 个模块、15 个库及 BOM。阶段四十三的生产代码仅依赖模型与 JDK，无新增第三方 Java 坐标；HTML／Markdown、合成样例、Java 生成蓝色 PNG 及验证脚本采用 Apache-2.0，不含外部素材。见[阶段四十三](verification/phase-43-web-exports.md)。当前模块另封装已登记的 CommonMark／jsoup，并为显式 CSS 布局复用自研组件和图形核心；此布局扩展没有增加第三方版本或资源。
+2026-10-21 新增自研 `export4j-adapter-web`，当时工程共 17 个模块、15 个库及 BOM。阶段四十三的生产代码仅依赖模型与 JDK，无新增第三方 Java 坐标；HTML／Markdown、合成样例、Java 生成蓝色 PNG 及验证脚本采用 Apache-2.0，不含外部素材。见[阶段四十三](verification/phase-43-web-exports.md)。语义 Web 适配器封装 CommonMark／jsoup。可选 `export4j-web-layout` 使用组件与图形核心实现 CSS 盒布局。
 
 2026-10-21 XML 固定页眉页脚、页区主题、合成报告及验证脚本由项目自主实现，采用 Apache-2.0。复用既有模型、JDK XML／文字路径和已登记的 Liberation Sans；没有新增模块、外部依赖、字体或第三方素材。见[阶段四十一](verification/phase-41-xml-page-regions.md)。
 
@@ -122,9 +122,9 @@ python scripts/audit_dependencies.py
 | `org.apache.pdfbox:fontbox` | 3.0.8 | 字体模块直接运行、PDF 后端／适配器传递运行 | Apache-2.0 及内嵌资源许可；保留完整 LICENSE / NOTICE |
 | `org.apache.pdfbox:pdfbox-io` | 3.0.8 | 字体模块直接运行、PDF 后端／适配器传递运行 | Apache-2.0；保留 LICENSE / NOTICE |
 | `commons-logging:commons-logging` | 1.4.0 | 传递运行 | Apache-2.0；保留 LICENSE / NOTICE |
-| `org.bouncycastle:bcpkix-jdk18on` | 1.86 | PDF 后端内部运行 | MIT；保留实际 JAR 原始许可 |
-| `org.bouncycastle:bcprov-jdk18on` | 1.86 | PDF 后端传递运行 | MIT；保留实际 JAR 原始许可 |
-| `org.bouncycastle:bcutil-jdk18on` | 1.86 | PDF 后端传递运行 | MIT；保留实际 JAR 原始许可 |
+| `org.bouncycastle:bcpkix-jdk18on` | 1.86 | PDF 签名与信任验证运行时 | MIT；保留实际 JAR 原始许可 |
+| `org.bouncycastle:bcprov-jdk18on` | 1.86 | PDF 签名与信任验证传递运行 | MIT；保留实际 JAR 原始许可 |
+| `org.bouncycastle:bcutil-jdk18on` | 1.86 | PDF 签名与信任验证传递运行 | MIT；保留实际 JAR 原始许可 |
 | `org.jsoup:jsoup` | 1.23.2 | Web 适配器内部运行 | MIT；保留实际 JAR 原始许可 |
 | `org.commonmark:commonmark` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
 | `org.commonmark:commonmark-ext-gfm-tables` | 0.24.0 | Web 适配器内部运行 | BSD-2-Clause；保留实际 JAR 原始 LICENSE.txt |
@@ -226,17 +226,17 @@ Liberation Sans 粗体、斜体与粗斜体来自官方 2.1.5 发布包，未经
 
 ManuWeave 学术示例的目录及排版事实取自 [jiassia/manuweave](https://github.com/jiassia/manuweave/) 的固定提交 `e48d7b6d571e133d0bc86fc7cf61b343fa9cb64b`，覆盖当时 README 的 286 个 Profile ID。权利人为 ManuWeave contributors，采用 MIT 许可；[原始许可](../examples/src/main/resources/templates/manuweave/MIT.txt)随示例资源分发。配置记录上游相对路径及源文件 SHA-256，不包含上游执行代码、测试、字体或官方 Word／LaTeX 文件。渲染器与虚构内容由 Export4j 编写；新增 Liberation Serif 2.1.5 四种真实字体变体，来源、OFL 及摘要见[字体记录](../assets/fonts/README.md)。调用方可显式提供已授权的原字体映射，示例不搜索系统字体或合成粗斜体；字体替代及未映射格式逐模板报告，详见[模板说明](../examples/src/main/resources/templates/manuweave/README.md)。
 
-可选 `export4j-math` 与数学示例引入 `org.scilab.forge:jlatexmath:1.0.7` 主 JAR，关闭其传递字体附加包；核心模块不依赖它。数学模块仅向公共 API 暴露 Export4j 自有类型，内部复用既有 CommonMark、矢量资源和 DOCX 数学树。JLaTeXMath 许可为 GPL-2.0-or-later，附带上游原始链接例外；不将其误记为 LGPL 或另一个 SPDX 例外。内置数学字体另保留原有条款，完整原文见 [JLaTeXMath 许可目录](../third-party/licenses/jlatexmath-1.0.7/)。未修改上游类或字体。
+`export4j-math-core` 与数学示例引入 `org.scilab.forge:jlatexmath:1.0.7` 主 JAR，关闭其传递字体附加包；核心模块不依赖它。数学模块仅向公共 API 暴露 Export4j 自有类型，内部复用既有 CommonMark、矢量资源和 DOCX 数学树。JLaTeXMath 许可为 GPL-2.0-or-later，附带上游原始链接例外；不将其误记为 LGPL 或另一个 SPDX 例外。内置数学字体另保留原有条款，完整原文见 [JLaTeXMath 许可目录](../third-party/licenses/jlatexmath-1.0.7/)。未修改上游类或字体。
 
-数学模块二进制 JAR 在 `META-INF/third-party/source/` 携带固定上游 sources JAR 和[原始构建 POM](../third-party/jlatexmath-source-build/)，保证直接取得 Maven 二进制的调用方也取得对应源码材料；示例分发包在 `third-party/source/` 另携带相同材料。版本、源包及二进制摘要受 Gradle 严格校验约束，分发验证器独立核对内嵌源包摘要和构建 POM 字节。JLaTeXMath 进入数学模块的运行 POM 和库运行 SBOM，BOM 对齐数学模块的自研版本，不管理第三方依赖；未选择数学模块的核心调用方不因此引入它。Word 原生数学的 ZIP／XML 读写仍由 DOCX 适配器使用 JDK 自行完成；TeX 到原生数学树的受限解析也不调用 JLaTeXMath，具体边界见[公式 API](math-api.md)。Office 仅用于独立兼容性验收。该公共模块属于后续开发，已发布 RC3 不包含它。
+`export4j-math-core` 的二进制 JAR 在 `META-INF/third-party/source/` 携带固定上游 sources JAR 和[原始构建 POM](../third-party/jlatexmath-source-build/)，保证直接取得 Maven 二进制的调用方也取得对应源码材料；示例分发包在 `third-party/source/` 另携带相同材料。版本、源包及二进制摘要受 Gradle 严格校验约束，分发验证器独立核对内嵌源包摘要和构建 POM 字节。JLaTeXMath 进入 `export4j-math-core` 的运行 POM 和库运行 SBOM，BOM 对齐数学模块的自研版本，不管理第三方依赖；未选择数学模块的核心调用方不因此引入它。Word 原生数学的 ZIP／XML 读写仍由 DOCX 适配器使用 JDK 自行完成；TeX 到原生数学树的受限解析也不调用 JLaTeXMath，具体边界见[公式 API](math-api.md)。Office 仅用于独立兼容性验收。该公共模块属于后续开发，已发布 RC3 不包含它。
 
 根目录 [LICENSE](../LICENSE) 使用 Apache 官方全文，适用于项目自研部分。第三方代码与资源保留原有声明。
 
 根目录 [NOTICE](../NOTICE) 汇集当前运行依赖的原始归属声明。构建出的 JAR 携带自研 LICENSE、NOTICE 和第三方许可原文；示例发行包同时携带未修改的依赖 JAR。
 
-统一入口 `export4j-starter` 装配既有组件、数学、XML 模板、PDF 后端和 DOCX 适配器，没有新增第三方坐标或字体资源。选择此模块会传递引入 `export4j-math` 及其已登记的 JLaTeXMath；需要更小依赖范围的应用继续按原模块选择。它不引入可选原生 OpenType 或 PDF 编辑适配器，也不让核心模块反向依赖输出实现。
+统一入口 `export4j-starter` 装配组件、字体核心、数学、XML 模板、PDF 后端和 DOCX 适配器。单一 starter 坐标解析为 19 个 Export4j JAR（含自身）和 9 个第三方运行 JAR。 [Starter 引入的组件](easy-export-api.md#starter-引入的组件)
 
-当前 `sbom` 生成 CycloneDX 1.6 库运行清单，目标集合为 18 个自研库及 14 个第三方 Java 制品，携带实际 JAR 的 SHA-256；字段与字体资源另按本文件登记。JLaTeXMath 的原始链接例外使用完整许可名称记录，不填写未经证实的 SPDX 例外 ID。每批须重新生成并由生产验证器核对最终制品，不能沿用前一批哈希。候选清单不能替代 SBOM。
+当前 `sbom` 生成 CycloneDX 1.6 库运行清单，包含 29 个自研库及 14 个第三方 Java 制品，并记录实际 JAR 的 SHA-256。字段与字体资源另按本文件登记。JLaTeXMath 的原始链接例外使用完整许可名称。每批须重新生成清单并核对最终制品。
 
 XML 模板源码与普通 ZIP 打包复用既有适配器及 JDK ZIP／UTF-8 API，没有增加模块或第三方依赖。示例继续使用已登记的 Liberation Sans Regular 字节，原版权及 OFL 文本随模板 ZIP 的 `licenses/` 条目保存；图片由自编样例生成。独立输入由 Python 标准库 ZIP 与既有 Pillow 生成，二者不进入 Java 运行清单。
 

@@ -11,7 +11,7 @@ import com.mirakyux.export4j.components.DocumentEngine;
 import com.mirakyux.export4j.font.FontFaceCache;
 import com.mirakyux.export4j.font.FontSource;
 import com.mirakyux.export4j.math.MathContent;
-import com.mirakyux.export4j.math.MathException;
+import com.mirakyux.export4j.math.api.MathException;
 import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.SourceContentParser;
 import java.io.IOException;

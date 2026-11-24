@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: Apache-2.0
+package com.mirakyux.export4j.pdf.signatures;
+
+import com.mirakyux.export4j.backend.pdf.PdfArchival;
+import com.mirakyux.export4j.backend.pdf.PdfBackend;
+import com.mirakyux.export4j.backend.pdf.PdfEncryption;
+import com.mirakyux.export4j.backend.pdf.PdfLimits;
+import com.mirakyux.export4j.backend.pdf.PdfOptions;
+import com.mirakyux.export4j.backend.pdf.PdfRenderException;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import org.junit.jupiter.api.io.TempDir;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
+import org.junit.jupiter.api.Test;
+import com.mirakyux.export4j.graphics.DisplayDocument;
+import com.mirakyux.export4j.graphics.core.DisplayListBuilder;
+import com.mirakyux.export4j.model.DocumentMetadata;
+import com.mirakyux.export4j.model.PageSize;
+
+class PdfProtectionTest {
+    @TempDir Path directory;
+
+    @Test void archivalRejectsEncryptionAndUnembeddedStandardTextWithoutWritingOutput() throws IOException {
+        com.mirakyux.export4j.font.FontData font;
+        try (var input = getClass().getResourceAsStream("/fonts/LiberationSans-Regular.ttf")) {
+            font = com.mirakyux.export4j.font.TrueTypeFontLoader.load(input, com.mirakyux.export4j.font.TrueTypeFontLoader.DEFAULT_MAX_BYTES).data();
+        }
+        var archival = new PdfArchival(java.awt.color.ICC_Profile.getInstance(java.awt.color.ColorSpace.CS_sRGB).getData(), font);
+        var options = PdfOptions.DEFAULT.withArchival(archival);
+        assertThrows(IllegalArgumentException.class, () -> options.withEncryption(new PdfEncryption("owner".toCharArray(), "user".toCharArray(), PdfEncryption.Permissions.ALL)));
+        var builder = new DisplayListBuilder(PageSize.A4);
+        builder.drawText("Standard", new com.mirakyux.export4j.graphics.Point(20, 30), new com.mirakyux.export4j.graphics.TextStyle(
+                com.mirakyux.export4j.graphics.FontFamily.SANS_SERIF, 12, com.mirakyux.export4j.graphics.RgbColor.BLACK));
+        var output = new ByteArrayOutputStream();
+        assertThrows(PdfRenderException.class, () -> new PdfBackend(PdfLimits.DEFAULT, options).write(new DisplayDocument(DocumentMetadata.EMPTY, List.of(builder.build())), output));
+        assertEquals(0, output.size());
+    }
+
+    @Test void signatureCallbackFailureKeepsSourceAndBorrowedOutputOpen() throws IOException {
+        Path source = directory.resolve("source.pdf");
+        try (var output = Files.newOutputStream(source)) { new PdfBackend().write(new DisplayDocument(DocumentMetadata.EMPTY, List.of(new DisplayListBuilder(PageSize.A4).build())), output); }
+        byte[] original = Files.readAllBytes(source);
+        var output = new ByteArrayOutputStream() {
+            @Override public void close() { throw new AssertionError("borrowed output closed"); }
+        };
+        var options = new PdfSigner.Options("Test", "Callback failure", Instant.parse("2026-10-14T00:00:00Z"), 4096);
+        assertThrows(IOException.class, () -> PdfSigner.sign(source, output, options, content -> {
+            assertTrue(content.readNBytes(10).length > 0); throw new IOException("signer rejected request");
+        }));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, Files.readAllBytes(source));
+        assertThrows(IOException.class, () -> PdfSigner.sign(source, output, options, content -> new byte[4097]));
+    }
+    @Test void aes256RequiresPasswordAndPreservesRequestedUserPermissions() throws IOException {
+        var encryption = new PdfEncryption("owner-secret".toCharArray(), "reader-secret".toCharArray(), PdfEncryption.Permissions.READ_ONLY);
+        var backend = new PdfBackend(PdfLimits.DEFAULT, PdfOptions.storage(PdfOptions.Storage.TEMP_FILE).withEncryption(encryption));
+        var output = new ByteArrayOutputStream();
+        backend.write(new DisplayDocument(DocumentMetadata.EMPTY, List.of(new DisplayListBuilder(PageSize.A4).build())), output);
+        byte[] bytes = output.toByteArray();
+        assertThrows(InvalidPasswordException.class, () -> Loader.loadPDF(bytes));
+        try (var pdf = Loader.loadPDF(bytes, "reader-secret")) {
+            assertTrue(pdf.isEncrypted()); assertEquals(256, pdf.getEncryption().getLength());
+            var permission = pdf.getCurrentAccessPermission();
+            assertFalse(permission.isOwnerPermission());
+            assertFalse(permission.canPrint()); assertFalse(permission.canExtractContent()); assertFalse(permission.canModify());
+        }
+        try (var pdf = Loader.loadPDF(bytes, "owner-secret")) { assertTrue(pdf.getCurrentAccessPermission().isOwnerPermission()); }
+        assertFalse(encryption.toString().contains("owner-secret"));
+    }
+    @Test void effectivePasswordLimitsRejectUtf8TruncationAndNormalizationCollisions() {
+        var permissions = PdfEncryption.Permissions.READ_ONLY;
+        String prefix = "密".repeat(50);
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption((prefix + "owner").toCharArray(), (prefix + "user").toCharArray(), permissions));
+        String overLimit = "密".repeat(42) + "ab"; // 128 UTF-8 bytes, despite only 44 UTF-16 units.
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption(overLimit.toCharArray(), "user".toCharArray(), permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("owner".toCharArray(), overLimit.toCharArray(), permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("\ufb03".repeat(43).toCharArray(), "user".toCharArray(), permissions), "NFKC expands each ligature to three bytes");
+        for (var pair : List.of(new String[] {"Pass\u00adword", "Password"}, new String[] {"\uff21", "A"},
+                new String[] {"owner\u00a0name", "owner name"}, new String[] {"owner\u200bname", "owner name"})) {
+            assertThrows(IllegalArgumentException.class, () -> new PdfEncryption(pair[0].toCharArray(), pair[1].toCharArray(), permissions));
+        }
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("\u00ad".toCharArray(), new char[0], permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption("owner".toCharArray(), new char[] {'\ud800'}, permissions));
+        assertThrows(IllegalArgumentException.class, () -> new PdfEncryption(new char[] {'\udc00'}, "user".toCharArray(), permissions));
+    }
+    @Test void exactUtf8BoundaryAndPreparedUnicodeKeepOwnerAndUserAuthenticationSeparate() throws IOException {
+        for (var pair : List.of(new String[] {"密".repeat(42) + "O", "密".repeat(42) + "U"},
+                new String[] {"O\ufb03ce\u00ad-owner", "reader\u00a0name"},
+                new String[] {"owner", ""})) {
+            var owner = pair[0].toCharArray(); var user = pair[1].toCharArray();
+            var encryption = new PdfEncryption(owner, user, PdfEncryption.Permissions.READ_ONLY);
+            java.util.Arrays.fill(owner, 'x'); java.util.Arrays.fill(user, 'x');
+            var output = new ByteArrayOutputStream();
+            new PdfBackend(PdfLimits.DEFAULT, PdfOptions.DEFAULT.withEncryption(encryption)).write(
+                    new DisplayDocument(DocumentMetadata.EMPTY, List.of(new DisplayListBuilder(PageSize.A4).build())), output);
+            try (var pdf = Loader.loadPDF(output.toByteArray(), pair[1])) {
+                assertFalse(pdf.getCurrentAccessPermission().isOwnerPermission());
+                assertFalse(pdf.getCurrentAccessPermission().canModify());
+            }
+            try (var pdf = Loader.loadPDF(output.toByteArray(), pair[0])) { assertTrue(pdf.getCurrentAccessPermission().isOwnerPermission()); }
+        }
+    }
+}

@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import com.mirakyux.export4j.backend.pdf.PdfSignatureVerifier;
+import com.mirakyux.export4j.pdf.signatures.PdfSignatureVerifier;
 
 /** Explicit offline CMS integrity callback; -noverify intentionally does not establish certificate trust. */
 public final class PdfSignatureVerificationExample {

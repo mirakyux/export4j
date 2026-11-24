@@ -4,7 +4,7 @@ package com.mirakyux.export4j.examples;
 import com.mirakyux.export4j.Export4j;
 import com.mirakyux.export4j.FontFamily;
 import com.mirakyux.export4j.font.FontSource;
-import com.mirakyux.export4j.math.MathException;
+import com.mirakyux.export4j.math.api.MathException;
 import com.mirakyux.export4j.model.DocumentTheme;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineImage;

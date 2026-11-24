@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.adapter.web;
 
+import static com.mirakyux.export4j.adapter.web.internal.CssValues.color;
+import static com.mirakyux.export4j.adapter.web.internal.CssValues.length;
+
+import com.mirakyux.export4j.adapter.web.internal.CssBoxStyle;
+
 import com.mirakyux.export4j.model.Heading;
 import com.mirakyux.export4j.model.InlineStyle;
 import com.mirakyux.export4j.model.ParagraphAlignment;
@@ -260,7 +265,7 @@ final class HtmlCss {
                         || Set.of("td", "th", "tr", "thead", "tbody", "tfoot", "col", "colgroup").contains(owner.normalName())) {
                     unsupported(owner, "CSS_CONTEXT", "CSS box declaration has no layout mapping on this inline/table structural element"); return;
                 }
-                if (!importer.layoutMode && !owner.normalName().equals("img")) { unsupported(owner, "CSS_CONTEXT", "CSS box geometry requires the explicit layout import mode"); return; }
+                if (importer.layout == null && !owner.normalName().equals("img")) { unsupported(owner, "CSS_CONTEXT", "CSS box geometry requires the explicit layout import mode"); return; }
                 value.box.put(declaration.name(), text); return;
             }
             switch (declaration.name()) {
@@ -300,7 +305,7 @@ final class HtmlCss {
                         boolean inline = Set.of("span", "a", "strong", "b", "em", "i", "u", "s", "del", "strike", "img", "br", "code").contains(owner.normalName());
                         if (inline != text.equals("inline") || Set.of("table", "td", "th", "tr", "thead", "tbody", "tfoot", "col", "colgroup").contains(owner.normalName())) { unsupported(owner, "CSS_CONTEXT", "changing inline, block or table formatting has no supported mapping"); }
                     }
-                    else if (importer.layoutMode && Set.of("flex", "grid").contains(text)) {
+                    else if (importer.layout != null && Set.of("flex", "grid").contains(text)) {
                         if (!Set.of("body", "div", "section", "article", "main", "header", "footer", "nav", "aside").contains(owner.normalName())) { unsupported(owner, "CSS_CONTEXT", "flex/grid formatting requires an explicit block container"); }
                         else { value.box.put("display", text); }
                     }
@@ -317,7 +322,7 @@ final class HtmlCss {
                 case "border" -> { if (!Set.of("td", "th").contains(owner.normalName()) || !Set.of("none", "0", "0pt", "0px").contains(text)) { throw new IllegalArgumentException(); } value.borderless = true; }
                 default -> throw new IllegalStateException("unrecognized supported CSS property");
             }
-            if (importer.layoutMode && Set.of("margin-top", "margin-bottom", "margin-left").contains(declaration.name())) { value.box.put(declaration.name(), text); }
+            if (importer.layout != null && Set.of("margin-top", "margin-bottom", "margin-left").contains(declaration.name())) { value.box.put(declaration.name(), text); }
         } catch (ProcessingException | ImportSupport.UnavailableTreatment failure) { throw failure; }
         catch (IllegalArgumentException invalid) { unsupported(owner, "CSS_VALUE", "CSS value has no supported semantic mapping"); }
     }
@@ -326,7 +331,7 @@ final class HtmlCss {
     }
     private void spacing(Element owner, double margin) {
         if (margin != 0) {
-            if (importer.layoutMode && owner.parent() != null && Set.of("flex", "grid").contains(get(owner.parent()).box.getOrDefault("display", "block"))) { return; }
+            if (importer.layout != null && owner.parent() != null && Set.of("flex", "grid").contains(get(owner.parent()).box.getOrDefault("display", "block"))) { return; }
             state.unsupported("CSS_SPACING", HtmlImportMapper.location(owner, "", List.of()),
                     "CSS margin collapse becomes additive model paragraph spacing", List.of("SPACING_SEMANTICS_CHANGED"), Treatment.DEGRADE);
         }
@@ -442,24 +447,8 @@ final class HtmlCss {
         if (words.size() > 2 || words.size() == 2 && !Set.of("landscape", "portrait").contains(words.getLast())) { throw new IllegalArgumentException("unsupported CSS page orientation"); }
         return landscape ? new PageSize(size.height(), size.width()) : size;
     }
-    static double length(String value) {
-        if (value.equals("0")) { return 0; }
-        if (!value.matches("-?(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)(?:pt|px)")) { throw new IllegalArgumentException("unsupported CSS length"); }
-        double number = Double.parseDouble(value.substring(0, value.length() - 2));
-        if (!Double.isFinite(number) || Math.abs(number) > 14400) { throw new IllegalArgumentException("invalid CSS length"); }
-        return value.endsWith("px") ? number * 0.75 : number;
-    }
     private static double positive(double value) { if (value <= 0) { throw new IllegalArgumentException(); } return value; }
     private static double nonnegative(double value) { if (value < 0) { throw new IllegalArgumentException(); } return value; }
-    static int color(String value) {
-        if (value.matches("#[a-f0-9]{3}")) { value = "#" + value.charAt(1) + value.charAt(1) + value.charAt(2) + value.charAt(2) + value.charAt(3) + value.charAt(3); }
-        if (value.matches("#[a-f0-9]{6}")) { return Integer.parseInt(value.substring(1), 16); }
-        return switch (value) {
-            case "black" -> 0; case "white" -> 0xffffff; case "red" -> 0xff0000;
-            case "green" -> 0x008000; case "blue" -> 0x0000ff; case "gray", "grey" -> 0x808080;
-            default -> throw new IllegalArgumentException("unsupported CSS color");
-        };
-    }
     private static String comments(String source) {
         var result = new StringBuilder(); int start = 0;
         while (true) {

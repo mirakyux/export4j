@@ -162,3 +162,4 @@
 | 0116 | [标题与列表保留混合内容，XML 保存静态矢量](0116-mixed-semantic-blocks-and-static-vectors.md) | 已采纳；统一原子对象、UTF-16 来源及完整静态路径保存；实际验收另录 |
 | 0117 | [一次源编译生成视觉公式与原生 Word 数学](0117-single-source-math-representations.md) | 已采纳；私有出现身份、逐目标显式表示与短生命周期字体入口；实际验收另录 |
 | 0118 | [显式配置一次的统一导出入口](0118-configured-export-entry.md) | 已采纳；外围装配、共享字体族、单目标编译与原子路径输出；2026-11-14 本地复验通过，已知限制已登记 |
+| 0119 | [按需引入文档能力](0119-independent-feature-coordinates.md) | 已采纳。区分格式装配、公式、CSS 布局、PDF 扩展和 OpenType 分页坐标 |

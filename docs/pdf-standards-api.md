@@ -89,6 +89,8 @@ var report = PdfArchivalConverter.convert(
 
 ## PAdES 与离线信任
 
+使用签名、验签或 PAdES 时，在同版本的 Export4j 依赖中添加 `com.mirakyux.export4j:export4j-pdf-signatures`，从 `com.mirakyux.export4j.pdf.signatures` 导入签名类型。生成 PDF/UA 和 PDF/A 使用 `export4j-backend-pdf`。
+
 `PdfSigner`／`PdfSignatureVerifier` 原有接口继续分别提供外部 CMS 签名和确切字节完整性验证。新的 `PdfPades` 负责标准等级、显式信任、撤销和可信时间，不将“CMS 字节完整”视为“签名者可信”。
 
 | 等级 | 实际内容 |

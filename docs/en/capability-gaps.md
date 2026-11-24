@@ -20,7 +20,7 @@ See the [remaining plan (Chinese)](../remaining-capabilities-plan.md#后续扩�
 
 | Development addition | Scope and evidence |
 | --- | --- |
-| Configure once for PDF/DOCX | The [unified entry point](easy-export-api.md), `export4j-starter`, assembles source content, explicit fonts, caching, and mathematics. RC3 does not contain this module. XML page regions/sections retain dedicated APIs |
+| Configure once for PDF/DOCX | The development `export4j-starter` module accepts source content, Java `Document` models, and XML with sections, headers, and footers. PDF can use installed fonts. Ordinary DOCX can export without font packages. [Unified export entry point](easy-export-api.md) |
 | DTO/record template data | [Java object binding](xml-template-api.md#java-objects) shares the bounded Map snapshot; [acceptance (Chinese)](../verification/easy-export.md) records API, artifact, consumer, and output checks separately |
 | Source content and mixed equations | [Source blocks](content-blocks-api.md) extend GAP-04/07 authoring; [rich content](rich-content-api.md) defines per-target equation representations. [Acceptance (Chinese)](../verification/rich-content.md) remains separate from existing parent scopes and does not imply complete CSS, LaTeX, or a general template sandbox |
 | Repeated font loading and idle release | [Font caches](font-cache-api.md) provide capacity, active leases, and automatic idle release; source-byte limits do not bound total heap/RSS |

@@ -4,7 +4,7 @@ package com.mirakyux.export4j.examples;
 import com.mirakyux.export4j.adapter.docx.DocxAdapter;
 import com.mirakyux.export4j.adapter.pdf.PdfAdapter;
 import com.mirakyux.export4j.adapter.pdf.PdfFont;
-import com.mirakyux.export4j.adapter.pdf.PdfRecoveryCodec;
+import com.mirakyux.export4j.pdf.recovery.PdfRecoveryCodec;
 import com.mirakyux.export4j.adapter.template.XmlModelRecovery;
 import com.mirakyux.export4j.adapter.template.XmlTemplateBundle;
 import com.mirakyux.export4j.adapter.template.XmlTemplateWriter;

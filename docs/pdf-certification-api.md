@@ -1,5 +1,7 @@
 # PDF 认证签名
 
+添加同版本的 `com.mirakyux.export4j:export4j-pdf-signatures`，使用 `com.mirakyux.export4j.pdf.signatures.PdfSigner` 写入 DocMDP 认证签名。
+
 ```java
 var options = new PdfSigner.Options("签名人", "文档认证", signingInstant, 16_384);
 PdfSigner.certify(sourcePath, targetPath, options,

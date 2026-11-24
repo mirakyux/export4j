@@ -10,17 +10,20 @@ public final class FontLoadException extends IOException {
     public enum Code {
         INVALID_FONT,
         EMBEDDING_RESTRICTED,
-        BUDGET_EXCEEDED
+        BUDGET_EXCEEDED,
+        PARSER_UNAVAILABLE
     }
 
     private final Code code;
 
-    FontLoadException(Code code, String message) {
+    /** Creates a classified failure with a diagnostic that omits source data and paths. */
+    public FontLoadException(Code code, String message) {
         super(message);
         this.code = code;
     }
 
-    FontLoadException(Code code, String message, Throwable cause) {
+    /** Creates a classified failure and retains its underlying cause for debugging. */
+    public FontLoadException(Code code, String message, Throwable cause) {
         super(message, cause);
         this.code = code;
     }

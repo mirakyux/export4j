@@ -8,7 +8,7 @@ import com.mirakyux.export4j.backend.svg.SvgBackend;
 import com.mirakyux.export4j.components.DocumentEngine;
 import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.math.MarkdownMath;
-import com.mirakyux.export4j.math.MathOptions;
+import com.mirakyux.export4j.math.api.MathOptions;
 import com.mirakyux.export4j.math.TexMath;
 import com.mirakyux.export4j.model.CellFormat;
 import com.mirakyux.export4j.model.PageMargins;

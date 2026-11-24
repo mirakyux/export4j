@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.math;
 
+import com.mirakyux.export4j.math.api.MathException;
+import com.mirakyux.export4j.math.core.MathTextFonts;
+
 import com.mirakyux.export4j.adapter.template.XmlTemplate;
 import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.ExecutionContext;
@@ -23,6 +26,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Single-target compilation must not inherit the other target's final representation limits. */
 class MathContentTargetsTest {
+    @Test void textAndSymbolOnlyFormulasNeverLoadLiteralFonts() throws Exception {
+        var fonts = MathTextFonts.deferred(() -> { throw new AssertionError("unexpected font preparation"); });
+        var result = MathContent.builder().textFonts(fonts).build().readVisual("Ordinary text and $\\frac{x}{2}$.");
+        assertEquals(1, result.formulas().size());
+    }
+
     @Test void visualOnlyDoesNotRequireAnOmmlRepresentation() throws Exception {
         var math = MathContent.builder().build();
         for (String tex : List.of("\\bar{x}", "\\overline{x}")) {

@@ -4,13 +4,15 @@ package consumer;
 import com.mirakyux.export4j.Export4j;
 import com.mirakyux.export4j.FontFamily;
 import com.mirakyux.export4j.font.FontSource;
-import com.mirakyux.export4j.math.MathException;
+import com.mirakyux.export4j.math.api.MathException;
 import com.mirakyux.export4j.layout.core.DocumentLayoutException;
 import com.mirakyux.export4j.model.ContentOptions;
+import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentTheme;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ImageResource;
 import com.mirakyux.export4j.model.InlineImage;
+import com.mirakyux.export4j.model.PageSettings;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
@@ -126,7 +128,28 @@ public final class EasyExportConsumer {
                 """.formatted(hits, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                         .digest(Files.readAllBytes(starterJar)))));
         themeExports(latin, output.resolve("theme"));
+        documentExports(latin, output);
         System.out.println("Generated configured-once PDF/DOCX source and XML examples in " + output);
+    }
+
+    private static void documentExports(FontFamily latin, Path output) throws Exception {
+        var document = Document.builder(new DocumentMetadata("Model title", "Model author"),
+                        PageSettings.builder().size(360, 480).margins(30).build())
+                .theme(DocumentTheme.builder().bodyRgb(0x37649A).build())
+                .bodyFormat(paragraph -> paragraph.fontSize(16).lineHeight(22))
+                .heading("Authored report", 1)
+                .paragraph("Literal $x^2$ and **plain**")
+                .table(java.util.List.of("Item", "Count"), java.util.List.of(java.util.List.of("Widget", "2")))
+                .build();
+        try (var exporter = Export4j.builder(latin).build()) {
+            requireResult(exporter.document(document).pdf(output.resolve("document.pdf")), 0);
+        }
+        var declared = FontFamily.of("Liberation Sans", cache -> {
+            throw new AssertionError("plain DOCX opened a physical font source");
+        });
+        try (var exporter = Export4j.builder(declared).build()) {
+            requireResult(exporter.document(document).docx(output.resolve("document.docx")), 0);
+        }
     }
 
     private static void themeExports(FontFamily latin, Path output) throws Exception {

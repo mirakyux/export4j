@@ -2,7 +2,7 @@
 package consumer;
 
 import com.mirakyux.export4j.adapter.docx.DocxAdapter;
-import com.mirakyux.export4j.adapter.pdf.PdfRecoveryCodec;
+import com.mirakyux.export4j.pdf.recovery.PdfRecoveryCodec;
 import com.mirakyux.export4j.adapter.template.XmlModelRecovery;
 import com.mirakyux.export4j.adapter.template.XmlTemplateWriter;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;

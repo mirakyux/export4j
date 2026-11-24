@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j;
 
+import com.mirakyux.export4j.adapter.docx.DocxFontFamilies;
 import com.mirakyux.export4j.adapter.template.XmlTemplate;
 import com.mirakyux.export4j.adapter.web.ImportLimits;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;
-import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.FontFaceCache;
 import com.mirakyux.export4j.layout.core.ComponentLimits;
 import com.mirakyux.export4j.layout.core.DocumentLayoutLimits;
 import com.mirakyux.export4j.math.MathContent;
-import com.mirakyux.export4j.math.MathOptions;
-import com.mirakyux.export4j.math.MathTextFonts;
+import com.mirakyux.export4j.math.api.MathOptions;
+import com.mirakyux.export4j.math.core.MathTextFonts;
 import com.mirakyux.export4j.model.ContentOptions;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.Caption;
 import com.mirakyux.export4j.model.CrossReference;
+import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.DocumentTemplate;
 import com.mirakyux.export4j.model.DocumentTheme;
@@ -35,6 +36,7 @@ import com.mirakyux.export4j.model.TextAppearance;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -49,7 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Reusable offline export entry point. Declare font families and global defaults once; create an
- * independent request for text, Markdown, HTML or XML, then select PDF or DOCX.
+ * independent request for text, Markdown, HTML, XML or an authored document, then select PDF or DOCX.
  * The no-argument builder uses known local system fonts. An explicit initial family keeps all
  * default font selection under application control.
  * The instance owns a bounded idle-expiring font cache unless a caller-owned cache is supplied.
@@ -123,28 +125,54 @@ public final class Export4j implements AutoCloseable {
     /** The initial family supplies Latin and, until overridden, all Word script slots. */
     public static Builder builder(FontFamily latin) { return new Builder(Objects.requireNonNull(latin, "latin"), null); }
 
-    /** Uses known physical font files installed on Windows, macOS or Linux. Fonts are resolved
-     * during export under normal font and execution budgets. Missing local fonts or glyphs fail
-     * PDF export. Use {@link #builder(FontFamily)} for reproducible fonts across hosts.
+    /** Uses known local fonts for PDF and formula text on Windows, macOS or Linux.
+     * Ordinary DOCX output declares Word font families without opening physical font files.
+     * Use {@link #builder(FontFamily)} for reproducible font selection across hosts.
      */
     public static Builder builder() { return systemBuilder(SystemFonts.host()); }
 
     static Builder systemBuilder(SystemFonts systemFonts) { return new Builder(null, systemFonts); }
 
     private OperationFonts loadFonts() throws IOException {
-        var system = systemFonts == null ? null : systemFonts.load(eastAsia, cache);
-        var body = system == null ? latin : system.latin();
-        var cjk = system == null ? eastAsia : system.eastAsia();
-        var complex = complexScript == null ? body : complexScript;
-        var defaults = new ArrayList<FontFamily>();
-        addFamily(defaults, body);
-        addFamily(defaults, cjk);
-        addFamily(defaults, complex);
-        fallbackFonts.forEach(family -> addFamily(defaults, family));
+        return bindFonts(physicalFamilies(), true);
+    }
+
+    private OperationFonts loadDocxFonts() throws IOException {
+        var declarations = systemFonts == null ? new SystemFonts.Families(latin, eastAsia)
+                : systemFonts.declarations(eastAsia);
+        return bindFonts(declarations, false);
+    }
+
+    private SystemFonts.Families physicalFamilies() throws IOException {
+        return systemFonts == null ? new SystemFonts.Families(latin, eastAsia) : systemFonts.load(eastAsia, cache);
+    }
+
+    private OperationFonts bindFonts(SystemFonts.Families selected, boolean physical) throws IOException {
+        var defaults = defaultFonts(selected);
         var families = new ArrayList<>(defaults);
         namedRoles.values().forEach(family -> addFamily(families, family));
-        if (system != null) { validateFamilies(families, namedRoles); }
-        return OperationFonts.load(defaults, families, namedRoles, body, cjk, complex, cache);
+        if (systemFonts != null) { validateFamilies(families, namedRoles); }
+        var body = selected.latin();
+        var cjk = selected.eastAsia();
+        var complex = complexScript == null ? body : complexScript;
+        var word = systemFonts == null ? new DocxFontFamilies(body.name(), body.name(), cjk.name(), complex.name())
+                : systemFonts.wordFamilies(body, cjk, complex);
+        return OperationFonts.bind(defaults, families, namedRoles, word,
+                !physical && systemFonts != null, physical ? cache : null);
+    }
+
+    private List<FontFamily> defaultFonts(SystemFonts.Families selected) {
+        var defaults = new ArrayList<FontFamily>();
+        addFamily(defaults, selected.latin());
+        addFamily(defaults, selected.eastAsia());
+        addFamily(defaults, complexScript);
+        fallbackFonts.forEach(family -> addFamily(defaults, family));
+        return defaults;
+    }
+
+    private MathTextFonts loadFormulaTextFonts(OperationFonts fonts, boolean pdf) throws IOException {
+        var regular = pdf ? fonts.regular() : OperationFonts.loadRegular(defaultFonts(physicalFamilies()), cache);
+        return MathTextFonts.of(regular.stream().map(face -> face.data().bytes()).toArray(byte[][]::new));
     }
 
     private static void addFamily(List<FontFamily> families, FontFamily family) {
@@ -167,6 +195,11 @@ public final class Export4j implements AutoCloseable {
     }
     public Request markdown(String source) { return request(source, ContentOptions.Format.MARKDOWN); }
     public Request html(String source) { return request(source, ContentOptions.Format.HTML); }
+    /** Exports an immutable semantic model using its own page settings, metadata and block styles. */
+    public DocumentRequest document(Document document) {
+        ensureOpen();
+        return new DocumentRequest(Objects.requireNonNull(document, "document"));
+    }
     /** Literal text; formula parsing is disabled unless explicitly re-enabled on this request. */
     public Request text(String source) {
         return request(source, ContentOptions.Format.TEXT).options(ContentOptions.builder().formulas(false).build());
@@ -304,46 +337,33 @@ public final class Export4j implements AutoCloseable {
         public Request pageSettings(PageSettings value) { page = Objects.requireNonNull(value, "pageSettings"); return this; }
         public Request metadata(DocumentMetadata value) { metadata = Objects.requireNonNull(value, "metadata"); return this; }
         public Request image(String key, InlineImage value) { resources.put(key(key), Objects.requireNonNull(value, "image")); return this; }
-        public Result pdf(Path output) throws IOException { return publish(output, true); }
-        public Result docx(Path output) throws IOException { return publish(output, false); }
-        public Result pdf(OutputStream output) throws IOException { return write(output, true); }
-        public Result docx(OutputStream output) throws IOException { return write(output, false); }
-
-        private Result publish(Path output, boolean pdf) throws IOException {
-            ensureOpen();
-            Path target = Objects.requireNonNull(output, "output").toAbsolutePath().normalize();
-            if (target.getParent() == null) { throw new IOException("output requires a parent directory"); }
-            Path temporary = Files.createTempFile(target.getParent(), ".export4j-", ".tmp");
+        public Result pdf(Path output) throws IOException { return publish(output, controls, stream -> encode(stream, true)); }
+        public Result docx(Path output) throws IOException { return publish(output, controls, stream -> encode(stream, false)); }
+        public Result pdf(OutputStream output) throws IOException { return write(output, controls, stream -> encode(stream, true)); }
+        public Result docx(OutputStream output) throws IOException { return write(output, controls, stream -> encode(stream, false)); }
+        private Result encode(OutputStream output, boolean pdf) throws IOException {
             try {
-                var result = ExecutionContext.execute(controls, () -> {
-                    try (var stream = new BufferedOutputStream(Files.newOutputStream(temporary))) {
-                        return encode(ExecutionContext.output(stream), pdf);
-                    }
-                });
-                // The execution scope's final checkpoint must succeed before replacing the destination.
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                return result;
-            } catch (IOException | RuntimeException | Error failure) {
-                try { Files.deleteIfExists(temporary); } catch (IOException | RuntimeException cleanup) { failure.addSuppressed(cleanup); }
-                throw failure;
+                return encodeSource(output, pdf);
+            } catch (FormulaFontIOException failure) {
+                throw failure.getCause();
             }
         }
-        private Result write(OutputStream output, boolean pdf) throws IOException {
-            ensureOpen(); Objects.requireNonNull(output, "output");
-            return ExecutionContext.execute(controls, () -> encode(ExecutionContext.output(output), pdf));
-        }
-        private Result encode(OutputStream output, boolean pdf) throws IOException {
+
+        private Result encodeSource(OutputStream output, boolean pdf) throws IOException {
             ensureOpen();
             ExecutionContext.progress("FONTS", "", -1, 0, 1);
-            var fonts = loadFonts();
-            var regular = fonts.regular();
+            var fonts = pdf ? loadFonts() : loadDocxFonts();
             // Confined to this operation: create at most one encoded snapshot, only when text is used.
             var formulaFonts = new MathTextFonts[1];
             var content = MathContent.builder().defaults(options).pageSettings(page)
                     .metadata(metadata == null ? DocumentMetadata.EMPTY : metadata)
                     .textFonts(MathTextFonts.deferred(() -> {
                         if (formulaFonts[0] == null) {
-                            formulaFonts[0] = MathTextFonts.of(regular.stream().map(face -> face.data().bytes()).toArray(byte[][]::new));
+                            try {
+                                formulaFonts[0] = loadFormulaTextFonts(fonts, pdf);
+                            } catch (IOException failure) {
+                                throw new FormulaFontIOException(failure);
+                            }
                         }
                         return formulaFonts[0];
                     }))
@@ -393,34 +413,113 @@ public final class Export4j implements AutoCloseable {
 
         private Result writeDocx(MathContent.DocxResult result, OperationFonts fonts, OutputStream output) throws IOException {
             result.document().semantic().body().sections().forEach(section -> {
-                requireRoles(section.blocks(), fonts.roles());
-                section.pageRegions().headers().forEach(band -> requireRoles(band.blocks(), fonts.roles()));
-                section.pageRegions().footers().forEach(band -> requireRoles(band.blocks(), fonts.roles()));
+                requireRoles(section.blocks(), fonts);
+                section.pageRegions().headers().forEach(band -> requireRoles(band.blocks(), fonts));
+                section.pageRegions().footers().forEach(band -> requireRoles(band.blocks(), fonts));
             });
             fonts.word().build().writeMath(result.document(), output);
             return completed(new Result(result.formulas().size(), result.degradations()));
         }
     }
 
+    /** Independent mutable request for an authored model. Streams remain caller-owned. Path output
+     * requires an existing parent and atomically preserves an existing destination on failure.
+     * Results contain zero parsed formulas because the model is used directly.
+     */
+    public final class DocumentRequest {
+        private final Document document;
+        private ExecutionOptions controls = execution;
+
+        private DocumentRequest(Document document) { this.document = document; }
+
+        public DocumentRequest execution(ExecutionOptions value) {
+            controls = Objects.requireNonNull(value, "execution");
+            return this;
+        }
+
+        public Result pdf(Path output) throws IOException { return publish(output, controls, this::writePdf); }
+        public Result docx(Path output) throws IOException { return publish(output, controls, this::writeDocx); }
+        public Result pdf(OutputStream output) throws IOException { return write(output, controls, this::writePdf); }
+        public Result docx(OutputStream output) throws IOException { return write(output, controls, this::writeDocx); }
+
+        private Result writePdf(OutputStream output) throws IOException {
+            ensureOpen();
+            ExecutionContext.progress("FONTS", "", -1, 0, 1);
+            var fonts = loadFonts();
+            var engine = fonts.engine().layoutLimits(layoutLimits).componentLimits(componentLimits).build();
+            engine.write(document, pdfBackend, output);
+            return completed(new Result(0, List.of()));
+        }
+
+        private Result writeDocx(OutputStream output) throws IOException {
+            ensureOpen();
+            ExecutionContext.progress("FONTS", "", -1, 0, 1);
+            var fonts = loadDocxFonts();
+            requireRoles(document.blocks(), fonts);
+            fonts.word().build().write(document, output);
+            return completed(new Result(0, List.of()));
+        }
+    }
+
+    @FunctionalInterface
+    private interface Encoder {
+        Result write(OutputStream output) throws IOException;
+    }
+
+    private Result publish(Path output, ExecutionOptions controls, Encoder encoder) throws IOException {
+        ensureOpen();
+        Path target = Objects.requireNonNull(output, "output").toAbsolutePath().normalize();
+        if (target.getParent() == null) { throw new IOException("output requires a parent directory"); }
+        Path temporary = Files.createTempFile(target.getParent(), ".export4j-", ".tmp");
+        try {
+            var result = ExecutionContext.execute(controls, () -> {
+                try (var stream = new BufferedOutputStream(Files.newOutputStream(temporary))) {
+                    return encoder.write(ExecutionContext.output(stream));
+                }
+            });
+            // The execution scope's final checkpoint must succeed before replacing the destination.
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            return result;
+        } catch (IOException | RuntimeException | Error failure) {
+            try { Files.deleteIfExists(temporary); } catch (IOException | RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    private Result write(OutputStream output, ExecutionOptions controls, Encoder encoder) throws IOException {
+        ensureOpen();
+        Objects.requireNonNull(output, "output");
+        return ExecutionContext.execute(controls, () -> encoder.write(ExecutionContext.output(output)));
+    }
+
     private static Result completed(Result result) {
         ExecutionContext.progress("COMPLETE", "", -1, 1, 1); return result;
     }
 
-    private static void requireRoles(List<Block> blocks, Map<String, List<FontFace>> roles) {
+    private static final class FormulaFontIOException extends UncheckedIOException {
+        private static final long serialVersionUID = 1L;
+        FormulaFontIOException(IOException cause) { super(cause); }
+    }
+
+    private static void requireRoles(List<Block> blocks, OperationFonts fonts) {
         SemanticTree.walk(blocks, visit -> {
             var block = visit.block();
-            if (block instanceof Paragraph paragraph) { requireRolesInContent(paragraph.content(), roles); }
-            else if (block instanceof Heading heading) { requireRolesInContent(heading.paragraph().content(), roles); }
-            else if (block instanceof BulletItem item) { requireRolesInContent(item.paragraph().content(), roles); }
-            else if (block instanceof NumberedItem item) { requireRolesInContent(item.paragraph().content(), roles); }
-            else if (block instanceof Caption caption) { requireRole(caption.appearance().fontRole(), roles); }
-            else if (block instanceof CrossReference reference) { requireRole(reference.appearance().fontRole(), roles); }
+            if (block instanceof Paragraph paragraph) { requireRolesInContent(paragraph.content(), fonts); }
+            else if (block instanceof Heading heading) { requireRolesInContent(heading.paragraph().content(), fonts); }
+            else if (block instanceof BulletItem item) {
+                fonts.requireRole(item.markerStyle().fontRole());
+                requireRolesInContent(item.paragraph().content(), fonts);
+            } else if (block instanceof NumberedItem item) {
+                fonts.requireRole(item.markerStyle().fontRole());
+                requireRolesInContent(item.paragraph().content(), fonts);
+            } else if (block instanceof Caption caption) { fonts.requireRole(caption.appearance().fontRole()); }
+            else if (block instanceof CrossReference reference) { fonts.requireRole(reference.appearance().fontRole()); }
             if (block instanceof Table table) {
                 for (var row : table.rows()) {
                     for (var cell : row.cells()) {
                         if (!cell.hasBlocks()) {
-                            cell.inlines().forEach(text -> requireText(text, roles));
-                            cell.fields().forEach(field -> requireRole(field.field().style().fontRole(), roles));
+                            cell.inlines().forEach(text -> fonts.requireRole(text.style().fontRole()));
+                            cell.fields().forEach(field -> fonts.requireRole(field.field().style().fontRole()));
                         }
                     }
                 }
@@ -428,22 +527,11 @@ public final class Export4j implements AutoCloseable {
         });
     }
 
-    private static void requireRolesInContent(List<InlineContent> content, Map<String, List<FontFace>> roles) {
+    private static void requireRolesInContent(List<InlineContent> content, OperationFonts fonts) {
         for (var item : content) {
-            if (item instanceof InlineText text) { requireText(text, roles); }
-            else if (item instanceof InlineField field) { requireRole(field.style().fontRole(), roles); }
+            if (item instanceof InlineText text) { fonts.requireRole(text.style().fontRole()); }
+            else if (item instanceof InlineField field) { fonts.requireRole(field.style().fontRole()); }
         }
-    }
-
-    private static void requireRole(String role, Map<String, List<FontFace>> roles) {
-        if (!roles.containsKey(role)) {
-            throw new IllegalArgumentException("undeclared font role '" + new TextAppearance(role, 0).fontRole() + "'");
-        }
-    }
-
-    private static void requireText(InlineText text, Map<String, List<FontFace>> roles) {
-        // DOCX declares the font family; the reader resolves installed fonts and glyph coverage.
-        requireRole(text.style().fontRole(), roles);
     }
 
     private static String key(String value) {

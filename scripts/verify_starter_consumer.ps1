@@ -2,7 +2,8 @@
 param(
     [string]$Version = '0.1.0-SNAPSHOT',
     [string]$RepositoryDirectory = '',
-    [string]$OutputDirectory = ''
+    [string]$OutputDirectory = '',
+    [ValidateSet('full', 'pdf', 'docx')][string]$Target = 'full'
 )
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
@@ -39,7 +40,7 @@ try {
         New-Item -ItemType Directory -Path $routeDirectory | Out-Null
         $arguments = @('-g', 'build/gradle-starter-validation', '-p', 'verification/starter-consumer',
             "-PconsumerBuildDirectory=$routeDirectory", "-Pexport4jRepositoryDirectory=$publicationRepositoryDirectory",
-            "-Pexport4jVersion=$Version", 'build', 'easyExport', 'resolvedLibraries',
+            "-Pexport4jVersion=$Version", "-PstarterTarget=$Target", 'build', 'easyExport', 'resolvedLibraries',
             '--refresh-dependencies', '--write-locks', '--no-daemon', '--console=plain')
         if ($route -eq 'pom-only') { $arguments += '-Pexport4jPomOnly=true' }
         & .\gradlew.bat @arguments *> (Join-Path $evidenceDirectory "$route.log")
@@ -57,7 +58,7 @@ try {
     $gradleHashes = Read-ArtifactHashes (Join-Path $routes['gradle'].directory 'resolved-library-sha256.txt')
     $pomHashes = Read-ArtifactHashes (Join-Path $routes['pom-only'].directory 'resolved-library-sha256.txt')
     if (Compare-Object $gradleHashes $pomHashes) { throw 'Gradle metadata and POM-only routes resolved different runtime artifacts' }
-    $result = @{ version = $Version; status = 'PASS'; routes = $routes; runtimeArtifactsEqual = $true }
+    $result = @{ version = $Version; target = $Target; status = 'PASS'; routes = $routes; runtimeArtifactsEqual = $true }
     $result | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $evidenceDirectory 'verification.json') -Encoding utf8
     Write-Output "Verified one declared starter coordinate through both metadata routes: $evidenceDirectory"
 } finally {

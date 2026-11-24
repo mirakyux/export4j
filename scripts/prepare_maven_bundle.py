@@ -63,7 +63,8 @@ def prepare(repository: Path, version: str, public_key: Path, sbom: Path, output
     repository = repository.resolve()
     group = repository / "com/mirakyux/export4j"
     modules = sorted(path for path in group.iterdir() if (path / version).is_dir())
-    if {path.name for path in modules} != published_modules(Path(__file__).resolve().parents[1]):
+    module_names = {path.name for path in modules}
+    if module_names != published_modules(Path(__file__).resolve().parents[1]):
         raise ValueError("Staged libraries and BOM differ from the configured publication scope")
     library_count = len(modules) - 1
     namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
@@ -108,7 +109,7 @@ def prepare(repository: Path, version: str, public_key: Path, sbom: Path, output
                         if not {"META-INF/LICENSE", "META-INF/NOTICE"}.issubset(jar.namelist()):
                             raise ValueError("Every library archive must carry LICENSE and NOTICE")
                 binary = directory / (prefix + ".jar")
-                if module.name == "export4j-math":
+                if module.name == ("export4j-math-core" if "export4j-math-core" in module_names else "export4j-math"):
                     verify_math_source_bundle(binary, Path(__file__).resolve().parents[1])
                 library_hashes[module.name] = hashlib.sha256(binary.read_bytes()).hexdigest()
         # A valid signature must also reject modified bytes, independently of Gradle's signer.

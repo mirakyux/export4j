@@ -119,8 +119,10 @@ class Export4jConfigurationTest {
             var output = new ByteArrayOutputStream(); assertEquals(1, request.pdf(output).formulas());
             assertTrue(pdfText(output.toByteArray()).contains("First")); assertEquals(1, calls.get());
             data.put("name", "Second");
-            output.reset(); request.docx(output); assertTrue(part(output.toByteArray(), "word/document.xml").getDocumentElement().getTextContent().contains("Second"));
-            assertEquals(2, calls.get());
+            output.reset();
+            assertEquals(1, request.docx(output).formulas());
+            assertTrue(part(output.toByteArray(), "word/document.xml").getDocumentElement().getTextContent().contains("Second"));
+            assertEquals(1, calls.get(), "DOCX with mathematical symbols does not load a physical body font");
             try (var second = Export4j.builder(family).theme(DocumentTheme.builder().bodyFormat(p -> p.fontSize(17).lineHeight(25)).build()).build()) {
                 output.reset(); second.xml(syntax, data).docx(output);
                 var sizes = part(output.toByteArray(), "word/document.xml").getElementsByTagNameNS(W, "sz");

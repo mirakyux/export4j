@@ -77,7 +77,7 @@ class FontWaitExecutionTest {
                 waitingThread.set(Thread.currentThread());
                 var options = ExecutionOptions.builder().cancelled(cancelled::get)
                         .timeout(timeout ? Duration.ofSeconds(1) : Duration.ofSeconds(10)).build();
-                var request = exporter.text("Controlled cache wait").execution(options);
+                var request = waitingRequest(exporter, pdf).execution(options);
                 if (pdf) { request.pdf(target); } else { request.docx(target); }
                 return null;
             });
@@ -97,13 +97,18 @@ class FontWaitExecutionTest {
             assertSame(parsed, owner.get(5, TimeUnit.SECONDS));
             assertSame(parsed, cache.load(font));
             var output = new ByteArrayOutputStream();
-            if (pdf) { exporter.text("Usable after cancelled waiter").pdf(output); }
-            else { exporter.text("Usable after cancelled waiter").docx(output); }
+            if (pdf) { waitingRequest(exporter, true).pdf(output); }
+            else { waitingRequest(exporter, false).docx(output); }
             assertTrue(output.size() > 0); assertEquals(1, cache.stats().loads());
         } finally {
             release.countDown(); workers.shutdownNow();
             assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
         }
+    }
+
+    private static Export4j.Request waitingRequest(Export4j exporter, boolean pdf) {
+        // Literal formula text is the DOCX path that reads physical fonts.
+        return pdf ? exporter.text("Controlled cache wait") : exporter.markdown("$x+\\text{cache}$");
     }
 
     private static void awaitCacheWait(AtomicReference<Thread> reference) {

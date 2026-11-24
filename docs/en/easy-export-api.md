@@ -1,6 +1,6 @@
 # Configure once, export directly
 
-The development module `export4j-starter` provides the `Export4j` entry point. Choose text, Markdown, HTML, or an XML template and a PDF/DOCX destination. Applications can use installed fonts or configure fonts, styles, and shared images at startup. Published `0.1.0-rc.3` does not contain this module.
+The development module `export4j-starter` provides the `Export4j` entry point for exporting text, Markdown, HTML, XML templates, or a Java `Document` to PDF/DOCX. Applications can use installed fonts or configure fonts, styles, and shared images at startup. Published `0.1.0-rc.3` does not contain this module.
 
 ## One dependency and a minimal call
 
@@ -32,7 +32,7 @@ try (var export = Export4j.builder().build()) {
 }
 ```
 
-The no-argument builder checks a fixed set of system font paths during export. Windows prefers Arial and Microsoft YaHei. macOS tries Arial and Hiragino Sans GB first. On Linux, Latin candidates include Liberation Sans, DejaVu Sans, and Noto Sans, with Noto Sans CJK SC for Chinese. The actual choice depends on installed fonts, supported formats, and embedding permissions. Minimal containers may need font packages. PDF export reports missing glyphs. Use explicit fonts as shown below when layout must match across hosts.
+For PDF export, the no-argument builder checks a fixed set of system font paths. Windows prefers Arial and Microsoft YaHei. macOS tries Arial and Hiragino Sans GB first. On Linux, Latin candidates include Liberation Sans, DejaVu Sans, and Noto Sans, with Noto Sans CJK SC for Chinese. The choice depends on installed fonts, supported formats, and embedding permissions. PDF export fails if a required font or glyph is unavailable. Use explicit fonts as shown below to reproduce PDF layout across hosts.
 
 ```java
 import com.mirakyux.export4j.Export4j;
@@ -48,9 +48,38 @@ try (var export = Export4j.builder(body).build()) {
 }
 ```
 
-Create the output parent directory first. PDF measures and draws with the same physical fonts and honors their embedding flags. DOCX declares font families and styles for the reader to resolve. An application can reuse the exporter and close it at shutdown. Use `FontSource.resource(App.class, "/fonts/body.ttf")` for a classpath resource or `FontSource.collection(path, postScriptName)` for a named font collection member.
+Create the output parent directory first. PDF measures and draws with the same physical fonts and honors their embedding flags. Ordinary DOCX export works in containers without font packages and declares font families and styles for the reader to resolve. Formula processing loads physical fonts when it needs them. An application can reuse the exporter and close it at shutdown. Use `FontSource.resource(App.class, "/fonts/body.ttf")` for a classpath resource or `FontSource.collection(path, postScriptName)` for a named font collection member.
 
-The starter transitively includes the existing mathematical module and its reviewed JLaTeXMath dependency. Applications needing fewer dependencies can continue selecting individual modules. See [dependencies and licenses (Chinese)](../dependencies.md).
+## Select dependencies by output format
+
+For an authored Java `Document`, use `export4j-starter-pdf` for PDF or `export4j-adapter-docx` for DOCX. Both accept the same semantic model.
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxExport;
+import com.mirakyux.export4j.adapter.docx.DocxFontFamilies;
+import com.mirakyux.export4j.font.FontSource;
+import com.mirakyux.export4j.pdf.PdfExport;
+import java.nio.file.Path;
+
+try (var pdf = PdfExport.withFonts(FontSource.file(Path.of("fonts/body.ttf")))) {
+    pdf.write(document, Path.of("report.pdf"));
+}
+
+DocxExport.withFonts(new DocxFontFamilies("Arial", "Microsoft YaHei"))
+        .write(document, Path.of("report.docx"));
+```
+
+`DocxExport.create()` uses reader defaults. Configure PDF font roles and layout limits with `DocumentEngineProvider.Builder`. Add the XML or Web adapter to build the document from source. Use `export4j-math-docx-web` for editable Word equations from Markdown or HTML, and `export4j-starter` for the combined source, system-font and math workflow. [Math modules](math-api.md)
+
+## Starter dependencies
+
+| Scope | Maven modules |
+| --- | --- |
+| Direct compile dependencies | `export4j-components`, `export4j-font-core`, `export4j-math`, `export4j-adapter-template`, `export4j-backend-pdf`, `export4j-adapter-docx` |
+| Transitive Export4j modules | `export4j-adapter-web`, `export4j-model`, `export4j-graphics-api`, `export4j-graphics-core`, `export4j-layout-model`, `export4j-layout-core`, `export4j-text-core`, `export4j-math-api`, `export4j-math-core`, `export4j-math-web`, `export4j-math-docx`, `export4j-font-fontbox` (runtime) |
+| Third-party runtime libraries | PDFBox, FontBox, PDFBox IO, Commons Logging, CommonMark (with GFM tables and strikethrough), jsoup, JLaTeXMath |
+
+Maven or Gradle resolves each dependency as a separate JAR. Applications that need fewer dependencies can select individual modules. See [dependency versions and licenses (Chinese)](../dependencies.md).
 
 ## Chinese, Latin, and global style
 
@@ -130,11 +159,32 @@ For parser extensions, `ContentOptions.Resolved.styles()` exposes immutable `Sem
 | `text(source)` | Literal text with formulas disabled; Markdown/HTML syntax remains literal |
 | `markdown(source)` | Explicit Markdown with formulas enabled; tables use inherited settings |
 | `html(source)` | Explicit offline HTML subset with formulas enabled |
-| `xml(template, data)` | Compile and bind a body template; XML/global declarations choose source syntax without guessing data formats |
+| `xml(template, data)` | Compile and bind XML templates, including sections, headers, and footers. XML and global declarations choose source syntax |
 
 Raw HTML inside Markdown is a separate switch, disabled by default; explicitly choose `rawHtml(true)` when needed. The `html(...)` entry does not require that switch. Strings are always source content, never file paths or URLs.
 
 Register shared images with global `image(key, InlineImage)` or add/override an exact key on one request. The caller supplies encoded bytes and point dimensions. Links do not cause network or filesystem resource access. Requests also accept `metadata(...)`, `pageSettings(...)`, and `execution(...)` without rebuilding the shared instance.
+
+## Export a Java Document
+
+`document(Document)` uses the metadata, page settings, styles, and resources from an already built model. The exporter supplies the font roles, PDF backend, and execution settings. Set execution options for a single request with `execution(...)`. Both `pdf(...)` and `docx(...)` accept a `Path` or an `OutputStream`.
+
+```java
+import com.mirakyux.export4j.Export4j;
+import com.mirakyux.export4j.model.Document;
+import java.nio.file.Path;
+
+var document = Document.builder()
+        .heading("Quarterly report", 1)
+        .paragraph("Revenue increased this quarter.")
+        .build();
+try (var export = Export4j.builder().build()) {
+    export.document(document).pdf(Path.of("quarterly-report.pdf"));
+    export.document(document).docx(Path.of("quarterly-report.docx"));
+}
+```
+
+Text parsing, theme, and shared image settings apply to the text, Markdown, HTML, and XML entry points. Set these properties while building the model for `document(...)`.
 
 ## XML and data
 

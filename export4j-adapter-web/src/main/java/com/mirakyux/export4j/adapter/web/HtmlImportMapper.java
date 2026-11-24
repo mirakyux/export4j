@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.adapter.web;
 
+import com.mirakyux.export4j.adapter.web.internal.CssBoxStyle;
+import com.mirakyux.export4j.adapter.web.internal.CssValues;
+import com.mirakyux.export4j.adapter.web.internal.HtmlLayoutProvider.Box;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.CellFormat;
@@ -103,7 +106,7 @@ final class HtmlImportMapper {
             loss(child, "HTML_METADATA", "HTML head metadata has no explicit model mapping", "HEAD_METADATA_REMOVED", "", List.of());
         }
         var output = new ArrayList<Block>();
-        if (importer.layoutMode && needsBox(tree.body())) { block(tree.body(), output, new Context("", List.of(), 0)); }
+        if (importer.layout != null && needsBox(tree.body())) { block(tree.body(), output, new Context("", List.of(), 0)); }
         else { blocks(tree.body(), output, new Context("", List.of(), 0)); }
         return new Document(importer.metadata, css.pageSettings(), output);
     }
@@ -144,15 +147,15 @@ final class HtmlImportMapper {
             output.add(Paragraph.mixed(id, List.of(new InlineText(literal, style.inline())), style.paragraph(importer.format, context.indent())));
             return;
         }
-        if (importer.layoutMode && !compilingBox && needsBox(element) && CONTAINERS.contains(tag)) { layoutAnchors.add(element); }
+        if (importer.layout != null && !compilingBox && needsBox(element) && CONTAINERS.contains(tag)) { layoutAnchors.add(element); }
         attributes(element, id, context.cells()); if (hidden(element, id, context.cells())) { return; }
         var own = new Context(id, context.cells(), context.indent());
         var style = css.get(element); var format = style.paragraph(importer.format, context.indent());
         if (style.breakBefore) { output.add(new PageBreak(generatedId())); }
-        if (importer.layoutMode && !compilingBox && needsBox(element)) {
+        if (importer.layout != null && !compilingBox && needsBox(element)) {
             if (style.box.getOrDefault("position", "static").equals("absolute")) { throw new IllegalArgumentException("top-level absolute CSS content requires a positioned containing box"); }
-            var component = box(element, own, 0, false);
-            if (component != null) { output.add(new com.mirakyux.export4j.layout.core.ComponentBlock(CONTAINERS.contains(tag) ? id : generatedId(), component)); }
+            var layoutInput = box(element, own, 0, false);
+            if (layoutInput != null) { output.add(importer.layout.compile(CONTAINERS.contains(tag) ? id : generatedId(), layoutInput)); }
             if (style.breakAfter) { output.add(new PageBreak(generatedId())); }
             return;
         }
@@ -176,7 +179,7 @@ final class HtmlImportMapper {
     private boolean needsBox(Element element) {
         var style = css.get(element); return !style.box.isEmpty() && !(style.box.size() == 1 && Set.of("block", "inline").contains(style.box.get("display")));
     }
-    private HtmlCssBox box(Element source, Context context, int depth, boolean containing) {
+    private Box box(Element source, Context context, int depth, boolean containing) {
         state.work(1); if (depth > 32) { throw new IllegalArgumentException("compiled CSS box depth exceeded"); }
         attributes(source, context.block(), context.cells()); if (hidden(source, context.block(), context.cells())) { return null; }
         var computed = css.get(source); var declarations = new HashMap<>(computed.box); var tag = source.normalName();
@@ -208,7 +211,7 @@ final class HtmlImportMapper {
         if (depth > 0 && (computed.breakBefore || computed.breakAfter)) {
             state.unsupported("CSS_PAGINATION_CONTEXT", location(source, id(source), context.cells()), "page breaks cannot occur inside an atomic CSS layout box", List.of("NESTED_PAGE_BREAK_REMOVED"), Treatment.DEGRADE);
         }
-        var children = new ArrayList<HtmlCssBox>(); com.mirakyux.export4j.layout.core.Component leaf = null;
+        var children = new ArrayList<Box>(); Table leaf = null;
         if (CONTAINERS.contains(tag)) {
             var inline = new ArrayList<Node>();
             for (var node : source.childNodes()) {
@@ -230,7 +233,7 @@ final class HtmlImportMapper {
             for (int i = 0; i < children.size(); i++) {
                 var child = children.get(i);
                 for (String name : List.of("flex-grow", "flex-shrink")) {
-                    double factor = child.style.number(name, name.equals("flex-grow") ? 0 : 1);
+                    double factor = child.style().number(name, name.equals("flex-grow") ? 0 : 1);
                     if (!child.absolute() && factor > 0 && factor < 1) {
                         state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "subunit flex factors are outside the finite distribution subset", List.of("SUBUNIT_FLEX_FACTOR_REPLACED_WITH_ONE"), Treatment.DEGRADE);
                         child = child.withDeclaration(name, "1"); children.set(i, child);
@@ -239,7 +242,7 @@ final class HtmlImportMapper {
             }
             boolean column = declarations.getOrDefault("flex-direction", "row").startsWith("column");
             for (var child : children) {
-                if (!child.absolute() && child.style.length("flex-basis").automatic() && child.style.length(column ? "height" : "width").automatic()) {
+                if (!child.absolute() && child.style().length("flex-basis").automatic() && child.style().length(column ? "height" : "width").automatic()) {
                     state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "flex items require an explicit main-axis size/basis in this finite layout subset", List.of("FLEX_REPLACED_WITH_BLOCK_FLOW"), Treatment.DEGRADE);
                     declarations.put("display", "block"); break;
                 }
@@ -261,9 +264,9 @@ final class HtmlImportMapper {
         if (grid || columnFlex) {
             String self = grid ? "justify-self" : "align-self", items = grid ? "justify-items" : "align-items";
             for (int i = 0; i < children.size(); i++) {
-                var child = children.get(i); String alignment = child.style.text(self, "auto");
+                var child = children.get(i); String alignment = child.style().text(self, "auto");
                 if (alignment.equals("auto")) { alignment = declarations.getOrDefault(items, "stretch"); }
-                if (!child.absolute() && child.style.length("width").automatic() && !alignment.equals("stretch")) {
+                if (!child.absolute() && child.style().length("width").automatic() && !alignment.equals("stretch")) {
                     state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "non-stretch horizontal alignment requires an explicit item width", List.of("INTRINSIC_ALIGNMENT_REPLACED_WITH_STRETCH"), Treatment.DEGRADE);
                     children.set(i, child.withDeclaration(self, "stretch"));
                 }
@@ -272,23 +275,23 @@ final class HtmlImportMapper {
         if (declarations.getOrDefault("height", "auto").equals("auto")) {
             for (int i = 0; i < children.size(); i++) {
                 var child = children.get(i);
-                if (!child.style.text("position", "static").equals("relative")) { continue; }
+                if (!child.style().text("position", "static").equals("relative")) { continue; }
                 for (String name : List.of("top", "bottom")) {
-                    if (child.style.length(name).percent()) {
+                    if (child.style().length(name).percent()) {
                         state.unsupported("CSS_LAYOUT", location(source, context.block(), context.cells()), "percentage relative block offsets require an explicit containing height", List.of("PERCENTAGE_BLOCK_OFFSET_REMOVED"), Treatment.DEGRADE);
                         child = child.withDeclaration(name, "0pt"); children.set(i, child);
                     }
                 }
             }
         }
-        return new HtmlCssBox(new CssBoxStyle(declarations), children, leaf);
+        return new Box(new CssBoxStyle(declarations), children, leaf);
     }
-    private void boxText(Element owner, List<Node> nodes, List<HtmlCssBox> children, Context context) {
+    private void boxText(Element owner, List<Node> nodes, List<Box> children, Context context) {
         if (nodes.isEmpty()) { return; } String id = generatedId(); var content = content(nodes, owner, new Context(id, context.cells(), 0)); nodes.clear();
-        if (!content.isEmpty()) { var style = css.get(owner); children.add(new HtmlCssBox(new CssBoxStyle(Map.of()), List.of(), semanticBox(List.of(Paragraph.mixed(id, content, style.paragraph(importer.format, 0))), style))); }
+        if (!content.isEmpty()) { var style = css.get(owner); children.add(new Box(new CssBoxStyle(Map.of()), List.of(), semanticBox(List.of(Paragraph.mixed(id, content, style.paragraph(importer.format, 0))), style))); }
     }
-    private com.mirakyux.export4j.layout.core.Component semanticBox(List<Block> source, HtmlCss.Computed computed) {
-        if (source.size() == 1 && source.getFirst() instanceof Table table) { return new com.mirakyux.export4j.components.SemanticTable(table); }
+    private Table semanticBox(List<Block> source, HtmlCss.Computed computed) {
+        if (source.size() == 1 && source.getFirst() instanceof Table table) { return table; }
         var blocks = new ArrayList<Block>();
         for (var block : source) {
             if (block instanceof Heading heading) { block = heading.paragraph(); }
@@ -299,9 +302,8 @@ final class HtmlImportMapper {
             else { throw new IllegalArgumentException("CSS layout leaf supports paragraphs, headings and semantic tables"); }
         }
         var cell = TableCell.builder().blocks(blocks).format(new CellFormat(computed.size, computed.lineHeight(), computed.alignment)).build();
-        var table = new Table(generatedId(), List.of(new ColumnWidth.Fraction(1)), List.of(new TableRow(List.of(cell))), 0,
+        return new Table(generatedId(), List.of(new ColumnWidth.Fraction(1)), List.of(new TableRow(List.of(cell))), 0,
                 TableFormat.builder().padding(PageMargins.uniform(0)).spaceAfter(0).drawBorders(false).build());
-        return new com.mirakyux.export4j.components.SemanticTable(table);
     }
     private boolean hidden(Element element, String id, List<CellLocation> cells) {
         if (!css.get(element).hidden) { return false; }
@@ -391,8 +393,8 @@ final class HtmlImportMapper {
                     if (element.hasAttr("height") && !element.hasAttr("width")) { width = image.width() * height / image.height(); }
                     var imageStyle = css.get(element).box;
                     boolean cssWidth = imageStyle.containsKey("width") && !imageStyle.get("width").equals("auto"), cssHeight = imageStyle.containsKey("height") && !imageStyle.get("height").equals("auto");
-                    if (cssWidth) { width = HtmlCss.length(imageStyle.get("width")); }
-                    if (cssHeight) { height = HtmlCss.length(imageStyle.get("height")); }
+                    if (cssWidth) { width = CssValues.length(imageStyle.get("width")); }
+                    if (cssHeight) { height = CssValues.length(imageStyle.get("height")); }
                     if (cssWidth && !cssHeight && !element.hasAttr("height")) { height = image.height() * width / image.width(); }
                     if (cssHeight && !cssWidth && !element.hasAttr("width")) { width = image.width() * height / image.height(); }
                     output.add(new InlineImage(image.resource(), width, height, image.baselineShift(), element.attr("alt"), link)); state.text(1); space.beginning = false;
@@ -434,7 +436,7 @@ final class HtmlImportMapper {
         var declarations = css.get(element).box;
         for (String name : List.of("width", "height")) {
             if (declarations.containsKey(name) && !declarations.get(name).equals("auto")) {
-                vectorDimension(HtmlCss.length(declarations.get(name)), name.equals("width") ? width : height);
+                vectorDimension(CssValues.length(declarations.get(name)), name.equals("width") ? width : height);
             }
         }
     }

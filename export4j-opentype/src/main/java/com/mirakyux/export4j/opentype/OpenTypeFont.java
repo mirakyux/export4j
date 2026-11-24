@@ -125,6 +125,33 @@ public final class OpenTypeFont {
     public boolean subsetAllowed() { return subsetAllowed; }
     public Set<String> tables() { return tables; }
     public boolean color() { return tables.contains("COLR") || tables.contains("CBDT") || tables.contains("sbix") || tables.contains("SVG "); }
+
+    /** Opens a caller-confined glyph coverage query. Close it after selecting fallback fonts. */
+    public GlyphCoverage openGlyphCoverage() { return new GlyphCoverage(this); }
+
+    public static final class GlyphCoverage implements AutoCloseable {
+        private NativeFont font;
+
+        private GlyphCoverage(OpenTypeFont source) {
+            ExecutionContext.checkpoint();
+            font = new NativeFont(source);
+        }
+
+        public boolean contains(int codePoint) {
+            if (font == null) { throw new IllegalStateException("glyph coverage is closed"); }
+            try (var stack = MemoryStack.stackPush()) {
+                return HarfBuzz.hb_font_get_nominal_glyph(font.font, codePoint, stack.ints(0));
+            }
+        }
+
+        @Override public void close() {
+            if (font != null) {
+                font.close();
+                font = null;
+            }
+        }
+    }
+
     byte[] program() { return program; }
 
     /** Actual bundled native version; does not report Java binding header versions. */

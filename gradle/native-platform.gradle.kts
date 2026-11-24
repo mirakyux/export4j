@@ -31,6 +31,8 @@ val selectedNativeClassifier = providers.gradleProperty("export4jNativeClassifie
         }
         else -> error("Unsupported native platform; set export4jNativeClassifier explicitly")
     }
-}).get()
-require(selectedNativeClassifier in supportedNativeClassifiers) { "Unknown export4jNativeClassifier" }
-extra["export4jNativeClassifierResolved"] = selectedNativeClassifier
+}).map { classifier ->
+    require(classifier in supportedNativeClassifiers) { "Unknown export4jNativeClassifier" }
+    classifier
+}
+extra["export4jNativeClassifier"] = selectedNativeClassifier

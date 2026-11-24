@@ -2,6 +2,8 @@
 
 各入口有独立输入子集和损失契约，不因一个入口支持某种对象而放宽其他入口的拒绝规则。
 
+表中的入口由 `export4j-adapter-pdf` 提供。读取或写入 PDF 内嵌模型附件时，添加 `export4j-pdf-recovery`。签名和离线验证使用 `export4j-pdf-signatures`。参见[内嵌恢复](model-recovery-api.md#pdfdocx-与-png-页-zip-可选内嵌恢复)和[离线签名](pdf-standards-api.md#pades-与离线信任)。
+
 | 任务 | 入口及指南 |
 | --- | --- |
 | 读页、普通字形提取、静态选页／合并 | `read`／`copy`／`merge`，见下文 |

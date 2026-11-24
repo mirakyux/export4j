@@ -20,7 +20,7 @@ import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.PageSize;
 import com.mirakyux.export4j.opentype.OpenTypeFont;
 import com.mirakyux.export4j.opentype.OpenTypeShaper;
-import com.mirakyux.export4j.opentype.OpenTypeText;
+import com.mirakyux.export4j.opentype.layout.OpenTypeText;
 import com.mirakyux.export4j.text.ParagraphLayouter;
 import com.mirakyux.export4j.text.ParagraphStyle;
 import java.nio.charset.StandardCharsets;

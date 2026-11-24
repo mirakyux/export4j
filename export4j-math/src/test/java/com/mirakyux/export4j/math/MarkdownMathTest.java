@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.math;
 
+import com.mirakyux.export4j.math.api.MathException;
+import com.mirakyux.export4j.math.api.MathOptions;
+
 import com.mirakyux.export4j.adapter.docx.DocxAdapter;
 import com.mirakyux.export4j.adapter.docx.DocxMath;
 import com.mirakyux.export4j.adapter.docx.DocxMathDocument;
@@ -23,6 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MarkdownMathTest {
     private final MarkdownMath math = new MarkdownMath();
+
+    @Test void malformedPrefixesCannotHideLaterBudgetsOrEnableFallback() {
+        var commands = MathOptions.builder().maxCommands(1).build();
+        var permissive = MarkdownMath.builder().options(commands).fallback(MarkdownMath.Fallback.KEEP_SOURCE).build();
+        assertEquals(MathException.Reason.LIMIT_EXCEEDED,
+                assertThrows(MathException.class, () -> permissive.vector("$}\\alpha\\beta$")).reason());
+        assertEquals(MathException.Reason.LIMIT_EXCEEDED,
+                assertThrows(MathException.class, () -> permissive.docx("$}\\alpha\\beta$")).reason());
+    }
 
     @Test void protectsActualMarkdownContextsAndCurrency() {
         String source = "Before $x_1$ after\r\n\r\n`$code$` and \\$escaped\\$\r\n"

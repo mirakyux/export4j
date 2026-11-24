@@ -2,7 +2,8 @@
 description = "Bounded paragraph flow pagination and conversion to drawing commands"
 dependencies {
     api(project(":export4j-layout-model"))
-    implementation(project(":export4j-graphics-core"))
+    api(project(":export4j-graphics-core"))
+    testRuntimeOnly(project(":export4j-font-fontbox"))
 }
 sourceSets.test {
     resources.srcDir(rootProject.file("assets"))

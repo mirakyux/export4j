@@ -1,6 +1,6 @@
 # 能力与 API 导航
 
-当前开发版可通过[统一导出入口](easy-export-api.md)从文本、Markdown、HTML 或 XML 输出 PDF／DOCX。只需一个 `export4j-starter` 依赖。无参 Builder 可使用已安装的系统字体，应用也可以显式配置字体、主题和资源。XML 分节、页眉和页脚可写入两个目标，脚注和尾注支持 PDF。已发布的 `0.1.0-rc.3` 不包含此模块。
+当前开发版只需一个 `export4j-starter` 依赖，即可从文本、Markdown、HTML、XML 或 Java `Document` 输出 PDF／DOCX。PDF 可使用已安装字体或应用显式配置的字体，普通 DOCX 可在无字体包时导出。XML 分节、页眉和页脚可写入两个目标，脚注和尾注支持 PDF。已发布的 `0.1.0-rc.3` 不包含此模块。[统一导出入口](easy-export-api.md)
 
 当前开发版提供[源内容块与继承配置](content-blocks-api.md)：Java／XML 按源块选择文本、Markdown 或 HTML，逐项声明字体、颜色、段落属性及公式／表格开关，编写时生成既有模型。既有子集已完成[独立验收](verification/content-blocks.md)，本次富内容扩展单独见[验收记录](verification/rich-content.md)；不等于任意网页、完整 LaTeX 或最终模型字符串的自动重解析。
 
@@ -26,7 +26,7 @@ XML 静态页面配置已由[阶段三十六](verification/phase-36-xml-page-set
 
 [列表标记](list-markers-api.md)独立保存完整 InlineStyle，标准 DOCX 使用所选 level 的运行属性；[XML 文字默认值](xml-text-defaults-api.md)按正文／标题／单元格独立配置角色和颜色，显式局部覆盖、命名完整样式及嵌套格范围保持。验收分别见[阶段三十八](verification/phase-38-component-text.md)、[三十九](verification/phase-39-list-markers.md)及[四十](verification/phase-40-xml-text-defaults.md)。整体试用边界见[就绪评估](readiness-assessment.md)。
 
-当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 21 个模块（18 个库、BOM、示例和可选设计器应用）。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
+当前沿用 `com.mirakyux.export4j` 和现有 Maven 坐标，共 32 个模块（29 个库、BOM、示例和可选设计器应用）。可选 `export4j-opentype` 提供原生文字能力，核心不强制引入 JNI。最初能力扩展的样例见 [CapabilitiesExample](../examples/src/main/java/com/mirakyux/export4j/examples/CapabilitiesExample.java)；当前范围按各节 API 及验收判断。
 
 [Word 原生公式](docx-math-api.md)提供适配器拥有的类型树及标准 OMML 读取／重建，支持分式、根式、上下标、积分、矩阵、定界符、函数和上下限。`readMath`／`writeMath` 保持公式可编辑；普通读取入口明确拒绝数学内容。[行内矢量](inline-vectors-api.md)让调用方生成的有界轮廓进入段落／标题／两种列表／TableCell 及显式 HTML／Markdown 资源注册，PDF 保存真实轮廓和 ActualText；矢量本身不解析 TeX，也不携带 OMML。普通矢量导出 DOCX／Web 须明确降为逻辑文字；XML v1 静态路径编码完整保留几何、颜色、外链和阅读文字。受限 TeX 及 Word 原生数学使用可选[公式模块](math-api.md)，实际 Word 公式动作见[专项验收](verification/manuweave-templates.md)。
 

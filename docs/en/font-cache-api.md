@@ -12,6 +12,8 @@ These limits bound retained source weight, not total heap, native storage or RSS
 
 ## Immutable faces
 
+When loading TrueType or CFF files directly through `export4j-font-core`, add `export4j-font-fontbox` at the same version as a runtime dependency. The PDF backend, components, and vector math modules provide the parser transitively.
+
 Existing `TrueTypeFontLoader.load` overloads use the shared cache by default. Keys are content SHA-256, with private input snapshots. Paths are reread; a matching path or timestamp cannot hide changed bytes. Every call checks its byte limit, including hits. Borrowed streams stay caller-owned. Failed parses and permission failures are not cached.
 
 `FontSource.bytes(...)` creates an internal `SnapshotFontSource` holding a private encoded snapshot and its SHA-256 identity. Later loads reuse that immutable identity; callers cannot independently supply bytes and an asserted digest. Public `FontFaceCache.load(byte[])` still protects external arrays on every call. File and class-resource sources continue reading on each load, so the snapshot path cannot hide file changes.

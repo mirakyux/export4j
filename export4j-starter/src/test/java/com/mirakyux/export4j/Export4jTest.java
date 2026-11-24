@@ -8,8 +8,9 @@ import com.mirakyux.export4j.font.FontMetrics;
 import com.mirakyux.export4j.font.FontSource;
 import com.mirakyux.export4j.font.GlyphMetrics;
 import com.mirakyux.export4j.layout.core.DocumentLayoutException;
-import com.mirakyux.export4j.math.MathException;
+import com.mirakyux.export4j.math.api.MathException;
 import com.mirakyux.export4j.model.ContentOptions;
+import com.mirakyux.export4j.model.Document;
 import com.mirakyux.export4j.model.DocumentTheme;
 import com.mirakyux.export4j.model.DocumentMetadata;
 import com.mirakyux.export4j.model.ExecutionException;
@@ -403,15 +404,22 @@ class Export4jTest {
         Path target = directory.resolve("output.pdf");
         byte[] old = "original".getBytes(StandardCharsets.UTF_8);
         Files.write(target, old);
-        var cancelled = new AtomicBoolean();
-        var execution = ExecutionOptions.builder().cancelled(cancelled::get)
-                .progress(progress -> { if (progress.stage().equals("COMPLETE")) { cancelled.set(true); } }).build();
         try (var exporter = Export4j.builder(latin()).build()) {
+            var cancelled = new AtomicBoolean();
+            var execution = ExecutionOptions.builder().cancelled(cancelled::get)
+                    .progress(progress -> { if (progress.stage().equals("COMPLETE")) { cancelled.set(true); } }).build();
             assertEquals(ExecutionException.Code.CANCELLED, assertThrows(ExecutionException.class,
                     () -> exporter.text("New output").execution(execution).pdf(target)).code());
+            assertTrue(cancelled.get());
+            assertArrayEquals(old, Files.readAllBytes(target));
+
+            cancelled.set(false);
+            var document = Document.builder().paragraph("Authored output").build();
+            assertEquals(ExecutionException.Code.CANCELLED, assertThrows(ExecutionException.class,
+                    () -> exporter.document(document).execution(execution).pdf(target)).code());
+            assertTrue(cancelled.get());
+            assertArrayEquals(old, Files.readAllBytes(target));
         }
-        assertTrue(cancelled.get());
-        assertArrayEquals(old, Files.readAllBytes(target));
         try (var files = Files.list(directory)) { assertEquals(List.of(target), files.toList()); }
     }
 

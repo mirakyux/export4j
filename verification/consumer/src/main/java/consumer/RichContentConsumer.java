@@ -10,7 +10,7 @@ import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.font.TrueTypeFontLoader;
 import com.mirakyux.export4j.math.MathContent;
-import com.mirakyux.export4j.math.MathTextFonts;
+import com.mirakyux.export4j.math.core.MathTextFonts;
 import com.mirakyux.export4j.model.Block;
 import com.mirakyux.export4j.model.BulletItem;
 import com.mirakyux.export4j.model.CellFormat;

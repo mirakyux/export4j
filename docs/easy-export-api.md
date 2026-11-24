@@ -1,6 +1,6 @@
 # 配置一次，直接导出
 
-当前开发版的 `export4j-starter` 提供 `Export4j` 统一入口。业务调用选择文本、Markdown、HTML 或 XML 模板，再指定 PDF／DOCX 目标。应用可以直接使用已安装字体，也可在初始化时设置字体、主题和公共图片。已发布的 `0.1.0-rc.3` 不包含此模块。
+当前开发版的 `export4j-starter` 提供 `Export4j` 统一入口，支持从文本、Markdown、HTML、XML 模板或 Java `Document` 导出 PDF／DOCX。应用可以直接使用已安装字体，也可在初始化时设置字体、主题和公共图片。已发布的 `0.1.0-rc.3` 不包含此模块。
 
 ## 一个依赖与最小调用
 
@@ -32,7 +32,7 @@ try (var export = Export4j.builder().build()) {
 }
 ```
 
-无参 `builder()` 在导出时检查运行机器上的几处标准字体路径。Windows 优先使用 Arial 和 Microsoft YaHei。macOS 优先尝试 Arial 和 Hiragino Sans GB。Linux 使用发行版已安装的 Liberation Sans、DejaVu Sans 或 Noto Sans，中文可用 Noto Sans CJK SC。实际字体取决于本机安装、格式和嵌入权限。精简容器可能没有字体包，PDF 遇到缺字会明确失败。需要跨机器复现版式时，使用下面的显式方式。
+PDF 导出使用无参 `builder()` 时会检查运行机器上的几处标准字体路径。Windows 优先使用 Arial 和 Microsoft YaHei。macOS 优先尝试 Arial 和 Hiragino Sans GB。Linux 使用发行版已安装的 Liberation Sans、DejaVu Sans 或 Noto Sans，中文可用 Noto Sans CJK SC。实际字体取决于本机安装、格式和嵌入权限。精简容器可能没有字体包，PDF 找不到所需字体或字形时会明确失败。需要跨机器复现 PDF 版式时，使用下面的显式方式。
 
 ```java
 import com.mirakyux.export4j.Export4j;
@@ -48,9 +48,38 @@ try (var export = Export4j.builder(body).build()) {
 }
 ```
 
-输出父目录须事先创建。PDF 使用同一套物理字体测量和绘制，遵守字体嵌入限制。DOCX 声明字体族和样式，由阅读端选用实际字体。应用可长期复用 exporter 并在关闭时释放缓存。可用 `FontSource.resource(App.class, "/fonts/body.ttf")` 读取应用资源，或用 `FontSource.collection(path, postScriptName)` 按名称选择字体集合成员。
+输出父目录须事先创建。PDF 使用同一套物理字体测量和绘制，遵守字体嵌入限制。普通 DOCX 可在无字体包的容器中导出，文件只声明字体族和样式，由阅读端选用实际字体。公式处理在需要物理字体时按需加载。应用可长期复用 exporter 并在关闭时释放缓存。可用 `FontSource.resource(App.class, "/fonts/body.ttf")` 读取应用资源，或用 `FontSource.collection(path, postScriptName)` 按名称选择字体集合成员。
 
-该模块传递引入现有数学模块及其已登记的 JLaTeXMath 依赖。需要更小的依赖集合时，继续按需使用原有模块；许可见[依赖记录](dependencies.md)。
+## 按输出格式选择依赖
+
+已有 Java `Document` 时，PDF 导出可直接使用 `export4j-starter-pdf`，DOCX 导出可直接使用 `export4j-adapter-docx`。两个入口接收同一个语义模型。
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxExport;
+import com.mirakyux.export4j.adapter.docx.DocxFontFamilies;
+import com.mirakyux.export4j.font.FontSource;
+import com.mirakyux.export4j.pdf.PdfExport;
+import java.nio.file.Path;
+
+try (var pdf = PdfExport.withFonts(FontSource.file(Path.of("fonts/body.ttf")))) {
+    pdf.write(document, Path.of("report.pdf"));
+}
+
+DocxExport.withFonts(new DocxFontFamilies("Arial", "Microsoft YaHei"))
+        .write(document, Path.of("report.docx"));
+```
+
+`DocxExport.create()` 采用阅读端默认字体。PDF 支持通过 `DocumentEngineProvider.Builder` 配置字体角色和布局预算。XML、HTML 或 Markdown 输入可先使用相应适配器生成语义文档。Word 可编辑的 Markdown 或 HTML 公式可用 `export4j-math-docx-web`。`export4j-starter` 一次装配源内容、系统字体和公式。 [公式模块](math-api.md)
+
+## Starter 引入的组件
+
+| 范围 | Maven 模块 |
+| --- | --- |
+| 直接编译依赖 | `export4j-components`、`export4j-font-core`、`export4j-math`、`export4j-adapter-template`、`export4j-backend-pdf`、`export4j-adapter-docx` |
+| 传递的 Export4j 模块 | `export4j-adapter-web`、`export4j-model`、`export4j-graphics-api`、`export4j-graphics-core`、`export4j-layout-model`、`export4j-layout-core`、`export4j-text-core`、`export4j-math-api`、`export4j-math-core`、`export4j-math-web`、`export4j-math-docx`、`export4j-font-fontbox`（运行时） |
+| 第三方运行库 | PDFBox、FontBox、PDFBox IO、Commons Logging、CommonMark（含 GFM 表格和删除线扩展）、jsoup、JLaTeXMath |
+
+依赖由 Maven 或 Gradle 解析为独立 JAR。需要更小的依赖集合时，可按用途选择单个模块。版本和许可见[依赖记录](dependencies.md)。
 
 ## 中英文与全局样式
 
@@ -130,11 +159,32 @@ var changes = result.degradations();
 | `text(source)` | 字面文本，默认关闭公式；不会把 `**...**` 或 HTML 当作格式 |
 | `markdown(source)` | 明确选择 Markdown，公式默认启用，表格按继承配置处理 |
 | `html(source)` | 明确选择离线 HTML 子集，公式默认启用 |
-| `xml(template, data)` | 编译并绑定正文模板，源块格式由 XML／全局配置声明，不猜测数据格式 |
+| `xml(template, data)` | 编译并绑定 XML 模板，含分节及页眉页脚；源块格式由 XML／全局配置声明 |
 
 Markdown 内的原始 HTML 是独立开关，默认关闭，需要时显式 `rawHtml(true)`；普通 `html(...)` 不需要该开关。格式入口的字符串始终是内容，不是文件路径或 URL。
 
 `image(key, InlineImage)` 可在全局登记公共图片，也可在请求上登记或覆盖精确资源键。图像字节和 pt 尺寸由调用方提供，库不会根据链接访问网络或本地文件。请求还支持 `metadata(...)`、`pageSettings(...)` 和 `execution(...)`，无需为这些选项重新创建全局实例。
+
+## 直接导出 Java Document
+
+`document(Document)` 接收已构建的语义文档，沿用其中的元数据、页面设置、样式和资源。导出时复用 starter 的字体角色、PDF 后端和执行设置。可通过 `execution(...)` 为本次请求指定执行选项，`pdf(...)` 和 `docx(...)` 均接受 `Path` 或 `OutputStream`。
+
+```java
+import com.mirakyux.export4j.Export4j;
+import com.mirakyux.export4j.model.Document;
+import java.nio.file.Path;
+
+var document = Document.builder()
+        .heading("Quarterly report", 1)
+        .paragraph("Revenue increased this quarter.")
+        .build();
+try (var export = Export4j.builder().build()) {
+    export.document(document).pdf(Path.of("quarterly-report.pdf"));
+    export.document(document).docx(Path.of("quarterly-report.docx"));
+}
+```
+
+文本解析、主题和公共图片配置用于文本、Markdown、HTML 和 XML 入口。使用 `document(...)` 时，在构建 `Document` 的阶段设置这些内容。
 
 ## XML 模板与数据
 

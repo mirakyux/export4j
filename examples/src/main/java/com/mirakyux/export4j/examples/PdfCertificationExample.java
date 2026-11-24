@@ -10,7 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import com.mirakyux.export4j.backend.pdf.PdfBackend;
-import com.mirakyux.export4j.backend.pdf.PdfSigner;
+import com.mirakyux.export4j.pdf.signatures.PdfSigner;
 import com.mirakyux.export4j.components.DocumentEngine;
 import com.mirakyux.export4j.font.FontGroup;
 import com.mirakyux.export4j.font.TrueTypeFontLoader;

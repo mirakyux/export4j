@@ -1,6 +1,6 @@
 # 统一导出入口验收
 
-本记录用于当前开发版 `export4j-starter`。各批分别记录文本、Markdown、HTML 或 XML 导出 PDF／DOCX 的本地验证结果。
+本记录用于当前开发版 `export4j-starter`。各批分别记录文本、Markdown、HTML、XML 或 Java `Document` 导出 PDF／DOCX 的本地验证结果。
 
 ## 本批状态
 
@@ -13,7 +13,14 @@
 ## 已知限制
 
 - RC3 使用端需要接入新制品，再用实际模板、字体、图片和容量配置验证。当前版支持 XML 分节与页眉页脚。脚注和尾注仅支持 PDF。
-- 无参入口的字体取决于运行机器。缺少字体包时可安装支持的字体或显式指定文件。macOS 和 Linux 本轮只验证了候选路径的隔离测试。
+- 无参入口供 PDF 使用的物理字体取决于运行机器。缺少字体包时可安装支持的字体或显式指定文件。2026-11-24 系统字体专项的 macOS 和 Linux 候选路径通过隔离测试。
+
+## 2026-11-24 Java 文档与 DOCX 字体声明
+
+- `build sbom publishLocalBundle apiCheck :examples:easyExport :examples:math` 通过。构建报告共 2,795 项 Java 测试，零失败、错误和跳过。部分任务为增量复用。API 检查覆盖 809 个可访问类型，零不兼容声明和第三方类型泄漏。
+- 全量隔离调用方和仅 starter 调用方分别通过 Gradle 元数据与仅 POM 两条路径。仅 starter 的两路均解析到 26 个摘要一致的运行 JAR，其中 14 个为本项目制品。Java 21 的 10,488 个有效类均只有一个提供方。
+- 仅 starter 的调用方从实际制品生成 `document.pdf` 和 `document.docx`。核对作者、标题、360 × 480 pt 纸张、标题、正文原样文字、表格及 DOCX 字号和颜色。PDF 使用 Poppler 和 PDFium 检查，DOCX 通过 LibreOffice 独立打开和渲染。路径输出在最终进度回调取消时保留旧目标。
+- 用空字体目录生成带中文正文、粗体、斜体与原生公式的 DOCX，物理字体缓存加载数为零。8 个 OOXML 部件与相同字体族声明的变更前对照逐字节一致，LibreOffice 转出的整页 PDFium 像素一致。两份阅读器衍生 PDF 有相同的中文提取顺序差异。PDF 在缺少物理字体时严格失败并保留旧目标。含 `\text` 或 `\textrm` 的公式按需加载物理字体，回归覆盖其加载失败与取消。
 
 ## 2026-11-24 系统字体与复杂 XML
 

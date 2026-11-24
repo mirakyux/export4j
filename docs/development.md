@@ -1,6 +1,6 @@
 # 开发规约
 
-本规约面向 Java 实现、测试、示例和构建配置。当前已建立 21 个 Gradle 子项目：18 个库、BOM、示例与可选设计器，按以下要求持续开发。
+本规约面向 Java 实现、测试、示例和构建配置。当前已建立 32 个 Gradle 子项目：29 个库、BOM、示例与可选设计器，按以下要求持续开发。
 
 发布版与开发版的模块范围见[当前状态](current-status.md)。本页规定开发流程；可运行任务及输出目录归[示例索引](examples.md)，逐类变更的验收要求归[验证矩阵](../.agents/skills/develop-export4j/references/verification.md)。
 

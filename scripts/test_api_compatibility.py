@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from create_published_api_baseline import LIBRARIES, checked_sha256, create_baseline
-from verify_api_compatibility import compare, jdk_tool, run, snapshot_jar
+from verify_api_compatibility import RELOCATIONS, compare, jdk_tool, run, snapshot_jar
 
 
 class ApiCompatibilityTest(unittest.TestCase):
@@ -56,6 +56,22 @@ class ApiCompatibilityTest(unittest.TestCase):
             report = compare(before, after)
             self.assertFalse(report["compatible"])
             self.assertEqual(report["foreignApiTypes"][0]["type"], "org.vendor.Dependency")
+
+    def test_reviewed_artifact_relocation_still_checks_the_java_signature(self):
+        (previous, name), (target, new_name) = next(iter(RELOCATIONS.items()))
+        declaration = {"declaration": f"public final class {name}", "members": {"value ()I": "public int value();"}}
+        relocated = {**declaration, "declaration": f"public final class {new_name}"}
+        before = {"schema": 1, "reference": "before", "modules": {previous: {name: declaration}}}
+        after = {"schema": 1, "reference": "after", "modules": {target: {new_name: relocated}}}
+        report = compare(before, after)
+        self.assertTrue(report["compatible"])
+        self.assertEqual(report["relocationsRequiringCoordinateMigration"], [
+            {"type": name, "previousModule": previous, "requiredModule": target,
+             "requiredType": new_name, "binaryNameChanged": True}])
+        after["modules"][target][new_name] = {**relocated, "members": {}}
+        self.assertFalse(compare(before, after)["compatible"])
+        after["modules"] = {"unreviewed-module": {name: declaration}}
+        self.assertFalse(compare(before, after)["compatible"])
 
     def test_published_jar_requires_valid_matching_upstream_checksum(self):
         checksum = b"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n"

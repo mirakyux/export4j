@@ -4,6 +4,16 @@
 
 ## Direct conversion
 
+| Use | Artifact | Entry point |
+| --- | --- | --- |
+| TeX vector outlines | `export4j-math-core` | `TexVectorMath.vector(...)` |
+| Visual formulas in semantic Markdown and HTML | `export4j-math-web` | `ContentImporter.builder().formulaProcessor(VisualMathContent.processor())` |
+| Editable Word formula trees | `export4j-math-docx` | `DocxTexMath.parse(...)` |
+| Whole Markdown or HTML documents with editable Word equations | `export4j-math-docx-web` | `DocxMathContent.read(...)`, `DocxAdapter.writeMath(...)` |
+| Shared source with both output targets | `export4j-math` | `TexMath`, `MarkdownMath`, `MathContent` |
+
+Formula types use subpackages of `com.mirakyux.export4j.math`. The `api` package provides `MathOptions` and `MathException`. The `core` package provides `TexVectorMath` and `MathTextFonts`. Use `VisualMathContent` from `web`, `DocxTexMath` from `docx`, and `DocxMathContent` from `docx.web`.
+
 Use the same development version as the other Export4j modules:
 
 ```kotlin
@@ -14,7 +24,7 @@ dependencies {
 ```
 
 ```java
-import com.mirakyux.export4j.math.MathOptions;
+import com.mirakyux.export4j.math.api.MathOptions;
 import com.mirakyux.export4j.math.TexMath;
 
 var options = MathOptions.builder().fontSize(14).display(true).build();
@@ -25,6 +35,24 @@ var nativeMath = TexMath.docx("\\frac{a+b}{c}", options);
 `vector` returns the existing `InlineVector` for mixed paragraphs, headings, ordered/unordered items, cells and explicit HTML resource registration. PDF/SVG/PNG use shared layout and actual curves. No TeX installation, browser, Office or printing service runs in production. Formulas remain atomic; this direct conversion does not scale them to fit. Callers explicitly supply body fonts and adequate fixed line height.
 
 Coordinates and vector font size are points, relative to the baseline. Reading text retains TeX, with CR/LF/tab changed to spaces. Original Markdown ranges remain available separately. ActualText, search and character selection are distinct capabilities. `docx` returns editable `DocxMath`; its size inherits the paragraph, and this tree does not automatically render through PDF layout.
+
+## Export Markdown or HTML to editable Word documents
+
+Use `export4j-math-docx-web` with the same-version BOM. `DocxMathContent.read` compiles body content, tables and supported TeX equations into a `DocxMathDocument`. `DocxAdapter.writeMath` writes to a caller-owned stream. Word lays out equations and pages. The `read` configuration callback accepts import styles, metadata, page settings, images and limits. Unsupported TeX and limit violations fail compilation. Use `MathContent` when you need formula width preflight or image fallback. [Rich content and cross-format formulas](rich-content-api.md)
+
+```java
+import com.mirakyux.export4j.adapter.docx.DocxAdapter;
+import com.mirakyux.export4j.math.docx.web.DocxMathContent;
+import com.mirakyux.export4j.model.ContentOptions;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+var document = DocxMathContent.read("# Report\n\nThe result is $x^2$.", ContentOptions.Format.MARKDOWN);
+var adapter = DocxAdapter.builder().lineSpacing(DocxAdapter.LineSpacing.OBJECTS_AT_LEAST).build();
+try (var output = Files.newOutputStream(Path.of("report.docx"))) {
+    adapter.writeMath(document, output);
+}
+```
 
 ## Import Markdown
 
@@ -53,7 +81,7 @@ Vector conversion accepts a fixed TeX subset: common Greek/operator commands, br
 Supply explicit physical fonts for Unicode text in `\text`/`\textrm`:
 
 ```java
-import com.mirakyux.export4j.math.MathTextFonts;
+import com.mirakyux.export4j.math.core.MathTextFonts;
 
 var textFonts = MathTextFonts.of(explicitStaticFontBytes);
 var withUnit = TexMath.vector("24\\text{岁}", options, textFonts);

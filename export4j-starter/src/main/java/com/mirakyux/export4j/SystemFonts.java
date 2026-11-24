@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j;
 
+import com.mirakyux.export4j.adapter.docx.DocxFontFamilies;
 import com.mirakyux.export4j.font.FontFace;
 import com.mirakyux.export4j.font.FontFaceCache;
 import com.mirakyux.export4j.font.FontLoadException;
@@ -21,13 +22,14 @@ final class SystemFonts {
     private record Face(Path path, String member) {
         Face(Path path) { this(path, null); }
 
+        FontSource source() { return member == null ? FontSource.file(path) : FontSource.collection(path, member); }
+
         FontFace load(FontFaceCache cache) throws IOException {
             ExecutionContext.checkpoint();
             if (!Files.isRegularFile(path)) { return null; }
             try {
                 if (Files.size(path) > TrueTypeFontLoader.DEFAULT_MAX_BYTES) { return null; }
-                var source = member == null ? FontSource.file(path) : FontSource.collection(path, member);
-                return source.load(cache, ExecutionContext::checkpoint);
+                return source().load(cache, ExecutionContext::checkpoint);
             } catch (NoSuchFileException missing) {
                 // The font may disappear between checking the path and opening it.
                 return null;
@@ -39,6 +41,14 @@ final class SystemFonts {
     }
 
     private record Candidate(String name, Face regular, Face bold, Face italic, Face boldItalic) {
+        FontFamily declaration() {
+            var builder = FontFamily.builder(name, regular.source());
+            if (bold != null) { builder.bold(bold.source()); }
+            if (italic != null) { builder.italic(italic.source()); }
+            if (boldItalic != null) { builder.boldItalic(boldItalic.source()); }
+            return builder.build();
+        }
+
         FontFamily load(FontFaceCache cache) throws IOException {
             var face = regular.load(cache);
             if (face == null) { return null; }
@@ -149,6 +159,31 @@ final class SystemFonts {
             throw new IOException("no supported local default font was found; install a system font or use Export4j.builder(FontFamily)");
         }
         return new Families(body, cjk == null ? body : cjk);
+    }
+
+    Families declarations(FontFamily explicitEastAsia) {
+        var body = firstPresent(latin);
+        var cjk = explicitEastAsia == null ? firstPresent(eastAsia) : explicitEastAsia;
+        if (body == null) { body = cjk; }
+        return new Families(body, cjk == null ? body : cjk);
+    }
+
+    DocxFontFamilies wordFamilies(FontFamily body, FontFamily cjk, FontFamily complex) {
+        String bodyName = body == null ? preferredName(latin, "Arial") : body.name();
+        String cjkName = cjk == null ? preferredName(eastAsia, bodyName) : cjk.name();
+        return new DocxFontFamilies(bodyName, bodyName, cjkName, complex == null ? bodyName : complex.name());
+    }
+
+    private static String preferredName(List<Candidate> candidates, String fallback) {
+        return candidates.isEmpty() ? fallback : candidates.getFirst().name();
+    }
+
+    private static FontFamily firstPresent(List<Candidate> candidates) {
+        for (var candidate : candidates) {
+            ExecutionContext.checkpoint();
+            if (Files.isRegularFile(candidate.regular().path())) { return candidate.declaration(); }
+        }
+        return null;
     }
 
     private static FontFamily first(List<Candidate> candidates, FontFaceCache cache) throws IOException {

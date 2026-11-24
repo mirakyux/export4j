@@ -41,32 +41,43 @@ Generation, import, editing, and conversion do not depend on printer drivers, pr
 
 ## Modules and dependencies
 
-The repository has 21 Gradle subprojects: 18 libraries, a BOM, examples, and an optional designer. The table omits the `export4j-` prefix. Its dependency column lists **direct production project dependencies** only: `A` means Gradle `api`, and `I` means `implementation`. Transitive dependencies and third-party libraries are not expanded. The [settings](../../settings.gradle.kts), each module's `build.gradle.kts`, and the [dependency record](dependencies.md) own the actual declarations.
+The repository has 32 Gradle subprojects, including 29 libraries, a BOM, examples, and an optional designer. The table omits the `export4j-` prefix and lists direct production project dependencies. `A` means Gradle `api`, `I` means `implementation`, and `R` means `runtimeOnly`. [Module settings](../../settings.gradle.kts) · [Dependency record](dependencies.md)
 
 | Group | Module | Responsibility | Direct project dependencies |
 | --- | --- | --- | --- |
 | Foundation | `model` | Semantic documents, template binding, styles, execution, and processing contracts | None |
 | Foundation | `font-core` | Explicit font sources, immutable faces, and bounded caching | None |
+| Foundation | `font-fontbox` | Static TrueType and CFF font-file parser | I: `font-core` |
 | Foundation | `text-core` | Shaping, measurement, and local paragraph lines | A: `font-core`, `model` |
 | Drawing and layout | `graphics-api` | Geometry, drawing types, Display List, and output SPI | A: `model`, `text-core` |
 | Drawing and layout | `graphics-core` | Graphics primitives, recording, and command execution | A: `graphics-api` |
 | Drawing and layout | `layout-model` | Pages, fragments, source mappings, and Layout IR | A: `graphics-api` |
-| Drawing and layout | `layout-core` | Pagination, region flow, core component SPI, and drawing conversion | A: `layout-model`; I: `graphics-core` |
-| Drawing and layout | `components` | Standard components, semantic orchestration, and `DocumentEngine` | A: `layout-core`; I: `graphics-core` |
-| Backends | `backend-pdf` | PDF encoding, document-local fonts, and parser leases | A: `graphics-api`; I: `graphics-core` |
+| Drawing and layout | `layout-core` | Pagination, region flow, core component SPI, and drawing conversion | A: `layout-model`, `graphics-core` |
+| Drawing and layout | `components` | Standard components, semantic orchestration, and `DocumentEngine` | A: `layout-core` · I: `graphics-core` · R: `font-fontbox` |
+| Backends | `backend-pdf` | PDF encoding, document-local fonts, and parser leases | A: `graphics-api` · I: `graphics-core` · R: `font-fontbox` |
 | Backends | `backend-svg` | Static SVG output | A: `graphics-api`; I: `graphics-core` |
 | Backends | `backend-raster` | Image and preview output | A: `graphics-api`; I: `graphics-core` |
-| Adapters | `adapter-docx` | Common body, native mathematics, and typed OOXML semantic reading/writing | A: `model` |
+| Adapters | `adapter-docx` | `DocxExport`, native mathematics, and typed OOXML semantic reading/writing | A: `model` |
 | Adapters | `adapter-template` | Offline XML/strict Markdown template compilation | A: `model` |
-| Adapters | `adapter-web` | HTML/Markdown semantic reading/writing, offline CSS layout, and source-content sessions | A: `model`; I: `components`, `graphics-core` |
-| Adapters | `adapter-pdf` | Bounded original-object operations, rendering, redaction, and explicit semantic recovery | A: `model`, `adapter-template` |
-| Extensions and assembly | `math` | Bounded TeX compilation, occurrence identity, and target representations | A: `model`, `adapter-docx`, `adapter-web`; I: `font-core`, `graphics-api` |
-| Extensions and assembly | `opentype` | Native shaping, variable/color fonts, and vertical flow | A: `layout-core`; I: `graphics-core` |
+| Adapters | `adapter-web` | HTML/Markdown semantic reading/writing and source-content sessions | A: `model` |
+| Adapters | `adapter-pdf` | Bounded original-object operations, rendering, redaction, and semantic extraction | A: `model` |
+| Extensions and assembly | `web-layout` | HTML CSS box layout | A: `adapter-web` · I: `components`, `graphics-core` |
+| Extensions and assembly | `pdf-signatures` | PDF signing, certification, and trust verification | I: `model` |
+| Extensions and assembly | `pdf-recovery` | Embedded PDF model recovery | A: `adapter-template` · I: `adapter-pdf` |
+| Extensions and assembly | `math-api` | Shared math options and failure categories | None |
+| Extensions and assembly | `math-core` | Bounded TeX vector outlines | A: `math-api`, `model` · I: `font-core` · R: `font-fontbox` |
+| Extensions and assembly | `math-web` | Vector formulas in semantic source imports | A: `math-core`, `adapter-web` |
+| Extensions and assembly | `math-docx` | Bounded TeX conversion to Word mathematics | A: `math-api`, `adapter-docx` |
+| Extensions and assembly | `math-docx-web` | Editable Word formulas from semantic source imports | A: `math-docx`, `adapter-web` |
+| Extensions and assembly | `math` | Dual-target math compilation and occurrence identity | A: `math-web`, `math-docx` |
+| Extensions and assembly | `opentype` | Native shaping and variable/color fonts | A: `graphics-api`; I: `graphics-core` |
+| Extensions and assembly | `opentype-layout` | Native OpenType pagination and vertical layout | A: `opentype`, `layout-core` |
+| Extensions and assembly | `starter-pdf` | Write an authored Java `Document` to PDF | A: `components`, `backend-pdf` |
 | Extensions and assembly | `starter` | One-time configuration for source/XML input and PDF/DOCX output | A: `components`, `math`, `adapter-template`, `backend-pdf`, `font-core`, `adapter-docx` |
 
-`export4j-bom` constrains the versions of these 18 libraries without automatically adding all modules. The Gradle version catalog and lockfiles manage third-party versions. `examples` combines public APIs to demonstrate usage. `export4j-designer` is a separate local application that retains XML source, data, and resources and uses the Java engine for previews and exports. Neither the designer nor examples participate in Maven library publication.
+`export4j-bom` constrains the versions of these libraries without automatically adding all modules. The Gradle version catalog and lockfiles manage third-party versions. `examples` combines public APIs to demonstrate usage. `export4j-designer` is a separate local application that retains XML source, data, and resources and uses the Java engine for previews and exports. Neither the designer nor examples participate in Maven library publication.
 
-`starter` includes mathematics and Web content assembly, with 14 libraries in its transitive project dependency set. It does not bring in the PDF editing adapter, SVG/Raster backends, or native OpenType. Select those modules explicitly when needed; native extensions also require a platform classifier. Core modules never depend back on starter, adapters, backends, the designer, or examples.
+Use `starter-pdf` or `adapter-docx` for an authored `Document`. Add the template, Web, or math adapter required by the input. The combined `starter` assembles sources and both outputs. Applications that use `font-core` directly to parse font files need `font-fontbox` at runtime. [Optional feature boundaries](../adr/0119-independent-feature-coordinates.md) · [Starter guide](easy-export-api.md)
 
 PDFBox document types stay inside PDF implementation modules; FontBox and pdfbox-io may be encapsulated in the font layer. JLaTeXMath, CommonMark, jsoup, and LWJGL/HarfBuzz implementation types likewise stay out of public APIs, exceptions, and SPIs. Third-party types in specialized tests do not change production boundaries.
 

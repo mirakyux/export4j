@@ -125,7 +125,7 @@ SVG 自包含，文字为已确定的轮廓，图片以内嵌 PNG 保存。多�
 
 ## 本地制品验证
 
-`export4j-bom` 当前对齐 16 个库；约束由实际子项目生成，不包含 BOM 自身、示例和 designer。`publishLocalBundle` 只写入 `build/repository`，包含二进制、源码、Javadoc、POM 和 Gradle 元数据。`sbom` 生成 `build/reports/sbom.cdx.json`，记录实际运行制品与 SHA-256；不包含测试工具、JDK 或示例字体，资源另见[字体记录](../assets/fonts/README.md)。
+开发版 `export4j-bom` 当前对齐 29 个库；约束由实际子项目生成，不包含 BOM 自身、示例和 designer。`publishLocalBundle` 只写入 `build/repository`，包含二进制、源码、Javadoc、POM 和 Gradle 元数据。`sbom` 生成 `build/reports/sbom.cdx.json`，记录实际运行制品与 SHA-256；不包含测试工具、JDK 或示例字体，资源另见[字体记录](../assets/fonts/README.md)。
 
 [`verify_local_consumer.ps1`](../scripts/verify_local_consumer.ps1) 在独立 Gradle 工程中仅通过 Maven 坐标与 BOM 编译运行，不使用 project 依赖。完整命令、验证数值和范围见[验收记录](verification/phase-4-production.md)。
 

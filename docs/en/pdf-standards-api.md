@@ -85,6 +85,8 @@ Input bytes, pages, source/target pixels, decoded bytes, operators, state depth,
 
 ## PAdES and offline trust
 
+Add `com.mirakyux.export4j:export4j-pdf-signatures` at the same Export4j version and import signing types from `com.mirakyux.export4j.pdf.signatures`. Use `export4j-backend-pdf` to generate PDF/UA and PDF/A.
+
 Existing `PdfSigner`/`PdfSignatureVerifier` APIs continue to provide external CMS signing and exact-byte integrity verification separately. The newer `PdfPades` handles standard levels, explicit trust, revocation, and trusted time. CMS-byte integrity is not treated as signer trust.
 
 | Level | Actual content |

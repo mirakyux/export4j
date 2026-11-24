@@ -189,7 +189,7 @@ External pixel or metadata edits invalidate exact-byte bindings even if old reco
 
 ## Optional embedded recovery in PDF, DOCX, and PNG page ZIP
 
-PDF uses an `EmbeddedFiles` attachment, DOCX uses `customXml/export4j-recovery.xml`, and multipage PNG ZIP uses `export4j/recovery.zip`. The PDF encoder resides in the PDF adapter and must be supplied explicitly. The other containers use the template module's embedded APIs directly.
+PDF uses an `EmbeddedFiles` attachment. Add `com.mirakyux.export4j:export4j-pdf-recovery` at the same Export4j version and pass a `com.mirakyux.export4j.pdf.recovery.PdfRecoveryCodec` explicitly. The template module provides the embedded APIs for `customXml/export4j-recovery.xml` in DOCX and `export4j/recovery.zip` in multipage PNG ZIP.
 
 ```java
 var saved = XmlModelRecovery.capture(conversion.prepare(target))

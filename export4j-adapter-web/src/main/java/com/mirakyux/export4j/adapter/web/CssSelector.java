@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.mirakyux.export4j.adapter.web;
 
+import com.mirakyux.export4j.adapter.web.internal.CssValues;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -19,18 +20,7 @@ final class CssSelector {
     int specificity() { return specificity; }
     static List<String> split(String source) { return split(source, ','); }
     static List<String> split(String source, char delimiter) {
-        var result = new ArrayList<String>(); int start = 0, square = 0, round = 0; char quote = 0;
-        for (int i = 0; i < source.length(); i++) {
-            char c = source.charAt(i);
-            if (quote != 0) { if (c == quote) { quote = 0; } continue; }
-            if (c == '\'' || c == '"') { quote = c; }
-            else if (c == '[') { square++; } else if (c == ']') { square--; }
-            else if (c == '(') { round++; } else if (c == ')') { round--; }
-            else if (c == delimiter && square == 0 && round == 0) { result.add(source.substring(start, i).trim()); start = i + 1; }
-            if (square < 0 || round < 0 || round > 2) { throw new IllegalArgumentException("invalid CSS nesting"); }
-        }
-        if (quote != 0 || square != 0 || round != 0) { throw new IllegalArgumentException("unbalanced CSS selector"); }
-        result.add(source.substring(start).trim()); return result;
+        return CssValues.split(source, delimiter);
     }
     static CssSelector compile(String source) {
         if (source.isBlank() || source.length() > 256) { throw new IllegalArgumentException("CSS selector length exceeded"); }
